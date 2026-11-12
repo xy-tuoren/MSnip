@@ -3,83 +3,63 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 覆盖层的工具栏动作响应、智能矩阵移动探测、鼠标绘制与滚轮交互扩展
+/// 覆盖层的智能矩阵移动探测、吸管取色、鼠标绘制与滚轮交互扩展
 extension OverlayView {
-    func handleToolbarAction(_ action: ToolbarView.Action) {
-        commitTextEditing()
-        switch action {
-        case .selectTool(let tool):
-            activeTool = tool
-            if tool != nil { selectedObjectIndex = nil }
-        case .selectColor(let idx):
-            colorIndex = idx
-            if let selIdx = selectedObjectIndex {
-                doc.modifyWithHistory(at: selIdx) { $0.style.color = style.color }
-            }
-            onStyleChanged?(colorIndex, style.lineWidth)
-            needsDisplay = true
-        case .selectStroke(let w):
-            style.lineWidth = w
-            style.fontSize = max(14, w * 4.5)
-            toolbar.lineWidth = w
-            if let selIdx = selectedObjectIndex {
-                doc.modifyWithHistory(at: selIdx) {
-                    $0.style.lineWidth = w
-                    $0.style.fontSize = max(14, w * 4.5)
-                }
-            }
-            onStyleChanged?(colorIndex, style.lineWidth)
-            needsDisplay = true
-        case .undo:
-            selectedObjectIndex = nil
-            if doc.undo() { updateToolbarLayout(); needsDisplay = true }
-        case .redo:
-            selectedObjectIndex = nil
-            if doc.redo() { updateToolbarLayout(); needsDisplay = true }
-        case .pin:
-            exportAndFinish(mode: .pin)
-        case .save:
-            exportAndFinish(mode: .save)
-        case .cancel:
-            onCancel?()
-        case .confirmCopy:
-            exportAndFinish(mode: .copy)
-        }
-    }
-
     // MARK: - Mouse & Auto-Snap Interaction
 
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
+        lastMousePoint = p
         if !toolbar.isHidden && toolbar.frame.contains(p) {
             NSCursor.arrow.set()
+            needsDisplay = true
+            return
+        }
+        if eyedropperActive {
+            NSCursor.crosshair.set()
+            needsDisplay = true
             return
         }
         if let sel = selection {
             if Geometry.hitHandle(at: p, in: sel) != nil {
                 NSCursor.crosshair.set()
-                return
-            }
-            if spacePressed || (activeTool == nil && sel.contains(p)) {
+            } else if spacePressed || (activeTool == nil && sel.contains(p) && !optionPressed) {
                 NSCursor.openHand.set()
-                return
+            } else {
+                NSCursor.crosshair.set()
             }
-            NSCursor.crosshair.set()
+            if optionPressed || magnifierPinned || showShortcutTips {
+                needsDisplay = true
+            }
             return
         }
 
-        // 未锁定选区阶段：移动光标实时识别并高亮下方的窗口 / UI 控件矩阵
         onSelectionActivated?(self)
         updateAutoSnap(at: p)
         NSCursor.crosshair.set()
+        needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         let p = convert(event.locationInWindow, from: nil)
+        lastMousePoint = p
 
         if isEditingText {
             commitTextEditing()
+            return
+        }
+
+        // 吸管模式或已锁定选区按住 ⌥ 单击：吸取屏幕任意像素作为标注颜色
+        if eyedropperActive || (selection != nil && event.modifierFlags.contains(.option)) {
+            if let sample = samplePixelAtCursor() {
+                customPickedColor = sample.color
+                eyedropperActive = false
+                if let selIdx = selectedObjectIndex {
+                    doc.modifyWithHistory(at: selIdx) { $0.style.color = sample.color }
+                }
+                needsDisplay = true
+            }
             return
         }
 
@@ -97,7 +77,6 @@ extension OverlayView {
 
         onSelectionActivated?(self)
 
-        // 尚未产生正式选区：按下时先记录当前自动识别框（单击直接锁定，拖动 >= 4pt 则无缝转手动画框）
         guard let sel = selection else {
             selectedObjectIndex = nil
             if autoSnapStack.isEmpty { updateAutoSnap(at: p) }
@@ -105,20 +84,17 @@ extension OverlayView {
             return
         }
 
-        // 1) 八向选区控制柄优先
         if let handle = Geometry.hitHandle(at: p, in: sel) {
             selectedObjectIndex = nil
             dragOp = .resizingSelection(handle: handle, initialRect: sel, mouseStart: p)
             return
         }
 
-        // 2) 按住空格拖动整个选区
         if spacePressed && sel.contains(p) {
             dragOp = .movingSelection(initialRect: sel, mouseStart: p)
             return
         }
 
-        // 3) 命中已有标注：在无工具态、按住 ⌘ 键、或点在已选中标注上时直接移动标注
         if sel.contains(p), let hitIdx = doc.hitIndex(at: p) {
             if activeTool == nil || event.modifierFlags.contains(.command) || selectedObjectIndex == hitIdx {
                 selectedObjectIndex = hitIdx
@@ -128,7 +104,6 @@ extension OverlayView {
             }
         }
 
-        // 4) 选区内绘制新标注或拖动选区；选区外且无标注时支持重新点击/拖拽选区
         if sel.contains(p) {
             selectedObjectIndex = nil
             if let tool = activeTool {
@@ -150,7 +125,10 @@ extension OverlayView {
 
     override func mouseDragged(with event: NSEvent) {
         guard let op = dragOp else { return }
+        let prevPt = lastMousePoint ?? convert(event.locationInWindow, from: nil)
         let p = convert(event.locationInWindow, from: nil)
+        lastMousePoint = p
+        shiftTapCandidate = false
         let shift = event.modifierFlags.contains(.shift)
 
         switch op {
@@ -161,7 +139,11 @@ extension OverlayView {
                 selection = Geometry.normalizedRect(from: anchor, to: end).intersection(bounds)
             }
 
-        case .creatingSelection(let anchor):
+        case .creatingSelection(var anchor):
+            if spacePressed {
+                anchor = CGPoint(x: anchor.x + (p.x - prevPt.x), y: anchor.y + (p.y - prevPt.y))
+                dragOp = .creatingSelection(anchor: anchor)
+            }
             let end = shift ? Geometry.squareConstrainedEnd(from: anchor, to: p) : p
             selection = Geometry.normalizedRect(from: anchor, to: end).intersection(bounds)
 
@@ -219,7 +201,7 @@ extension OverlayView {
                 updateAutoSnap(at: convert(event.locationInWindow, from: nil))
             }
         case .movingSelection, .resizingSelection:
-            break
+            needsDisplay = true
         case .drawingAnnotation(_, let start):
             let end = convert(event.locationInWindow, from: nil)
             if let draft = draftAnnotation, !draft.isTrivial {
@@ -236,25 +218,21 @@ extension OverlayView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        // 1) 未锁定选区时：滚轮在鼠标下方的「内部小控件 <-> 父容器 <-> 整窗口」多级矩阵间丝滑切换并记忆偏好尺度
         if selection == nil {
             guard autoSnapStack.count > 1 else { return }
             if event.hasPreciseScrollingDeltas {
                 scrollSnapAccumulator += event.scrollingDeltaY
-                let threshold: CGFloat = 16.0
-                if abs(scrollSnapAccumulator) >= threshold {
+                if abs(scrollSnapAccumulator) >= 16.0 {
                     let step = scrollSnapAccumulator > 0 ? 1 : -1
                     scrollSnapAccumulator = 0
                     stepAutoSnapTier(by: step)
                 }
             } else if abs(event.scrollingDeltaY) > 0.01 {
-                let step = event.scrollingDeltaY > 0 ? 1 : -1
-                stepAutoSnapTier(by: step)
+                stepAutoSnapTier(by: event.scrollingDeltaY > 0 ? 1 : -1)
             }
             return
         }
 
-        // 2) 已锁定选区时：滚轮微调标注粗细 / 字号 / 马赛克粒度
         let delta: CGFloat = event.scrollingDeltaY > 0 ? 0.5 : -0.5
         style.lineWidth = min(18.0, max(1.0, style.lineWidth + delta))
         style.fontSize = min(64.0, max(12.0, style.fontSize + delta * 2.0))

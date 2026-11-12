@@ -3,14 +3,17 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 截图选区下方的原生毛玻璃深色悬浮工具栏
+/// 截图选区下方的原生毛玻璃深色悬浮工具栏（含标注、吸管取色、圆角截图、识字提取与导出动作）
 final class ToolbarView: NSView {
     enum Action {
         case selectTool(ToolKind?)
         case selectColor(Int)
+        case toggleEyedropper
         case selectStroke(CGFloat)
         case undo
         case redo
+        case cycleCornerRadius
+        case extractText
         case pin
         case save
         case cancel
@@ -21,7 +24,10 @@ final class ToolbarView: NSView {
 
     var activeTool: ToolKind? { didSet { needsDisplay = true } }
     var colorIndex: Int = 0 { didSet { needsDisplay = true } }
+    var customColor: RGBAColor? { didSet { needsDisplay = true } }
+    var eyedropperActive: Bool = false { didSet { needsDisplay = true } }
     var lineWidth: CGFloat = 3.0 { didSet { needsDisplay = true } }
+    var cornerRadiusPt: CGFloat = 0 { didSet { needsDisplay = true } }
     var canUndo: Bool = false { didSet { needsDisplay = true } }
     var canRedo: Bool = false { didSet { needsDisplay = true } }
     var pinHint: String = "⌘2" { didSet { needsDisplay = true } }
@@ -40,7 +46,7 @@ final class ToolbarView: NSView {
     override var isFlipped: Bool { true }
 
     static let barHeight: CGFloat = 42
-    static let barWidth: CGFloat = 656
+    static let barWidth: CGFloat = 744
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.barWidth, height: Self.barHeight))
@@ -98,7 +104,6 @@ final class ToolbarView: NSView {
         rebuildItems()
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        // 深色半透明圆角胶囊底板 + 高光细边框
         let bgRect = bounds.insetBy(dx: 1, dy: 1)
         let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 9, cornerHeight: 9, transform: nil)
         ctx.saveGState()
@@ -127,7 +132,7 @@ final class ToolbarView: NSView {
         // 1) 7 个标注工具按钮
         for tool in ToolKind.allCases {
             let isSelected = (activeTool == tool)
-            let rect = CGRect(x: x, y: y, width: 30, height: h)
+            let rect = CGRect(x: x, y: y, width: 29, height: h)
             list.append(HitItem(
                 rect: rect,
                 tooltip: tool.title,
@@ -138,7 +143,7 @@ final class ToolbarView: NSView {
                 },
                 action: .selectTool(isSelected ? nil : tool)
             ))
-            x += 32
+            x += 31
         }
 
         x = appendDivider(at: x, into: &list)
@@ -146,7 +151,7 @@ final class ToolbarView: NSView {
         // 2) 3 档线宽圆点
         for stroke in AnnotationStyle.strokePresets {
             let isSelected = abs(lineWidth - stroke) < 1.0
-            let rect = CGRect(x: x, y: y, width: 22, height: h)
+            let rect = CGRect(x: x, y: y, width: 21, height: h)
             let dotR = max(2.2, min(6.0, stroke * 0.9))
             list.append(HitItem(
                 rect: rect,
@@ -160,15 +165,15 @@ final class ToolbarView: NSView {
                 },
                 action: .selectStroke(stroke)
             ))
-            x += 23
+            x += 22
         }
 
         x = appendDivider(at: x, into: &list)
 
-        // 3) 6 个高对比度色块
+        // 3) 6 个高对比度色块 + 吸管屏幕取色按钮
         for (idx, color) in RGBAColor.presets.enumerated() {
-            let isSelected = (colorIndex == idx)
-            let rect = CGRect(x: x, y: y, width: 22, height: h)
+            let isSelected = (customColor == nil && colorIndex == idx)
+            let rect = CGRect(x: x, y: y, width: 21, height: h)
             list.append(HitItem(
                 rect: rect,
                 tooltip: "标注颜色",
@@ -186,20 +191,40 @@ final class ToolbarView: NSView {
                 },
                 action: .selectColor(idx)
             ))
-            x += 22
+            x += 21
         }
+
+        let pickerRect = CGRect(x: x + 2, y: y, width: 28, height: h)
+        let isPickerActive = eyedropperActive
+        let pickedColor = customColor
+        list.append(HitItem(
+            rect: pickerRect,
+            tooltip: "吸取屏幕颜色用于标注 (I / ⌥+点击)",
+            enabled: true,
+            draw: { ctx, r, hov in
+                Self.drawEyedropperItem(ctx: ctx, rect: r, active: isPickerActive, customColor: pickedColor, hovered: hov)
+            },
+            action: .toggleEyedropper
+        ))
+        x += 31
 
         x = appendDivider(at: x, into: &list)
 
         // 4) 撤销 / 重做
-        let undoEnabled = canUndo
-        list.append(iconAction(x: &x, y: y, symbol: "arrow.uturn.backward", tip: "撤销 (⌘Z)", enabled: undoEnabled, action: .undo))
-        let redoEnabled = canRedo
-        list.append(iconAction(x: &x, y: y, symbol: "arrow.uturn.forward", tip: "重做 (⌘⇧Z)", enabled: redoEnabled, action: .redo))
+        list.append(iconAction(x: &x, y: y, symbol: "arrow.uturn.backward", tip: "撤销 (⌘Z)", enabled: canUndo, action: .undo))
+        list.append(iconAction(x: &x, y: y, symbol: "arrow.uturn.forward", tip: "重做 (⌘⇧Z)", enabled: canRedo, action: .redo))
 
         x = appendDivider(at: x, into: &list)
 
-        // 5) 输出动作组：贴图 / 保存 / 取消 / 完成复制
+        // 5) PixPin 快捷增强动作：圆角截图 / 识字与二维码提取
+        let hasCorner = cornerRadiusPt > 0.5
+        let cornerTip = hasCorner ? "圆角截图：\(Int(cornerRadiusPt))pt (B 切换)" : "圆角截图 (B)"
+        list.append(iconAction(x: &x, y: y, symbol: "rectangle.roundedtop", tip: cornerTip, enabled: true, active: hasCorner, action: .cycleCornerRadius))
+        list.append(iconAction(x: &x, y: y, symbol: "text.viewfinder", tip: "识别文字 / 二维码并复制 (T)", enabled: true, action: .extractText))
+
+        x = appendDivider(at: x, into: &list)
+
+        // 6) 输出动作组：贴图 / 保存 / 取消 / 完成复制
         list.append(iconAction(x: &x, y: y, symbol: "pin", tip: "贴到屏幕 (\(pinHint))", enabled: true, action: .pin))
         list.append(iconAction(x: &x, y: y, symbol: "square.and.arrow.down", tip: "保存 PNG (⌘S)", enabled: true, action: .save))
         list.append(iconAction(x: &x, y: y, symbol: "xmark", tip: "取消截图 (Esc)", enabled: true, tint: .systemRed, action: .cancel))
@@ -233,11 +258,12 @@ final class ToolbarView: NSView {
         symbol: String,
         tip: String,
         enabled: Bool,
+        active: Bool = false,
         tint: NSColor = .white,
         prominent: Bool = false,
         action: Action
     ) -> HitItem {
-        let w: CGFloat = prominent ? 34 : 29
+        let w: CGFloat = prominent ? 34 : 28
         let rect = CGRect(x: x, y: y, width: w, height: 30)
         x += w + 3
         return HitItem(
@@ -252,46 +278,11 @@ final class ToolbarView: NSView {
                     ctx.fillPath()
                     Self.drawSymbol(symbol, in: r, alpha: 1.0, tint: .white)
                 } else {
-                    Self.drawButtonBg(ctx: ctx, rect: r, active: false, hovered: hov && enabled)
+                    Self.drawButtonBg(ctx: ctx, rect: r, active: active, hovered: hov && enabled)
                     Self.drawSymbol(symbol, in: r, alpha: enabled ? 0.95 : 0.3, tint: tint)
                 }
             },
             action: action
         )
-    }
-
-    private static func drawButtonBg(ctx: CGContext, rect: CGRect, active: Bool, hovered: Bool) {
-        guard active || hovered else { return }
-        let path = CGPath(roundedRect: rect, cornerWidth: 6, cornerHeight: 6, transform: nil)
-        let color = active
-            ? NSColor.controlAccentColor.withAlphaComponent(0.85)
-            : NSColor.white.withAlphaComponent(0.14)
-        ctx.setFillColor(color.cgColor)
-        ctx.addPath(path)
-        ctx.fillPath()
-    }
-
-    private static func drawSymbol(_ name: String, in rect: CGRect, alpha: CGFloat, tint: NSColor = .white) {
-        guard let baseImg = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return }
-        let cfg = NSImage.SymbolConfiguration(pointSize: 13.5, weight: .medium)
-        let configured = baseImg.withSymbolConfiguration(cfg) ?? baseImg
-        guard let cg = configured.cgImage(forProposedRect: nil, context: nil, hints: nil),
-              let ctx = NSGraphicsContext.current?.cgContext else { return }
-
-        let size = configured.size
-        let dst = CGRect(
-            x: round(rect.midX - size.width * 0.5),
-            y: round(rect.midY - size.height * 0.5),
-            width: size.width,
-            height: size.height
-        )
-        ctx.saveGState()
-        // 在 isFlipped=true 的视图中翻转局部 CG 坐标系，使 SF Symbol 正常朝上并着色
-        ctx.translateBy(x: 0, y: dst.minY + dst.maxY)
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.clip(to: dst, mask: cg)
-        ctx.setFillColor(tint.withAlphaComponent(alpha).cgColor)
-        ctx.fill(dst)
-        ctx.restoreGState()
     }
 }

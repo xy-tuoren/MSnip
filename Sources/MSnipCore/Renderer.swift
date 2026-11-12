@@ -149,12 +149,13 @@ public enum AnnotationRenderer {
         ctx.restoreGState()
     }
 
-    /// 将选区原图与标注合成为全分辨率 Retina `CGImage`（用于复制、贴图与另存为 PNG）
+    /// 将选区原图与标注合成为全分辨率 Retina `CGImage`（用于复制、贴图与另存为 PNG，支持圆角裁切）
     public static func bakeExportImage(
         sampler: PixelSampler,
         selection: CGRect,
         imageScale: CGFloat,
-        annotations: [Annotation]
+        annotations: [Annotation],
+        cornerRadiusPt: CGFloat = 0
     ) -> CGImage? {
         let pxRect = CGRect(
             x: round(selection.minX * imageScale),
@@ -180,6 +181,13 @@ public enum AnnotationRenderer {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else {
             return nil
+        }
+
+        if cornerRadiusPt > 0.5 {
+            let rPx = min(cornerRadiusPt * imageScale, CGFloat(min(outW, outH)) * 0.5)
+            let clipPath = CGPath(roundedRect: CGRect(x: 0, y: 0, width: outW, height: outH), cornerWidth: rPx, cornerHeight: rPx, transform: nil)
+            ctx.addPath(clipPath)
+            ctx.clip()
         }
 
         // 1) 在标准未翻转 CG 坐标系下绘制裁剪底图，确保原图方向正立不颠倒

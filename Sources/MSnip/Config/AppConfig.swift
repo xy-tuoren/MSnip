@@ -62,6 +62,21 @@ struct AppConfig: Codable {
     var defaultColorIndex: Int = 0
     var defaultLineWidth: CGFloat = 3.0
     var lastSaveDirectory: String?
+    var colorCopyFormat: ColorCopyFormat = .hex
+    var showShortcutTips: Bool = true
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        hotKeyPreset = try c.decodeIfPresent(HotKeyPreset.self, forKey: .hotKeyPreset) ?? .cmd12
+        hotKeysEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotKeysEnabled) ?? true
+        defaultColorIndex = try c.decodeIfPresent(Int.self, forKey: .defaultColorIndex) ?? 0
+        defaultLineWidth = try c.decodeIfPresent(CGFloat.self, forKey: .defaultLineWidth) ?? 3.0
+        lastSaveDirectory = try c.decodeIfPresent(String.self, forKey: .lastSaveDirectory)
+        colorCopyFormat = try c.decodeIfPresent(ColorCopyFormat.self, forKey: .colorCopyFormat) ?? .hex
+        showShortcutTips = try c.decodeIfPresent(Bool.self, forKey: .showShortcutTips) ?? true
+    }
 
     private static var configURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first

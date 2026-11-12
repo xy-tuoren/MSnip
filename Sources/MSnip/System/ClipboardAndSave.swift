@@ -1,10 +1,24 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 import UniformTypeIdentifiers
 
 /// 剪贴板读写与 PNG 文件导出工具
 enum ClipboardAndSave {
+    /// 将纯文本（如色值、坐标、OCR 识别结果）写入系统剪贴板
+    static func copyText(_ text: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(text, forType: .string)
+    }
+
+    /// 从剪贴板文本尝试解析颜色值（支持 `#RRGGBB` / `#RGB` / `rgb(r, g, b)`）
+    static func readColorFromClipboard() -> RGBAColor? {
+        guard let str = NSPasteboard.general.string(forType: .string) else { return nil }
+        return RGBAColor.parseColorString(str)
+    }
+
     /// 将 Retina 高清 `CGImage` 写入系统剪贴板（保留物理像素分辨率与逻辑点尺寸）
     static func copyToClipboard(cgImage: CGImage, scaleFactor: CGFloat) {
         let logicalSize = NSSize(

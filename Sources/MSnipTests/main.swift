@@ -3,9 +3,9 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-private var passedCount = 0
+var passedCount = 0
 
-private func check(_ condition: @autoclosure () -> Bool, _ message: String, file: String = #fileID, line: Int = #line) {
+func check(_ condition: @autoclosure () -> Bool, _ message: String, file: String = #fileID, line: Int = #line) {
     if !condition() {
         fputs("❌ Test failed (\(file):\(line)): \(message)\n", stderr)
         exit(1)
@@ -275,4 +275,5 @@ testRetinaExportOrientationAndAnnotationBaking()
 testFlippedNSViewDrawsCGImageUpright()
 testVisualDetectorFindsNestedCardAndButton()
 testVisualDetectorRejectsPhantomCrosshairsAndFindsOutlinedBox()
+testColorSamplingAndRoundedBake()
 print("✅ All \(passedCount) assertions in MSnipTests passed!")

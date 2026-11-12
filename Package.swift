@@ -26,7 +26,8 @@ let package = Package(
                 .linkedFramework("Carbon"),
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("ScreenCaptureKit"),
-                .linkedFramework("ServiceManagement")
+                .linkedFramework("ServiceManagement"),
+                .linkedFramework("Vision")
             ]
         ),
         .executableTarget(

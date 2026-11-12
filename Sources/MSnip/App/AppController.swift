@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 
 /// 应用主控制器：管理菜单栏常驻图标、全局快捷键路由、截图会话与贴图池
 @MainActor
@@ -96,6 +97,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.config.save()
             }
 
+            session.onPrefsUpdated = { [weak self] fmt, showTips in
+                guard let self else { return }
+                self.config.colorCopyFormat = fmt
+                self.config.showShortcutTips = showTips
+                self.config.save()
+            }
+
             session.onComplete = { [weak self] outcome in
                 guard let self else { return }
                 self.activeSession = nil
@@ -113,6 +121,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     }
                 case .pinned(let img, let scale, let origin, let screen):
                     self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
+                case .copiedColor(let value, let swatch, let pt):
+                    ClipboardAndSave.copyText(value)
+                    ToastHUD.show(message: "\(value) 已复制  ·  \(self.config.hotKeyPreset.pinBadgeLabel) 贴色卡", swatch: swatch, near: pt)
+                case .copiedCoordinate(let value, let pt):
+                    ClipboardAndSave.copyText(value)
+                    ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
+                case .extractText(let img, let pt):
+                    VisionTextExtractor.extractAndCopy(from: img, toastAnchor: pt)
                 case .cancelled:
                     break
                 }
@@ -123,6 +139,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 regionDetector: regionDetector,
                 colorIndex: self.config.defaultColorIndex,
                 lineWidth: self.config.defaultLineWidth,
+                colorCopyFormat: self.config.colorCopyFormat,
+                showShortcutTips: self.config.showShortcutTips,
                 pinHint: self.config.hotKeyPreset.pinBadgeLabel
             )
         }
@@ -165,26 +183,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openPermissionGuide() {
-        let targetPane: PermissionPane?
-        if !CGPreflightScreenCaptureAccess() {
-            targetPane = .screenRecording
-        } else if !RegionDetector.checkAccessibilityPermission(prompt: false) {
-            targetPane = .accessibility
-        } else {
-            targetPane = nil
-        }
-        permissionGuide.show(opening: targetPane)
+        let pane: PermissionPane? = !CGPreflightScreenCaptureAccess()
+            ? .screenRecording
+            : (!RegionDetector.checkAccessibilityPermission(prompt: false) ? .accessibility : nil)
+        permissionGuide.show(opening: pane)
     }
 
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v0.6.0"
+        alert.messageText = "MSnip（麦截）v0.7.0"
         alert.informativeText = """
-        超轻量原生 macOS 截图、智能选区识别、圈记与贴图工具
-        • 纯 Swift + AppKit + CoreGraphics，零第三方依赖
-        • 移动镜头自动吸附窗口与多层控件，滚轮切换矩阵大小，单击锁定
-        • 内置一拖即用权限引导面板，直接把图标拖进系统设置即可开启权限
+        超轻量原生 macOS 截图、像素级取色、离线识字与贴图工具
+        • 纯 Swift + AppKit + CoreGraphics + Vision，零第三方依赖
+        • 跟随光标像素网格放大镜：按 C 提取色值、Shift 切换格式、T 识字/二维码
+        • 智能吸附多层窗口矩阵，支持圆角截图与色彩贴图卡
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好")

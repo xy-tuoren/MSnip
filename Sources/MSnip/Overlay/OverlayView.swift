@@ -22,11 +22,15 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
     // 外部会话回调
     var onSelectionActivated: ((OverlayView) -> Void)?
-    var onFinishCopy: ((CGImage, CGFloat) -> Void)?
-    var onFinishSave: ((CGImage, CGFloat) -> Void)?
-    var onFinishPin: ((CGImage, CGFloat, CGPoint, NSScreen) -> Void)?
+    var onFinishCopy: ((CGImage, CGFloat, CGRect) -> Void)?
+    var onFinishSave: ((CGImage, CGFloat, CGRect) -> Void)?
+    var onFinishPin: ((CGImage, CGFloat, CGPoint, NSScreen, CGRect) -> Void)?
+    var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
+    var onFinishCopyText: ((String, NSPoint) -> Void)?
+    var onFinishExtractText: ((CGImage, NSPoint, CGRect) -> Void)?
     var onCancel: (() -> Void)?
     var onStyleChanged: ((Int, CGFloat) -> Void)?
+    var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
 
     // 自动矩阵识别预览与平滑过渡状态（逻辑见 OverlayAutoSnap.swift）
     var autoSnapStack: [CGRect] = []
@@ -40,6 +44,21 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         guard selection == nil, autoSnapStack.indices.contains(autoSnapIndex) else { return nil }
         return autoSnapStack[autoSnapIndex]
     }
+
+    // PixPin 风格取色放大镜、快捷键提示与选区增强状态
+    var lastMousePoint: CGPoint?
+    var colorCopyFormat: ColorCopyFormat { didSet { needsDisplay = true } }
+    var showShortcutTips: Bool { didSet { needsDisplay = true } }
+    var lastHistorySelection: CGRect?
+    var cornerRadiusPt: CGFloat = 0 { didSet { toolbar.cornerRadiusPt = cornerRadiusPt; needsDisplay = true } }
+    var customPickedColor: RGBAColor? {
+        didSet { toolbar.customColor = customPickedColor; if let c = customPickedColor { style.color = c } }
+    }
+    var eyedropperActive = false { didSet { toolbar.eyedropperActive = eyedropperActive; needsDisplay = true } }
+    var optionPressed = false { didSet { if oldValue != optionPressed { needsDisplay = true } } }
+    var magnifierPinned = false { didSet { needsDisplay = true } }
+    var useRelativeCoordinates = false { didSet { needsDisplay = true } }
+    var shiftTapCandidate = false
 
     // 正式选区与标注编辑状态
     var selection: CGRect? {
@@ -58,7 +77,9 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     }
     var colorIndex: Int = 0 {
         didSet {
-            style.color = RGBAColor.presets[min(max(0, colorIndex), RGBAColor.presets.count - 1)]
+            if customPickedColor == nil {
+                style.color = RGBAColor.presets[min(max(0, colorIndex), RGBAColor.presets.count - 1)]
+            }
             toolbar.colorIndex = colorIndex
         }
     }
@@ -81,10 +102,16 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         regionDetector: RegionDetector,
         initialColorIndex: Int,
         initialLineWidth: CGFloat,
+        colorCopyFormat: ColorCopyFormat,
+        showShortcutTips: Bool,
+        lastHistorySelection: CGRect?,
         pinHint: String
     ) {
         self.snapshot = snapshot
         self.regionDetector = regionDetector
+        self.colorCopyFormat = colorCopyFormat
+        self.showShortcutTips = showShortcutTips
+        self.lastHistorySelection = lastHistorySelection
         let screenSize = snapshot.screen.frame.size
         self.frozenNSImage = NSImage(cgImage: snapshot.cgImage, size: screenSize)
         super.init(frame: NSRect(origin: .zero, size: screenSize))
@@ -129,32 +156,48 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        // 1) 绘制全屏冻结底图（isFlipped=true 下必须传 respectFlipped: true 防止画面倒置）
         frozenNSImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
 
         let highlightRect = selection ?? displayedAutoRect ?? hoveredAutoRect
+        let activeRadius = (selection != nil && cornerRadiusPt > 0.5)
+            ? min(cornerRadiusPt, min(selection!.width, selection!.height) * 0.5)
+            : 0
 
-        // 2) 绘制暗化遮罩（正式选区或自动识别预览框内部镂空保留 100% 原始亮度）
         ctx.saveGState()
         ctx.setFillColor(NSColor.black.withAlphaComponent(0.46).cgColor)
         if let hl = highlightRect, hl.width > 0, hl.height > 0 {
             ctx.addRect(bounds)
-            ctx.addRect(hl)
+            if activeRadius > 0.5 {
+                ctx.addPath(CGPath(roundedRect: hl, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))
+            } else {
+                ctx.addRect(hl)
+            }
             ctx.fillPath(using: .evenOdd)
         } else {
             ctx.fill(bounds)
         }
         ctx.restoreGState()
 
-        // 3) 若尚未锁定正式选区，绘制丝滑过渡中的自动识别预览框与稳定尺寸胶囊
-        if selection == nil, let target = hoveredAutoRect {
-            drawAutoSnapChrome(ctx: ctx, displayRect: displayedAutoRect ?? target, targetRect: target)
+        if selection == nil {
+            if let target = hoveredAutoRect {
+                drawAutoSnapChrome(ctx: ctx, displayRect: displayedAutoRect ?? target, targetRect: target)
+            }
+            drawShortcutTipsHUD(ctx: ctx)
+            drawCursorMagnifier(ctx: ctx)
             return
         }
 
-        guard let sel = selection, sel.width >= 1, sel.height >= 1 else { return }
+        guard let sel = selection, sel.width >= 1, sel.height >= 1 else {
+            drawShortcutTipsHUD(ctx: ctx)
+            drawCursorMagnifier(ctx: ctx)
+            return
+        }
 
-        // 4) 绘制正式选区内的标注与实时草稿
+        ctx.saveGState()
+        if activeRadius > 0.5 {
+            ctx.addPath(CGPath(roundedRect: sel, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))
+            ctx.clip()
+        }
         AnnotationRenderer.drawAnnotations(
             in: ctx,
             annotations: doc.objects,
@@ -164,6 +207,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             imageScale: snapshot.scaleFactor,
             clipRect: sel
         )
+        ctx.restoreGState()
 
         if let idx = selectedObjectIndex, doc.objects.indices.contains(idx) {
             ctx.saveGState()
@@ -174,15 +218,21 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             ctx.restoreGState()
         }
 
-        // 5) 正式选区外框 + 八向控制柄 + 尺寸徽标
-        drawSelectionChrome(ctx: ctx, sel: sel)
+        drawSelectionChrome(ctx: ctx, sel: sel, cornerRadius: activeRadius)
+        drawShortcutTipsHUD(ctx: ctx)
+        drawCursorMagnifier(ctx: ctx)
     }
 
-    private func drawSelectionChrome(ctx: CGContext, sel: CGRect) {
+    private func drawSelectionChrome(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
         ctx.saveGState()
         ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
         ctx.setLineWidth(1.5)
-        ctx.stroke(sel)
+        if cornerRadius > 0.5 {
+            ctx.addPath(CGPath(roundedRect: sel, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil))
+            ctx.strokePath()
+        } else {
+            ctx.stroke(sel)
+        }
 
         for handle in ResizeHandle.allCases {
             let p = handle.point(in: sel)
@@ -197,32 +247,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
         let pxW = Int((sel.width * snapshot.scaleFactor).rounded())
         let pxH = Int((sel.height * snapshot.scaleFactor).rounded())
-        drawHUDPill(ctx: ctx, anchorRect: sel, text: "\(pxW) × \(pxH)")
-    }
-
-    func drawHUDPill(ctx: CGContext, anchorRect: CGRect, text: String) {
-        let nsText = text as NSString
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-            .foregroundColor: NSColor.white
-        ]
-        let textSize = nsText.size(withAttributes: attrs)
-        let badgeW = ceil(textSize.width + 14)
-        let badgeH: CGFloat = 22
-        let badgeX = min(max(6, anchorRect.minX), bounds.width - badgeW - 6)
-        let badgeY = anchorRect.minY >= (badgeH + 8) ? (anchorRect.minY - badgeH - 6) : (anchorRect.minY + 6)
-        let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeW, height: badgeH)
-
-        ctx.saveGState()
-        let pill = CGPath(roundedRect: badgeRect, cornerWidth: 5, cornerHeight: 5, transform: nil)
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.78).cgColor)
-        ctx.addPath(pill)
-        ctx.fillPath()
-        nsText.draw(
-            at: CGPoint(x: badgeRect.minX + 7, y: badgeRect.minY + (badgeH - textSize.height) * 0.5),
-            withAttributes: attrs
-        )
-        ctx.restoreGState()
+        let cornerSuffix = cornerRadius > 0.5 ? "  ·  圆角 \(Int(cornerRadiusPt))pt" : ""
+        drawHUDPill(ctx: ctx, anchorRect: sel, text: "\(pxW) × \(pxH)\(cornerSuffix)")
     }
 
     func updateToolbarLayout() {
@@ -249,6 +275,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         cancelTextEditing()
         stopSnapGlide()
         selection = nil
+        lastMousePoint = nil
+        eyedropperActive = false
         autoSnapStack = []
         displayedAutoRect = nil
         preferredSnapArea = nil

@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 
 /// 管理屏幕上全部活动贴图窗口（上限 20 张，静止时零重绘）
 @MainActor
@@ -42,24 +43,33 @@ final class PinManager {
         onCountChanged?(windows.count)
     }
 
-    /// 从剪贴板读取图片并居中贴在鼠标当前所在的显示器上
+    /// 从剪贴板读取图片或色值文本（如 `#3388FF`）并居中贴在鼠标当前所在的显示器上
     @discardableResult
     func pinFromClipboard() -> Bool {
-        guard let nsImage = ClipboardAndSave.readImageFromClipboard() else {
-            NSSound.beep()
-            return false
-        }
-        var proposedRect = NSRect(origin: .zero, size: nsImage.size)
-        guard let cgImage = nsImage.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
-            NSSound.beep()
-            return false
-        }
-        let scale = nsImage.size.width > 0 ? CGFloat(cgImage.width) / nsImage.size.width : 2.0
         let mouse = NSEvent.mouseLocation
         let targetScreen = NSScreen.screens.first(where: { $0.frame.contains(mouse) })
             ?? NSScreen.main
             ?? NSScreen.screens.first
         guard let screen = targetScreen else { return false }
+
+        let cgImage: CGImage
+        let scale: CGFloat
+        if let nsImage = ClipboardAndSave.readImageFromClipboard() {
+            var proposedRect = NSRect(origin: .zero, size: nsImage.size)
+            guard let img = nsImage.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
+                NSSound.beep()
+                return false
+            }
+            cgImage = img
+            scale = nsImage.size.width > 0 ? CGFloat(img.width) / nsImage.size.width : 2.0
+        } else if let color = ClipboardAndSave.readColorFromClipboard(),
+                  let card = RGBAColor.renderColorPinCard(color, scale: screen.backingScaleFactor) {
+            cgImage = card
+            scale = max(1.0, screen.backingScaleFactor)
+        } else {
+            NSSound.beep()
+            return false
+        }
 
         // 连续从剪贴板贴多张时轻微错开偏移，避免完全重叠
         let cascade = CGFloat((windows.count % 6) * 22)

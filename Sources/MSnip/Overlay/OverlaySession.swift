@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 
 /// 覆盖整个物理屏幕的无边框置顶窗口（高于菜单栏与 Dock，支持全屏 App 空间）
 private final class OverlayWindow: NSPanel {
@@ -26,17 +27,23 @@ private final class OverlayWindow: NSPanel {
     override var canBecomeMain: Bool { true }
 }
 
-/// 一次完整的截图会话控制器：管理多显示器覆盖层窗口，会话结束后立即销毁全部缓冲
+/// 一次完整的截图会话控制器：管理多显示器覆盖层窗口、历史选区记忆，会话结束后立即销毁缓冲
 @MainActor
 final class OverlaySession {
     enum Outcome {
         case copied(CGImage, CGFloat)
         case saved(CGImage, CGFloat)
         case pinned(CGImage, CGFloat, CGPoint, NSScreen)
+        case copiedColor(String, RGBAColor, NSPoint)
+        case copiedCoordinate(String, NSPoint)
+        case extractText(CGImage, NSPoint)
         case cancelled
     }
 
+    private static var lastSelectionByDisplay: [CGDirectDisplayID: CGRect] = [:]
+
     var onStyleUpdated: ((Int, CGFloat) -> Void)?
+    var onPrefsUpdated: ((ColorCopyFormat, Bool) -> Void)?
     var onComplete: ((Outcome) -> Void)?
 
     private var windows: [OverlayWindow] = []
@@ -49,6 +56,8 @@ final class OverlaySession {
         regionDetector: RegionDetector,
         colorIndex: Int,
         lineWidth: CGFloat,
+        colorCopyFormat: ColorCopyFormat,
+        showShortcutTips: Bool,
         pinHint: String
     ) {
         let mouse = NSEvent.mouseLocation
@@ -60,6 +69,9 @@ final class OverlaySession {
                 regionDetector: regionDetector,
                 initialColorIndex: colorIndex,
                 initialLineWidth: lineWidth,
+                colorCopyFormat: colorCopyFormat,
+                showShortcutTips: showShortcutTips,
+                lastHistorySelection: Self.lastSelectionByDisplay[snap.displayID],
                 pinHint: pinHint
             )
             view.onSelectionActivated = { [weak self] sender in
@@ -68,14 +80,34 @@ final class OverlaySession {
             view.onStyleChanged = { [weak self] cIdx, width in
                 self?.onStyleUpdated?(cIdx, width)
             }
-            view.onFinishCopy = { [weak self] img, scale in
+            view.onPrefsChanged = { [weak self] fmt, showTips in
+                self?.onPrefsUpdated?(fmt, showTips)
+                for sibling in self?.views ?? [] where sibling !== view {
+                    sibling.colorCopyFormat = fmt
+                    sibling.showShortcutTips = showTips
+                }
+            }
+            view.onFinishCopy = { [weak self] img, scale, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.copied(img, scale))
             }
-            view.onFinishSave = { [weak self] img, scale in
+            view.onFinishSave = { [weak self] img, scale, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.saved(img, scale))
             }
-            view.onFinishPin = { [weak self] img, scale, origin, screen in
+            view.onFinishPin = { [weak self] img, scale, origin, screen, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.pinned(img, scale, origin, screen))
+            }
+            view.onFinishCopyColor = { [weak self] value, color, pt in
+                self?.finish(.copiedColor(value, color, pt))
+            }
+            view.onFinishCopyText = { [weak self] value, pt in
+                self?.finish(.copiedCoordinate(value, pt))
+            }
+            view.onFinishExtractText = { [weak self] img, pt, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
+                self?.finish(.extractText(img, pt))
             }
             view.onCancel = { [weak self] in
                 self?.finish(.cancelled)
@@ -100,11 +132,16 @@ final class OverlaySession {
             keyWin?.makeFirstResponder(v)
         }
         NSCursor.crosshair.push()
-        // 打开截图瞬间立即探测并高亮当前鼠标正下方的窗口/控件矩阵
-        (activeView ?? views.first)?.refreshAutoSnapAtCurrentMouse()
+
+        if let initialView = activeView ?? views.first, let win = initialView.window {
+            let localPt = initialView.convert(win.convertPoint(fromScreen: mouse), from: nil)
+            if initialView.bounds.contains(localPt) {
+                initialView.lastMousePoint = localPt
+            }
+            initialView.refreshAutoSnapAtCurrentMouse()
+        }
     }
 
-    /// 当用户在截图过程中按下全局贴图热键（如 `⌘2`）时，直接将当前正式选区或自动识别悬停框贴到桌面
     func pinCurrentSelectionIfPossible() -> Bool {
         guard let view = activeView ?? views.first(where: { ($0.selection ?? $0.hoveredAutoRect) != nil }),
               (view.selection ?? view.hoveredAutoRect) != nil else {
@@ -120,8 +157,13 @@ final class OverlaySession {
 
     private func activateView(_ selected: OverlayView) {
         activeView = selected
-        for v in views where v !== selected && v.selection != nil {
-            v.clearSelectionFromSibling()
+        for v in views where v !== selected {
+            if v.selection != nil {
+                v.clearSelectionFromSibling()
+            } else {
+                v.lastMousePoint = nil
+                v.needsDisplay = true
+            }
         }
     }
 
