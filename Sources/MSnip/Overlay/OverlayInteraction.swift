@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 覆盖层的工具栏动作响应、鼠标绘制与滚轮交互扩展
+/// 覆盖层的工具栏动作响应、智能矩阵移动探测、鼠标绘制与滚轮交互扩展
 extension OverlayView {
     func handleToolbarAction(_ action: ToolbarView.Action) {
         commitTextEditing()
@@ -47,7 +47,7 @@ extension OverlayView {
         }
     }
 
-    // MARK: - Mouse Interaction
+    // MARK: - Mouse & Auto-Snap Interaction
 
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
@@ -64,7 +64,13 @@ extension OverlayView {
                 NSCursor.openHand.set()
                 return
             }
+            NSCursor.crosshair.set()
+            return
         }
+
+        // 未锁定选区阶段：移动光标实时识别并高亮下方的窗口 / UI 控件矩阵
+        onSelectionActivated?(self)
+        updateAutoSnap(at: p)
         NSCursor.crosshair.set()
     }
 
@@ -77,7 +83,7 @@ extension OverlayView {
             return
         }
 
-        // 双击选区内部：若双击在文字标注上则重编辑文字，否则直接复制并完成截图
+        // 双击正式选区内部：双击文字重编辑，否则一键复制并退出
         if event.clickCount == 2, let sel = selection, sel.contains(p) {
             if let hitIdx = doc.hitIndex(at: p), case .text = doc.objects[hitIdx].payload {
                 beginTextEditing(at: p, existingIndex: hitIdx)
@@ -91,10 +97,11 @@ extension OverlayView {
 
         onSelectionActivated?(self)
 
+        // 尚未产生正式选区：按下时先记录当前自动识别框（单击直接锁定，拖动 >= 4pt 则无缝转手动画框）
         guard let sel = selection else {
             selectedObjectIndex = nil
-            dragOp = .creatingSelection(anchor: p)
-            selection = CGRect(origin: p, size: .zero)
+            if autoSnapStack.isEmpty { updateAutoSnap(at: p) }
+            dragOp = .pendingSnapOrCreate(anchor: p, snapRect: hoveredAutoRect)
             return
         }
 
@@ -121,7 +128,7 @@ extension OverlayView {
             }
         }
 
-        // 4) 选区内绘制新标注或拖动选区
+        // 4) 选区内绘制新标注或拖动选区；选区外且无标注时支持重新点击/拖拽选区
         if sel.contains(p) {
             selectedObjectIndex = nil
             if let tool = activeTool {
@@ -135,8 +142,9 @@ extension OverlayView {
                 dragOp = .movingSelection(initialRect: sel, mouseStart: p)
             }
         } else if activeTool == nil, doc.isEmpty {
-            dragOp = .creatingSelection(anchor: p)
-            selection = CGRect(origin: p, size: .zero)
+            selection = nil
+            updateAutoSnap(at: p)
+            dragOp = .pendingSnapOrCreate(anchor: p, snapRect: hoveredAutoRect)
         }
     }
 
@@ -146,6 +154,13 @@ extension OverlayView {
         let shift = event.modifierFlags.contains(.shift)
 
         switch op {
+        case .pendingSnapOrCreate(let anchor, _):
+            if hypot(p.x - anchor.x, p.y - anchor.y) >= 4.0 {
+                dragOp = .creatingSelection(anchor: anchor)
+                let end = shift ? Geometry.squareConstrainedEnd(from: anchor, to: p) : p
+                selection = Geometry.normalizedRect(from: anchor, to: end).intersection(bounds)
+            }
+
         case .creatingSelection(let anchor):
             let end = shift ? Geometry.squareConstrainedEnd(from: anchor, to: p) : p
             selection = Geometry.normalizedRect(from: anchor, to: end).intersection(bounds)
@@ -194,9 +209,14 @@ extension OverlayView {
         dragOp = nil
 
         switch op {
+        case .pendingSnapOrCreate(_, let snapRect):
+            if let snap = snapRect, snap.width >= 6, snap.height >= 6 {
+                selection = snap
+            }
         case .creatingSelection:
             if let sel = selection, (sel.width < 6 || sel.height < 6) {
                 selection = nil
+                updateAutoSnap(at: convert(event.locationInWindow, from: nil))
             }
         case .movingSelection, .resizingSelection:
             break
@@ -216,6 +236,27 @@ extension OverlayView {
     }
 
     override func scrollWheel(with event: NSEvent) {
+        // 1) 未锁定选区时：滚轮在鼠标下方的「内部小控件 <-> 父容器 <-> 整窗口」多级矩阵间切换
+        if selection == nil {
+            guard autoSnapStack.count > 1 else { return }
+            if event.hasPreciseScrollingDeltas {
+                scrollSnapAccumulator += event.scrollingDeltaY
+                let threshold: CGFloat = 14.0
+                if abs(scrollSnapAccumulator) >= threshold {
+                    let step = scrollSnapAccumulator > 0 ? 1 : -1
+                    scrollSnapAccumulator = 0
+                    autoSnapIndex = min(max(0, autoSnapIndex + step), autoSnapStack.count - 1)
+                    needsDisplay = true
+                }
+            } else if abs(event.scrollingDeltaY) > 0.01 {
+                let step = event.scrollingDeltaY > 0 ? 1 : -1
+                autoSnapIndex = min(max(0, autoSnapIndex + step), autoSnapStack.count - 1)
+                needsDisplay = true
+            }
+            return
+        }
+
+        // 2) 已锁定选区时：滚轮微调标注粗细 / 字号 / 马赛克粒度
         let delta: CGFloat = event.scrollingDeltaY > 0 ? 0.5 : -0.5
         style.lineWidth = min(18.0, max(1.0, style.lineWidth + delta))
         style.fontSize = min(64.0, max(12.0, style.fontSize + delta * 2.0))

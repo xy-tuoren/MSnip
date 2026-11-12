@@ -46,6 +46,7 @@ final class OverlaySession {
 
     func start(
         snapshots: [ScreenSnapshot],
+        regionDetector: RegionDetector,
         colorIndex: Int,
         lineWidth: CGFloat,
         pinHint: String
@@ -56,6 +57,7 @@ final class OverlaySession {
         for snap in snapshots {
             let view = OverlayView(
                 snapshot: snap,
+                regionDetector: regionDetector,
                 initialColorIndex: colorIndex,
                 initialLineWidth: lineWidth,
                 pinHint: pinHint
@@ -98,12 +100,14 @@ final class OverlaySession {
             keyWin?.makeFirstResponder(v)
         }
         NSCursor.crosshair.push()
+        // 打开截图瞬间立即探测并高亮当前鼠标正下方的窗口/控件矩阵
+        (activeView ?? views.first)?.refreshAutoSnapAtCurrentMouse()
     }
 
-    /// 当用户在截图过程中按下全局贴图热键（如 `⌘2`）时，直接将当前选区贴到桌面
+    /// 当用户在截图过程中按下全局贴图热键（如 `⌘2`）时，直接将当前正式选区或自动识别悬停框贴到桌面
     func pinCurrentSelectionIfPossible() -> Bool {
-        guard let view = activeView ?? views.first(where: { $0.selection != nil }),
-              view.selection != nil else {
+        guard let view = activeView ?? views.first(where: { ($0.selection ?? $0.hoveredAutoRect) != nil }),
+              (view.selection ?? view.hoveredAutoRect) != nil else {
             return false
         }
         view.exportAndFinish(mode: .pin)

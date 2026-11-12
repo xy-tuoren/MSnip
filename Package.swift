@@ -21,6 +21,7 @@ let package = Package(
             path: "Sources/MSnip",
             linkerSettings: [
                 .linkedFramework("AppKit"),
+                .linkedFramework("ApplicationServices"),
                 .linkedFramework("CoreGraphics"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("QuartzCore"),

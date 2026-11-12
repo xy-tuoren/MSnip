@@ -161,9 +161,75 @@ private func testFlippedNSViewDrawsCGImageUpright() {
     check(topRight.redComponent < 0.2, "右上角像素应保持黑色（不左右镜像）")
 }
 
+private func testVisualDetectorFindsNestedCardAndButton() {
+    // 构造 400x300 @ 1x 模拟界面（左上角逻辑原点）：
+    // - 深灰窗口底色 (30, 30, 35)
+    // - 居中白色卡片: (60, 50, 280, 200)
+    // - 卡片内蓝色按钮: (140, 120, 120, 44)
+    let w = 400, h = 300
+    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+    let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+        space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    // 翻转 CGContext 使绘图坐标与左上角原点一致
+    ctx.translateBy(x: 0, y: CGFloat(h))
+    ctx.scaleBy(x: 1, y: -1)
+
+    ctx.setFillColor(CGColor(srgbRed: 0.12, green: 0.12, blue: 0.14, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+
+    let cardRect = CGRect(x: 60, y: 50, width: 280, height: 200)
+    ctx.setFillColor(CGColor(srgbRed: 0.97, green: 0.97, blue: 0.98, alpha: 1))
+    ctx.fill(cardRect)
+
+    let buttonRect = CGRect(x: 140, y: 120, width: 120, height: 44)
+    ctx.setFillColor(CGColor(srgbRed: 0.10, green: 0.48, blue: 0.96, alpha: 1))
+    ctx.fill(buttonRect)
+
+    let sampler = PixelSampler(cgImage: ctx.makeImage()!)
+    let winBounds = CGRect(x: 0, y: 0, width: w, height: h)
+
+    // 光标停在蓝色按钮中心 (200, 142)：应按从小到大顺序识别出 [按钮框, 白色卡片框]
+    let hierarchyAtBtn = VisualDetector.detectVisualRects(
+        at: CGPoint(x: 200, y: 142),
+        within: winBounds,
+        sampler: sampler,
+        scale: 1.0
+    )
+    check(hierarchyAtBtn.count >= 2, "停在嵌套按钮内部应至少识别出『内层按钮 + 外层卡片』两级矩阵")
+    let first = hierarchyAtBtn[0]
+    let second = hierarchyAtBtn[1]
+    check(
+        abs(first.minX - buttonRect.minX) <= 2 &&
+        abs(first.minY - buttonRect.minY) <= 2 &&
+        abs(first.width - buttonRect.width) <= 4 &&
+        abs(first.height - buttonRect.height) <= 4,
+        "第 1 层（最小矩阵）应精准吸附内层蓝色按钮: got \(first)"
+    )
+    check(
+        abs(second.minX - cardRect.minX) <= 2 &&
+        abs(second.minY - cardRect.minY) <= 2 &&
+        abs(second.width - cardRect.width) <= 4 &&
+        abs(second.height - cardRect.height) <= 4,
+        "第 2 层（父容器矩阵）应精准吸附外层白色卡片: got \(second)"
+    )
+
+    // 验证相似矩形去重与从小到大归一化
+    let merged = VisualDetector.normalizeHierarchy([
+        winBounds,
+        CGRect(x: 141, y: 121, width: 119, height: 43),
+        buttonRect,
+        cardRect
+    ])
+    check(merged.count == 3, "误差 <5pt 的重复框应自动合并为单一矩阵层级")
+    check(merged[0].width < merged[1].width && merged[1].width < merged[2].width, "层级栈必须严格按从小到大排列")
+}
+
 testGeometry()
 testAnnotationsAndHitTesting()
 testDocumentUndoRedoAndDelete()
 testRetinaExportOrientationAndAnnotationBaking()
 testFlippedNSViewDrawsCGImageUpright()
+testVisualDetectorFindsNestedCardAndButton()
 print("✅ All \(passedCount) assertions in MSnipTests passed!")

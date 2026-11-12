@@ -5,6 +5,7 @@ import MSnipCore
 
 /// 覆盖层交互阶段与拖拽状态
 enum DragOperation {
+    case pendingSnapOrCreate(anchor: CGPoint, snapRect: CGRect?)
     case creatingSelection(anchor: CGPoint)
     case movingSelection(initialRect: CGRect, mouseStart: CGPoint)
     case resizingSelection(handle: ResizeHandle, initialRect: CGRect, mouseStart: CGPoint)
@@ -15,6 +16,7 @@ enum DragOperation {
 /// 单块显示器的全屏冻结覆盖层画布（`isFlipped = true`，左上角为 `(0, 0)`）
 final class OverlayView: NSView, NSTextFieldDelegate {
     let snapshot: ScreenSnapshot
+    let regionDetector: RegionDetector
     private let frozenNSImage: NSImage
     let toolbar = ToolbarView()
 
@@ -26,7 +28,17 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onCancel: (() -> Void)?
     var onStyleChanged: ((Int, CGFloat) -> Void)?
 
-    // 编辑状态
+    // 自动矩阵识别预览状态（未锁定选区时生效）
+    var autoSnapStack: [CGRect] = []
+    var autoSnapIndex: Int = 0
+    var scrollSnapAccumulator: CGFloat = 0
+
+    var hoveredAutoRect: CGRect? {
+        guard selection == nil, autoSnapStack.indices.contains(autoSnapIndex) else { return nil }
+        return autoSnapStack[autoSnapIndex]
+    }
+
+    // 正式选区与标注编辑状态
     var selection: CGRect? {
         didSet {
             updateToolbarLayout()
@@ -52,16 +64,23 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var dragOp: DragOperation?
     var spacePressed = false
 
-    // 文本标注原位输入框（原生支持中文拼音输入法候选窗）
-    private var textField: NSTextField?
-    private var editingTextOrigin: CGPoint?
-    private var editingExistingIndex: Int?
+    // 文本输入框状态（实现见 OverlayTextEdit.swift）
+    var textField: NSTextField?
+    var editingTextOrigin: CGPoint?
+    var editingExistingIndex: Int?
 
     override var isFlipped: Bool { true }
     override var acceptsFirstResponder: Bool { true }
 
-    init(snapshot: ScreenSnapshot, initialColorIndex: Int, initialLineWidth: CGFloat, pinHint: String) {
+    init(
+        snapshot: ScreenSnapshot,
+        regionDetector: RegionDetector,
+        initialColorIndex: Int,
+        initialLineWidth: CGFloat,
+        pinHint: String
+    ) {
         self.snapshot = snapshot
+        self.regionDetector = regionDetector
         let screenSize = snapshot.screen.frame.size
         self.frozenNSImage = NSImage(cgImage: snapshot.cgImage, size: screenSize)
         super.init(frame: NSRect(origin: .zero, size: screenSize))
@@ -96,6 +115,28 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         ))
     }
 
+    /// 刷新指定局部坐标处的自动识别矩阵栈
+    func updateAutoSnap(at localPoint: CGPoint) {
+        guard selection == nil else { return }
+        let newStack = regionDetector.detectHierarchy(at: localPoint, in: snapshot)
+        if newStack != autoSnapStack {
+            autoSnapStack = newStack
+            autoSnapIndex = 0
+            scrollSnapAccumulator = 0
+            needsDisplay = true
+        }
+    }
+
+    /// 按全局鼠标位置初始化首帧自动高亮框
+    func refreshAutoSnapAtCurrentMouse() {
+        guard let win = window else { return }
+        let winPt = win.convertPoint(fromScreen: NSEvent.mouseLocation)
+        let localPt = convert(winPt, from: nil)
+        if bounds.contains(localPt) {
+            updateAutoSnap(at: localPt)
+        }
+    }
+
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
@@ -104,21 +145,29 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         // 1) 绘制全屏冻结底图（isFlipped=true 下必须传 respectFlipped: true 防止画面倒置）
         frozenNSImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
 
-        // 2) 绘制暗化遮罩（选区内部镂空保留 100% 原始亮度）
+        let highlightRect = selection ?? hoveredAutoRect
+
+        // 2) 绘制暗化遮罩（正式选区或自动识别预览框内部镂空保留 100% 原始亮度）
         ctx.saveGState()
         ctx.setFillColor(NSColor.black.withAlphaComponent(0.46).cgColor)
-        if let sel = selection, sel.width > 0, sel.height > 0 {
+        if let hl = highlightRect, hl.width > 0, hl.height > 0 {
             ctx.addRect(bounds)
-            ctx.addRect(sel)
+            ctx.addRect(hl)
             ctx.fillPath(using: .evenOdd)
         } else {
             ctx.fill(bounds)
         }
         ctx.restoreGState()
 
+        // 3) 若尚未锁定正式选区，绘制自动识别矩阵高亮预览框与层级提示
+        if selection == nil, let snap = hoveredAutoRect {
+            drawAutoSnapChrome(ctx: ctx, rect: snap)
+            return
+        }
+
         guard let sel = selection, sel.width >= 1, sel.height >= 1 else { return }
 
-        // 3) 绘制选区内的标注与实时草稿
+        // 4) 绘制正式选区内的标注与实时草稿
         AnnotationRenderer.drawAnnotations(
             in: ctx,
             annotations: doc.objects,
@@ -129,19 +178,32 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             clipRect: sel
         )
 
-        // 4) 若有选中的标注对象，绘制虚线高亮框
         if let idx = selectedObjectIndex, doc.objects.indices.contains(idx) {
-            let objBounds = doc.objects[idx].bounds
             ctx.saveGState()
             ctx.setStrokeColor(NSColor.systemCyan.cgColor)
             ctx.setLineWidth(1.2)
             ctx.setLineDash(phase: 0, lengths: [4, 3])
-            ctx.stroke(objBounds)
+            ctx.stroke(doc.objects[idx].bounds)
             ctx.restoreGState()
         }
 
-        // 5) 选区外框 + 八向控制柄 + 物理像素尺寸徽标
+        // 5) 正式选区外框 + 八向控制柄 + 尺寸徽标
         drawSelectionChrome(ctx: ctx, sel: sel)
+    }
+
+    private func drawAutoSnapChrome(ctx: CGContext, rect: CGRect) {
+        ctx.saveGState()
+        ctx.setStrokeColor(NSColor.systemCyan.withAlphaComponent(0.95).cgColor)
+        ctx.setLineWidth(2.0)
+        ctx.stroke(rect.insetBy(dx: 0.5, dy: 0.5))
+        ctx.restoreGState()
+
+        let pxW = Int((rect.width * snapshot.scaleFactor).rounded())
+        let pxH = Int((rect.height * snapshot.scaleFactor).rounded())
+        let tierHint = autoSnapStack.count > 1
+            ? "  ·  \(autoSnapIndex + 1)/\(autoSnapStack.count) 滚轮切换 · 单击锁定"
+            : "  ·  单击锁定"
+        drawHUDPill(ctx: ctx, anchorRect: rect, text: "\(pxW) × \(pxH)\(tierHint)")
     }
 
     private func drawSelectionChrome(ctx: CGContext, sel: CGRect) {
@@ -159,30 +221,37 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             ctx.setLineWidth(1.5)
             ctx.strokeEllipse(in: hr)
         }
+        ctx.restoreGState()
 
         let pxW = Int((sel.width * snapshot.scaleFactor).rounded())
         let pxH = Int((sel.height * snapshot.scaleFactor).rounded())
-        let label = "\(pxW) × \(pxH)" as NSString
+        drawHUDPill(ctx: ctx, anchorRect: sel, text: "\(pxW) × \(pxH)")
+    }
+
+    private func drawHUDPill(ctx: CGContext, anchorRect: CGRect, text: String) {
+        let nsText = text as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
             .foregroundColor: NSColor.white
         ]
-        let textSize = label.size(withAttributes: attrs)
+        let textSize = nsText.size(withAttributes: attrs)
         let badgeW = ceil(textSize.width + 14)
         let badgeH: CGFloat = 22
-        let badgeX = min(max(4, sel.minX), bounds.width - badgeW - 4)
-        let badgeY = sel.minY >= (badgeH + 8) ? (sel.minY - badgeH - 6) : (sel.minY + 6)
+        let badgeX = min(max(6, anchorRect.minX), bounds.width - badgeW - 6)
+        let badgeY = anchorRect.minY >= (badgeH + 8) ? (anchorRect.minY - badgeH - 6) : (anchorRect.minY + 6)
         let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeW, height: badgeH)
 
+        ctx.saveGState()
         let pill = CGPath(roundedRect: badgeRect, cornerWidth: 5, cornerHeight: 5, transform: nil)
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.76).cgColor)
+        ctx.setFillColor(NSColor.black.withAlphaComponent(0.78).cgColor)
         ctx.addPath(pill)
         ctx.fillPath()
-        label.draw(at: CGPoint(x: badgeRect.minX + 7, y: badgeRect.minY + (badgeH - textSize.height) * 0.5), withAttributes: attrs)
+        nsText.draw(
+            at: CGPoint(x: badgeRect.minX + 7, y: badgeRect.minY + (badgeH - textSize.height) * 0.5),
+            withAttributes: attrs
+        )
         ctx.restoreGState()
     }
-
-    // MARK: - Toolbar & Text Input Helpers
 
     func updateToolbarLayout() {
         toolbar.canUndo = doc.canUndo
@@ -198,101 +267,16 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         let x = min(max(8, sel.maxX - barSize.width), bounds.width - barSize.width - 8)
         let belowY = sel.maxY + 8
         let aboveY = sel.minY - barSize.height - 8
-        let y: CGFloat
-        if belowY + barSize.height + 8 <= bounds.height {
-            y = belowY
-        } else if aboveY >= 8 {
-            y = aboveY
-        } else {
-            y = max(8, sel.maxY - barSize.height - 8)
-        }
+        let y = (belowY + barSize.height + 8 <= bounds.height)
+            ? belowY
+            : (aboveY >= 8 ? aboveY : max(8, sel.maxY - barSize.height - 8))
         toolbar.setFrameOrigin(NSPoint(x: round(x), y: round(y)))
     }
 
-    func beginTextEditing(at point: CGPoint, existingIndex: Int? = nil) {
-        commitTextEditing()
-        editingExistingIndex = existingIndex
-
-        let initialText: String
-        let origin: CGPoint
-        if let idx = existingIndex, case .text(let o, let s, _) = doc.objects[idx].payload {
-            origin = o
-            initialText = s
-        } else {
-            origin = point
-            initialText = ""
-        }
-        editingTextOrigin = origin
-
-        let field = NSTextField(frame: NSRect(x: origin.x - 2, y: origin.y - 2, width: 220, height: max(28, style.fontSize * 1.6)))
-        field.stringValue = initialText
-        field.font = NSFont.systemFont(ofSize: style.fontSize, weight: .semibold)
-        field.textColor = NSColor(cgColor: style.color.cgColor) ?? .systemRed
-        field.backgroundColor = NSColor.black.withAlphaComponent(0.45)
-        field.drawsBackground = true
-        field.isBordered = true
-        field.focusRingType = .exterior
-        field.delegate = self
-        addSubview(field)
-        window?.makeFirstResponder(field)
-        textField = field
-        needsDisplay = true
-    }
-
-    var isEditingText: Bool { textField != nil }
-
-    func commitTextEditing() {
-        guard let field = textField, let origin = editingTextOrigin else { return }
-        let content = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let existing = editingExistingIndex
-        field.removeFromSuperview()
-        textField = nil
-        editingTextOrigin = nil
-        editingExistingIndex = nil
-        window?.makeFirstResponder(self)
-
-        if !content.isEmpty {
-            let measured = AnnotationRenderer.measureText(content, fontSize: style.fontSize)
-            if let idx = existing {
-                doc.modifyWithHistory(at: idx) { obj in
-                    obj.payload = .text(origin: origin, content: content, measuredSize: measured)
-                }
-            } else {
-                let item = Annotation(payload: .text(origin: origin, content: content, measuredSize: measured), style: style)
-                doc.append(item)
-            }
-        } else if let idx = existing {
-            doc.remove(at: idx)
-        }
-        updateToolbarLayout()
-        needsDisplay = true
-    }
-
-    func cancelTextEditing() {
-        textField?.removeFromSuperview()
-        textField = nil
-        editingTextOrigin = nil
-        editingExistingIndex = nil
-        window?.makeFirstResponder(self)
-        needsDisplay = true
-    }
-
-    func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        if commandSelector == #selector(insertNewline(_:)) {
-            commitTextEditing()
-            return true
-        }
-        if commandSelector == #selector(cancelOperation(_:)) {
-            cancelTextEditing()
-            return true
-        }
-        return false
-    }
-
-    /// 清除本屏幕上的选区（当用户在另一块显示器开始框选时调用）
     func clearSelectionFromSibling() {
         cancelTextEditing()
         selection = nil
+        autoSnapStack = []
         selectedObjectIndex = nil
         draftAnnotation = nil
         doc = AnnotationDocument()

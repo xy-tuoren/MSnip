@@ -20,6 +20,11 @@ extension OverlayView {
         if event.keyCode == 53 { // Esc 分层回退
             if selectedObjectIndex != nil {
                 selectedObjectIndex = nil
+            } else if selection != nil && doc.isEmpty {
+                // 若刚误点锁定了一个自动选区且还没画标注，按一次 Esc 退回自动探测态重新挑窗口
+                selection = nil
+                activeTool = nil
+                refreshAutoSnapAtCurrentMouse()
             } else {
                 onCancel?()
             }
@@ -55,17 +60,20 @@ extension OverlayView {
             return
         }
 
-        // 方向键 1pt / Shift 5pt 微调（优先微调选中的标注，否则微调选区框）
         let step: CGFloat = shift ? 5.0 : 1.0
         switch event.keyCode {
         case 123: nudge(dx: -step, dy: 0); return // ←
         case 124: nudge(dx: step, dy: 0); return  // →
-        case 125: nudge(dx: 0, dy: step); return  // ↓ (isFlipped 向下为正)
+        case 125: nudge(dx: 0, dy: step); return  // ↓
         case 126: nudge(dx: 0, dy: -step); return // ↑
         default: break
         }
 
         if !cmd, let n = Int(chars), let tool = ToolKind(rawValue: n) {
+            if selection == nil, let snap = hoveredAutoRect {
+                // 悬停在自动识别框上直接按数字键 1-7：自动锁定该框并立即进入对应标注工具
+                selection = snap
+            }
             activeTool = (activeTool == tool) ? nil : tool
         }
     }
@@ -76,10 +84,12 @@ extension OverlayView {
 
     func exportAndFinish(mode: FinishMode) {
         commitTextEditing()
-        guard let sel = selection, sel.width >= 2, sel.height >= 2,
+        // 支持在已锁定选区或悬停自动识别框（无需先单击）时一键直接回车复制 / ⌘2 贴图 / ⌘S 保存
+        guard let targetRect = selection ?? hoveredAutoRect,
+              targetRect.width >= 2, targetRect.height >= 2,
               let baked = AnnotationRenderer.bakeExportImage(
                   sampler: snapshot.sampler,
-                  selection: sel,
+                  selection: targetRect,
                   imageScale: snapshot.scaleFactor,
                   annotations: doc.objects
               ) else { return }
@@ -87,7 +97,7 @@ extension OverlayView {
         switch mode {
         case .copy: onFinishCopy?(baked, snapshot.scaleFactor)
         case .save: onFinishSave?(baked, snapshot.scaleFactor)
-        case .pin:  onFinishPin?(baked, snapshot.scaleFactor, sel.origin, snapshot.screen)
+        case .pin:  onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen)
         }
     }
 

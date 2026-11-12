@@ -4,8 +4,9 @@ import Foundation
 
 /// 应用主控制器：管理菜单栏常驻图标、全局快捷键路由、截图会话与贴图池
 @MainActor
-final class AppController: NSObject, NSApplicationDelegate {
+final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
+    private var axMenuItem: NSMenuItem?
     private var config = AppConfig.load()
     private let hotKeyManager = HotKeyManager()
     private let pinManager = PinManager()
@@ -67,6 +68,8 @@ final class AppController: NSObject, NSApplicationDelegate {
         }
 
         isCapturing = true
+        // 在创建全屏覆盖层之前，先抓取当前所有可见窗口的真实 Z 序与几何边界
+        let regionDetector = RegionDetector.captureBeforeOverlay()
         Task { @MainActor [weak self] in
             let snapshots = await ScreenCapturer.captureAllScreens()
             guard let self else { return }
@@ -110,6 +113,7 @@ final class AppController: NSObject, NSApplicationDelegate {
 
             session.start(
                 snapshots: snapshots,
+                regionDetector: regionDetector,
                 colorIndex: self.config.defaultColorIndex,
                 lineWidth: self.config.defaultLineWidth,
                 pinHint: self.config.hotKeyPreset.pinBadgeLabel
@@ -153,15 +157,20 @@ final class AppController: NSObject, NSApplicationDelegate {
         rebuildMenu()
     }
 
+    @objc private func requestDeepControlSnap() {
+        _ = RegionDetector.checkAccessibilityPermission(prompt: true)
+        rebuildMenu()
+    }
+
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v0.1.0"
+        alert.messageText = "MSnip（麦截）v0.2.0"
         alert.informativeText = """
-        超轻量原生 macOS 截图、圈记与贴图工具
+        超轻量原生 macOS 截图、智能选区识别、圈记与贴图工具
         • 纯 Swift + AppKit + CoreGraphics，零第三方依赖
-        • 待机 0% CPU，退出截图立即释放全屏缓冲
-        • 操作提示：数字键 1–7 切换圈记工具，双击或回车复制，⌘2 贴图，⌘S 保存
+        • 移动镜头自动吸附窗口与多层控件，滚轮切换矩阵大小，单击锁定
+        • 数字键 1–7 切换圈记工具，双击或回车复制，⌘2 贴图，⌘S 保存
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好")
@@ -220,6 +229,16 @@ final class AppController: NSObject, NSApplicationDelegate {
         hkRoot.submenu = hkSubmenu
         menu.addItem(hkRoot)
 
+        let axItem = NSMenuItem(
+            title: "增强子控件识别（辅助功能权限）",
+            action: #selector(requestDeepControlSnap),
+            keyEquivalent: ""
+        )
+        axItem.state = RegionDetector.checkAccessibilityPermission(prompt: false) ? .on : .off
+        axItem.target = self
+        axMenuItem = axItem
+        menu.addItem(axItem)
+
         let loginItem = NSMenuItem(title: "开机自动启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         loginItem.state = LaunchAtLoginManager.isEnabled ? .on : .off
         loginItem.target = self
@@ -235,7 +254,12 @@ final class AppController: NSObject, NSApplicationDelegate {
         quitItem.target = self
         menu.addItem(quitItem)
 
+        menu.delegate = self
         statusItem.menu = menu
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        axMenuItem?.state = RegionDetector.checkAccessibilityPermission(prompt: false) ? .on : .off
     }
 
     private func showPermissionAlert() {
