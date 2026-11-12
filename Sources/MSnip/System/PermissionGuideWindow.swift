@@ -17,15 +17,22 @@ enum PermissionPane {
     }
 }
 
-/// 顶部原点布局容器，确保权限引导面板内各行像素级对齐
-private final class FlippedGuideContentView: NSView {
+private final class FlippedRootView: NSView {
     override var isFlipped: Bool { true }
 }
 
-/// 置顶并排「拖拽图标授权引导窗」控制器：
-/// - 采用 `.floating` 置顶层级并停靠屏幕偏左，避免被「系统设置」窗口遮挡；
-/// - 内置 `DraggableAppCardView`，直接把 `MSnip.app` 拖进右侧系统设置列表即可开启权限；
-/// - 窗口打开期间每 0.8s 无感刷新权限状态，窗口关闭即停止定时器（待机 0% CPU）。
+private final class StatusDotView: NSView {
+    var color: NSColor = .tertiaryLabelColor {
+        didSet { needsDisplay = true }
+    }
+    override func draw(_ dirtyRect: NSRect) {
+        color.setFill()
+        NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
+    }
+}
+
+/// 极简毛玻璃置顶权限引导面板（284 × 244）：
+/// 顶部居中可拖拽图标托盘 + 双行分组状态卡，停靠屏幕偏左，绝不遮挡「系统设置」。
 @MainActor
 final class PermissionGuideController: NSObject, NSWindowDelegate {
     var onPermissionChanged: (() -> Void)?
@@ -35,8 +42,13 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
     private var lastScreenGranted = false
     private var lastAXGranted = false
 
-    private let screenBadge = NSTextField(labelWithString: "")
-    private let axBadge = NSTextField(labelWithString: "")
+    private let screenDot = StatusDotView()
+    private let axDot = StatusDotView()
+    private var screenBtn: NSButton!
+    private var axBtn: NSButton!
+    private let screenDoneLabel = NSTextField(labelWithString: "已开启")
+    private let axDoneLabel = NSTextField(labelWithString: "已开启")
+    private var relaunchBtn: NSButton!
 
     func show(opening pane: PermissionPane? = nil) {
         let win = ensureWindow()
@@ -54,144 +66,138 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         }
     }
 
-    // MARK: - Window & UI Construction
+    // MARK: - Compact Vibrancy UI
 
     private func ensureWindow() -> NSPanel {
         if let existing = panel { return existing }
 
-        let w: CGFloat = 456
-        let h: CGFloat = 368
+        let w: CGFloat = 284
+        let h: CGFloat = 244
         let p = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: w, height: h),
-            styleMask: [.titled, .closable],
+            styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        p.title = "MSnip 权限引导（拖拽图标即可开启）"
+        p.title = "权限引导"
+        p.titleVisibility = .hidden
+        p.titlebarAppearsTransparent = true
+        p.isMovableByWindowBackground = true
+        p.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        p.standardWindowButton(.zoomButton)?.isHidden = true
         p.level = .floating
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
         p.isReleasedWhenClosed = false
+        p.backgroundColor = .clear
         p.delegate = self
 
-        let root = FlippedGuideContentView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-        p.contentView = root
+        let visualEffect = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        visualEffect.material = .popover
+        visualEffect.blendingMode = .behindWindow
+        visualEffect.state = .active
 
-        let pad: CGFloat = 20
-        let innerW = w - pad * 2
+        let root = FlippedRootView(frame: visualEffect.bounds)
+        root.autoresizingMask = [.width, .height]
+        visualEffect.addSubview(root)
+        p.contentView = visualEffect
 
-        let titleLabel = NSTextField(labelWithString: "一拖即用：把下方图标拖进「系统设置」")
-        titleLabel.font = .systemFont(ofSize: 16, weight: .bold)
-        titleLabel.textColor = .labelColor
-        titleLabel.frame = NSRect(x: pad, y: 18, width: innerW, height: 22)
-        root.addSubview(titleLabel)
-
-        let subtitleLabel = NSTextField(labelWithString: "点击下方按钮打开对应设置页，再将 MSnip 图标拖进右侧列表松手即可")
-        subtitleLabel.font = .systemFont(ofSize: 12, weight: .regular)
-        subtitleLabel.textColor = .secondaryLabelColor
-        subtitleLabel.frame = NSRect(x: pad, y: 42, width: innerW, height: 18)
-        root.addSubview(subtitleLabel)
-
-        let dragCard = DraggableAppCardView(frame: NSRect(x: pad, y: 70, width: innerW, height: 98))
+        // 顶部居中拖拽图标托盘
+        let dragCard = DraggableAppCardView(frame: NSRect(x: (w - 200) * 0.5, y: 18, width: 200, height: 96))
         dragCard.onRevealInFinder = {
             NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
         }
         root.addSubview(dragCard)
 
-        // 第 1 行：录屏与系统录音
-        addPermissionRow(
-            to: root,
-            y: 184,
-            width: innerW,
-            pad: pad,
-            title: "1. 录屏与系统录音（截图必选）",
-            badgeField: screenBadge,
-            buttonTitle: "打开录屏设置",
+        // 中部精简双行分组卡
+        let pad: CGFloat = 16
+        let groupW = w - pad * 2
+        let groupY: CGFloat = 124
+        let groupBox = NSBox(frame: NSRect(x: pad, y: groupY, width: groupW, height: 76))
+        groupBox.boxType = .custom
+        groupBox.cornerRadius = 10
+        groupBox.borderWidth = 0.5
+        groupBox.borderColor = NSColor.separatorColor
+        groupBox.fillColor = NSColor.labelColor.withAlphaComponent(0.04)
+        root.addSubview(groupBox)
+
+        screenBtn = buildRow(
+            in: root, x: pad, y: groupY, width: groupW,
+            title: "屏幕录制", dot: screenDot, doneLabel: screenDoneLabel,
             action: #selector(openScreenRecordingSettings)
         )
 
-        // 第 2 行：辅助功能
-        addPermissionRow(
-            to: root,
-            y: 246,
-            width: innerW,
-            pad: pad,
-            title: "2. 辅助功能（自动识别窗口内按钮 / 卡片）",
-            badgeField: axBadge,
-            buttonTitle: "打开辅助功能",
+        let divider = NSBox(frame: NSRect(x: pad + 28, y: groupY + 38, width: groupW - 38, height: 1))
+        divider.boxType = .separator
+        root.addSubview(divider)
+
+        axBtn = buildRow(
+            in: root, x: pad, y: groupY + 38, width: groupW,
+            title: "辅助功能", dot: axDot, doneLabel: axDoneLabel,
             action: #selector(openAccessibilitySettings)
         )
 
-        let sep = NSBox(frame: NSRect(x: pad, y: 308, width: innerW, height: 1))
-        sep.boxType = .separator
-        root.addSubview(sep)
+        // 底部操作栏（无冗余说明字）
+        let restart = NSButton(title: "重启生效", target: self, action: #selector(relaunchApp))
+        restart.bezelStyle = .rounded
+        restart.controlSize = .small
+        restart.frame = NSRect(x: pad, y: 209, width: 72, height: 24)
+        root.addSubview(restart)
+        self.relaunchBtn = restart
 
-        let footHint = NSTextField(labelWithString: "提示：新开启「录屏」权限后，点右侧「重启生效」即可立即截屏")
-        footHint.font = .systemFont(ofSize: 11, weight: .regular)
-        footHint.textColor = .secondaryLabelColor
-        footHint.frame = NSRect(x: pad, y: 327, width: 268, height: 16)
-        root.addSubview(footHint)
-
-        let relaunchBtn = NSButton(title: "重启生效", target: self, action: #selector(relaunchApp))
-        relaunchBtn.bezelStyle = .rounded
-        relaunchBtn.frame = NSRect(x: w - pad - 156, y: 320, width: 84, height: 28)
-        root.addSubview(relaunchBtn)
-
-        let doneBtn = NSButton(title: "完成", target: self, action: #selector(closeGuide))
-        doneBtn.bezelStyle = .rounded
-        doneBtn.keyEquivalent = "\r"
-        doneBtn.frame = NSRect(x: w - pad - 66, y: 320, width: 66, height: 28)
-        root.addSubview(doneBtn)
+        let done = NSButton(title: "完成", target: self, action: #selector(closeGuide))
+        done.bezelStyle = .rounded
+        done.controlSize = .small
+        done.keyEquivalent = "\r"
+        done.frame = NSRect(x: w - pad - 58, y: 209, width: 58, height: 24)
+        root.addSubview(done)
 
         self.panel = p
         return p
     }
 
-    private func addPermissionRow(
-        to container: NSView,
+    private func buildRow(
+        in container: NSView,
+        x: CGFloat,
         y: CGFloat,
         width: CGFloat,
-        pad: CGFloat,
         title: String,
-        badgeField: NSTextField,
-        buttonTitle: String,
+        dot: StatusDotView,
+        doneLabel: NSTextField,
         action: Selector
-    ) {
-        let rowBg = NSBox(frame: NSRect(x: pad, y: y, width: width, height: 52))
-        rowBg.boxType = .custom
-        rowBg.cornerRadius = 8
-        rowBg.borderWidth = 1
-        rowBg.borderColor = NSColor.separatorColor.withAlphaComponent(0.5)
-        rowBg.fillColor = NSColor.controlBackgroundColor.withAlphaComponent(0.5)
-        container.addSubview(rowBg)
+    ) -> NSButton {
+        dot.frame = NSRect(x: x + 12, y: y + 15, width: 8, height: 8)
+        container.addSubview(dot)
 
-        let titleField = NSTextField(labelWithString: title)
-        titleField.font = .systemFont(ofSize: 13, weight: .medium)
-        titleField.textColor = .labelColor
-        titleField.frame = NSRect(x: pad + 12, y: y + 8, width: width - 132, height: 18)
-        container.addSubview(titleField)
+        let label = NSTextField(labelWithString: title)
+        label.font = .systemFont(ofSize: 13, weight: .medium)
+        label.textColor = .labelColor
+        label.frame = NSRect(x: x + 28, y: y + 10, width: 120, height: 18)
+        container.addSubview(label)
 
-        badgeField.font = .systemFont(ofSize: 11.5, weight: .semibold)
-        badgeField.frame = NSRect(x: pad + 12, y: y + 28, width: width - 132, height: 16)
-        container.addSubview(badgeField)
+        doneLabel.font = .systemFont(ofSize: 12, weight: .medium)
+        doneLabel.textColor = .systemGreen
+        doneLabel.alignment = .right
+        doneLabel.frame = NSRect(x: x + width - 70, y: y + 11, width: 58, height: 16)
+        container.addSubview(doneLabel)
 
-        let btn = NSButton(title: buttonTitle, target: self, action: action)
+        let btn = NSButton(title: "去开启", target: self, action: action)
         btn.bezelStyle = .rounded
         btn.controlSize = .small
-        btn.frame = NSRect(x: pad + width - 114, y: y + 13, width: 102, height: 26)
+        btn.frame = NSRect(x: x + width - 72, y: y + 7, width: 62, height: 24)
         container.addSubview(btn)
+        return btn
     }
 
     private func positionBesideSystemSettings(_ win: NSWindow) {
         let screen = NSScreen.main ?? NSScreen.screens.first
         let vf = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        // 停靠在屏幕偏左侧，给右侧弹出的「系统设置」留出充足并排拖拽空间
-        let x = max(vf.minX + 44, vf.midX - win.frame.width - 110)
-        let y = vf.midY - win.frame.height * 0.5 + 20
+        let x = max(vf.minX + 60, vf.midX - win.frame.width - 140)
+        let y = vf.midY - win.frame.height * 0.5 + 24
         win.setFrameOrigin(NSPoint(x: round(x), y: round(y)))
     }
 
-    // MARK: - Live Polling & Actions
+    // MARK: - Live Status & Actions
 
     private func startPolling() {
         pollTimer?.invalidate()
@@ -206,11 +212,14 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         let screenOK = CGPreflightScreenCaptureAccess()
         let axOK = AXIsProcessTrusted()
 
-        screenBadge.stringValue = screenOK ? "✓ 已开启" : "● 待开启（点击右侧按钮并拖入上方图标）"
-        screenBadge.textColor = screenOK ? .systemGreen : .systemOrange
+        screenDot.color = screenOK ? .systemGreen : .systemOrange
+        screenBtn.isHidden = screenOK
+        screenDoneLabel.isHidden = !screenOK
+        relaunchBtn.isHidden = screenOK
 
-        axBadge.stringValue = axOK ? "✓ 已开启（子控件识别实时生效）" : "○ 未开启（仅窗口+视觉识别，拖入可解锁深层控件）"
-        axBadge.textColor = axOK ? .systemGreen : .secondaryLabelColor
+        axDot.color = axOK ? .systemGreen : .tertiaryLabelColor
+        axBtn.isHidden = axOK
+        axDoneLabel.isHidden = !axOK
 
         if notifyIfChanged && (screenOK != lastScreenGranted || axOK != lastAXGranted) {
             onPermissionChanged?()
