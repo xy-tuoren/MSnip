@@ -10,6 +10,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var config = AppConfig.load()
     private let hotKeyManager = HotKeyManager()
     private let pinManager = PinManager()
+    private let permissionGuide = PermissionGuideController()
     private var activeSession: OverlaySession?
     private var isCapturing = false
 
@@ -17,6 +18,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusBar()
         setupCallbacks()
         hotKeyManager.apply(preset: config.hotKeyPreset, enabled: config.hotKeysEnabled)
+        if !CGPreflightScreenCaptureAccess() {
+            permissionGuide.show(opening: .screenRecording)
+        }
     }
 
     // MARK: - Setup
@@ -45,6 +49,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pinManager.onCountChanged = { [weak self] _ in
             self?.rebuildMenu()
         }
+        permissionGuide.onPermissionChanged = { [weak self] in
+            self?.rebuildMenu()
+        }
         pinManager.onSaveImage = { [weak self] img, scale in
             guard let self else { return }
             if let dir = ClipboardAndSave.savePNGInteractive(
@@ -62,8 +69,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc func startCapture() {
         guard activeSession == nil, !isCapturing else { return }
-        guard ScreenCapturer.ensurePermission() else {
-            showPermissionAlert()
+        guard CGPreflightScreenCaptureAccess() else {
+            permissionGuide.show(opening: .screenRecording)
             return
         }
 
@@ -75,7 +82,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             self.isCapturing = false
             guard !snapshots.isEmpty else {
-                self.showPermissionAlert()
+                self.permissionGuide.show(opening: .screenRecording)
                 return
             }
 
@@ -157,20 +164,27 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
     }
 
-    @objc private func requestDeepControlSnap() {
-        _ = RegionDetector.checkAccessibilityPermission(prompt: true)
-        rebuildMenu()
+    @objc private func openPermissionGuide() {
+        let targetPane: PermissionPane?
+        if !CGPreflightScreenCaptureAccess() {
+            targetPane = .screenRecording
+        } else if !RegionDetector.checkAccessibilityPermission(prompt: false) {
+            targetPane = .accessibility
+        } else {
+            targetPane = nil
+        }
+        permissionGuide.show(opening: targetPane)
     }
 
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v0.2.0"
+        alert.messageText = "MSnip（麦截）v0.3.0"
         alert.informativeText = """
         超轻量原生 macOS 截图、智能选区识别、圈记与贴图工具
         • 纯 Swift + AppKit + CoreGraphics，零第三方依赖
         • 移动镜头自动吸附窗口与多层控件，滚轮切换矩阵大小，单击锁定
-        • 数字键 1–7 切换圈记工具，双击或回车复制，⌘2 贴图，⌘S 保存
+        • 内置一拖即用权限引导面板，直接把图标拖进系统设置即可开启权限
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好")
@@ -229,15 +243,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hkRoot.submenu = hkSubmenu
         menu.addItem(hkRoot)
 
-        let axItem = NSMenuItem(
-            title: "增强子控件识别（辅助功能权限）",
-            action: #selector(requestDeepControlSnap),
+        let permItem = NSMenuItem(
+            title: "权限设置引导（拖拽开启）…",
+            action: #selector(openPermissionGuide),
             keyEquivalent: ""
         )
-        axItem.state = RegionDetector.checkAccessibilityPermission(prompt: false) ? .on : .off
-        axItem.target = self
-        axMenuItem = axItem
-        menu.addItem(axItem)
+        permItem.state = currentPermissionMenuState()
+        permItem.target = self
+        axMenuItem = permItem
+        menu.addItem(permItem)
 
         let loginItem = NSMenuItem(title: "开机自动启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         loginItem.state = LaunchAtLoginManager.isEnabled ? .on : .off
@@ -259,20 +273,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     func menuWillOpen(_ menu: NSMenu) {
-        axMenuItem?.state = RegionDetector.checkAccessibilityPermission(prompt: false) ? .on : .off
+        axMenuItem?.state = currentPermissionMenuState()
     }
 
-    private func showPermissionAlert() {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "需要「屏幕录制」权限才能截图"
-        alert.informativeText = "请前往「系统设置 → 隐私与安全性 → 屏幕与系统音频录制」，勾选允许 MSnip，然后重试。"
-        alert.alertStyle = .warning
-        alert.addButton(withTitle: "打开系统设置")
-        alert.addButton(withTitle: "取消")
-        if alert.runModal() == .alertFirstButtonReturn,
-           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-            NSWorkspace.shared.open(url)
-        }
+    private func currentPermissionMenuState() -> NSControl.StateValue {
+        let screenOK = CGPreflightScreenCaptureAccess()
+        let axOK = RegionDetector.checkAccessibilityPermission(prompt: false)
+        if screenOK && axOK { return .on }
+        if screenOK { return .mixed }
+        return .off
     }
 }
