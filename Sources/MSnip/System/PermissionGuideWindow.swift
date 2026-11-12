@@ -17,22 +17,8 @@ enum PermissionPane {
     }
 }
 
-private final class FlippedRootView: NSView {
-    override var isFlipped: Bool { true }
-}
-
-private final class StatusDotView: NSView {
-    var color: NSColor = .tertiaryLabelColor {
-        didSet { needsDisplay = true }
-    }
-    override func draw(_ dirtyRect: NSRect) {
-        color.setFill()
-        NSBezierPath(ovalIn: bounds.insetBy(dx: 0.5, dy: 0.5)).fill()
-    }
-}
-
-/// 极简毛玻璃置顶权限引导面板（284 × 244）：
-/// 顶部居中可拖拽图标托盘 + 双行分组状态卡，停靠屏幕偏左，绝不遮挡「系统设置」。
+/// 极简毛玻璃置顶权限引导面板（280 × 240）：
+/// 全程采用 Auto Layout 中心轴对齐 + 等宽零外边距胶囊签，彻底消除文字上下/左右错位。
 @MainActor
 final class PermissionGuideController: NSObject, NSWindowDelegate {
     var onPermissionChanged: (() -> Void)?
@@ -44,11 +30,9 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
     private let screenDot = StatusDotView()
     private let axDot = StatusDotView()
-    private var screenBtn: NSButton!
-    private var axBtn: NSButton!
-    private let screenDoneLabel = NSTextField(labelWithString: "已开启")
-    private let axDoneLabel = NSTextField(labelWithString: "已开启")
-    private var relaunchBtn: NSButton!
+    private var screenPill: PillControl!
+    private var axPill: PillControl!
+    private var relaunchPill: PillControl!
 
     func show(opening pane: PermissionPane? = nil) {
         let win = ensureWindow()
@@ -66,13 +50,17 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         }
     }
 
-    // MARK: - Compact Vibrancy UI
+    func applyMockStateForPreview(screenOK: Bool, axOK: Bool) -> NSView {
+        let win = ensureWindow()
+        updateUI(screenOK: screenOK, axOK: axOK)
+        return win.contentView!
+    }
 
     private func ensureWindow() -> NSPanel {
         if let existing = panel { return existing }
 
-        let w: CGFloat = 284
-        let h: CGFloat = 244
+        let w: CGFloat = 280
+        let h: CGFloat = 246
         let p = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: w, height: h),
             styleMask: [.titled, .closable, .fullSizeContentView],
@@ -92,134 +80,138 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         p.backgroundColor = .clear
         p.delegate = self
 
-        let visualEffect = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-        visualEffect.material = .popover
-        visualEffect.blendingMode = .behindWindow
-        visualEffect.state = .active
+        let root = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: w, height: h))
+        root.material = .popover
+        root.blendingMode = .behindWindow
+        root.state = .active
+        p.contentView = root
 
-        let root = FlippedRootView(frame: visualEffect.bounds)
-        root.autoresizingMask = [.width, .height]
-        visualEffect.addSubview(root)
-        p.contentView = visualEffect
-
-        // 顶部居中拖拽图标托盘
-        let dragCard = DraggableAppCardView(frame: NSRect(x: (w - 200) * 0.5, y: 18, width: 200, height: 96))
+        let dragCard = DraggableAppCardView(frame: .zero)
+        dragCard.translatesAutoresizingMaskIntoConstraints = false
         dragCard.onRevealInFinder = {
             NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
         }
         root.addSubview(dragCard)
 
-        // 中部精简双行分组卡
-        let pad: CGFloat = 16
-        let groupW = w - pad * 2
-        let groupY: CGFloat = 124
-        let groupBox = NSBox(frame: NSRect(x: pad, y: groupY, width: groupW, height: 76))
-        groupBox.boxType = .custom
-        groupBox.cornerRadius = 10
-        groupBox.borderWidth = 0.5
-        groupBox.borderColor = NSColor.separatorColor
-        groupBox.fillColor = NSColor.labelColor.withAlphaComponent(0.04)
+        let groupBox = CardContainerView()
+        groupBox.translatesAutoresizingMaskIntoConstraints = false
         root.addSubview(groupBox)
 
-        screenBtn = buildRow(
-            in: root, x: pad, y: groupY, width: groupW,
-            title: "屏幕录制", dot: screenDot, doneLabel: screenDoneLabel,
-            action: #selector(openScreenRecordingSettings)
-        )
+        let row1 = NSView(); row1.translatesAutoresizingMaskIntoConstraints = false
+        let row2 = NSView(); row2.translatesAutoresizingMaskIntoConstraints = false
+        let sep = NSView(); sep.wantsLayer = true
+        sep.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
+        sep.translatesAutoresizingMaskIntoConstraints = false
+        groupBox.addSubview(row1)
+        groupBox.addSubview(sep)
+        groupBox.addSubview(row2)
 
-        let divider = NSBox(frame: NSRect(x: pad + 28, y: groupY + 38, width: groupW - 38, height: 1))
-        divider.boxType = .separator
-        root.addSubview(divider)
+        screenPill = populateRow(row1, title: "屏幕录制", dot: screenDot) { [weak self] in
+            self?.openPane(.screenRecording)
+        }
+        axPill = populateRow(row2, title: "辅助功能", dot: axDot) { [weak self] in
+            self?.openPane(.accessibility)
+        }
 
-        axBtn = buildRow(
-            in: root, x: pad, y: groupY + 38, width: groupW,
-            title: "辅助功能", dot: axDot, doneLabel: axDoneLabel,
-            action: #selector(openAccessibilitySettings)
-        )
+        relaunchPill = PillControl(title: "重启生效", style: .subtleButton) { [weak self] in
+            self?.relaunchApp()
+        }
+        let donePill = PillControl(title: "完成", style: .primaryButton) { [weak self] in
+            self?.panel?.close()
+        }
+        root.addSubview(relaunchPill)
+        root.addSubview(donePill)
 
-        // 底部操作栏（无冗余说明字）
-        let restart = NSButton(title: "重启生效", target: self, action: #selector(relaunchApp))
-        restart.bezelStyle = .rounded
-        restart.controlSize = .small
-        restart.frame = NSRect(x: pad, y: 209, width: 72, height: 24)
-        root.addSubview(restart)
-        self.relaunchBtn = restart
+        NSLayoutConstraint.activate([
+            dragCard.topAnchor.constraint(equalTo: root.topAnchor, constant: 16),
+            dragCard.centerXAnchor.constraint(equalTo: root.centerXAnchor),
+            dragCard.widthAnchor.constraint(equalToConstant: 200),
+            dragCard.heightAnchor.constraint(equalToConstant: 94),
 
-        let done = NSButton(title: "完成", target: self, action: #selector(closeGuide))
-        done.bezelStyle = .rounded
-        done.controlSize = .small
-        done.keyEquivalent = "\r"
-        done.frame = NSRect(x: w - pad - 58, y: 209, width: 58, height: 24)
-        root.addSubview(done)
+            groupBox.topAnchor.constraint(equalTo: dragCard.bottomAnchor, constant: 10),
+            groupBox.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
+            groupBox.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
+            groupBox.heightAnchor.constraint(equalToConstant: 77),
+
+            row1.topAnchor.constraint(equalTo: groupBox.topAnchor),
+            row1.leadingAnchor.constraint(equalTo: groupBox.leadingAnchor),
+            row1.trailingAnchor.constraint(equalTo: groupBox.trailingAnchor),
+            row1.heightAnchor.constraint(equalToConstant: 38.25),
+
+            sep.topAnchor.constraint(equalTo: row1.bottomAnchor),
+            sep.leadingAnchor.constraint(equalTo: groupBox.leadingAnchor, constant: 31),
+            sep.trailingAnchor.constraint(equalTo: groupBox.trailingAnchor, constant: -12),
+            sep.heightAnchor.constraint(equalToConstant: 0.5),
+
+            row2.topAnchor.constraint(equalTo: sep.bottomAnchor),
+            row2.leadingAnchor.constraint(equalTo: groupBox.leadingAnchor),
+            row2.trailingAnchor.constraint(equalTo: groupBox.trailingAnchor),
+            row2.bottomAnchor.constraint(equalTo: groupBox.bottomAnchor),
+
+            relaunchPill.leadingAnchor.constraint(equalTo: groupBox.leadingAnchor),
+            relaunchPill.topAnchor.constraint(equalTo: groupBox.bottomAnchor, constant: 11),
+            relaunchPill.widthAnchor.constraint(equalToConstant: 68),
+            relaunchPill.heightAnchor.constraint(equalToConstant: 24),
+
+            donePill.trailingAnchor.constraint(equalTo: groupBox.trailingAnchor),
+            donePill.centerYAnchor.constraint(equalTo: relaunchPill.centerYAnchor),
+            donePill.widthAnchor.constraint(equalToConstant: 60),
+            donePill.heightAnchor.constraint(equalToConstant: 24)
+        ])
 
         self.panel = p
         return p
     }
 
-    private func buildRow(
-        in container: NSView,
-        x: CGFloat,
-        y: CGFloat,
-        width: CGFloat,
-        title: String,
-        dot: StatusDotView,
-        doneLabel: NSTextField,
-        action: Selector
-    ) -> NSButton {
-        dot.frame = NSRect(x: x + 12, y: y + 15, width: 8, height: 8)
-        container.addSubview(dot)
-
+    private func populateRow(
+        _ row: NSView, title: String, dot: StatusDotView, onOpen: @escaping () -> Void
+    ) -> PillControl {
+        dot.translatesAutoresizingMaskIntoConstraints = false
         let label = NSTextField(labelWithString: title)
         label.font = .systemFont(ofSize: 13, weight: .medium)
         label.textColor = .labelColor
-        label.frame = NSRect(x: x + 28, y: y + 10, width: 120, height: 18)
-        container.addSubview(label)
+        label.translatesAutoresizingMaskIntoConstraints = false
 
-        doneLabel.font = .systemFont(ofSize: 12, weight: .medium)
-        doneLabel.textColor = .systemGreen
-        doneLabel.alignment = .right
-        doneLabel.frame = NSRect(x: x + width - 70, y: y + 11, width: 58, height: 16)
-        container.addSubview(doneLabel)
+        let pill = PillControl(title: "去开启", style: .subtleButton, onClick: onOpen)
+        row.addSubview(dot)
+        row.addSubview(label)
+        row.addSubview(pill)
 
-        let btn = NSButton(title: "去开启", target: self, action: action)
-        btn.bezelStyle = .rounded
-        btn.controlSize = .small
-        btn.frame = NSRect(x: x + width - 72, y: y + 7, width: 62, height: 24)
-        container.addSubview(btn)
-        return btn
+        NSLayoutConstraint.activate([
+            dot.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 13),
+            dot.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            dot.widthAnchor.constraint(equalToConstant: 7.5),
+            dot.heightAnchor.constraint(equalToConstant: 7.5),
+
+            label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 10),
+            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+
+            pill.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
+            pill.centerYAnchor.constraint(equalTo: row.centerYAnchor),
+            pill.widthAnchor.constraint(equalToConstant: 60),
+            pill.heightAnchor.constraint(equalToConstant: 23)
+        ])
+        return pill
     }
 
     private func positionBesideSystemSettings(_ win: NSWindow) {
-        let screen = NSScreen.main ?? NSScreen.screens.first
-        let vf = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let x = max(vf.minX + 60, vf.midX - win.frame.width - 140)
-        let y = vf.midY - win.frame.height * 0.5 + 24
-        win.setFrameOrigin(NSPoint(x: round(x), y: round(y)))
+        let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let x = round(max(vf.minX + 60, vf.midX - win.frame.width - 140))
+        let y = round(vf.midY - win.frame.height * 0.5 + 24)
+        win.setFrameOrigin(NSPoint(x: x, y: y))
     }
-
-    // MARK: - Live Status & Actions
 
     private func startPolling() {
         pollTimer?.invalidate()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.refreshStatus(notifyIfChanged: true)
-            }
+            Task { @MainActor [weak self] in self?.refreshStatus(notifyIfChanged: true) }
         }
     }
 
     private func refreshStatus(notifyIfChanged: Bool) {
         let screenOK = CGPreflightScreenCaptureAccess()
         let axOK = AXIsProcessTrusted()
-
-        screenDot.color = screenOK ? .systemGreen : .systemOrange
-        screenBtn.isHidden = screenOK
-        screenDoneLabel.isHidden = !screenOK
-        relaunchBtn.isHidden = screenOK
-
-        axDot.color = axOK ? .systemGreen : .tertiaryLabelColor
-        axBtn.isHidden = axOK
-        axDoneLabel.isHidden = !axOK
+        updateUI(screenOK: screenOK, axOK: axOK)
 
         if notifyIfChanged && (screenOK != lastScreenGranted || axOK != lastAXGranted) {
             onPermissionChanged?()
@@ -228,29 +220,27 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         lastAXGranted = axOK
     }
 
-    @objc private func openScreenRecordingSettings() {
-        if let url = PermissionPane.screenRecording.settingsURL {
-            NSWorkspace.shared.open(url)
-        }
+    private func updateUI(screenOK: Bool, axOK: Bool) {
+        screenDot.color = screenOK ? .systemGreen : .systemOrange
+        screenPill.title = screenOK ? "已开启" : "去开启"
+        screenPill.style = screenOK ? .grantedBadge : .subtleButton
+        relaunchPill.isHidden = screenOK
+
+        axDot.color = axOK ? .systemGreen : NSColor.secondaryLabelColor.withAlphaComponent(0.45)
+        axPill.title = axOK ? "已开启" : "去开启"
+        axPill.style = axOK ? .grantedBadge : .subtleButton
     }
 
-    @objc private func openAccessibilitySettings() {
-        if let url = PermissionPane.accessibility.settingsURL {
-            NSWorkspace.shared.open(url)
-        }
+    private func openPane(_ pane: PermissionPane) {
+        if let url = pane.settingsURL { NSWorkspace.shared.open(url) }
     }
 
-    @objc private func relaunchApp() {
-        let bundlePath = Bundle.main.bundlePath
+    private func relaunchApp() {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = ["-c", "sleep 0.35 && open \"$1\"", "--", bundlePath]
+        proc.arguments = ["-c", "sleep 0.35 && open \"$1\"", "--", Bundle.main.bundlePath]
         try? proc.run()
         NSApp.terminate(nil)
-    }
-
-    @objc private func closeGuide() {
-        panel?.close()
     }
 
     func windowWillClose(_ notification: Notification) {
