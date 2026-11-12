@@ -28,10 +28,13 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onCancel: (() -> Void)?
     var onStyleChanged: ((Int, CGFloat) -> Void)?
 
-    // 自动矩阵识别预览状态（未锁定选区时生效）
+    // 自动矩阵识别预览与平滑过渡状态（逻辑见 OverlayAutoSnap.swift）
     var autoSnapStack: [CGRect] = []
     var autoSnapIndex: Int = 0
     var scrollSnapAccumulator: CGFloat = 0
+    var preferredSnapArea: CGFloat?
+    var displayedAutoRect: CGRect?
+    var snapAnimTimer: Timer?
 
     var hoveredAutoRect: CGRect? {
         guard selection == nil, autoSnapStack.indices.contains(autoSnapIndex) else { return nil }
@@ -41,6 +44,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     // 正式选区与标注编辑状态
     var selection: CGRect? {
         didSet {
+            if selection != nil { stopSnapGlide() }
             updateToolbarLayout()
             needsDisplay = true
         }
@@ -115,26 +119,9 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         ))
     }
 
-    /// 刷新指定局部坐标处的自动识别矩阵栈
-    func updateAutoSnap(at localPoint: CGPoint) {
-        guard selection == nil else { return }
-        let newStack = regionDetector.detectHierarchy(at: localPoint, in: snapshot)
-        if newStack != autoSnapStack {
-            autoSnapStack = newStack
-            autoSnapIndex = 0
-            scrollSnapAccumulator = 0
-            needsDisplay = true
-        }
-    }
-
-    /// 按全局鼠标位置初始化首帧自动高亮框
-    func refreshAutoSnapAtCurrentMouse() {
-        guard let win = window else { return }
-        let winPt = win.convertPoint(fromScreen: NSEvent.mouseLocation)
-        let localPt = convert(winPt, from: nil)
-        if bounds.contains(localPt) {
-            updateAutoSnap(at: localPt)
-        }
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { stopSnapGlide() }
     }
 
     // MARK: - Drawing
@@ -145,7 +132,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         // 1) 绘制全屏冻结底图（isFlipped=true 下必须传 respectFlipped: true 防止画面倒置）
         frozenNSImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
 
-        let highlightRect = selection ?? hoveredAutoRect
+        let highlightRect = selection ?? displayedAutoRect ?? hoveredAutoRect
 
         // 2) 绘制暗化遮罩（正式选区或自动识别预览框内部镂空保留 100% 原始亮度）
         ctx.saveGState()
@@ -159,9 +146,9 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         }
         ctx.restoreGState()
 
-        // 3) 若尚未锁定正式选区，绘制自动识别矩阵高亮预览框与层级提示
-        if selection == nil, let snap = hoveredAutoRect {
-            drawAutoSnapChrome(ctx: ctx, rect: snap)
+        // 3) 若尚未锁定正式选区，绘制丝滑过渡中的自动识别预览框与稳定尺寸胶囊
+        if selection == nil, let target = hoveredAutoRect {
+            drawAutoSnapChrome(ctx: ctx, displayRect: displayedAutoRect ?? target, targetRect: target)
             return
         }
 
@@ -191,21 +178,6 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         drawSelectionChrome(ctx: ctx, sel: sel)
     }
 
-    private func drawAutoSnapChrome(ctx: CGContext, rect: CGRect) {
-        ctx.saveGState()
-        ctx.setStrokeColor(NSColor.systemCyan.withAlphaComponent(0.95).cgColor)
-        ctx.setLineWidth(2.0)
-        ctx.stroke(rect.insetBy(dx: 0.5, dy: 0.5))
-        ctx.restoreGState()
-
-        let pxW = Int((rect.width * snapshot.scaleFactor).rounded())
-        let pxH = Int((rect.height * snapshot.scaleFactor).rounded())
-        let tierHint = autoSnapStack.count > 1
-            ? "  ·  \(autoSnapIndex + 1)/\(autoSnapStack.count) 滚轮切换 · 单击锁定"
-            : "  ·  单击锁定"
-        drawHUDPill(ctx: ctx, anchorRect: rect, text: "\(pxW) × \(pxH)\(tierHint)")
-    }
-
     private func drawSelectionChrome(ctx: CGContext, sel: CGRect) {
         ctx.saveGState()
         ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
@@ -228,7 +200,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         drawHUDPill(ctx: ctx, anchorRect: sel, text: "\(pxW) × \(pxH)")
     }
 
-    private func drawHUDPill(ctx: CGContext, anchorRect: CGRect, text: String) {
+    func drawHUDPill(ctx: CGContext, anchorRect: CGRect, text: String) {
         let nsText = text as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
@@ -275,8 +247,11 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
     func clearSelectionFromSibling() {
         cancelTextEditing()
+        stopSnapGlide()
         selection = nil
         autoSnapStack = []
+        displayedAutoRect = nil
+        preferredSnapArea = nil
         selectedObjectIndex = nil
         draftAnnotation = nil
         doc = AnnotationDocument()

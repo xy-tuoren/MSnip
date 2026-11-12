@@ -236,22 +236,20 @@ extension OverlayView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        // 1) 未锁定选区时：滚轮在鼠标下方的「内部小控件 <-> 父容器 <-> 整窗口」多级矩阵间切换
+        // 1) 未锁定选区时：滚轮在鼠标下方的「内部小控件 <-> 父容器 <-> 整窗口」多级矩阵间丝滑切换并记忆偏好尺度
         if selection == nil {
             guard autoSnapStack.count > 1 else { return }
             if event.hasPreciseScrollingDeltas {
                 scrollSnapAccumulator += event.scrollingDeltaY
-                let threshold: CGFloat = 14.0
+                let threshold: CGFloat = 16.0
                 if abs(scrollSnapAccumulator) >= threshold {
                     let step = scrollSnapAccumulator > 0 ? 1 : -1
                     scrollSnapAccumulator = 0
-                    autoSnapIndex = min(max(0, autoSnapIndex + step), autoSnapStack.count - 1)
-                    needsDisplay = true
+                    stepAutoSnapTier(by: step)
                 }
             } else if abs(event.scrollingDeltaY) > 0.01 {
                 let step = event.scrollingDeltaY > 0 ? 1 : -1
-                autoSnapIndex = min(max(0, autoSnapIndex + step), autoSnapStack.count - 1)
-                needsDisplay = true
+                stepAutoSnapTier(by: step)
             }
             return
         }

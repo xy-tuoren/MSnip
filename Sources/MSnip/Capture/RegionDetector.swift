@@ -120,10 +120,11 @@ final class RegionDetector {
         if let topWindow = windows.first(where: { $0.globalBounds.contains(globalPoint) }) {
             let winLocal = toLocalRect(topWindow.globalBounds, screenQuartzOrigin: screenQuartzOrigin)
                 .intersection(screenBoundsLocal)
-            if !winLocal.isNull && winLocal.width >= 16 && winLocal.height >= 16 {
+            if !winLocal.isNull && winLocal.width >= 24 && winLocal.height >= 24 {
                 candidatesLocal.append(winLocal)
+                var smallestAXRect: CGRect?
 
-                // 2) 辅助功能控件树（若已授权）：直接向该窗口所属 PID 查询，完全不受我方覆盖层遮挡
+                // 2) 辅助功能语义容器树：过滤文字碎片与小图标，仅保留按钮/输入框/卡片/分栏等有意义容器
                 if axTrusted {
                     let axGlobalRects = queryAXHierarchy(
                         pid: topWindow.ownerPID,
@@ -132,21 +133,29 @@ final class RegionDetector {
                     )
                     for gr in axGlobalRects {
                         let lr = toLocalRect(gr, screenQuartzOrigin: screenQuartzOrigin).intersection(winLocal)
-                        if !lr.isNull { candidatesLocal.append(lr) }
+                        guard !lr.isNull else { continue }
+                        candidatesLocal.append(lr)
+                        if smallestAXRect == nil || (lr.width * lr.height) < (smallestAXRect!.width * smallestAXRect!.height) {
+                            smallestAXRect = lr
+                        }
                     }
                 }
 
-                // 3) 纯视觉边缘射线探测：补充识别图片、代码块、无 AX 暴露的自绘卡片
-                let visualRects = VisualDetector.detectVisualRects(
-                    at: localPoint,
-                    within: winLocal,
-                    sampler: snapshot.sampler,
-                    scale: snapshot.scaleFactor
-                )
-                candidatesLocal.append(contentsOf: visualRects)
+                // 3) 闭合视觉框探测：仅在未开 AX 或 AX 仅命中大面积画布（如终端/画布/网页内嵌图）时补充探测
+                let winArea = winLocal.width * winLocal.height
+                let needVisual = (smallestAXRect == nil) || ((smallestAXRect!.width * smallestAXRect!.height) > winArea * 0.45)
+                if needVisual {
+                    let searchScope = smallestAXRect ?? winLocal
+                    let visualRects = VisualDetector.detectVisualRects(
+                        at: localPoint,
+                        within: searchScope,
+                        sampler: snapshot.sampler,
+                        scale: snapshot.scaleFactor
+                    )
+                    candidatesLocal.append(contentsOf: visualRects)
+                }
             }
         } else {
-            // 桌面上无窗口区域：仍可用视觉射线探测桌面图标或壁纸框体
             let visualRects = VisualDetector.detectVisualRects(
                 at: localPoint,
                 within: screenBoundsLocal,
@@ -164,6 +173,11 @@ final class RegionDetector {
 
     // MARK: - Accessibility Tree Query
 
+    private static let ignoredAXRoles: Set<String> = [
+        "AXStaticText", "AXInlineText", "AXLink", "AXHeading",
+        "AXScrollBar", "AXValueIndicator", "AXSplitter", "AXMenuItemMarkChar"
+    ]
+
     private func queryAXHierarchy(pid: pid_t, at globalPoint: CGPoint, clampTo windowBounds: CGRect) -> [CGRect] {
         let appElem = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(appElem, 0.015) // 15ms 硬超时，防止无响应进程卡顿光标
@@ -178,10 +192,14 @@ final class RegionDetector {
         guard status == .success, var current = hitRef else { return [] }
 
         var rects: [CGRect] = []
-        for _ in 0..<14 {
-            if let r = axElementBounds(current) {
+        for _ in 0..<16 {
+            let role = axRole(current)
+            if !Self.ignoredAXRoles.contains(role), let r = axElementBounds(current) {
                 let clamped = r.intersection(windowBounds)
-                if !clamped.isNull, clamped.contains(globalPoint), clamped.width >= 14, clamped.height >= 12 {
+                let minSizeOK = (role == "AXImage")
+                    ? (clamped.width >= 48 && clamped.height >= 48)
+                    : (clamped.width >= 36 && clamped.height >= 24)
+                if !clamped.isNull, clamped.contains(globalPoint), minSizeOK {
                     rects.append(clamped)
                 }
             }
@@ -193,6 +211,13 @@ final class RegionDetector {
             current = (parent as! AXUIElement)
         }
         return rects
+    }
+
+    private func axRole(_ element: AXUIElement) -> String {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &ref) == .success,
+              let s = ref as? String else { return "" }
+        return s
     }
 
     private func axElementBounds(_ element: AXUIElement) -> CGRect? {

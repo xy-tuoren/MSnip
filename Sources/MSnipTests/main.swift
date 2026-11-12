@@ -226,10 +226,53 @@ private func testVisualDetectorFindsNestedCardAndButton() {
     check(merged[0].width < merged[1].width && merged[1].width < merged[2].width, "层级栈必须严格按从小到大排列")
 }
 
+private func testVisualDetectorRejectsPhantomCrosshairsAndFindsOutlinedBox() {
+    let w = 420, h = 300
+    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+    let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+        space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    ctx.translateBy(x: 0, y: CGFloat(h))
+    ctx.scaleBy(x: 1, y: -1)
+
+    // 深色背景 + 同底色 1pt 细线描边大卡片 (50, 30, 320, 230)
+    ctx.setFillColor(CGColor(srgbRed: 0.12, green: 0.12, blue: 0.14, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+    let card = CGRect(x: 50, y: 30, width: 320, height: 230)
+    ctx.setStrokeColor(CGColor(srgbRed: 0.42, green: 0.42, blue: 0.46, alpha: 1))
+    ctx.setLineWidth(1.0)
+    ctx.stroke(card.insetBy(dx: 0.5, dy: 0.5))
+
+    // 在卡片内放入互不闭合的干扰色块（左侧头像块 + 上方短标签），测试十字射线不会误拼幽灵框
+    ctx.setFillColor(CGColor(srgbRed: 0.90, green: 0.35, blue: 0.30, alpha: 1))
+    ctx.fill(CGRect(x: 74, y: 95, width: 36, height: 42))
+    ctx.setFillColor(CGColor(srgbRed: 0.30, green: 0.75, blue: 0.45, alpha: 1))
+    ctx.fill(CGRect(x: 185, y: 52, width: 64, height: 22))
+
+    let sampler = PixelSampler(cgImage: ctx.makeImage()!)
+    let winBounds = CGRect(x: 0, y: 0, width: w, height: h)
+    // 光标位于 (210, 116)：水平正对左侧红块，垂直正对上方绿条，但不处于任何小闭合框内
+    let hits = VisualDetector.detectVisualRects(
+        at: CGPoint(x: 210, y: 116),
+        within: winBounds,
+        sampler: sampler,
+        scale: 1.0
+    )
+    check(hits.count == 1, "十字干扰块不应拼出幽灵矩形，应唯一识别出外层 1pt 描边卡片，实际得到: \(hits)")
+    if let only = hits.first {
+        check(
+            abs(only.minX - card.minX) <= 3 && abs(only.width - card.width) <= 6,
+            "1pt 细线描边同底色卡片应被精准识别: got \(only)"
+        )
+    }
+}
+
 testGeometry()
 testAnnotationsAndHitTesting()
 testDocumentUndoRedoAndDelete()
 testRetinaExportOrientationAndAnnotationBaking()
 testFlippedNSViewDrawsCGImageUpright()
 testVisualDetectorFindsNestedCardAndButton()
+testVisualDetectorRejectsPhantomCrosshairsAndFindsOutlinedBox()
 print("✅ All \(passedCount) assertions in MSnipTests passed!")

@@ -179,7 +179,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v0.3.2"
+        alert.messageText = "MSnip（麦截）v0.4.0"
         alert.informativeText = """
         超轻量原生 macOS 截图、智能选区识别、圈记与贴图工具
         • 纯 Swift + AppKit + CoreGraphics，零第三方依赖

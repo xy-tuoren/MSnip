@@ -9,7 +9,9 @@ public final class PixelSampler: @unchecked Sendable {
     public let height: Int
     private let bytesPerRow: Int
     private let bytesPerPixel: Int
-    private let bitmapInfo: CGBitmapInfo
+    private let rIdx: Int
+    private let gIdx: Int
+    private let bIdx: Int
     private let data: CFData?
     private let ptr: UnsafePointer<UInt8>?
 
@@ -19,45 +21,34 @@ public final class PixelSampler: @unchecked Sendable {
         self.height = cgImage.height
         self.bytesPerRow = cgImage.bytesPerRow
         self.bytesPerPixel = max(4, cgImage.bitsPerPixel / 8)
-        self.bitmapInfo = cgImage.bitmapInfo
+        let info = cgImage.bitmapInfo
+        let isLittle32 = info.contains(.byteOrder32Little)
+        let alpha = CGImageAlphaInfo(rawValue: info.rawValue & CGBitmapInfo.alphaInfoMask.rawValue)
+        let alphaFirst = (alpha == .premultipliedFirst || alpha == .first || alpha == .noneSkipFirst)
+        if isLittle32 {
+            if alphaFirst { self.bIdx = 0; self.gIdx = 1; self.rIdx = 2 }
+            else          { self.bIdx = 1; self.gIdx = 2; self.rIdx = 3 }
+        } else {
+            if alphaFirst { self.rIdx = 1; self.gIdx = 2; self.bIdx = 3 }
+            else          { self.rIdx = 0; self.gIdx = 1; self.bIdx = 2 }
+        }
         self.data = cgImage.dataProvider?.data
         self.ptr = self.data.flatMap { CFDataGetBytePtr($0) }
     }
 
-    /// 按物理像素坐标 `(px, py)`（左上角为原点）读取颜色
-    public func sampleColor(px: Int, py: Int) -> CGColor {
-        guard let ptr, width > 0, height > 0 else {
-            return CGColor(gray: 0.5, alpha: 1.0)
-        }
+    /// 零分配读取物理像素 `(px, py)`（左上角为原点）的 RGB 分量 (0...255)
+    @inline(__always)
+    public func sampleRGB(px: Int, py: Int) -> (Int, Int, Int) {
+        guard let ptr, width > 0, height > 0 else { return (128, 128, 128) }
         let cx = min(max(0, px), width - 1)
         let cy = min(max(0, py), height - 1)
         let offset = cy * bytesPerRow + cx * bytesPerPixel
+        return (Int(ptr[offset + rIdx]), Int(ptr[offset + gIdx]), Int(ptr[offset + bIdx]))
+    }
 
-        let isLittle32 = bitmapInfo.contains(.byteOrder32Little)
-        let alphaInfo = CGImageAlphaInfo(rawValue: bitmapInfo.rawValue & CGBitmapInfo.alphaInfoMask.rawValue)
-
-        let b0 = ptr[offset]
-        let b1 = ptr[offset + 1]
-        let b2 = ptr[offset + 2]
-        let b3 = ptr[offset + 3]
-
-        let r: UInt8
-        let g: UInt8
-        let b: UInt8
-        if isLittle32 {
-            // macOS 截屏常见的 BGRA (byteOrder32Little | premultipliedFirst/noneSkipFirst)
-            if alphaInfo == .premultipliedFirst || alphaInfo == .first || alphaInfo == .noneSkipFirst {
-                b = b0; g = b1; r = b2
-            } else {
-                a_fallback: do { b = b1; g = b2; r = b3 }
-            }
-        } else {
-            if alphaInfo == .premultipliedFirst || alphaInfo == .first || alphaInfo == .noneSkipFirst {
-                r = b1; g = b2; b = b3
-            } else {
-                r = b0; g = b1; b = b2
-            }
-        }
+    /// 按物理像素坐标 `(px, py)`（左上角为原点）读取颜色
+    public func sampleColor(px: Int, py: Int) -> CGColor {
+        let (r, g, b) = sampleRGB(px: px, py: py)
         return CGColor(
             srgbRed: CGFloat(r) / 255.0,
             green: CGFloat(g) / 255.0,
