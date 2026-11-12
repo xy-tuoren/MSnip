@@ -17,8 +17,9 @@ enum PermissionPane {
     }
 }
 
-/// 极简毛玻璃置顶权限引导面板（280 × 240）：
-/// 全程采用 Auto Layout 中心轴对齐 + 等宽零外边距胶囊签，彻底消除文字上下/左右错位。
+/// ChatGPT 风格权限引导主控制器：
+/// 1. 独立权限总览面板：双圆角卡片（屏幕录制 / 辅助功能），主次按钮随授权进度自动切换；
+/// 2. 点击「允许」跳转「系统设置」后，无缝切换为吸附在列表下方的 ChatGPT 拖拽条与蓝白弹跳箭头。
 @MainActor
 final class PermissionGuideController: NSObject, NSWindowDelegate {
     var onPermissionChanged: (() -> Void)?
@@ -26,31 +27,47 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
     private var panel: NSPanel?
     private var pollTimer: Timer?
     private let settingsDock = SettingsDockOverlay()
+    private var isSessionActive = false
+    private var prefersAccessoryMode = false
     private var lastScreenGranted = false
     private var lastAXGranted = false
 
-    private let screenDot = StatusDotView()
-    private let axDot = StatusDotView()
-    private var screenPill: PillControl!
-    private var axPill: PillControl!
+    private var screenRow: PermissionRowView!
+    private var axRow: PermissionRowView!
     private var relaunchPill: PillControl!
+    private var donePill: PillControl!
+
+    override init() {
+        super.init()
+        settingsDock.onBackRequested = { [weak self] in
+            guard let self else { return }
+            self.prefersAccessoryMode = false
+            self.presentChecklistWindow()
+        }
+        settingsDock.onVisibilityChanged = { [weak self] dockVisible in
+            guard let self, self.isSessionActive else { return }
+            if dockVisible && self.prefersAccessoryMode {
+                self.panel?.orderOut(nil)
+            } else if !dockVisible && self.prefersAccessoryMode {
+                self.presentChecklistWindow()
+            }
+        }
+    }
 
     func show(opening pane: PermissionPane? = nil) {
-        let win = ensureWindow()
-        refreshStatus(notifyIfChanged: false)
-
-        if !win.isVisible {
-            positionBesideSystemSettings(win)
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        win.makeKeyAndOrderFront(nil)
+        isSessionActive = true
+        _ = ensureWindow()
+        lastScreenGranted = CGPreflightScreenCaptureAccess()
+        lastAXGranted = AXIsProcessTrusted()
+        updateUI(screenOK: lastScreenGranted, axOK: lastAXGranted)
         startPolling()
 
-        if let targetPane = pane, let url = targetPane.settingsURL {
-            NSWorkspace.shared.open(url)
-        }
-        if !CGPreflightScreenCaptureAccess() || !AXIsProcessTrusted() {
-            settingsDock.startTracking()
+        if let targetPane = pane {
+            openPane(targetPane)
+        } else {
+            prefersAccessoryMode = false
+            settingsDock.stopAndHide()
+            presentChecklistWindow()
         }
     }
 
@@ -60,18 +77,27 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         return win.contentView!
     }
 
+    private func presentChecklistWindow() {
+        let win = ensureWindow()
+        if !win.isVisible {
+            positionChecklistWindow(win)
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        win.makeKeyAndOrderFront(nil)
+    }
+
     private func ensureWindow() -> NSPanel {
         if let existing = panel { return existing }
 
-        let w: CGFloat = 280
-        let h: CGFloat = 246
+        let w: CGFloat = 342
+        let h: CGFloat = 244
         let p = NSPanel(
             contentRect: NSRect(x: 0, y: 0, width: w, height: h),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        p.title = "权限引导"
+        p.title = "开启 MSnip 权限"
         p.titleVisibility = .hidden
         p.titlebarAppearsTransparent = true
         p.isMovableByWindowBackground = true
@@ -90,76 +116,56 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         root.state = .active
         p.contentView = root
 
-        let dragCard = DraggableAppCardView(frame: .zero)
-        dragCard.translatesAutoresizingMaskIntoConstraints = false
-        dragCard.onRevealInFinder = {
-            NSWorkspace.shared.activateFileViewerSelecting([Bundle.main.bundleURL])
-        }
-        root.addSubview(dragCard)
+        let header = buildHeaderView()
+        screenRow = PermissionRowView(
+            kind: .screenRecording,
+            title: "屏幕录制",
+            subtitle: "捕获屏幕画面与像素级放大取色"
+        ) { [weak self] in self?.openPane(.screenRecording) }
 
-        let groupBox = CardContainerView()
-        groupBox.translatesAutoresizingMaskIntoConstraints = false
-        root.addSubview(groupBox)
-
-        let row1 = NSView(); row1.translatesAutoresizingMaskIntoConstraints = false
-        let row2 = NSView(); row2.translatesAutoresizingMaskIntoConstraints = false
-        let sep = NSView(); sep.wantsLayer = true
-        sep.layer?.backgroundColor = NSColor.separatorColor.withAlphaComponent(0.35).cgColor
-        sep.translatesAutoresizingMaskIntoConstraints = false
-        groupBox.addSubview(row1)
-        groupBox.addSubview(sep)
-        groupBox.addSubview(row2)
-
-        screenPill = populateRow(row1, title: "屏幕录制", dot: screenDot) { [weak self] in
-            self?.openPane(.screenRecording)
-        }
-        axPill = populateRow(row2, title: "辅助功能", dot: axDot) { [weak self] in
-            self?.openPane(.accessibility)
-        }
+        axRow = PermissionRowView(
+            kind: .accessibility,
+            title: "辅助功能",
+            subtitle: "智能识别窗口与多层控件矩阵边界"
+        ) { [weak self] in self?.openPane(.accessibility) }
 
         relaunchPill = PillControl(title: "重启生效", style: .subtleButton) { [weak self] in
             self?.relaunchApp()
         }
-        let donePill = PillControl(title: "完成", style: .primaryButton) { [weak self] in
-            self?.panel?.close()
+        donePill = PillControl(title: "完成", style: .subtleButton) { [weak self] in
+            self?.closeAll()
         }
+
+        root.addSubview(header)
+        root.addSubview(screenRow)
+        root.addSubview(axRow)
         root.addSubview(relaunchPill)
         root.addSubview(donePill)
 
         NSLayoutConstraint.activate([
-            dragCard.topAnchor.constraint(equalTo: root.topAnchor, constant: 16),
-            dragCard.centerXAnchor.constraint(equalTo: root.centerXAnchor),
-            dragCard.widthAnchor.constraint(equalToConstant: 200),
-            dragCard.heightAnchor.constraint(equalToConstant: 94),
+            header.topAnchor.constraint(equalTo: root.topAnchor, constant: 28),
+            header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
+            header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
+            header.heightAnchor.constraint(equalToConstant: 36),
 
-            groupBox.topAnchor.constraint(equalTo: dragCard.bottomAnchor, constant: 10),
-            groupBox.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 16),
-            groupBox.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -16),
-            groupBox.heightAnchor.constraint(equalToConstant: 77),
+            screenRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14),
+            screenRow.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            screenRow.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+            screenRow.heightAnchor.constraint(equalToConstant: 54),
 
-            row1.topAnchor.constraint(equalTo: groupBox.topAnchor),
-            row1.leadingAnchor.constraint(equalTo: groupBox.leadingAnchor),
-            row1.trailingAnchor.constraint(equalTo: groupBox.trailingAnchor),
-            row1.heightAnchor.constraint(equalToConstant: 38.25),
+            axRow.topAnchor.constraint(equalTo: screenRow.bottomAnchor, constant: 8),
+            axRow.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            axRow.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+            axRow.heightAnchor.constraint(equalToConstant: 54),
 
-            sep.topAnchor.constraint(equalTo: row1.bottomAnchor),
-            sep.leadingAnchor.constraint(equalTo: groupBox.leadingAnchor, constant: 31),
-            sep.trailingAnchor.constraint(equalTo: groupBox.trailingAnchor, constant: -12),
-            sep.heightAnchor.constraint(equalToConstant: 0.5),
-
-            row2.topAnchor.constraint(equalTo: sep.bottomAnchor),
-            row2.leadingAnchor.constraint(equalTo: groupBox.leadingAnchor),
-            row2.trailingAnchor.constraint(equalTo: groupBox.trailingAnchor),
-            row2.bottomAnchor.constraint(equalTo: groupBox.bottomAnchor),
-
-            relaunchPill.leadingAnchor.constraint(equalTo: groupBox.leadingAnchor),
-            relaunchPill.topAnchor.constraint(equalTo: groupBox.bottomAnchor, constant: 11),
+            relaunchPill.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            relaunchPill.topAnchor.constraint(equalTo: axRow.bottomAnchor, constant: 12),
             relaunchPill.widthAnchor.constraint(equalToConstant: 68),
             relaunchPill.heightAnchor.constraint(equalToConstant: 24),
 
-            donePill.trailingAnchor.constraint(equalTo: groupBox.trailingAnchor),
+            donePill.trailingAnchor.constraint(equalTo: header.trailingAnchor),
             donePill.centerYAnchor.constraint(equalTo: relaunchPill.centerYAnchor),
-            donePill.widthAnchor.constraint(equalToConstant: 60),
+            donePill.widthAnchor.constraint(equalToConstant: 62),
             donePill.heightAnchor.constraint(equalToConstant: 24)
         ])
 
@@ -167,84 +173,102 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         return p
     }
 
-    private func populateRow(
-        _ row: NSView, title: String, dot: StatusDotView, onOpen: @escaping () -> Void
-    ) -> PillControl {
-        dot.translatesAutoresizingMaskIntoConstraints = false
-        let label = NSTextField(labelWithString: title)
-        label.font = .systemFont(ofSize: 13, weight: .medium)
-        label.textColor = .labelColor
-        label.translatesAutoresizingMaskIntoConstraints = false
+    private func buildHeaderView() -> NSView {
+        let container = NSView()
+        container.translatesAutoresizingMaskIntoConstraints = false
 
-        let pill = PillControl(title: "去开启", style: .subtleButton, onClick: onOpen)
-        row.addSubview(dot)
-        row.addSubview(label)
-        row.addSubview(pill)
+        let iconView = NSImageView()
+        iconView.translatesAutoresizingMaskIntoConstraints = false
+        let icon = (NSApp.applicationIconImage?.copy() as? NSImage) ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+        icon.size = NSSize(width: 34, height: 34)
+        iconView.image = icon
+
+        let title = NSTextField(labelWithString: "开启 MSnip 权限")
+        title.font = .systemFont(ofSize: 14.5, weight: .semibold)
+        title.textColor = .labelColor
+
+        let sub = NSTextField(labelWithString: "点击允许后，从系统设置底部将图标拖入列表")
+        sub.font = .systemFont(ofSize: 11.5, weight: .regular)
+        sub.textColor = .secondaryLabelColor
+
+        let stack = NSStackView(views: [title, sub])
+        stack.orientation = .vertical
+        stack.alignment = .leading
+        stack.spacing = 1.5
+        stack.translatesAutoresizingMaskIntoConstraints = false
+
+        container.addSubview(iconView)
+        container.addSubview(stack)
 
         NSLayoutConstraint.activate([
-            dot.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 13),
-            dot.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            dot.widthAnchor.constraint(equalToConstant: 7.5),
-            dot.heightAnchor.constraint(equalToConstant: 7.5),
+            iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            iconView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            iconView.widthAnchor.constraint(equalToConstant: 34),
+            iconView.heightAnchor.constraint(equalToConstant: 34),
 
-            label.leadingAnchor.constraint(equalTo: dot.trailingAnchor, constant: 10),
-            label.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-
-            pill.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -12),
-            pill.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            pill.widthAnchor.constraint(equalToConstant: 60),
-            pill.heightAnchor.constraint(equalToConstant: 23)
+            stack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 10),
+            stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            stack.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor)
         ])
-        return pill
+        return container
     }
 
-    private func positionBesideSystemSettings(_ win: NSWindow) {
+    private func positionChecklistWindow(_ win: NSWindow) {
         let vf = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let x = round(max(vf.minX + 60, vf.midX - win.frame.width - 140))
-        let y = round(vf.midY - win.frame.height * 0.5 + 24)
+        let x = round(max(vf.minX + 60, vf.midX - win.frame.width - 120))
+        let y = round(vf.midY - win.frame.height * 0.5 + 20)
         win.setFrameOrigin(NSPoint(x: x, y: y))
     }
 
     private func startPolling() {
         pollTimer?.invalidate()
         pollTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.refreshStatus(notifyIfChanged: true) }
+            Task { @MainActor [weak self] in self?.refreshStatus() }
         }
     }
 
-    private func refreshStatus(notifyIfChanged: Bool) {
+    private func refreshStatus() {
         let screenOK = CGPreflightScreenCaptureAccess()
         let axOK = AXIsProcessTrusted()
-        updateUI(screenOK: screenOK, axOK: axOK)
-
-        if screenOK && axOK {
-            settingsDock.stopAndHide()
-        }
-        if notifyIfChanged && (screenOK != lastScreenGranted || axOK != lastAXGranted) {
-            onPermissionChanged?()
-        }
+        let changed = (screenOK != lastScreenGranted || axOK != lastAXGranted)
         lastScreenGranted = screenOK
         lastAXGranted = axOK
+        updateUI(screenOK: screenOK, axOK: axOK)
+
+        if changed {
+            onPermissionChanged?()
+            let completedActivePane = settingsDock.isDockVisible && (
+                (settingsDock.activePane == .screenRecording && screenOK && !axOK) ||
+                (settingsDock.activePane == .accessibility && axOK && !screenOK)
+            )
+            if (screenOK && axOK) || completedActivePane {
+                prefersAccessoryMode = false
+                settingsDock.stopAndHide()
+                presentChecklistWindow()
+            }
+        }
     }
 
     private func updateUI(screenOK: Bool, axOK: Bool) {
-        screenDot.color = screenOK ? .systemGreen : .systemOrange
-        screenPill.title = screenOK ? "已开启" : "去开启"
-        screenPill.style = screenOK ? .grantedBadge : .subtleButton
-        relaunchPill.isHidden = screenOK
+        screenRow.actionPill.title = screenOK ? "✓ 已开启" : "允许"
+        screenRow.actionPill.style = screenOK ? .grantedBadge : .primaryButton
 
-        axDot.color = axOK ? .systemGreen : NSColor.secondaryLabelColor.withAlphaComponent(0.45)
-        axPill.title = axOK ? "已开启" : "去开启"
-        axPill.style = axOK ? .grantedBadge : .subtleButton
+        axRow.actionPill.title = axOK ? "✓ 已开启" : "允许"
+        axRow.actionPill.style = axOK ? .grantedBadge : (screenOK ? .primaryButton : .subtleButton)
+
+        relaunchPill.isHidden = screenOK
+        donePill.style = (screenOK && axOK) ? .primaryButton : .subtleButton
     }
 
     private func openPane(_ pane: PermissionPane) {
+        prefersAccessoryMode = true
         if let url = pane.settingsURL { NSWorkspace.shared.open(url) }
-        settingsDock.startTracking()
+        settingsDock.startTracking(for: pane)
+        if settingsDock.isDockVisible { panel?.orderOut(nil) } else { presentChecklistWindow() }
     }
 
     private func relaunchApp() {
-        settingsDock.stopAndHide()
+        closeAll()
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
         proc.arguments = ["-c", "sleep 0.35 && open \"$1\"", "--", Bundle.main.bundlePath]
@@ -252,9 +276,21 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         NSApp.terminate(nil)
     }
 
-    func windowWillClose(_ notification: Notification) {
+    private func closeAll() {
+        isSessionActive = false
+        prefersAccessoryMode = false
         pollTimer?.invalidate()
         pollTimer = nil
         settingsDock.stopAndHide()
+        panel?.close()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        if !prefersAccessoryMode {
+            isSessionActive = false
+            pollTimer?.invalidate()
+            pollTimer = nil
+            settingsDock.stopAndHide()
+        }
     }
 }

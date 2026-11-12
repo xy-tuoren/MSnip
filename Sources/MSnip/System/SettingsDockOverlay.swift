@@ -2,159 +2,128 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// 吸附在 macOS「系统设置」权限列表正下方的高亮拖拽条视图：
-/// 整条高亮卡片任意位置均可按住直接向上拖入列表（支持 `acceptsFirstMouse` 免点活拖拽）。
-final class SettingsDockBarView: NSView, NSDraggingSource {
-    var onCloseClicked: (() -> Void)?
-    var onDragStateChanged: ((Bool) -> Void)?
+/// ChatGPT 风格的「系统设置」底部拖拽卡片主体视图（468 × 106）
+final class SettingsAccessoryCardView: NSView {
+    var onBackClicked: (() -> Void)? { didSet { backButton.onClick = onBackClicked } }
+    var onCloseClicked: (() -> Void)? { didSet { closeButton.onClick = onCloseClicked } }
+    var onDragStateChanged: ((Bool) -> Void)? { didSet { appRow.onDragStateChanged = onDragStateChanged } }
 
-    private var isHovered = false { didSet { if oldValue != isHovered { needsDisplay = true } } }
-    private var isPressing = false { didSet { if oldValue != isPressing { needsDisplay = true } } }
-    private var mouseDownEvent: NSEvent?
+    private let effectView = NSVisualEffectView()
+    private let borderOverlay = CardHairlineView()
+    private let backButton = CircleIconButton(symbolName: "chevron.left", showRestingFill: true, toolTip: "返回权限列表")
+    private let closeButton = CircleIconButton(symbolName: "xmark", showRestingFill: false, toolTip: "关闭提示")
+    private let promptLabel = NSTextField(labelWithAttributedString: NSAttributedString())
+    private let appRow = DraggableAppRowView(frame: .zero)
 
-    private var closeRect: NSRect {
-        NSRect(x: bounds.width - 28, y: (bounds.height - 18) * 0.5, width: 18, height: 18)
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+
+        effectView.frame = bounds
+        effectView.autoresizingMask = [.width, .height]
+        effectView.material = .popover
+        effectView.blendingMode = .behindWindow
+        effectView.state = .active
+        effectView.wantsLayer = true
+        effectView.layer?.cornerRadius = 13
+        effectView.layer?.cornerCurve = .continuous
+        effectView.layer?.masksToBounds = true
+        addSubview(effectView)
+
+        borderOverlay.frame = bounds
+        borderOverlay.autoresizingMask = [.width, .height]
+        addSubview(borderOverlay)
+
+        promptLabel.translatesAutoresizingMaskIntoConstraints = false
+        promptLabel.lineBreakMode = .byTruncatingTail
+
+        effectView.addSubview(backButton)
+        effectView.addSubview(promptLabel)
+        effectView.addSubview(closeButton)
+        effectView.addSubview(appRow)
+
+        NSLayoutConstraint.activate([
+            backButton.leadingAnchor.constraint(equalTo: effectView.leadingAnchor, constant: 16),
+            backButton.topAnchor.constraint(equalTo: effectView.topAnchor, constant: 13),
+            backButton.widthAnchor.constraint(equalToConstant: 24),
+            backButton.heightAnchor.constraint(equalToConstant: 24),
+
+            promptLabel.leadingAnchor.constraint(equalTo: backButton.trailingAnchor, constant: 10),
+            promptLabel.centerYAnchor.constraint(equalTo: backButton.centerYAnchor),
+            promptLabel.trailingAnchor.constraint(lessThanOrEqualTo: closeButton.leadingAnchor, constant: -8),
+
+            closeButton.trailingAnchor.constraint(equalTo: effectView.trailingAnchor, constant: -13),
+            closeButton.centerYAnchor.constraint(equalTo: backButton.centerYAnchor),
+            closeButton.widthAnchor.constraint(equalToConstant: 22),
+            closeButton.heightAnchor.constraint(equalToConstant: 22),
+
+            appRow.leadingAnchor.constraint(equalTo: effectView.leadingAnchor, constant: 16),
+            appRow.trailingAnchor.constraint(equalTo: effectView.trailingAnchor, constant: -16),
+            appRow.bottomAnchor.constraint(equalTo: effectView.bottomAnchor, constant: -14),
+            appRow.heightAnchor.constraint(equalToConstant: 44)
+        ])
+
+        setPane(.screenRecording)
     }
 
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-    override var mouseDownCanMoveWindow: Bool { false }
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
 
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach { removeTrackingArea($0) }
-        addTrackingArea(NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        ))
-    }
-
-    override func mouseEntered(with event: NSEvent) { isHovered = true; updateCursor(for: event) }
-    override func mouseMoved(with event: NSEvent) { updateCursor(for: event) }
-    override func mouseExited(with event: NSEvent) {
-        isHovered = false; isPressing = false; NSCursor.arrow.set()
-    }
-
-    private func updateCursor(for event: NSEvent) {
-        let pt = convert(event.locationInWindow, from: nil)
-        if closeRect.insetBy(dx: -4, dy: -4).contains(pt) {
-            NSCursor.arrow.set()
-        } else {
-            (isPressing ? NSCursor.closedHand : NSCursor.openHand).set()
-        }
-    }
-
-    override func mouseDown(with event: NSEvent) {
-        let pt = convert(event.locationInWindow, from: nil)
-        if closeRect.insetBy(dx: -4, dy: -4).contains(pt) { onCloseClicked?(); return }
-        isPressing = true
-        mouseDownEvent = event
-        NSCursor.closedHand.set()
-    }
-
-    override func mouseDragged(with event: NSEvent) {
-        guard let startEvent = mouseDownEvent else { return }
-        let p0 = convert(startEvent.locationInWindow, from: nil)
-        let p1 = convert(event.locationInWindow, from: nil)
-        guard hypot(p1.x - p0.x, p1.y - p0.y) >= 2.0 else { return }
-
-        mouseDownEvent = nil
-        let item = NSDraggingItem(pasteboardWriter: Bundle.main.bundleURL as NSURL)
-        let sz = NSSize(width: 54, height: 54)
-        item.setDraggingFrame(
-            NSRect(x: p1.x - sz.width * 0.5, y: p1.y - sz.height * 0.5, width: sz.width, height: sz.height),
-            contents: appIcon(size: sz)
-        )
-        onDragStateChanged?(true)
-        let session = beginDraggingSession(with: [item], event: startEvent, source: self)
-        session.animatesToStartingPositionsOnCancelOrFail = true
-    }
-
-    override func mouseUp(with event: NSEvent) {
-        isPressing = false; mouseDownEvent = nil; updateCursor(for: event)
-    }
-
-    func draggingSession(_ session: NSDraggingSession, sourceOperationMaskFor context: NSDraggingContext) -> NSDragOperation {
-        context == .outsideApplication ? [.copy, .link, .generic] : []
-    }
-
-    func draggingSession(_ session: NSDraggingSession, endedAt screenPoint: NSPoint, operation: NSDragOperation) {
-        isPressing = false
-        onDragStateChanged?(false)
-    }
-
-    override func draw(_ dirtyRect: NSRect) {
-        let cardRect = bounds.insetBy(dx: 1.5, dy: 1.5)
-        let path = NSBezierPath(roundedRect: cardRect, xRadius: 12, yRadius: 12)
-
-        let bg = isHovered
-            ? NSColor(srgbRed: 0.12, green: 0.20, blue: 0.32, alpha: 0.96)
-            : NSColor(srgbRed: 0.11, green: 0.16, blue: 0.25, alpha: 0.95)
-        bg.setFill()
-        path.fill()
-
-        let glow = NSColor(srgbRed: 0.22, green: 0.74, blue: 0.98, alpha: isHovered ? 1.0 : 0.85)
-        glow.setStroke()
-        path.lineWidth = isHovered ? 2.0 : 1.5
-        path.stroke()
-
-        let iconSide: CGFloat = 38
-        let iconRect = NSRect(x: 14, y: (bounds.height - iconSide) * 0.5, width: iconSide, height: iconSide)
-        appIcon(size: iconRect.size).draw(in: iconRect)
-
-        let textX = iconRect.maxX + 12
-        let title = "按住此处向上拖入列表即可添加 MSnip" as NSString
-        let titleAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
-            .foregroundColor: NSColor.white
+    func setPane(_ pane: PermissionPane) {
+        let permName = (pane == .screenRecording) ? "屏幕录制" : "辅助功能"
+        let reg: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .regular),
+            .foregroundColor: NSColor.secondaryLabelColor
         ]
-        let tSz = title.size(withAttributes: titleAttrs)
-
-        let sub = "直接拖到上方权限框内松手 · 自动勾选开启" as NSString
-        let subAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11, weight: .regular),
-            .foregroundColor: NSColor(srgbRed: 0.68, green: 0.84, blue: 0.96, alpha: 0.92)
+        let bold: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold),
+            .foregroundColor: NSColor.labelColor
         ]
-        let sSz = sub.size(withAttributes: subAttrs)
-
-        let baseY = (bounds.height - (tSz.height + 2 + sSz.height)) * 0.5
-        sub.draw(at: NSPoint(x: textX, y: round(baseY)), withAttributes: subAttrs)
-        title.draw(at: NSPoint(x: textX, y: round(baseY + sSz.height + 2)), withAttributes: titleAttrs)
-
-        let pillW: CGFloat = 58, pillH: CGFloat = 24
-        let pillRect = NSRect(x: bounds.width - pillW - 36, y: (bounds.height - pillH) * 0.5, width: pillW, height: pillH)
-        glow.withAlphaComponent(0.22).setFill()
-        NSBezierPath(roundedRect: pillRect, xRadius: 6.5, yRadius: 6.5).fill()
-
-        let badge = "↑ 拖入" as NSString
-        let bAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: glow]
-        let bSz = badge.size(withAttributes: bAttrs)
-        badge.draw(at: NSPoint(x: pillRect.minX + (pillW - bSz.width) * 0.5, y: pillRect.minY + (pillH - bSz.height) * 0.5), withAttributes: bAttrs)
-
-        let xStr = "✕" as NSString
-        let xAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11, weight: .medium), .foregroundColor: NSColor.white.withAlphaComponent(0.45)]
-        let xSz = xStr.size(withAttributes: xAttrs)
-        xStr.draw(at: NSPoint(x: closeRect.midX - xSz.width * 0.5, y: closeRect.midY - xSz.height * 0.5), withAttributes: xAttrs)
-    }
-
-    private func appIcon(size: NSSize) -> NSImage {
-        let icon = (NSApp.applicationIconImage?.copy() as? NSImage) ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
-        icon.size = size
-        return icon
+        let str = NSMutableAttributedString(string: "将 ", attributes: reg)
+        str.append(NSAttributedString(string: "MSnip", attributes: bold))
+        str.append(NSAttributedString(string: " 拖到上方列表中以允许", attributes: reg))
+        str.append(NSAttributedString(string: permName, attributes: bold))
+        promptLabel.attributedStringValue = str
     }
 }
 
-/// 实时追踪「系统设置」窗口几何，将高亮拖拽条精准悬浮吸附在权限列表正下方
+private final class CardHairlineView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func draw(_ dirtyRect: NSRect) {
+        let isDark = effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        let r = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let path = NSBezierPath(roundedRect: r, xRadius: 13, yRadius: 13)
+        let stroke = isDark
+            ? NSColor.white.withAlphaComponent(0.16)
+            : NSColor(srgbRed: 0.84, green: 0.84, blue: 0.87, alpha: 0.95)
+        stroke.setStroke()
+        path.lineWidth = 1.0
+        path.stroke()
+    }
+}
+
+/// 复刻 ChatGPT `SystemSettingsAccessoryWindow` + `ArrowWindow`：
+/// 自动吸附在「系统设置」右侧详情面板底部（录屏页精准停靠在「录屏与系统录音」列表正下方），配蓝白弹跳上指箭头。
 @MainActor
 final class SettingsDockOverlay {
+    var onBackRequested: (() -> Void)?
+    var onVisibilityChanged: ((Bool) -> Void)?
+
     private var panel: NSPanel?
+    private var arrowPanel: NSPanel?
+    private var cardView: SettingsAccessoryCardView?
+    private var arrowView: HintArrowView?
     private var trackTimer: Timer?
     private var manuallyDismissed = false
+    private(set) var activePane: PermissionPane = .screenRecording
 
-    func startTracking() {
+    var isDockVisible: Bool { panel?.isVisible == true }
+
+    func startTracking(for pane: PermissionPane) {
+        activePane = pane
         manuallyDismissed = false
-        ensurePanel()
+        ensurePanels()
+        cardView?.setPane(pane)
         syncPosition()
         guard trackTimer == nil else { return }
         let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
@@ -167,12 +136,12 @@ final class SettingsDockOverlay {
     func stopAndHide() {
         trackTimer?.invalidate()
         trackTimer = nil
-        panel?.orderOut(nil)
+        hidePanels()
     }
 
-    private func ensurePanel() {
+    private func ensurePanels() {
         guard panel == nil else { return }
-        let size = NSSize(width: 444, height: 58)
+        let size = NSSize(width: 467, height: 108)
         let p = NSPanel(
             contentRect: NSRect(origin: .zero, size: size),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -187,24 +156,77 @@ final class SettingsDockOverlay {
         p.backgroundColor = .clear
         p.hasShadow = true
 
-        let bar = SettingsDockBarView(frame: NSRect(origin: .zero, size: size))
-        bar.onCloseClicked = { [weak self] in
+        let card = SettingsAccessoryCardView(frame: NSRect(origin: .zero, size: size))
+        card.onBackClicked = { [weak self] in
             self?.manuallyDismissed = true
-            self?.panel?.orderOut(nil)
+            self?.hidePanels()
+            self?.onBackRequested?()
         }
-        bar.onDragStateChanged = { [weak p] dragging in p?.alphaValue = dragging ? 0.28 : 1.0 }
-        p.contentView = bar
-        panel = p
+        card.onCloseClicked = { [weak self] in
+            self?.manuallyDismissed = true
+            self?.hidePanels()
+            self?.onBackRequested?()
+        }
+        card.onDragStateChanged = { [weak self] dragging in
+            self?.arrowPanel?.animator().alphaValue = dragging ? 0.0 : 1.0
+        }
+        p.contentView = card
+
+        let arrowSize = NSSize(width: 64, height: 56)
+        let ap = NSPanel(
+            contentRect: NSRect(origin: .zero, size: arrowSize),
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        ap.level = .floating
+        ap.isFloatingPanel = true
+        ap.hidesOnDeactivate = false
+        ap.isReleasedWhenClosed = false
+        ap.isOpaque = false
+        ap.backgroundColor = .clear
+        ap.hasShadow = false
+        ap.ignoresMouseEvents = true
+
+        let av = HintArrowView(frame: NSRect(origin: .zero, size: arrowSize))
+        ap.contentView = av
+
+        self.panel = p
+        self.arrowPanel = ap
+        self.cardView = card
+        self.arrowView = av
+    }
+
+    private func hidePanels() {
+        let wasVisible = panel?.isVisible == true
+        if let p = panel, let ap = arrowPanel, p.childWindows?.contains(ap) == true {
+            p.removeChildWindow(ap)
+        }
+        arrowPanel?.orderOut(nil)
+        panel?.orderOut(nil)
+        if wasVisible { onVisibilityChanged?(false) }
     }
 
     private func syncPosition() {
-        guard !manuallyDismissed, let panel else { return }
+        guard !manuallyDismissed, let panel, let arrowPanel else { return }
         guard let origin = locateSystemSettingsDockOrigin(barSize: panel.frame.size) else {
-            panel.orderOut(nil)
+            hidePanels()
             return
         }
-        if panel.frame.origin != origin { panel.setFrameOrigin(origin) }
-        if !panel.isVisible { panel.orderFrontRegardless() }
+        let arrowOrigin = NSPoint(x: origin.x + 42 - 32, y: origin.y + panel.frame.height - 14)
+        if panel.frame.origin != origin {
+            panel.setFrameOrigin(origin)
+            arrowPanel.setFrameOrigin(arrowOrigin)
+        }
+        if !panel.isVisible {
+            arrowPanel.setFrameOrigin(arrowOrigin)
+            panel.orderFrontRegardless()
+            if panel.childWindows?.contains(arrowPanel) != true {
+                panel.addChildWindow(arrowPanel, ordered: .above)
+            }
+            arrowView?.startBounceAnimation()
+            onVisibilityChanged?(true)
+        }
     }
 
     private func locateSystemSettingsDockOrigin(barSize: NSSize) -> NSPoint? {
@@ -223,9 +245,17 @@ final class SettingsDockOverlay {
 
             let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
             if (owner == "系统设置" || owner == "System Settings" || owner == "System Preferences"),
-               cgBounds.width >= 440, cgBounds.height >= 360 {
-                let barX = cgBounds.width >= 680 ? (cgBounds.maxX - barSize.width - 38) : (cgBounds.midX - barSize.width * 0.5)
-                let barQuartzRect = CGRect(x: barX, y: cgBounds.maxY - 89 - barSize.height, width: barSize.width, height: barSize.height)
+               cgBounds.width >= 480, cgBounds.height >= 360 {
+                let barX = cgBounds.width >= 660 ? (cgBounds.maxX - barSize.width - 20) : (cgBounds.midX - barSize.width * 0.5)
+                let topQuartzY: CGFloat
+                switch activePane {
+                case .screenRecording:
+                    // 停靠在上方「录屏与系统录音」列表正下方，完整遮住易混淆的「仅系统录音」区域
+                    topQuartzY = min(cgBounds.maxY - barSize.height - 14, max(cgBounds.minY + 340, cgBounds.minY + 471))
+                case .accessibility:
+                    topQuartzY = cgBounds.maxY - barSize.height - 14
+                }
+                let barQuartzRect = CGRect(x: barX, y: topQuartzY, width: barSize.width, height: barSize.height)
                 if occludersAbove.contains(where: { !$0.intersection(barQuartzRect).isNull }) { return nil }
                 return NSPoint(x: round(barX), y: round(primaryH - barQuartzRect.maxY))
             }
