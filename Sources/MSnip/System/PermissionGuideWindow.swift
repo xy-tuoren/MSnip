@@ -25,6 +25,7 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
     private var panel: NSPanel?
     private var pollTimer: Timer?
+    private let settingsDock = SettingsDockOverlay()
     private var lastScreenGranted = false
     private var lastAXGranted = false
 
@@ -47,6 +48,9 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
         if let targetPane = pane, let url = targetPane.settingsURL {
             NSWorkspace.shared.open(url)
+        }
+        if !CGPreflightScreenCaptureAccess() || !AXIsProcessTrusted() {
+            settingsDock.startTracking()
         }
     }
 
@@ -213,6 +217,9 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         let axOK = AXIsProcessTrusted()
         updateUI(screenOK: screenOK, axOK: axOK)
 
+        if screenOK && axOK {
+            settingsDock.stopAndHide()
+        }
         if notifyIfChanged && (screenOK != lastScreenGranted || axOK != lastAXGranted) {
             onPermissionChanged?()
         }
@@ -233,9 +240,11 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
     private func openPane(_ pane: PermissionPane) {
         if let url = pane.settingsURL { NSWorkspace.shared.open(url) }
+        settingsDock.startTracking()
     }
 
     private func relaunchApp() {
+        settingsDock.stopAndHide()
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/bin/sh")
         proc.arguments = ["-c", "sleep 0.35 && open \"$1\"", "--", Bundle.main.bundlePath]
@@ -246,5 +255,6 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         pollTimer?.invalidate()
         pollTimer = nil
+        settingsDock.stopAndHide()
     }
 }

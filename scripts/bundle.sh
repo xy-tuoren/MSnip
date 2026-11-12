@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 APP_NAME="MSnip"
-VERSION="0.4.0"
+VERSION="0.5.0"
 BUNDLE_ID="top.xy.msnip"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
