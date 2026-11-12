@@ -208,7 +208,7 @@ private final class PinContentView: NSView {
         let path = NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4)
         NSGraphicsContext.saveGraphicsState()
         path.addClip()
-        image.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0)
+        image.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
         NSGraphicsContext.restoreGraphicsState()
 
         let border = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 4, yRadius: 4)

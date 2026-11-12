@@ -101,8 +101,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        // 1) 绘制全屏冻结底图
-        frozenNSImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0)
+        // 1) 绘制全屏冻结底图（isFlipped=true 下必须传 respectFlipped: true 防止画面倒置）
+        frozenNSImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
 
         // 2) 绘制暗化遮罩（选区内部镂空保留 100% 原始亮度）
         ctx.saveGState()

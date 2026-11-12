@@ -1,3 +1,4 @@
+import AppKit
 import CoreGraphics
 import Foundation
 import MSnipCore
@@ -121,8 +122,48 @@ private func testRetinaExportOrientationAndAnnotationBaking() {
     check(lowerGreen.count >= 3 && lowerGreen[1] > 0.8 && lowerGreen[2] < 0.2, "图像下半部应保持绿色不颠倒")
 }
 
+private func testFlippedNSViewDrawsCGImageUpright() {
+    // 回归测试：验证在 isFlipped=true 的 NSView 中使用 respectFlipped=true 绘制截屏图像不会上下倒置或镜像
+    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+    let ctx = CGContext(
+        data: nil, width: 20, height: 20, bitsPerComponent: 8, bytesPerRow: 80,
+        space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    // 左上角 (x: 0..<10, CG y: 10..<20) 涂纯红，其余涂纯黑
+    ctx.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: 20, height: 20))
+    ctx.setFillColor(CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 10, width: 10, height: 10))
+    let cg = ctx.makeImage()!
+
+    final class ProbeFlippedView: NSView {
+        let nsImage: NSImage
+        init(cg: CGImage) {
+            self.nsImage = NSImage(cgImage: cg, size: NSSize(width: 20, height: 20))
+            super.init(frame: NSRect(x: 0, y: 0, width: 20, height: 20))
+        }
+        @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+        override var isFlipped: Bool { true }
+        override func draw(_ dirtyRect: NSRect) {
+            nsImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
+        }
+    }
+
+    let view = ProbeFlippedView(cg: cg)
+    let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds)!
+    view.cacheDisplay(in: view.bounds, to: rep)
+
+    let topLeft = rep.colorAt(x: 3, y: 3)!
+    let bottomLeft = rep.colorAt(x: 3, y: 17)!
+    let topRight = rep.colorAt(x: 17, y: 3)!
+    check(topLeft.redComponent > 0.8 && topLeft.blueComponent < 0.2, "左上角像素应保持红色（不上下倒置）")
+    check(bottomLeft.redComponent < 0.2, "左下角像素应保持黑色")
+    check(topRight.redComponent < 0.2, "右上角像素应保持黑色（不左右镜像）")
+}
+
 testGeometry()
 testAnnotationsAndHitTesting()
 testDocumentUndoRedoAndDelete()
 testRetinaExportOrientationAndAnnotationBaking()
+testFlippedNSViewDrawsCGImageUpright()
 print("✅ All \(passedCount) assertions in MSnipTests passed!")
