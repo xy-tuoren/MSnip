@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check file line count limit (<= 300 lines)
+        run: |
+          while IFS= read -r f; do
+            n=$(wc -l < "$f" | tr -d ' ')
+            if [ "$n" -gt 300 ]; then
+              echo "::error file=$f::File exceeds 300 lines ($n lines)"
+              exit 1
+            fi
+          done < <(find Sources -name '*.swift')
+
+      - name: Build Debug & Run Unit Tests
+        run: |
+          swift build
+          swift run MSnipTests
+
+      - name: Package Release MSnip.app
+        run: bash scripts/bundle.sh
