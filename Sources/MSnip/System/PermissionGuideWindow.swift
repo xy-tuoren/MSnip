@@ -3,20 +3,6 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
-enum PermissionPane {
-    case screenRecording
-    case accessibility
-
-    var settingsURL: URL? {
-        switch self {
-        case .screenRecording:
-            return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
-        case .accessibility:
-            return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
-        }
-    }
-}
-
 /// ChatGPT 风格权限引导主控制器：
 /// 1. 独立权限总览面板：双圆角卡片（屏幕录制 / 辅助功能），主次按钮随授权进度自动切换；
 /// 2. 点击「允许」跳转「系统设置」后，无缝切换为吸附在列表下方的 ChatGPT 拖拽条与蓝白弹跳箭头。
@@ -262,9 +248,21 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
     private func openPane(_ pane: PermissionPane) {
         prefersAccessoryMode = true
+        panel?.orderOut(nil)
         if let url = pane.settingsURL { NSWorkspace.shared.open(url) }
+        activateSystemSettings()
         settingsDock.startTracking(for: pane)
-        if settingsDock.isDockVisible { panel?.orderOut(nil) } else { presentChecklistWindow() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.activateSystemSettings() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in
+            guard let self, self.isSessionActive, self.prefersAccessoryMode, !self.settingsDock.isDockVisible else { return }
+            self.presentChecklistWindow()
+        }
+    }
+
+    private func activateSystemSettings() {
+        for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences") {
+            app.activate(options: [.activateAllWindows])
+        }
     }
 
     private func relaunchApp() {

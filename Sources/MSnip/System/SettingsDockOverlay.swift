@@ -2,7 +2,21 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// ChatGPT 风格的「系统设置」底部拖拽卡片主体视图（468 × 106）
+enum PermissionPane {
+    case screenRecording
+    case accessibility
+
+    var settingsURL: URL? {
+        switch self {
+        case .screenRecording:
+            return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture")
+        case .accessibility:
+            return URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")
+        }
+    }
+}
+
+/// ChatGPT 风格的「系统设置」底部拖拽卡片主体视图（467 × 108）
 final class SettingsAccessoryCardView: NSView {
     var onBackClicked: (() -> Void)? { didSet { backButton.onClick = onBackClicked } }
     var onCloseClicked: (() -> Void)? { didSet { closeButton.onClick = onCloseClicked } }
