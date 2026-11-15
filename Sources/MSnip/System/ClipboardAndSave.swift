@@ -4,7 +4,7 @@ import Foundation
 import MSnipCore
 import UniformTypeIdentifiers
 
-/// 剪贴板读写与 PNG 文件导出工具
+/// 剪贴板读写、临时拖拽文件生成与 PNG / 动图导出工具
 enum ClipboardAndSave {
     /// 将纯文本（如色值、坐标、OCR 识别结果）写入系统剪贴板
     static func copyText(_ text: String) {
@@ -17,6 +17,16 @@ enum ClipboardAndSave {
     static func readColorFromClipboard() -> RGBAColor? {
         guard let str = NSPasteboard.general.string(forType: .string) else { return nil }
         return RGBAColor.parseColorString(str)
+    }
+
+    /// 将 `CGImage` 编码为保留逻辑 DPI 尺寸的 PNG 数据
+    static func encodePNG(cgImage: CGImage, scaleFactor: CGFloat) -> Data? {
+        let rep = NSBitmapImageRep(cgImage: cgImage)
+        rep.size = NSSize(
+            width: CGFloat(cgImage.width) / max(1.0, scaleFactor),
+            height: CGFloat(cgImage.height) / max(1.0, scaleFactor)
+        )
+        return rep.representation(using: .png, properties: [:])
     }
 
     /// 将 Retina 高清 `CGImage` 写入系统剪贴板（保留物理像素分辨率与逻辑点尺寸）
@@ -37,6 +47,41 @@ enum ClipboardAndSave {
             pb.setData(pngData, forType: .png)
         }
         pb.writeObjects([nsImage])
+    }
+
+    /// 将本地媒体文件（如录制的 `.gif` / `.mp4`）写入剪贴板，支持直接粘贴到微信/飞书/Slack/Finder
+    static func copyMediaFileToClipboard(fileURL: URL) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.writeObjects([fileURL as NSURL])
+    }
+
+    /// 生成供贴图拖拽直投外部应用（微信/飞书/浏览器/Finder）的临时高清 PNG 文件（自动清理超过 2 小时的旧临时项）
+    static func writeTempPNGFile(cgImage: CGImage, scaleFactor: CGFloat, prefix: String = "MSnip-Pin") -> URL? {
+        guard let pngData = encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) else { return nil }
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent("MSnipDrag", isDirectory: true)
+        try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        if let urls = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) {
+            let cutoff = Date().addingTimeInterval(-7200)
+            for u in urls {
+                if let mtime = (try? u.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+                   mtime < cutoff {
+                    try? fm.removeItem(at: u)
+                }
+            }
+        }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HHmmss-SSS"
+        let outURL = dir.appendingPathComponent("\(prefix)-\(formatter.string(from: Date())).png")
+        do {
+            try pngData.write(to: outURL, options: .atomic)
+            return outURL
+        } catch {
+            return nil
+        }
     }
 
     /// 从剪贴板读取图片（用于桌面按 `⌘2` 触发剪贴板贴图）
@@ -60,12 +105,7 @@ enum ClipboardAndSave {
         scaleFactor: CGFloat,
         initialDirectory: String?
     ) -> String? {
-        let rep = NSBitmapImageRep(cgImage: cgImage)
-        rep.size = NSSize(
-            width: CGFloat(cgImage.width) / max(1.0, scaleFactor),
-            height: CGFloat(cgImage.height) / max(1.0, scaleFactor)
-        )
-        guard let pngData = rep.representation(using: .png, properties: [:]) else {
+        guard let pngData = encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) else {
             return nil
         }
 

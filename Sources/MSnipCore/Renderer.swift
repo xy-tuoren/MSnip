@@ -138,10 +138,43 @@ public enum AnnotationRenderer {
             }
 
         case .pen(let pts):
-            drawSmoothStroke(points: pts, in: ctx)
+            AnnotationEffectsRenderer.drawSmoothStroke(points: pts, in: ctx)
+
+        case .highlighter(let pts):
+            AnnotationEffectsRenderer.drawHighlighter(
+                points: pts,
+                style: item.style,
+                in: ctx,
+                sampler: sampler,
+                scale: imageScale
+            )
+
+        case .step(let center, let tail, let num):
+            AnnotationEffectsRenderer.drawStepBadge(
+                center: center,
+                tail: tail,
+                number: num,
+                style: item.style,
+                in: ctx
+            )
 
         case .mosaic(let rect):
-            drawMosaic(rect: rect, blockSize: item.style.mosaicBlockSize, in: ctx, sampler: sampler, scale: imageScale)
+            AnnotationEffectsRenderer.drawMosaic(
+                rect: rect,
+                blockSize: item.style.mosaicBlockSize,
+                in: ctx,
+                sampler: sampler,
+                scale: imageScale
+            )
+
+        case .gaussianBlur(let rect):
+            AnnotationEffectsRenderer.drawGaussianBlur(
+                rect: rect,
+                blockSize: item.style.mosaicBlockSize,
+                in: ctx,
+                sampler: sampler,
+                scale: imageScale
+            )
 
         case .text(let origin, let content, _):
             drawText(content, at: origin, style: item.style, in: ctx)
@@ -149,13 +182,14 @@ public enum AnnotationRenderer {
         ctx.restoreGState()
     }
 
-    /// 将选区原图与标注合成为全分辨率 Retina `CGImage`（用于复制、贴图与另存为 PNG，支持圆角裁切）
+    /// 将选区原图与标注合成为全分辨率 Retina `CGImage`（支持圆角裁切与一键美观渐变衬底）
     public static func bakeExportImage(
         sampler: PixelSampler,
         selection: CGRect,
         imageScale: CGFloat,
         annotations: [Annotation],
-        cornerRadiusPt: CGFloat = 0
+        cornerRadiusPt: CGFloat = 0,
+        backdropStyle: BackdropStyle = .none
     ) -> CGImage? {
         let pxRect = CGRect(
             x: round(selection.minX * imageScale),
@@ -183,7 +217,7 @@ public enum AnnotationRenderer {
             return nil
         }
 
-        if cornerRadiusPt > 0.5 {
+        if backdropStyle == .none, cornerRadiusPt > 0.5 {
             let rPx = min(cornerRadiusPt * imageScale, CGFloat(min(outW, outH)) * 0.5)
             let clipPath = CGPath(roundedRect: CGRect(x: 0, y: 0, width: outW, height: outH), cornerWidth: rPx, cornerHeight: rPx, transform: nil)
             ctx.addPath(clipPath)
@@ -207,56 +241,16 @@ public enum AnnotationRenderer {
             imageScale: imageScale,
             clipRect: selection
         )
-        return ctx.makeImage()
+        guard let rawCard = ctx.makeImage() else { return nil }
+        return BackdropBeautifier.apply(
+            to: rawCard,
+            style: backdropStyle,
+            imageScale: imageScale,
+            innerCornerRadiusPt: cornerRadiusPt
+        )
     }
 
-    // MARK: - Private Helpers
-
-    private static func drawSmoothStroke(points: [CGPoint], in ctx: CGContext) {
-        guard points.count >= 2 else { return }
-        ctx.beginPath()
-        ctx.move(to: points[0])
-        if points.count == 2 {
-            ctx.addLine(to: points[1])
-        } else {
-            for i in 1..<(points.count - 1) {
-                let mid = CGPoint(
-                    x: (points[i].x + points[i + 1].x) * 0.5,
-                    y: (points[i].y + points[i + 1].y) * 0.5
-                )
-                ctx.addQuadCurve(to: mid, control: points[i])
-            }
-            if let last = points.last {
-                ctx.addLine(to: last)
-            }
-        }
-        ctx.strokePath()
-    }
-
-    private static func drawMosaic(
-        rect: CGRect,
-        blockSize: CGFloat,
-        in ctx: CGContext,
-        sampler: PixelSampler?,
-        scale: CGFloat
-    ) {
-        guard let sampler else { return }
-        let step = max(4.0, blockSize)
-        var y = rect.minY
-        while y < rect.maxY {
-            let bh = min(step, rect.maxY - y)
-            var x = rect.minX
-            while x < rect.maxX {
-                let bw = min(step, rect.maxX - x)
-                let sampleX = Int(((x + bw * 0.5) * scale).rounded())
-                let sampleY = Int(((y + bh * 0.5) * scale).rounded())
-                ctx.setFillColor(sampler.sampleColor(px: sampleX, py: sampleY))
-                ctx.fill(CGRect(x: x, y: y, width: bw + 0.4, height: bh + 0.4))
-                x += step
-            }
-            y += step
-        }
-    }
+    // MARK: - Private Text Helpers
 
     private static func drawText(_ text: String, at origin: CGPoint, style: AnnotationStyle, in ctx: CGContext) {
         let prev = NSGraphicsContext.current

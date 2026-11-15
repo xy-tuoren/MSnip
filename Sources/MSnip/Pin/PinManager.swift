@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 管理屏幕上全部活动贴图窗口（上限 20 张，静止时零重绘）
+/// 管理屏幕上全部活动贴图窗口（上限 20 张，支持鼠标穿透状态统计与一键恢复，静止时零重绘）
 @MainActor
 final class PinManager {
     static let maxPins = 20
@@ -15,6 +15,7 @@ final class PinManager {
     private var windows: [PinWindow] = []
 
     var count: Int { windows.count }
+    var clickThroughCount: Int { windows.filter(\.isClickThrough).count }
 
     /// 从选区渲染出的高清 `CGImage` 创建贴图并原位钉在屏幕上
     func pin(cgImage: CGImage, scaleFactor: CGFloat, topLeftOnScreen: CGPoint?, screen: NSScreen) {
@@ -35,6 +36,9 @@ final class PinManager {
         win.onCloseAll = { [weak self] in
             self?.closeAll()
         }
+        win.onStateChanged = { [weak self] in
+            if let self { self.onCountChanged?(self.windows.count) }
+        }
         win.onSavePNG = { [weak self] img, scale in
             self?.onSaveImage?(img, scale)
         }
@@ -45,6 +49,19 @@ final class PinManager {
         windows.append(win)
         win.orderFrontRegardless()
         onCountChanged?(windows.count)
+    }
+
+    /// 一键解除所有处于幽灵鼠标穿透状态的贴图，恢复正常拖拽与右键交互
+    func restoreAllClickThroughPins() {
+        var restored = 0
+        for win in windows where win.isClickThrough {
+            win.setClickThrough(false)
+            restored += 1
+        }
+        if restored > 0 {
+            ToastHUD.show(message: "已解除 \(restored) 张贴图的鼠标穿透状态")
+            onCountChanged?(windows.count)
+        }
     }
 
     /// 从剪贴板读取图片或色值文本（如 `#3388FF`）并居中贴在鼠标当前所在的显示器上
@@ -75,7 +92,6 @@ final class PinManager {
             return false
         }
 
-        // 连续从剪贴板贴多张时轻微错开偏移，避免完全重叠
         let cascade = CGFloat((windows.count % 6) * 22)
         let visible = screen.visibleFrame
         let w = CGFloat(cgImage.width) / max(1.0, scale)
@@ -92,7 +108,7 @@ final class PinManager {
         let current = windows
         windows.removeAll()
         for w in current {
-            w.orderOut(nil)
+            w.closePin()
         }
         onCountChanged?(0)
     }

@@ -1,7 +1,8 @@
 import Carbon
 import Foundation
+import MSnipCore
 
-/// 基于 Carbon `RegisterEventHotKey` 的零开销全局快捷键管理器（无需申请辅助功能权限）
+/// 基于 Carbon `RegisterEventHotKey` 的零开销全局快捷键管理器（支持预设与用户自由录制组合键）
 final class HotKeyManager {
     private static let signature: OSType = 0x4D53_4E50 // 'MSNP'
     private static let captureHotKeyID: UInt32 = 1
@@ -29,57 +30,27 @@ final class HotKeyManager {
     }
 
     /// 根据当前配置注册或卸载全局热键
-    func apply(preset: HotKeyPreset, enabled: Bool) {
+    func apply(config: AppConfig) {
         unregisterAll()
-        guard enabled else { return }
+        guard config.hotKeysEnabled else { return }
 
-        let cap = preset.captureShortcut
+        let cap = config.activeCaptureCombo
         let capID = EventHotKeyID(signature: Self.signature, id: Self.captureHotKeyID)
-        RegisterEventHotKey(
-            cap.keyCode,
-            cap.modifiers,
-            capID,
-            GetApplicationEventTarget(),
-            0,
-            &captureRef
-        )
+        RegisterEventHotKey(cap.keyCode, cap.carbonModifiers, capID, GetApplicationEventTarget(), 0, &captureRef)
 
-        let pin = preset.pinShortcut
+        let pin = config.activePinCombo
         let pinID = EventHotKeyID(signature: Self.signature, id: Self.pinHotKeyID)
-        RegisterEventHotKey(
-            pin.keyCode,
-            pin.modifiers,
-            pinID,
-            GetApplicationEventTarget(),
-            0,
-            &pinRef
-        )
+        RegisterEventHotKey(pin.keyCode, pin.carbonModifiers, pinID, GetApplicationEventTarget(), 0, &pinRef)
 
-        let ocr = preset.ocrShortcut
+        let ocr = config.activeOCRCombo
         let ocrID = EventHotKeyID(signature: Self.signature, id: Self.ocrHotKeyID)
-        RegisterEventHotKey(
-            ocr.keyCode,
-            ocr.modifiers,
-            ocrID,
-            GetApplicationEventTarget(),
-            0,
-            &ocrRef
-        )
+        RegisterEventHotKey(ocr.keyCode, ocr.carbonModifiers, ocrID, GetApplicationEventTarget(), 0, &ocrRef)
     }
 
     func unregisterAll() {
-        if let ref = captureRef {
-            UnregisterEventHotKey(ref)
-            captureRef = nil
-        }
-        if let ref = pinRef {
-            UnregisterEventHotKey(ref)
-            pinRef = nil
-        }
-        if let ref = ocrRef {
-            UnregisterEventHotKey(ref)
-            ocrRef = nil
-        }
+        if let ref = captureRef { UnregisterEventHotKey(ref); captureRef = nil }
+        if let ref = pinRef { UnregisterEventHotKey(ref); pinRef = nil }
+        if let ref = ocrRef { UnregisterEventHotKey(ref); ocrRef = nil }
     }
 
     private func installCarbonHandler() {

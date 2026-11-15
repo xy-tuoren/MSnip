@@ -18,6 +18,8 @@ final class RegionStreamSampler {
     func start(
         screen: NSScreen,
         localTopLeftRect: CGRect,
+        fps: Int = 20,
+        showsCursor: Bool = false,
         onFrameBackground: @escaping @Sendable (CGImage) -> Void,
         onError: @escaping @MainActor (String) -> Void
     ) {
@@ -56,9 +58,9 @@ final class RegionStreamSampler {
                 cfg.sourceRect = clampedRect
                 cfg.width = max(24, Int((clampedRect.width * scale).rounded()) & ~1)
                 cfg.height = max(32, Int((clampedRect.height * scale).rounded()) & ~1)
-                cfg.minimumFrameInterval = CMTime(value: 1, timescale: 20)
+                cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(5, fps)))
                 cfg.queueDepth = 4
-                cfg.showsCursor = false
+                cfg.showsCursor = showsCursor
                 cfg.capturesAudio = false
 
                 let proxy = StreamOutputProxy(onFrame: onFrameBackground)

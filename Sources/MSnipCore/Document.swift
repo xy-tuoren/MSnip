@@ -17,6 +17,17 @@ public struct AnnotationDocument: Sendable {
     public var canUndo: Bool { !undoStack.isEmpty }
     public var canRedo: Bool { !redoStack.isEmpty }
 
+    /// 计算下一个自增步骤序号（基于当前画布已有的最大序号 + 1，撤销或删除末步后自动复用该序号）
+    public func nextStepNumber() -> Int {
+        var maxNum = 0
+        for item in objects {
+            if case .step(_, _, let num) = item.payload, num > maxNum {
+                maxNum = num
+            }
+        }
+        return maxNum + 1
+    }
+
     /// 开始一次可撤销事务（如鼠标按下拖拽移动/修改样式前调用）
     public mutating func beginTransaction() {
         pendingSnapshot = objects

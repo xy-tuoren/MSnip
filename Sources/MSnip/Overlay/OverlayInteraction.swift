@@ -63,13 +63,13 @@ extension OverlayView {
             return
         }
 
-        // 双击正式选区内部：双击文字重编辑，否则一键复制并退出
+        // 双击正式选区内部：双击文字重编辑，否则（非文字/非连续打点序号模式时）一键复制并退出
         if event.clickCount == 2, let sel = selection, sel.contains(p) {
             if let hitIdx = doc.hitIndex(at: p), case .text = doc.objects[hitIdx].payload {
                 beginTextEditing(at: p, existingIndex: hitIdx)
                 return
             }
-            if activeTool != .text {
+            if activeTool != .text && activeTool != .step {
                 exportAndFinish(mode: .copy)
                 return
             }
@@ -96,7 +96,11 @@ extension OverlayView {
         }
 
         if sel.contains(p), let hitIdx = doc.hitIndex(at: p) {
-            if activeTool == nil || event.modifierFlags.contains(.command) || selectedObjectIndex == hitIdx {
+            let directStepHit: Bool = {
+                guard case .step(let c, _, _) = doc.objects[hitIdx].payload else { return false }
+                return hypot(p.x - c.x, p.y - c.y) <= doc.objects[hitIdx].style.stepBadgeRadius
+            }()
+            if activeTool == nil || event.modifierFlags.contains(.command) || selectedObjectIndex == hitIdx || directStepHit {
                 selectedObjectIndex = hitIdx
                 doc.beginTransaction()
                 dragOp = .movingAnnotation(index: hitIdx, lastPoint: p, moved: false)
@@ -171,6 +175,15 @@ extension OverlayView {
                 if let last = pts.last, hypot(clampedP.x - last.x, clampedP.y - last.y) >= 2.0 {
                     pts.append(clampedP)
                     existing.payload = .pen(points: pts)
+                    draftAnnotation = existing
+                }
+            } else if tool == .highlighter, var existing = draftAnnotation, case .highlighter(var pts) = existing.payload {
+                if shift {
+                    existing.payload = .highlighter(points: [start, Geometry.angleSnappedEnd(from: start, to: clampedP)])
+                    draftAnnotation = existing
+                } else if let last = pts.last, hypot(clampedP.x - last.x, clampedP.y - last.y) >= 2.0 {
+                    pts.append(clampedP)
+                    existing.payload = .highlighter(points: pts)
                     draftAnnotation = existing
                 }
             } else {

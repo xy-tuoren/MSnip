@@ -19,51 +19,30 @@ enum HotKeyPreset: String, CaseIterable, Codable {
         }
     }
 
-    var captureShortcut: (keyCode: UInt32, modifiers: UInt32, keyEquivalent: String, mask: UInt) {
+    var captureCombo: KeyCombo {
         switch self {
-        case .cmd12:
-            return (UInt32(kVK_ANSI_1), UInt32(cmdKey), "1", 1 << 20)
-        case .cmdShiftAP:
-            return (UInt32(kVK_ANSI_A), UInt32(cmdKey | shiftKey), "A", (1 << 20) | (1 << 17))
-        case .optAP:
-            return (UInt32(kVK_ANSI_A), UInt32(optionKey), "a", 1 << 19)
-        case .f1f3:
-            return (UInt32(kVK_F1), 0, "\u{F704}", 0)
+        case .cmd12:      return KeyCombo(keyCode: UInt32(kVK_ANSI_1), carbonModifiers: UInt32(cmdKey))
+        case .cmdShiftAP: return KeyCombo(keyCode: UInt32(kVK_ANSI_A), carbonModifiers: UInt32(cmdKey | shiftKey))
+        case .optAP:      return KeyCombo(keyCode: UInt32(kVK_ANSI_A), carbonModifiers: UInt32(optionKey))
+        case .f1f3:       return KeyCombo(keyCode: UInt32(kVK_F1), carbonModifiers: 0)
         }
     }
 
-    var pinShortcut: (keyCode: UInt32, modifiers: UInt32, keyEquivalent: String, mask: UInt) {
+    var pinCombo: KeyCombo {
         switch self {
-        case .cmd12:
-            return (UInt32(kVK_ANSI_2), UInt32(cmdKey), "2", 1 << 20)
-        case .cmdShiftAP:
-            return (UInt32(kVK_ANSI_P), UInt32(cmdKey | shiftKey), "P", (1 << 20) | (1 << 17))
-        case .optAP:
-            return (UInt32(kVK_ANSI_P), UInt32(optionKey), "p", 1 << 19)
-        case .f1f3:
-            return (UInt32(kVK_F3), 0, "\u{F706}", 0)
+        case .cmd12:      return KeyCombo(keyCode: UInt32(kVK_ANSI_2), carbonModifiers: UInt32(cmdKey))
+        case .cmdShiftAP: return KeyCombo(keyCode: UInt32(kVK_ANSI_P), carbonModifiers: UInt32(cmdKey | shiftKey))
+        case .optAP:      return KeyCombo(keyCode: UInt32(kVK_ANSI_P), carbonModifiers: UInt32(optionKey))
+        case .f1f3:       return KeyCombo(keyCode: UInt32(kVK_F3), carbonModifiers: 0)
         }
     }
 
-    var pinBadgeLabel: String {
+    var ocrCombo: KeyCombo {
         switch self {
-        case .cmd12:      return "⌘2"
-        case .cmdShiftAP: return "⌘⇧P"
-        case .optAP:      return "⌥P"
-        case .f1f3:       return "F3"
-        }
-    }
-
-    var ocrShortcut: (keyCode: UInt32, modifiers: UInt32, keyEquivalent: String, mask: UInt) {
-        switch self {
-        case .cmd12:
-            return (UInt32(kVK_ANSI_3), UInt32(cmdKey), "3", 1 << 20)
-        case .cmdShiftAP:
-            return (UInt32(kVK_ANSI_O), UInt32(cmdKey | shiftKey), "O", (1 << 20) | (1 << 17))
-        case .optAP:
-            return (UInt32(kVK_ANSI_O), UInt32(optionKey), "o", 1 << 19)
-        case .f1f3:
-            return (UInt32(kVK_F2), 0, "\u{F705}", 0)
+        case .cmd12:      return KeyCombo(keyCode: UInt32(kVK_ANSI_3), carbonModifiers: UInt32(cmdKey))
+        case .cmdShiftAP: return KeyCombo(keyCode: UInt32(kVK_ANSI_O), carbonModifiers: UInt32(cmdKey | shiftKey))
+        case .optAP:      return KeyCombo(keyCode: UInt32(kVK_ANSI_O), carbonModifiers: UInt32(optionKey))
+        case .f1f3:       return KeyCombo(keyCode: UInt32(kVK_F2), carbonModifiers: 0)
         }
     }
 }
@@ -72,11 +51,15 @@ enum HotKeyPreset: String, CaseIterable, Codable {
 struct AppConfig: Codable {
     var hotKeyPreset: HotKeyPreset = .cmd12
     var hotKeysEnabled: Bool = true
+    var customCaptureCombo: KeyCombo?
+    var customPinCombo: KeyCombo?
+    var customOCRCombo: KeyCombo?
     var defaultColorIndex: Int = 0
     var defaultLineWidth: CGFloat = 3.0
     var lastSaveDirectory: String?
     var colorCopyFormat: ColorCopyFormat = .hex
     var showShortcutTips: Bool = true
+    var preferredRecordingFormat: RecordingFormat = .gif
 
     init() {}
 
@@ -84,11 +67,26 @@ struct AppConfig: Codable {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         hotKeyPreset = try c.decodeIfPresent(HotKeyPreset.self, forKey: .hotKeyPreset) ?? .cmd12
         hotKeysEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotKeysEnabled) ?? true
+        customCaptureCombo = try c.decodeIfPresent(KeyCombo.self, forKey: .customCaptureCombo)
+        customPinCombo = try c.decodeIfPresent(KeyCombo.self, forKey: .customPinCombo)
+        customOCRCombo = try c.decodeIfPresent(KeyCombo.self, forKey: .customOCRCombo)
         defaultColorIndex = try c.decodeIfPresent(Int.self, forKey: .defaultColorIndex) ?? 0
         defaultLineWidth = try c.decodeIfPresent(CGFloat.self, forKey: .defaultLineWidth) ?? 3.0
         lastSaveDirectory = try c.decodeIfPresent(String.self, forKey: .lastSaveDirectory)
         colorCopyFormat = try c.decodeIfPresent(ColorCopyFormat.self, forKey: .colorCopyFormat) ?? .hex
         showShortcutTips = try c.decodeIfPresent(Bool.self, forKey: .showShortcutTips) ?? true
+        preferredRecordingFormat = try c.decodeIfPresent(RecordingFormat.self, forKey: .preferredRecordingFormat) ?? .gif
+    }
+
+    var activeCaptureCombo: KeyCombo { customCaptureCombo ?? hotKeyPreset.captureCombo }
+    var activePinCombo: KeyCombo     { customPinCombo ?? hotKeyPreset.pinCombo }
+    var activeOCRCombo: KeyCombo     { customOCRCombo ?? hotKeyPreset.ocrCombo }
+    var hasCustomHotKeys: Bool       { customCaptureCombo != nil || customPinCombo != nil || customOCRCombo != nil }
+
+    mutating func clearCustomHotKeys() {
+        customCaptureCombo = nil
+        customPinCombo = nil
+        customOCRCombo = nil
     }
 
     private static var configURL: URL {
@@ -148,9 +146,7 @@ enum LaunchAtLoginManager {
                     try SMAppService.mainApp.unregister()
                 }
                 return true
-            } catch {
-                // 未签名或本地开发目录运行时自动回退 LaunchAgent plist
-            }
+            } catch {}
         }
         if enabled {
             guard let execPath = Bundle.main.executablePath else { return false }

@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 悬浮标注工具栏的底层矢量绘制辅助方法与工具栏动作派发
+/// 悬浮标注工具栏的纯矢量按钮底色、SF Symbol 与取色吸管渲染方法
 extension ToolbarView {
     static func drawButtonBg(ctx: CGContext, rect: CGRect, active: Bool, hovered: Bool) {
         guard active || hovered else { return }
@@ -61,101 +61,6 @@ extension ToolbarView {
             ctx.setStrokeColor(NSColor.white.cgColor)
             ctx.setLineWidth(0.8)
             ctx.strokeEllipse(in: dot)
-        }
-    }
-}
-
-extension OverlayView {
-    func handleToolbarAction(_ action: ToolbarView.Action) {
-        commitTextEditing()
-        switch action {
-        case .selectTool(let tool):
-            eyedropperActive = false
-            activeTool = tool
-            if tool != nil { selectedObjectIndex = nil }
-        case .selectColor(let idx):
-            eyedropperActive = false
-            customPickedColor = nil
-            colorIndex = idx
-            if let selIdx = selectedObjectIndex {
-                doc.modifyWithHistory(at: selIdx) { $0.style.color = style.color }
-            }
-            onStyleChanged?(colorIndex, style.lineWidth)
-            needsDisplay = true
-        case .toggleEyedropper:
-            eyedropperActive.toggle()
-        case .selectStroke(let w):
-            style.lineWidth = w
-            style.fontSize = max(14, w * 4.5)
-            toolbar.lineWidth = w
-            if let selIdx = selectedObjectIndex {
-                doc.modifyWithHistory(at: selIdx) {
-                    $0.style.lineWidth = w
-                    $0.style.fontSize = max(14, w * 4.5)
-                }
-            }
-            onStyleChanged?(colorIndex, style.lineWidth)
-            needsDisplay = true
-        case .undo:
-            selectedObjectIndex = nil
-            if doc.undo() { updateToolbarLayout(); needsDisplay = true }
-        case .redo:
-            selectedObjectIndex = nil
-            if doc.redo() { updateToolbarLayout(); needsDisplay = true }
-        case .cycleCornerRadius:
-            cycleCornerRadius()
-        case .extractText:
-            exportAndFinish(mode: .extractText)
-        case .startLongShot:
-            beginLongShot()
-        case .pin:
-            exportAndFinish(mode: .pin)
-        case .save:
-            exportAndFinish(mode: .save)
-        case .cancel:
-            onCancel?()
-        case .confirmCopy:
-            exportAndFinish(mode: .copy)
-        }
-    }
-
-    func beginLongShot() {
-        commitTextEditing()
-        guard let raw = selection ?? hoveredAutoRect else {
-            ToastHUD.show(message: "请先框选或悬停要滚动截取的区域")
-            return
-        }
-        let rect = CGRect(
-            x: round(raw.minX),
-            y: round(raw.minY),
-            width: round(raw.width),
-            height: round(raw.height)
-        ).intersection(bounds)
-        guard rect.width >= 48, rect.height >= 64 else {
-            ToastHUD.show(message: "长截图区域至少需 48 × 64 pt")
-            return
-        }
-        let s = snapshot.scaleFactor
-        let pxRect = CGRect(
-            x: round(rect.minX * s),
-            y: round(rect.minY * s),
-            width: CGFloat(Int((rect.width * s).rounded()) & ~1),
-            height: CGFloat(Int((rect.height * s).rounded()) & ~1)
-        )
-        let initial = snapshot.cgImage.cropping(to: pxRect)
-        onStartLongShot?(snapshot.screen, rect, initial)
-    }
-
-    func cycleCornerRadius() {
-        if selection == nil, let snap = hoveredAutoRect {
-            selection = snap
-        }
-        if cornerRadiusPt < 1 {
-            cornerRadiusPt = 10
-        } else if cornerRadiusPt < 14 {
-            cornerRadiusPt = 18
-        } else {
-            cornerRadiusPt = 0
         }
     }
 }

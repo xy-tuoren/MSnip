@@ -8,6 +8,7 @@ final class LongShotBorderView: NSView {
     enum StatusStyle {
         case ready
         case stitching
+        case recording
         case warning
         case finishedBottom
     }
@@ -35,6 +36,7 @@ final class LongShotBorderView: NSView {
         switch statusStyle {
         case .ready:          accent = .systemCyan
         case .stitching:      accent = .systemGreen
+        case .recording:      accent = .systemRed
         case .warning:        accent = .systemOrange
         case .finishedBottom: accent = .controlAccentColor
         }

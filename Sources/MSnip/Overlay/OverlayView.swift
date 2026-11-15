@@ -29,6 +29,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onFinishCopyText: ((String, NSPoint) -> Void)?
     var onFinishExtractText: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
     var onStartLongShot: ((NSScreen, CGRect, CGImage?) -> Void)?
+    var onStartRecording: ((NSScreen, CGRect, CGImage?) -> Void)?
     var onCancel: (() -> Void)?
     var onStyleChanged: ((Int, CGFloat) -> Void)?
     var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
@@ -53,6 +54,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var showShortcutTips: Bool { didSet { needsDisplay = true } }
     var lastHistorySelection: CGRect?
     var cornerRadiusPt: CGFloat = 0 { didSet { toolbar.cornerRadiusPt = cornerRadiusPt; needsDisplay = true } }
+    var backdropStyle: BackdropStyle = .none { didSet { toolbar.backdropStyle = backdropStyle; needsDisplay = true } }
     var customPickedColor: RGBAColor? {
         didSet { toolbar.customColor = customPickedColor; if let c = customPickedColor { style.color = c } }
     }
@@ -225,37 +227,10 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         drawCursorMagnifier(ctx: ctx)
     }
 
-    private func drawSelectionChrome(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
-        ctx.saveGState()
-        ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
-        ctx.setLineWidth(1.5)
-        if cornerRadius > 0.5 {
-            ctx.addPath(CGPath(roundedRect: sel, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil))
-            ctx.strokePath()
-        } else {
-            ctx.stroke(sel)
-        }
-
-        for handle in ResizeHandle.allCases {
-            let p = handle.point(in: sel)
-            let hr = CGRect(x: p.x - 4.0, y: p.y - 4.0, width: 8.0, height: 8.0)
-            ctx.setFillColor(NSColor.white.cgColor)
-            ctx.fillEllipse(in: hr)
-            ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
-            ctx.setLineWidth(1.5)
-            ctx.strokeEllipse(in: hr)
-        }
-        ctx.restoreGState()
-
-        let pxW = Int((sel.width * snapshot.scaleFactor).rounded())
-        let pxH = Int((sel.height * snapshot.scaleFactor).rounded())
-        let cornerSuffix = cornerRadius > 0.5 ? "  ·  圆角 \(Int(cornerRadiusPt))pt" : ""
-        drawHUDPill(ctx: ctx, anchorRect: sel, text: "\(pxW) × \(pxH)\(cornerSuffix)")
-    }
-
     func updateToolbarLayout() {
         toolbar.canUndo = doc.canUndo
         toolbar.canRedo = doc.canRedo
+        toolbar.nextStepNumber = doc.nextStepNumber()
         toolbar.refreshState()
 
         guard let sel = selection, sel.width >= 6, sel.height >= 6 else {

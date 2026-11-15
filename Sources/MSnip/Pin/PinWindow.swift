@@ -1,27 +1,39 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 
-/// 单个置顶贴图窗口：不抢占焦点（`.nonactivatingPanel`），内置 macOS 实况文本支持原图直接划词复制，
-/// 空白处拖拽移动、滚轮缩放、`⌘`+滚轮调透明度、双击空白处关闭与右键 OCR 菜单。
+/// 单个置顶贴图窗口：支持实况划词复制、鼠标穿透对照、`⌘+拖拽`（或右上角按钮）直投 PNG 文件与无损二次圈记标注
 final class PinWindow: NSPanel {
     var onClose: ((PinWindow) -> Void)?
     var onCloseAll: (() -> Void)?
+    var onStateChanged: (() -> Void)?
     var onSavePNG: ((CGImage, CGFloat) -> Void)?
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
 
-    private let cgImage: CGImage
-    private let imageScale: CGFloat
-    private let baseSize: NSSize
-    private var zoomFactor: CGFloat = 1.0
+    let baseCGImage: CGImage
+    let baseSampler: PixelSampler
+    var currentCGImage: CGImage
+    let imageScale: CGFloat
+    let baseSize: NSSize
+    var zoomFactor: CGFloat = 1.0
+    var preGhostAlpha: CGFloat = 1.0
+    var isClickThrough: Bool = false
+
+    var annotationDoc = AnnotationDocument()
+    var editorCanvas: PinAnnotationCanvasView?
+    var toolbarPanel: PinToolbarPanel?
+
     private var isDraggingWindow = false
     private var dragMouseStart: NSPoint = .zero
     private var dragOriginStart: NSPoint = .zero
-    private let pinContentView: PinContentView
-    private var highlightMenuItem: NSMenuItem?
+    let pinContentView: PinContentView
+    var highlightMenuItem: NSMenuItem?
 
     init(cgImage: CGImage, scaleFactor: CGFloat, screenOriginTopLeft: CGPoint?, on screen: NSScreen) {
-        self.cgImage = cgImage
+        self.baseCGImage = cgImage
+        self.baseSampler = PixelSampler(cgImage: cgImage)
+        self.currentCGImage = cgImage
         self.imageScale = max(1.0, scaleFactor)
         self.baseSize = NSSize(
             width: max(24, CGFloat(cgImage.width) / self.imageScale),
@@ -35,10 +47,7 @@ final class PinWindow: NSPanel {
             frameOrigin = NSPoint(x: screen.frame.minX + topLeft.x, y: yBottom)
         } else {
             let visible = screen.visibleFrame
-            frameOrigin = NSPoint(
-                x: visible.midX - baseSize.width * 0.5,
-                y: visible.midY - baseSize.height * 0.5
-            )
+            frameOrigin = NSPoint(x: visible.midX - baseSize.width * 0.5, y: visible.midY - baseSize.height * 0.5)
         }
 
         super.init(
@@ -57,6 +66,12 @@ final class PinWindow: NSPanel {
         self.hasShadow = true
         self.contentView = pinContentView
 
+        pinContentView.onRequestAnnotate = { [weak self] in self?.beginAnnotationEditing() }
+        pinContentView.onRequestFileDrag = { [weak self] ev in
+            guard let self else { return }
+            self.pinContentView.startPNGFileDrag(with: ev, cgImage: self.currentCGImage, scaleFactor: self.imageScale)
+        }
+
         let menu = buildContextMenu()
         pinContentView.menu = menu
         pinContentView.liveTextView.menu = menu
@@ -65,11 +80,23 @@ final class PinWindow: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 
-    // MARK: - Event Routing (Live Text Selection vs Window Drag)
+    // MARK: - Event Routing (Annotation / File Drag / Live Text / Window Move)
 
     override func sendEvent(_ event: NSEvent) {
+        if editorCanvas != nil {
+            super.sendEvent(event)
+            return
+        }
         switch event.type {
         case .leftMouseDown:
+            if pinContentView.hitHoverControl(atWindowPoint: event.locationInWindow) {
+                super.sendEvent(event)
+                return
+            }
+            if event.modifierFlags.contains(.command) {
+                pinContentView.startPNGFileDrag(with: event, cgImage: currentCGImage, scaleFactor: imageScale)
+                return
+            }
             let forceDrag = event.modifierFlags.contains(.option)
             let hitLiveText = !forceDrag && pinContentView.liveTextView.hasInteractiveItem(atWindowPoint: event.locationInWindow)
             if hitLiveText {
@@ -111,6 +138,7 @@ final class PinWindow: NSPanel {
     }
 
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        if editorCanvas != nil { return super.performKeyEquivalent(with: event) }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
         if flags == .command && chars == "c" {
@@ -132,8 +160,15 @@ final class PinWindow: NSPanel {
     override func scrollWheel(with event: NSEvent) {
         let delta = event.scrollingDeltaY
         guard abs(delta) > 0.01 else { return }
+        if let canvas = editorCanvas {
+            let d: CGFloat = delta > 0 ? 0.5 : -0.5
+            let nextW = min(18.0, max(1.0, canvas.style.lineWidth + d))
+            canvas.style.mosaicBlockSize = min(32.0, max(5.0, canvas.style.mosaicBlockSize + d * 1.5))
+            canvas.applyStrokeWidth(nextW)
+            toolbarPanel?.barView.lineWidth = nextW
+            return
+        }
         let step: CGFloat = event.hasPreciseScrollingDeltas ? delta * 0.004 : (delta > 0 ? 0.08 : -0.08)
-
         if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control) {
             alphaValue = min(1.0, max(0.2, alphaValue + step))
         } else {
@@ -142,6 +177,7 @@ final class PinWindow: NSPanel {
     }
 
     override func keyDown(with event: NSEvent) {
+        if editorCanvas != nil { super.keyDown(with: event); return }
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
         if event.keyCode == 53 {
             if pinContentView.liveTextView.hasSelection {
@@ -151,107 +187,14 @@ final class PinWindow: NSPanel {
             }
         } else if event.modifierFlags.contains(.command), chars == "s" {
             saveImage()
+        } else if chars == "e", !event.modifierFlags.contains(.command) {
+            beginAnnotationEditing()
+        } else if chars == "p", !event.modifierFlags.contains(.command) {
+            enableClickThrough()
         } else if chars == "t", !event.modifierFlags.contains(.command) {
             openOCRPanel()
         } else {
             super.keyDown(with: event)
         }
-    }
-
-    // MARK: - Actions
-
-    @objc private func copyImage() {
-        ClipboardAndSave.copyToClipboard(cgImage: cgImage, scaleFactor: imageScale)
-    }
-
-    @objc private func openOCRPanel() {
-        let scr = screen ?? NSScreen.main ?? NSScreen.screens.first
-        if let scr { onExtractOCR?(cgImage, imageScale, scr) }
-    }
-
-    @objc private func toggleTextHighlights() {
-        pinContentView.liveTextView.highlightBlocks.toggle()
-        highlightMenuItem?.state = pinContentView.liveTextView.highlightBlocks ? .on : .off
-    }
-
-    @objc private func saveImage() { onSavePNG?(cgImage, imageScale) }
-    @objc private func resetZoom() { applyZoom(newZoom: 1.0); alphaValue = 1.0 }
-    @objc private func toggleHalfOpacity() { alphaValue = alphaValue < 0.95 ? 1.0 : 0.55 }
-    @objc func closePin() { orderOut(nil); onClose?(self) }
-    @objc private func closeAllPins() { onCloseAll?() }
-
-    private func applyZoom(newZoom: CGFloat) {
-        guard abs(newZoom - zoomFactor) > 0.001 else { return }
-        let mouseScreen = NSEvent.mouseLocation
-        let oldFrame = frame
-        let relX = oldFrame.width > 0 ? (mouseScreen.x - oldFrame.minX) / oldFrame.width : 0.5
-        let relY = oldFrame.height > 0 ? (mouseScreen.y - oldFrame.minY) / oldFrame.height : 0.5
-
-        zoomFactor = newZoom
-        let newSize = NSSize(width: round(baseSize.width * zoomFactor), height: round(baseSize.height * zoomFactor))
-        let anchorX = oldFrame.contains(mouseScreen) ? mouseScreen.x - newSize.width * relX : oldFrame.midX - newSize.width * 0.5
-        let anchorY = oldFrame.contains(mouseScreen) ? mouseScreen.y - newSize.height * relY : oldFrame.midY - newSize.height * 0.5
-        setFrame(NSRect(origin: NSPoint(x: anchorX, y: anchorY), size: newSize), display: true)
-    }
-
-    private func buildContextMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(withTitle: "提取图中文字 (OCR 对照窗)…", action: #selector(openOCRPanel), keyEquivalent: "o")
-        let hlItem = NSMenuItem(title: "高亮图中可划选文字块", action: #selector(toggleTextHighlights), keyEquivalent: "")
-        self.highlightMenuItem = hlItem
-        menu.addItem(hlItem)
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "复制贴图图像", action: #selector(copyImage), keyEquivalent: "c")
-        menu.addItem(withTitle: "另存为 PNG...", action: #selector(saveImage), keyEquivalent: "s")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "重置 100% 大小与不透明", action: #selector(resetZoom), keyEquivalent: "0")
-        menu.addItem(withTitle: "切换半透明对照 (55%)", action: #selector(toggleHalfOpacity), keyEquivalent: "")
-        menu.addItem(.separator())
-        menu.addItem(withTitle: "关闭此贴图 (双击空白处)", action: #selector(closePin), keyEquivalent: "")
-        menu.addItem(withTitle: "关闭全部贴图", action: #selector(closeAllPins), keyEquivalent: "")
-        for item in menu.items { item.target = self }
-        return menu
-    }
-}
-
-/// 贴图内容容器（承载实况文本图层与 1pt 精致描边）
-private final class PinContentView: NSView {
-    let liveTextView = LiveTextImageView(scaling: .scaleAxesIndependently)
-
-    init(cgImage: CGImage, baseSize: NSSize) {
-        super.init(frame: NSRect(origin: .zero, size: baseSize))
-        wantsLayer = true
-        layer?.cornerRadius = 4
-        layer?.masksToBounds = true
-        layer?.borderWidth = 1.0
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.45).cgColor
-
-        liveTextView.frame = bounds
-        liveTextView.autoresizingMask = [.width, .height]
-        liveTextView.configure(cgImage: cgImage, logicalSize: baseSize)
-        addSubview(liveTextView)
-        updateTrackingAreas()
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach { removeTrackingArea($0) }
-        addTrackingArea(NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        ))
-    }
-
-    override func mouseEntered(with event: NSEvent) {
-        layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.9).cgColor
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.45).cgColor
     }
 }

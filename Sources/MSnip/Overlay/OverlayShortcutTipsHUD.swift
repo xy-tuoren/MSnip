@@ -16,13 +16,13 @@ extension OverlayView {
         let rows: [[(String, String)]]
         if selection == nil {
             rows = [
-                [("滚轮", "切换元素层级"), ("WASD", "1px 移光标"), ("L", "长截图"), ("R", "上次选区"), ("⌘A", "全屏")],
+                [("滚轮", "切换元素层级"), ("WASD", "1px 移光标"), ("L", "长截图"), ("V", "录 GIF/MP4"), ("R", "上次选区")],
                 [("C", "取色"), ("⇧", "色值格式"), ("T", "识字/二维码"), (toolbar.pinHint, "贴图"), ("H", "隐藏提示")]
             ]
         } else {
             rows = [
-                [("L", "长截图"), ("⌥", "按住取色/吸管"), ("↑↓←→", "移动"), ("⌃/⇧+方向", "扩缩边"), ("B", "圆角")],
-                [("1-7", "标注"), ("T", "识字/二维码"), ("G", "相对坐标"), ("⌘⇧⌫", "清空标注"), ("H", "隐藏")]
+                [("L", "长截图"), ("V", "录动图"), ("P", "美化衬底"), ("B", "圆角"), ("⌃/⇧+方向", "扩缩边")],
+                [("1-9/0", "标注/荧光/序号/模糊"), ("T", "识字/二维码"), ("⌥", "按住吸色"), ("⌘⇧⌫", "清空标注"), ("H", "隐藏")]
             ]
         }
 
@@ -133,5 +133,45 @@ extension OverlayView {
         let descX = capRect.maxX + 5
         dNs.draw(at: CGPoint(x: descX, y: y + (16 - dSz.height) * 0.5), withAttributes: descAttrs)
         return descX + ceil(dSz.width)
+    }
+
+    func drawSelectionChrome(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
+        ctx.saveGState()
+        // 当启用美观背景衬底时，在选区外周渲染彩色渐变预览光环提示导出效果
+        if backdropStyle != .none, let firstStop = backdropStyle.gradientStops.first {
+            let halo = sel.insetBy(dx: -4, dy: -4)
+            let haloR = max(10, cornerRadius + 4)
+            ctx.setStrokeColor(firstStop.cgColor.copy(alpha: 0.85) ?? NSColor.systemPurple.cgColor)
+            ctx.setLineWidth(5.0)
+            ctx.addPath(CGPath(roundedRect: halo, cornerWidth: haloR, cornerHeight: haloR, transform: nil))
+            ctx.strokePath()
+        }
+
+        ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
+        ctx.setLineWidth(1.5)
+        if cornerRadius > 0.5 {
+            ctx.addPath(CGPath(roundedRect: sel, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil))
+            ctx.strokePath()
+        } else {
+            ctx.stroke(sel)
+        }
+
+        for handle in ResizeHandle.allCases {
+            let p = handle.point(in: sel)
+            let hr = CGRect(x: p.x - 4.0, y: p.y - 4.0, width: 8.0, height: 8.0)
+            ctx.setFillColor(NSColor.white.cgColor)
+            ctx.fillEllipse(in: hr)
+            ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
+            ctx.setLineWidth(1.5)
+            ctx.strokeEllipse(in: hr)
+        }
+        ctx.restoreGState()
+
+        let pxW = Int((sel.width * snapshot.scaleFactor).rounded())
+        let pxH = Int((sel.height * snapshot.scaleFactor).rounded())
+        var parts = ["\(pxW) × \(pxH)"]
+        if cornerRadius > 0.5 { parts.append("圆角 \(Int(cornerRadiusPt))pt") }
+        if backdropStyle != .none { parts.append("衬底：\(backdropStyle.title)") }
+        drawHUDPill(ctx: ctx, anchorRect: sel, text: parts.joined(separator: "  ·  "))
     }
 }

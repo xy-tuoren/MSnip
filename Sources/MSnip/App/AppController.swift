@@ -3,24 +3,27 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 应用主控制器：管理菜单栏常驻图标、全局快捷键路由、截图会话、滚动长截图、对照识字与贴图池
+/// 应用主控制器：管理菜单栏常驻图标、全局快捷键路由、截图历史环、长截图、对照识字与贴图池
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
     var axMenuItem: NSMenuItem?
     var config = AppConfig.load()
-    private let hotKeyManager = HotKeyManager()
+    let hotKeyManager = HotKeyManager()
+    let hotKeyRecorder = HotKeyRecorderController()
+    let historyRing = CaptureHistoryRing(maxCount: 15)
     let pinManager = PinManager()
-    private let ocrController = OCRResultController()
-    private let permissionGuide = PermissionGuideController()
-    private var activeSession: OverlaySession?
-    private var activeLongShot: LongShotSession?
-    private var isCapturing = false
+    let ocrController = OCRResultController()
+    let permissionGuide = PermissionGuideController()
+    var activeSession: OverlaySession?
+    var activeLongShot: LongShotSession?
+    var activeRecording: RegionRecordingSession?
+    var isCapturing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         setupStatusBar()
         setupCallbacks()
-        hotKeyManager.apply(preset: config.hotKeyPreset, enabled: config.hotKeysEnabled)
+        hotKeyManager.apply(config: config)
         if !CGPreflightScreenCaptureAccess() {
             permissionGuide.show(opening: .screenRecording)
         }
@@ -37,7 +40,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 button.title = "✂︎"
             }
-            button.toolTip = "MSnip（麦截）— 轻量截图、长截图、实况识字与贴图"
+            button.toolTip = "MSnip（麦截）— 轻量截图、长截图、动图录制、识字与贴图"
         }
         rebuildMenu()
     }
@@ -51,6 +54,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         hotKeyManager.onOCR = { [weak self] in
             Task { @MainActor in self?.startQuickOCR() }
+        }
+        hotKeyRecorder.onBeginRecording = { [weak self] in
+            self?.hotKeyManager.unregisterAll()
+        }
+        hotKeyRecorder.onConfigUpdated = { [weak self] updated in
+            guard let self else { return }
+            self.config = updated
+            self.config.save()
+            self.hotKeyManager.apply(config: updated)
+            self.rebuildMenu()
         }
         pinManager.onCountChanged = { [weak self] _ in
             self?.rebuildMenu()
@@ -77,18 +90,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    // MARK: - Core Actions
+    // MARK: - Core Capture & LongShot Actions
 
-    @objc func startCapture() {
-        beginCaptureSession(quickOCR: false)
-    }
-
-    @objc func startQuickOCR() {
-        beginCaptureSession(quickOCR: true)
-    }
+    @objc func startCapture() { beginCaptureSession(quickOCR: false) }
+    @objc func startQuickOCR() { beginCaptureSession(quickOCR: true) }
 
     private func beginCaptureSession(quickOCR: Bool) {
-        guard activeSession == nil, activeLongShot == nil, !isCapturing else { return }
+        guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
         guard CGPreflightScreenCaptureAccess() else {
             permissionGuide.show(opening: .screenRecording)
             return
@@ -114,44 +122,14 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.config.defaultLineWidth = width
                 self.config.save()
             }
-
             session.onPrefsUpdated = { [weak self] fmt, showTips in
                 guard let self else { return }
                 self.config.colorCopyFormat = fmt
                 self.config.showShortcutTips = showTips
                 self.config.save()
             }
-
             session.onComplete = { [weak self] outcome in
-                guard let self else { return }
-                self.activeSession = nil
-                switch outcome {
-                case .copied(let img, let scale):
-                    ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
-                case .saved(let img, let scale):
-                    if let newDir = ClipboardAndSave.savePNGInteractive(
-                        cgImage: img,
-                        scaleFactor: scale,
-                        initialDirectory: self.config.lastSaveDirectory
-                    ) {
-                        self.config.lastSaveDirectory = newDir
-                        self.config.save()
-                    }
-                case .pinned(let img, let scale, let origin, let screen):
-                    self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
-                case .copiedColor(let value, let swatch, let pt):
-                    ClipboardAndSave.copyText(value)
-                    ToastHUD.show(message: "\(value) 已复制  ·  \(self.config.hotKeyPreset.pinBadgeLabel) 贴色卡", swatch: swatch, near: pt)
-                case .copiedCoordinate(let value, let pt):
-                    ClipboardAndSave.copyText(value)
-                    ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
-                case .extractText(let img, let scale, let scr):
-                    self.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr)
-                case .startLongShot(let screen, let rect, let initialImg):
-                    self.startLongShotSession(screen: screen, rect: rect, initialFrame: initialImg)
-                case .cancelled:
-                    break
-                }
+                self?.handleOverlayOutcome(outcome)
             }
 
             session.start(
@@ -161,9 +139,45 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 lineWidth: self.config.defaultLineWidth,
                 colorCopyFormat: self.config.colorCopyFormat,
                 showShortcutTips: self.config.showShortcutTips,
-                pinHint: self.config.hotKeyPreset.pinBadgeLabel,
+                pinHint: self.config.activePinCombo.displayString,
                 quickOCRMode: quickOCR
             )
+        }
+    }
+
+    private func handleOverlayOutcome(_ outcome: OverlaySession.Outcome) {
+        activeSession = nil
+        switch outcome {
+        case .copied(let img, let scale):
+            ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
+            recordHistoryAndRefresh(img: img, scale: scale)
+        case .saved(let img, let scale):
+            recordHistoryAndRefresh(img: img, scale: scale)
+            if let newDir = ClipboardAndSave.savePNGInteractive(
+                cgImage: img,
+                scaleFactor: scale,
+                initialDirectory: config.lastSaveDirectory
+            ) {
+                config.lastSaveDirectory = newDir
+                config.save()
+            }
+        case .pinned(let img, let scale, let origin, let screen):
+            recordHistoryAndRefresh(img: img, scale: scale)
+            pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
+        case .copiedColor(let value, let swatch, let pt):
+            ClipboardAndSave.copyText(value)
+            ToastHUD.show(message: "\(value) 已复制  ·  \(config.activePinCombo.displayString) 贴色卡", swatch: swatch, near: pt)
+        case .copiedCoordinate(let value, let pt):
+            ClipboardAndSave.copyText(value)
+            ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
+        case .extractText(let img, let scale, let scr):
+            ocrController.present(cgImage: img, scaleFactor: scale, screen: scr)
+        case .startLongShot(let screen, let rect, let initialImg):
+            startLongShotSession(screen: screen, rect: rect, initialFrame: initialImg)
+        case .startRecording(let screen, let rect, let initialImg):
+            startRecordingSession(screen: screen, rect: rect, initialFrame: initialImg)
+        case .cancelled:
+            break
         }
     }
 
@@ -176,8 +190,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             switch outcome {
             case .copied(let img, let scale):
                 ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
+                self.recordHistoryAndRefresh(img: img, scale: scale)
                 ToastHUD.show(message: "长截图已复制 · \(img.width) × \(img.height) px")
             case .saved(let img, let scale):
+                self.recordHistoryAndRefresh(img: img, scale: scale)
                 if let newDir = ClipboardAndSave.savePNGInteractive(
                     cgImage: img,
                     scaleFactor: scale,
@@ -187,6 +203,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.config.save()
                 }
             case .pinned(let img, let scale, let origin, let targetScreen):
+                self.recordHistoryAndRefresh(img: img, scale: scale)
                 self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: targetScreen)
             case .cancelled:
                 break
@@ -196,63 +213,51 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             screen: screen,
             selectionLocalTopLeft: rect,
             initialCroppedFrame: initialFrame,
-            pinHint: config.hotKeyPreset.pinBadgeLabel
+            pinHint: config.activePinCombo.displayString
+        )
+    }
+
+    func recordHistoryAndRefresh(img: CGImage, scale: CGFloat) {
+        historyRing.record(cgImage: img, scaleFactor: scale)
+        rebuildMenu()
+    }
+
+    private func startRecordingSession(screen: NSScreen, rect: CGRect, initialFrame: CGImage?) {
+        let rec = RegionRecordingSession()
+        self.activeRecording = rec
+        rec.onFormatChanged = { [weak self] fmt in
+            guard let self else { return }
+            self.config.preferredRecordingFormat = fmt
+            self.config.save()
+        }
+        rec.onComplete = { [weak self] outcome in
+            guard let self else { return }
+            self.activeRecording = nil
+            switch outcome {
+            case .copiedFile(let url, let fmt):
+                let kb = ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) / 1024
+                ToastHUD.show(message: "\(fmt.badgeTitle) 已复制到剪贴板 (\(max(1, kb)) KB) · 可直接粘贴发送")
+            case .savedFile(let url, let fmt, let dir):
+                self.config.lastSaveDirectory = dir
+                self.config.save()
+                ToastHUD.show(message: "已保存 \(fmt.badgeTitle)：\(url.lastPathComponent)")
+            case .cancelled:
+                break
+            }
+        }
+        rec.start(
+            screen: screen,
+            selectionLocalTopLeft: rect,
+            initialCroppedFrame: initialFrame,
+            defaultFormat: config.preferredRecordingFormat,
+            initialSaveDirectory: config.lastSaveDirectory
         )
     }
 
     @objc func handlePinHotKey() {
         if let ls = activeLongShot, ls.pinCurrentIfPossible() { return }
         if let session = activeSession, session.pinCurrentSelectionIfPossible() { return }
-        guard activeSession == nil, activeLongShot == nil else { return }
+        guard activeSession == nil, activeLongShot == nil, activeRecording == nil else { return }
         pinManager.pinFromClipboard()
     }
-
-    @objc func closeAllPins() { pinManager.closeAll() }
-
-    @objc func selectHotKeyPreset(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let preset = HotKeyPreset(rawValue: raw) else { return }
-        config.hotKeyPreset = preset
-        config.hotKeysEnabled = true
-        config.save()
-        hotKeyManager.apply(preset: preset, enabled: true)
-        rebuildMenu()
-    }
-
-    @objc func toggleHotKeysEnabled() {
-        config.hotKeysEnabled.toggle()
-        config.save()
-        hotKeyManager.apply(preset: config.hotKeyPreset, enabled: config.hotKeysEnabled)
-        rebuildMenu()
-    }
-
-    @objc func toggleLaunchAtLogin() {
-        let target = !LaunchAtLoginManager.isEnabled
-        _ = LaunchAtLoginManager.setEnabled(target)
-        rebuildMenu()
-    }
-
-    @objc func openPermissionGuide() {
-        let pane: PermissionPane? = !CGPreflightScreenCaptureAccess()
-            ? .screenRecording
-            : (!RegionDetector.checkAccessibilityPermission(prompt: false) ? .accessibility : nil)
-        permissionGuide.show(opening: pane)
-    }
-
-    @objc func showAbout() {
-        NSApp.activate(ignoringOtherApps: true)
-        let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v0.9.0"
-        alert.informativeText = """
-        超轻量原生 macOS 截图、滚动长截图、实况识字与贴图工具
-        • 纯 Swift + AppKit + CoreGraphics + ScreenCaptureKit + VisionKit，零第三方依赖
-        • ⌘3 框选即识字 / 截图中按 T：弹出「左图实况划词 + 右侧可编辑/合并段落」对照窗
-        • 桌面贴图内置 Live Text：鼠标移到贴图文字上直接变 I 光标划词复制
-        """
-        alert.alertStyle = .informational
-        alert.addButton(withTitle: "好")
-        alert.runModal()
-    }
-
-    @objc func quitApp() { NSApp.terminate(nil) }
 }

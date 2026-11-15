@@ -13,7 +13,18 @@ let package = Package(
     targets: [
         .target(
             name: "MSnipCore",
-            path: "Sources/MSnipCore"
+            path: "Sources/MSnipCore",
+            linkerSettings: [
+                .linkedFramework("AppKit"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("Carbon"),
+                .linkedFramework("CoreGraphics"),
+                .linkedFramework("CoreImage"),
+                .linkedFramework("CoreMedia"),
+                .linkedFramework("CoreVideo"),
+                .linkedFramework("ImageIO"),
+                .linkedFramework("UniformTypeIdentifiers")
+            ]
         ),
         .executableTarget(
             name: "MSnip",
@@ -22,13 +33,17 @@ let package = Package(
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),
+                .linkedFramework("AVFoundation"),
+                .linkedFramework("Carbon"),
                 .linkedFramework("CoreGraphics"),
+                .linkedFramework("CoreImage"),
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("CoreVideo"),
-                .linkedFramework("Carbon"),
+                .linkedFramework("ImageIO"),
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("ScreenCaptureKit"),
                 .linkedFramework("ServiceManagement"),
+                .linkedFramework("UniformTypeIdentifiers"),
                 .linkedFramework("VideoToolbox"),
                 .linkedFramework("Vision"),
                 .linkedFramework("VisionKit")
