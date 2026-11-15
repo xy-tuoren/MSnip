@@ -190,6 +190,7 @@ final class OverlaySession {
         }
         views.removeAll()
         windows.removeAll()
+        AnnotationRenderer.purgeCaches()
 
         onComplete?(outcome)
     }

@@ -91,6 +91,7 @@ extension PinWindow {
         toolbarPanel = nil
         pinContentView.isAnnotating = false
         pinContentView.liveTextView.configure(cgImage: currentCGImage, logicalSize: frame.size)
+        AnnotationRenderer.purgeCaches()
     }
 
     @objc func copyImage() { ClipboardAndSave.copyToClipboard(cgImage: currentCGImage, scaleFactor: imageScale) }

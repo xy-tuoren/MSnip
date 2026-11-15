@@ -14,6 +14,7 @@ public final class ScrollStitcher: @unchecked Sendable {
     }
 
     public static let defaultMaxHeightPx = 24_000
+    private static let previewSourceMaxWidthPx = 340
 
     public let maxHeightPx: Int
     public private(set) var widthPx: Int = 0
@@ -24,7 +25,9 @@ public final class ScrollStitcher: @unchecked Sendable {
     private var firstFrame: CGImage?
     private var frontierDigest: ScrollFrameDigest?
     private var latestFooterStrip: CGImage?
+    private var previewFooterStrip: CGImage?
     private var strips: [CGImage] = []
+    private var previewStrips: [CGImage] = []
     private var bodyHeightPx: Int = 0
 
     public var totalHeightPx: Int {
@@ -123,13 +126,14 @@ public final class ScrollStitcher: @unchecked Sendable {
         if bestDy == 0 { return .unchanged }
         if bestDy < 0 { return .scrolledBackward }
 
-        // 5) 有效向下滚动：追加新增像素条带并推进前沿锚点
+        // 5) 有效向下滚动：追加新增像素条带并同步生成轻量预览切片（消除每次滚动 O(N) 全尺寸重采样）
         if strips.isEmpty, let initial = firstFrame {
             lockedTopFixed = margins.stickyTop
             lockedBottomFixed = margins.stickyBottom
             let initH = h - lockedBottomFixed
             if let s0 = ScrollFrameDigest.detachCopy(initial, rect: CGRect(x: 0, y: 0, width: w, height: initH)) {
                 strips.append(s0)
+                previewStrips.append(Self.makePreviewSlice(s0))
                 bodyHeightPx = s0.height
             }
         } else {
@@ -144,12 +148,15 @@ public final class ScrollStitcher: @unchecked Sendable {
         let stripRect = CGRect(x: 0, y: stripTopY, width: w, height: allowedAddH)
         guard let newStrip = ScrollFrameDigest.detachCopy(frame, rect: stripRect) else { return .unchanged }
         strips.append(newStrip)
+        previewStrips.append(Self.makePreviewSlice(newStrip))
         bodyHeightPx += newStrip.height
 
         if lockedBottomFixed > 0 {
-            latestFooterStrip = ScrollFrameDigest.detachCopy(
+            let footer = ScrollFrameDigest.detachCopy(
                 frame, rect: CGRect(x: 0, y: activeWorkBottom, width: w, height: lockedBottomFixed)
             )
+            latestFooterStrip = footer
+            previewFooterStrip = footer.map { Self.makePreviewSlice($0) }
         }
 
         let detachedAnchor = ScrollFrameDigest.detachCopy(frame, rect: CGRect(x: 0, y: 0, width: w, height: h)) ?? frame
@@ -160,14 +167,14 @@ public final class ScrollStitcher: @unchecked Sendable {
     }
 
     public func renderFinalImage() -> CGImage? {
-        strips.isEmpty ? firstFrame : composeStrips(scaleDownToMaxSide: nil)
+        strips.isEmpty ? firstFrame : composeStrips(scaleDownToMaxSide: nil, usePreviewSlices: false)
     }
 
     public func renderPreviewImage(maxSidePx: Int = 680) -> CGImage? {
-        strips.isEmpty ? firstFrame : composeStrips(scaleDownToMaxSide: maxSidePx)
+        strips.isEmpty ? firstFrame : composeStrips(scaleDownToMaxSide: maxSidePx, usePreviewSlices: true)
     }
 
-    private func composeStrips(scaleDownToMaxSide: Int?) -> CGImage? {
+    private func composeStrips(scaleDownToMaxSide: Int?, usePreviewSlices: Bool) -> CGImage? {
         let fullW = widthPx, fullH = totalHeightPx
         guard fullW > 0, fullH > 0 else { return nil }
 
@@ -185,15 +192,35 @@ public final class ScrollStitcher: @unchecked Sendable {
 
         ctx.interpolationQuality = scale < 1.0 ? .medium : .none
         var cursorTopPx = 0
-        var allParts = strips
-        if let footer = latestFooterStrip { allParts.append(footer) }
 
-        for part in allParts {
-            let ph = part.height
+        for i in strips.indices {
+            let ph = strips[i].height
+            let tex = (usePreviewSlices && previewStrips.indices.contains(i)) ? previewStrips[i] : strips[i]
             let dstY = CGFloat(fullH - cursorTopPx - ph) * scale
-            ctx.draw(part, in: CGRect(x: 0, y: dstY, width: CGFloat(outW), height: CGFloat(ph) * scale))
+            ctx.draw(tex, in: CGRect(x: 0, y: dstY, width: CGFloat(outW), height: CGFloat(ph) * scale))
             cursorTopPx += ph
         }
+        if let footer = latestFooterStrip {
+            let ph = footer.height
+            let tex = (usePreviewSlices ? previewFooterStrip : nil) ?? footer
+            let dstY = CGFloat(fullH - cursorTopPx - ph) * scale
+            ctx.draw(tex, in: CGRect(x: 0, y: dstY, width: CGFloat(outW), height: CGFloat(ph) * scale))
+        }
         return ctx.makeImage()
+    }
+
+    private static func makePreviewSlice(_ src: CGImage) -> CGImage {
+        guard src.width > previewSourceMaxWidthPx else { return src }
+        let ratio = CGFloat(previewSourceMaxWidthPx) / CGFloat(src.width)
+        let pw = previewSourceMaxWidthPx
+        let ph = max(1, Int((CGFloat(src.height) * ratio).rounded()))
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: 0,
+            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return src }
+        ctx.interpolationQuality = .medium
+        ctx.draw(src, in: CGRect(x: 0, y: 0, width: pw, height: ph))
+        return ctx.makeImage() ?? src
     }
 }

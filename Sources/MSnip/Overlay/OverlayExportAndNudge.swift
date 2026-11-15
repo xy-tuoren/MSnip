@@ -102,7 +102,7 @@ extension OverlayView {
         if selection == nil {
             updateAutoSnap(at: nextLocal)
         }
-        needsDisplay = true
+        invalidateMagnifierMove(from: curLocal, to: nextLocal)
     }
 
     func handleArrowKey(dx: CGFloat, dy: CGFloat, ctrl: Bool, shift: Bool) {

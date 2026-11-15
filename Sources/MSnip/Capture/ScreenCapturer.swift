@@ -5,26 +5,25 @@ import Foundation
 import MSnipCore
 import ScreenCaptureKit
 
-/// 单块显示器的冻结快照数据
+/// 单块显示器的冻结快照数据（像素采样器按需惰性解包，避免副屏白白拷贝数十 MB 位图缓冲）
 final class ScreenSnapshot {
     let screen: NSScreen
     let displayID: CGDirectDisplayID
     let cgImage: CGImage
-    let sampler: PixelSampler
+    lazy var sampler: PixelSampler = PixelSampler(cgImage: cgImage)
     let scaleFactor: CGFloat
 
     init(screen: NSScreen, displayID: CGDirectDisplayID, cgImage: CGImage) {
         self.screen = screen
         self.displayID = displayID
         self.cgImage = cgImage
-        self.sampler = PixelSampler(cgImage: cgImage)
         let screenWidthPt = max(1.0, screen.frame.width)
         self.scaleFactor = CGFloat(cgImage.width) / screenWidthPt
     }
 }
 
 /// 跨 macOS 版本屏幕抓取引擎：
-/// - macOS 14.0+ 使用官方 `ScreenCaptureKit` (`SCScreenshotManager`)，原生支持 Retina 与 HDR 色调映射；
+/// - macOS 14.0+ 使用官方 `ScreenCaptureKit` (`SCScreenshotManager`) 多屏并发抓图，原生支持 Retina 与 HDR 色调映射；
 /// - macOS 12–13 自动回退 `CGDisplayCreateImage`（通过符号动态解析避开新 SDK 废弃编译限制）。
 enum ScreenCapturer {
     /// 检查屏幕录制权限；若未授权则触发系统授权引导
@@ -61,8 +60,15 @@ enum ScreenCapturer {
             displayMap[d.displayID] = d
         }
 
-        var results: [ScreenSnapshot] = []
-        for screen in screens {
+        struct CaptureSpec: @unchecked Sendable {
+            let index: Int
+            let displayID: CGDirectDisplayID
+            let filter: SCContentFilter
+            let cfg: SCStreamConfiguration
+        }
+
+        var specs: [CaptureSpec] = []
+        for (idx, screen) in screens.enumerated() {
             guard let id = screenDisplayID(screen), let scDisplay = displayMap[id] else { continue }
             let filter = SCContentFilter(display: scDisplay, excludingWindows: [])
             let cfg = SCStreamConfiguration()
@@ -71,12 +77,40 @@ enum ScreenCapturer {
             cfg.height = Int((screen.frame.height * scale).rounded())
             cfg.showsCursor = false
             cfg.capturesAudio = false
-
-            if let image = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg) {
-                results.append(ScreenSnapshot(screen: screen, displayID: id, cgImage: image))
-            }
+            specs.append(CaptureSpec(index: idx, displayID: id, filter: filter, cfg: cfg))
         }
-        return results
+        guard !specs.isEmpty else { return nil }
+
+        // 单显示器走零额外调度直通快径；多显示器使用 TaskGroup 并发抓屏
+        if specs.count == 1 {
+            let s = specs[0]
+            guard let img = try? await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.cfg) else {
+                return nil
+            }
+            return [ScreenSnapshot(screen: screens[s.index], displayID: s.displayID, cgImage: img)]
+        }
+
+        let capturedPairs: [(Int, CGDirectDisplayID, CGImage)] = await withTaskGroup(
+            of: (Int, CGDirectDisplayID, CGImage)?.self
+        ) { group in
+            for s in specs {
+                group.addTask {
+                    guard let img = try? await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.cfg) else {
+                        return nil
+                    }
+                    return (s.index, s.displayID, img)
+                }
+            }
+            var out: [(Int, CGDirectDisplayID, CGImage)] = []
+            for await item in group {
+                if let item { out.append(item) }
+            }
+            return out
+        }
+
+        return capturedPairs
+            .sorted { $0.0 < $1.0 }
+            .map { ScreenSnapshot(screen: screens[$0.0], displayID: $0.1, cgImage: $0.2) }
     }
 
     @MainActor

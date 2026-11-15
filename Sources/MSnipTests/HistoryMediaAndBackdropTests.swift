@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Carbon
 import CoreGraphics
@@ -36,18 +37,43 @@ func testMilestone3To5Features() {
     }
     check(ring.entries.count == 15, "超出 15 张上限后内存列表应严格保持 15 条，实际: \(ring.entries.count)")
     check(ring.entries.first?.id == recordedEntries.last?.id, "最新一张截图应位于历史队首")
+    ring.flushPendingWrites()
     for evicted in recordedEntries.prefix(3) {
         let path = tempHistDir.appendingPathComponent(evicted.fileName).path
         check(!FileManager.default.fileExists(atPath: path), "被淘汰的最早 3 张 PNG 文件必须从磁盘清理")
     }
 
-    // 模拟应用重启重新加载历史目录
+    // 模拟应用重启重新加载历史目录，并校验缩略图绝不常驻全尺寸位图内存
     let reloaded = CaptureHistoryRing(directoryURL: tempHistDir, maxCount: 15)
     check(reloaded.entries.count == 15 && reloaded.entries.first?.pixelWidth == 64 + 17 * 2, "重启加载应完整恢复最近 15 条索引")
     check(reloaded.loadCGImage(for: reloaded.entries[0])?.width == 64 + 17 * 2, "应能按需从磁盘解码原尺寸 CGImage")
-    check(reloaded.menuThumbnail(for: reloaded.entries[0]) != nil, "应能生成菜单栏圆角缩略图")
+    if let thumb = reloaded.menuThumbnail(for: reloaded.entries[0]) {
+        let rep = thumb.representations.first
+        check((rep?.pixelsWide ?? 999) <= 64 && (rep?.pixelsHigh ?? 999) <= 64, "菜单栏缩略图必须为 56×36 轻量独立小位图，绝不驻留原尺寸大图")
+    } else {
+        check(false, "应能生成菜单栏圆角缩略图")
+    }
     reloaded.clearAll()
     check(reloaded.entries.isEmpty, "清空历史后列表应为空")
+
+    // 2b) ClipboardImagePromise 延迟剪贴板提供器：按需兑现 PNG 与 Retina 逻辑尺寸 NSImage
+    let testPB = NSPasteboard.withUniqueName()
+    defer { testPB.releaseGlobally() }
+    let retinaShot = makeSolidFrame(width: 240, height: 140, r: 0.18, g: 0.62, b: 0.95)
+    _ = ClipboardImagePromise.write(cgImage: retinaShot, scaleFactor: 2.0, to: testPB)
+    if let pngBytes = testPB.data(forType: .png),
+       let decodedRep = NSBitmapImageRep(data: pngBytes) {
+        check(decodedRep.pixelsWide == 240 && decodedRep.pixelsHigh == 140, "延迟剪贴板按需编码的 PNG 应保留完整 240×140 物理像素")
+    } else {
+        check(false, "外部应用请求 .png 时 ClipboardImagePromise 应按需编码返回有效 PNG 数据")
+    }
+    if let pastedImages = testPB.readObjects(forClasses: [NSImage.self], options: nil) as? [NSImage],
+       let pastedFirst = pastedImages.first {
+        check(abs(pastedFirst.size.width - 120) < 0.5 && abs(pastedFirst.size.height - 70) < 0.5, "延迟剪贴板兑现的 NSImage 应保留 @2x 逻辑点尺寸 120×70")
+    } else {
+        check(false, "外部应用请求 NSImage 时应能成功兑现")
+    }
+    AnnotationRenderer.purgeCaches()
 
     // 3) MediaClipEncoder 零依赖原生 GIF 与 H.264 MP4 动图合成测试
     let clipDir = FileManager.default.temporaryDirectory

@@ -60,6 +60,11 @@ public final class PixelSampler: @unchecked Sendable {
 
 /// 纯 CoreGraphics 标注渲染与高清图像烘焙器（屏幕预览与剪贴板/PNG 导出共用同一套绘制代码）
 public enum AnnotationRenderer {
+    /// 释放渲染器内部瞬态图像缓存（如毛玻璃切片缓存），保证会话关闭后零闲置内存占用
+    public static func purgeCaches() {
+        AnnotationEffectsRenderer.purgeCaches()
+    }
+
     /// 测量文本在给定字号下的排版尺寸（供命中框与布局缓存）
     public static func measureText(_ text: String, fontSize: CGFloat) -> CGSize {
         let attrs = textAttributes(color: RGBAColor(255, 255, 255), fontSize: fontSize)
@@ -86,10 +91,10 @@ public enum AnnotationRenderer {
             ctx.clip(to: clipRect)
         }
         for (idx, item) in annotations.enumerated() where idx != skipIndex {
-            drawSingle(item, in: ctx, sampler: sampler, imageScale: imageScale)
+            drawSingle(item, in: ctx, sampler: sampler, imageScale: imageScale, isDraft: false)
         }
         if let draft {
-            drawSingle(draft, in: ctx, sampler: sampler, imageScale: imageScale)
+            drawSingle(draft, in: ctx, sampler: sampler, imageScale: imageScale, isDraft: true)
         }
         ctx.restoreGState()
     }
@@ -99,7 +104,8 @@ public enum AnnotationRenderer {
         _ item: Annotation,
         in ctx: CGContext,
         sampler: PixelSampler?,
-        imageScale: CGFloat
+        imageScale: CGFloat,
+        isDraft: Bool = false
     ) {
         ctx.saveGState()
         ctx.setStrokeColor(item.style.color.cgColor)
@@ -173,7 +179,8 @@ public enum AnnotationRenderer {
                 blockSize: item.style.mosaicBlockSize,
                 in: ctx,
                 sampler: sampler,
-                scale: imageScale
+                scale: imageScale,
+                isDraft: isDraft
             )
 
         case .text(let origin, let content, _):

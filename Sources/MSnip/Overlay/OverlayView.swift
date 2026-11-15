@@ -13,11 +13,10 @@ enum DragOperation {
     case movingAnnotation(index: Int, lastPoint: CGPoint, moved: Bool)
 }
 
-/// 单块显示器的全屏冻结覆盖层画布（`isFlipped = true`，左上角为 `(0, 0)`）
+/// 单块显示器的全屏冻结覆盖层画布（`isFlipped = true`，左上角为 `(0, 0)`，支持局部脏矩形极速重绘）
 final class OverlayView: NSView, NSTextFieldDelegate {
     let snapshot: ScreenSnapshot
     let regionDetector: RegionDetector
-    private let frozenNSImage: NSImage
     let toolbar = ToolbarView()
 
     // 外部会话回调
@@ -50,7 +49,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
     // PixPin 风格取色放大镜、快捷键提示与选区增强状态
     var lastMousePoint: CGPoint?
-    var colorCopyFormat: ColorCopyFormat { didSet { needsDisplay = true } }
+    var colorCopyFormat: ColorCopyFormat { didSet { invalidateMagnifierAtCurrentMouse() } }
     var showShortcutTips: Bool { didSet { needsDisplay = true } }
     var lastHistorySelection: CGRect?
     var cornerRadiusPt: CGFloat = 0 { didSet { toolbar.cornerRadiusPt = cornerRadiusPt; needsDisplay = true } }
@@ -61,7 +60,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var eyedropperActive = false { didSet { toolbar.eyedropperActive = eyedropperActive; needsDisplay = true } }
     var optionPressed = false { didSet { if oldValue != optionPressed { needsDisplay = true } } }
     var magnifierPinned = false { didSet { needsDisplay = true } }
-    var useRelativeCoordinates = false { didSet { needsDisplay = true } }
+    var useRelativeCoordinates = false { didSet { invalidateMagnifierAtCurrentMouse() } }
     var shiftTapCandidate = false
 
     // 正式选区与标注编辑状态
@@ -76,7 +75,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var activeTool: ToolKind? {
         didSet {
             toolbar.activeTool = activeTool
-            needsDisplay = true
+            invalidateMagnifierAtCurrentMouse()
         }
     }
     var colorIndex: Int = 0 {
@@ -89,7 +88,12 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     }
     var style = AnnotationStyle()
     var selectedObjectIndex: Int? { didSet { needsDisplay = true } }
-    var draftAnnotation: Annotation? { didSet { needsDisplay = true } }
+    var draftAnnotation: Annotation? {
+        didSet {
+            if let o = oldValue { setNeedsDisplay(o.bounds.insetBy(dx: -14, dy: -14)) }
+            if let n = draftAnnotation { setNeedsDisplay(n.bounds.insetBy(dx: -14, dy: -14)) }
+        }
+    }
     var dragOp: DragOperation?
     var spacePressed = false
 
@@ -117,7 +121,6 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         self.showShortcutTips = showShortcutTips
         self.lastHistorySelection = lastHistorySelection
         let screenSize = snapshot.screen.frame.size
-        self.frozenNSImage = NSImage(cgImage: snapshot.cgImage, size: screenSize)
         super.init(frame: NSRect(origin: .zero, size: screenSize))
 
         self.colorIndex = initialColorIndex
@@ -158,9 +161,15 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let clip = dirtyRect.intersection(bounds)
+        guard !clip.isNull, clip.width > 0, clip.height > 0,
+              let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        frozenNSImage.draw(in: bounds, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
+        ctx.saveGState()
+        defer { ctx.restoreGState() }
+        ctx.clip(to: clip)
+
+        drawFrozenBackgroundSlice(in: ctx, dirtyRect: clip)
 
         let highlightRect = selection ?? displayedAutoRect ?? hoveredAutoRect
         let activeRadius = (selection != nil && cornerRadiusPt > 0.5)
@@ -170,7 +179,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         ctx.saveGState()
         ctx.setFillColor(NSColor.black.withAlphaComponent(0.46).cgColor)
         if let hl = highlightRect, hl.width > 0, hl.height > 0 {
-            ctx.addRect(bounds)
+            ctx.addRect(clip.insetBy(dx: -2, dy: -2))
             if activeRadius > 0.5 {
                 ctx.addPath(CGPath(roundedRect: hl, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))
             } else {
@@ -178,40 +187,45 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             }
             ctx.fillPath(using: .evenOdd)
         } else {
-            ctx.fill(bounds)
+            ctx.fill(clip)
         }
         ctx.restoreGState()
 
         if selection == nil {
             if let target = hoveredAutoRect {
-                drawAutoSnapChrome(ctx: ctx, displayRect: displayedAutoRect ?? target, targetRect: target)
+                let disp = displayedAutoRect ?? target
+                if autoSnapDirtyBounds(for: disp).intersects(clip) {
+                    drawAutoSnapChrome(ctx: ctx, displayRect: disp, targetRect: target)
+                }
             }
-            drawShortcutTipsHUD(ctx: ctx)
-            drawCursorMagnifier(ctx: ctx)
+            drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
+            drawCursorMagnifier(ctx: ctx, dirtyRect: clip)
             return
         }
 
         guard let sel = selection, sel.width >= 1, sel.height >= 1 else {
-            drawShortcutTipsHUD(ctx: ctx)
-            drawCursorMagnifier(ctx: ctx)
+            drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
+            drawCursorMagnifier(ctx: ctx, dirtyRect: clip)
             return
         }
 
-        ctx.saveGState()
-        if activeRadius > 0.5 {
-            ctx.addPath(CGPath(roundedRect: sel, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))
-            ctx.clip()
+        if sel.intersects(clip) {
+            ctx.saveGState()
+            if activeRadius > 0.5 {
+                ctx.addPath(CGPath(roundedRect: sel, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))
+                ctx.clip()
+            }
+            AnnotationRenderer.drawAnnotations(
+                in: ctx,
+                annotations: doc.objects,
+                draft: draftAnnotation,
+                skipIndex: editingExistingIndex,
+                sampler: snapshot.sampler,
+                imageScale: snapshot.scaleFactor,
+                clipRect: sel
+            )
+            ctx.restoreGState()
         }
-        AnnotationRenderer.drawAnnotations(
-            in: ctx,
-            annotations: doc.objects,
-            draft: draftAnnotation,
-            skipIndex: editingExistingIndex,
-            sampler: snapshot.sampler,
-            imageScale: snapshot.scaleFactor,
-            clipRect: sel
-        )
-        ctx.restoreGState()
 
         if let idx = selectedObjectIndex, doc.objects.indices.contains(idx) {
             ctx.saveGState()
@@ -223,8 +237,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         drawSelectionChrome(ctx: ctx, sel: sel, cornerRadius: activeRadius)
-        drawShortcutTipsHUD(ctx: ctx)
-        drawCursorMagnifier(ctx: ctx)
+        drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
+        drawCursorMagnifier(ctx: ctx, dirtyRect: clip)
     }
 
     func updateToolbarLayout() {

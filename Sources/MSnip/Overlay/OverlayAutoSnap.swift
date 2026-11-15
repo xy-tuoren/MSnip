@@ -43,9 +43,10 @@ extension OverlayView {
 
         guard let target = hoveredAutoRect else { return }
         if immediate || displayedAutoRect == nil {
+            let prevDisplayed = displayedAutoRect
             stopSnapGlide()
             displayedAutoRect = target
-            needsDisplay = true
+            invalidateAutoSnapTransition(from: prevDisplayed, to: target)
         } else if prevTarget != target {
             startSnapGlideToTarget()
         }
@@ -135,7 +136,7 @@ extension OverlayView {
         guard let target = hoveredAutoRect else { return }
         if displayedAutoRect == nil {
             displayedAutoRect = target
-            needsDisplay = true
+            invalidateAutoSnapTransition(from: nil, to: target)
             return
         }
         guard snapAnimTimer == nil else { return }
@@ -147,6 +148,7 @@ extension OverlayView {
                     self.stopSnapGlide()
                     return
                 }
+                let prevDisplayed = cur
                 let k: CGFloat = 0.42
                 cur.origin.x += (target.origin.x - cur.origin.x) * k
                 cur.origin.y += (target.origin.y - cur.origin.y) * k
@@ -163,7 +165,7 @@ extension OverlayView {
                 } else {
                     self.displayedAutoRect = cur
                 }
-                self.needsDisplay = true
+                self.invalidateAutoSnapTransition(from: prevDisplayed, to: self.displayedAutoRect)
             }
         }
         RunLoop.main.add(timer, forMode: .common)

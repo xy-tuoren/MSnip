@@ -21,32 +21,12 @@ enum ClipboardAndSave {
 
     /// 将 `CGImage` 编码为保留逻辑 DPI 尺寸的 PNG 数据
     static func encodePNG(cgImage: CGImage, scaleFactor: CGFloat) -> Data? {
-        let rep = NSBitmapImageRep(cgImage: cgImage)
-        rep.size = NSSize(
-            width: CGFloat(cgImage.width) / max(1.0, scaleFactor),
-            height: CGFloat(cgImage.height) / max(1.0, scaleFactor)
-        )
-        return rep.representation(using: .png, properties: [:])
+        ClipboardImagePromise.encodePNG(cgImage: cgImage, scaleFactor: scaleFactor)
     }
 
-    /// 将 Retina 高清 `CGImage` 写入系统剪贴板（保留物理像素分辨率与逻辑点尺寸）
+    /// 将 Retina 高清 `CGImage` 零阻塞写入系统剪贴板（延迟 Promise 提供 PNG / TIFF，保留物理像素与逻辑 DPI）
     static func copyToClipboard(cgImage: CGImage, scaleFactor: CGFloat) {
-        let logicalSize = NSSize(
-            width: CGFloat(cgImage.width) / max(1.0, scaleFactor),
-            height: CGFloat(cgImage.height) / max(1.0, scaleFactor)
-        )
-        let rep = NSBitmapImageRep(cgImage: cgImage)
-        rep.size = logicalSize
-
-        let nsImage = NSImage(size: logicalSize)
-        nsImage.addRepresentation(rep)
-
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        if let pngData = rep.representation(using: .png, properties: [:]) {
-            pb.setData(pngData, forType: .png)
-        }
-        pb.writeObjects([nsImage])
+        ClipboardImagePromise.write(cgImage: cgImage, scaleFactor: scaleFactor)
     }
 
     /// 将本地媒体文件（如录制的 `.gif` / `.mp4`）写入剪贴板，支持直接粘贴到微信/飞书/Slack/Finder

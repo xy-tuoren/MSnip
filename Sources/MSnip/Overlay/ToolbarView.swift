@@ -33,20 +33,21 @@ final class ToolbarView: NSView {
 
     var onAction: ((Action) -> Void)?
 
-    var activeTool: ToolKind? { didSet { needsDisplay = true } }
-    var nextStepNumber: Int = 1 { didSet { needsDisplay = true } }
-    var colorIndex: Int = 0 { didSet { needsDisplay = true } }
-    var customColor: RGBAColor? { didSet { needsDisplay = true } }
-    var eyedropperActive: Bool = false { didSet { needsDisplay = true } }
-    var lineWidth: CGFloat = 3.0 { didSet { needsDisplay = true } }
-    var cornerRadiusPt: CGFloat = 0 { didSet { needsDisplay = true } }
-    var backdropStyle: BackdropStyle = .none { didSet { needsDisplay = true } }
-    var canUndo: Bool = false { didSet { needsDisplay = true } }
-    var canRedo: Bool = false { didSet { needsDisplay = true } }
-    var pinHint: String = "⌘2" { didSet { needsDisplay = true } }
-    var isPinEditorMode: Bool = false { didSet { needsDisplay = true } }
+    var activeTool: ToolKind? { didSet { if oldValue != activeTool { markItemsDirty() } } }
+    var nextStepNumber: Int = 1 { didSet { if oldValue != nextStepNumber { markItemsDirty() } } }
+    var colorIndex: Int = 0 { didSet { if oldValue != colorIndex { markItemsDirty() } } }
+    var customColor: RGBAColor? { didSet { if oldValue != customColor { markItemsDirty() } } }
+    var eyedropperActive: Bool = false { didSet { if oldValue != eyedropperActive { markItemsDirty() } } }
+    var lineWidth: CGFloat = 3.0 { didSet { if oldValue != lineWidth { markItemsDirty() } } }
+    var cornerRadiusPt: CGFloat = 0 { didSet { if oldValue != cornerRadiusPt { markItemsDirty() } } }
+    var backdropStyle: BackdropStyle = .none { didSet { if oldValue != backdropStyle { markItemsDirty() } } }
+    var canUndo: Bool = false { didSet { if oldValue != canUndo { markItemsDirty() } } }
+    var canRedo: Bool = false { didSet { if oldValue != canRedo { markItemsDirty() } } }
+    var pinHint: String = "⌘2" { didSet { if oldValue != pinHint { markItemsDirty() } } }
+    var isPinEditorMode: Bool = false { didSet { if oldValue != isPinEditorMode { markItemsDirty() } } }
 
     var items: [HitItem] = []
+    private var itemsDirty = true
     private var hoveredIndex: Int?
 
     override var isFlipped: Bool { true }
@@ -57,6 +58,7 @@ final class ToolbarView: NSView {
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.barWidth, height: Self.barHeight))
         rebuildItems()
+        itemsDirty = false
     }
 
     @available(*, unavailable)
@@ -79,27 +81,54 @@ final class ToolbarView: NSView {
         addCursorRect(bounds, cursor: .arrow)
     }
 
-    func refreshState() {
-        rebuildItems()
+    private func markItemsDirty() {
+        itemsDirty = true
         needsDisplay = true
     }
 
+    func refreshState() {
+        rebuildItems()
+        itemsDirty = false
+        needsDisplay = true
+    }
+
+    private func ensureItemsUpToDate() {
+        if itemsDirty {
+            rebuildItems()
+            itemsDirty = false
+        }
+    }
+
     override func mouseMoved(with event: NSEvent) {
+        ensureItemsUpToDate()
         let p = convert(event.locationInWindow, from: nil)
         let idx = items.firstIndex(where: { $0.rect.contains(p) && $0.enabled })
         if idx != hoveredIndex {
+            let oldIdx = hoveredIndex
             hoveredIndex = idx
             toolTip = idx.map { items[$0].tooltip }
-            needsDisplay = true
+            if let o = oldIdx, items.indices.contains(o) {
+                setNeedsDisplay(items[o].rect.insetBy(dx: -3, dy: -3))
+            }
+            if let n = idx, items.indices.contains(n) {
+                setNeedsDisplay(items[n].rect.insetBy(dx: -3, dy: -3))
+            }
         }
     }
 
     override func mouseExited(with event: NSEvent) {
-        hoveredIndex = nil
-        needsDisplay = true
+        if let old = hoveredIndex {
+            hoveredIndex = nil
+            if items.indices.contains(old) {
+                setNeedsDisplay(items[old].rect.insetBy(dx: -3, dy: -3))
+            } else {
+                needsDisplay = true
+            }
+        }
     }
 
     override func mouseDown(with event: NSEvent) {
+        ensureItemsUpToDate()
         let p = convert(event.locationInWindow, from: nil)
         if let item = items.first(where: { $0.rect.contains(p) && $0.enabled }) {
             onAction?(item.action)
@@ -107,12 +136,14 @@ final class ToolbarView: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        rebuildItems()
+        ensureItemsUpToDate()
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+
+        ctx.saveGState()
+        ctx.clip(to: dirtyRect)
 
         let bgRect = bounds.insetBy(dx: 1, dy: 1)
         let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 9, cornerHeight: 9, transform: nil)
-        ctx.saveGState()
         ctx.setFillColor(NSColor(calibratedWhite: 0.12, alpha: 0.92).cgColor)
         ctx.addPath(bgPath)
         ctx.fillPath()
@@ -120,10 +151,10 @@ final class ToolbarView: NSView {
         ctx.setLineWidth(1.0)
         ctx.addPath(bgPath)
         ctx.strokePath()
-        ctx.restoreGState()
 
-        for (i, item) in items.enumerated() {
+        for (i, item) in items.enumerated() where item.rect.insetBy(dx: -4, dy: -4).intersects(dirtyRect) {
             item.draw(ctx, item.rect, hoveredIndex == i)
         }
+        ctx.restoreGState()
     }
 }

@@ -1,26 +1,9 @@
 import AppKit
 import CoreGraphics
-import CoreImage
 import Foundation
 
-/// 荧光笔、自增步骤序号角标、像素马赛克与高斯毛玻璃模糊的专用渲染引擎
+/// 平滑贝塞尔曲线、自适应明暗底荧光笔与自增步骤序号角标渲染器
 enum AnnotationEffectsRenderer {
-    private struct BlurCacheKey: Hashable {
-        let samplerID: ObjectIdentifier
-        let x: Int
-        let y: Int
-        let w: Int
-        let h: Int
-        let radius: Int
-    }
-
-    private static let ciContext = CIContext(options: [
-        .useSoftwareRenderer: false,
-        .cacheIntermediates: false
-    ])
-    private static let cacheLock = NSLock()
-    private static var blurCache: [BlurCacheKey: CGImage] = [:]
-
     /// 二阶贝塞尔中点平滑曲线绘制（供画笔与荧光笔共用）
     static func drawSmoothStroke(points: [CGPoint], in ctx: CGContext) {
         guard points.count >= 2 else { return }
@@ -102,7 +85,6 @@ enum AnnotationEffectsRenderer {
         )
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
 
-        // 1) 若拖拽出了足够长的指示尾部，绘制从圆周出发指向目标的箭头
         if let tail {
             let dx = tail.x - center.x
             let dy = tail.y - center.y
@@ -132,7 +114,6 @@ enum AnnotationEffectsRenderer {
             }
         }
 
-        // 2) 绘制实心徽章圆底与高对比度描边环
         ctx.setFillColor(style.color.cgColor)
         ctx.fillEllipse(in: badgeRect)
 
@@ -146,7 +127,6 @@ enum AnnotationEffectsRenderer {
         ctx.endTransparencyLayer()
         ctx.restoreGState()
 
-        // 3) 居中绘制等宽粗体数字
         let label = "\(max(1, number))" as NSString
         let digitScale: CGFloat = number >= 100 ? 0.82 : (number >= 10 ? 0.94 : 1.08)
         let fontPt = max(11.0, r * digitScale)
@@ -163,107 +143,10 @@ enum AnnotationEffectsRenderer {
         defer { NSGraphicsContext.current = prev }
 
         let sz = label.size(withAttributes: attrs)
-        let textOrigin = CGPoint(
-            x: center.x - sz.width * 0.5,
-            y: center.y - sz.height * 0.5
+        label.draw(
+            at: CGPoint(x: center.x - sz.width * 0.5, y: center.y - sz.height * 0.5),
+            withAttributes: attrs
         )
-        label.draw(at: textOrigin, withAttributes: attrs)
-    }
-
-    /// 方格像素马赛克打码
-    static func drawMosaic(
-        rect: CGRect,
-        blockSize: CGFloat,
-        in ctx: CGContext,
-        sampler: PixelSampler?,
-        scale: CGFloat
-    ) {
-        guard let sampler else { return }
-        let step = max(4.0, blockSize)
-        var y = rect.minY
-        while y < rect.maxY {
-            let bh = min(step, rect.maxY - y)
-            var x = rect.minX
-            while x < rect.maxX {
-                let bw = min(step, rect.maxX - x)
-                let sampleX = Int(((x + bw * 0.5) * scale).rounded())
-                let sampleY = Int(((y + bh * 0.5) * scale).rounded())
-                ctx.setFillColor(sampler.sampleColor(px: sampleX, py: sampleY))
-                ctx.fill(CGRect(x: x, y: y, width: bw + 0.4, height: bh + 0.4))
-                x += step
-            }
-            y += step
-        }
-    }
-
-    /// 原生 CoreImage 高斯毛玻璃柔化打码（边缘延展防透明黑边 + 局部切片缓存保证 60fps 丝滑）
-    static func drawGaussianBlur(
-        rect: CGRect,
-        blockSize: CGFloat,
-        in ctx: CGContext,
-        sampler: PixelSampler?,
-        scale: CGFloat
-    ) {
-        guard let sampler, scale > 0 else { return }
-        let pxRect = CGRect(
-            x: floor(rect.minX * scale),
-            y: floor(rect.minY * scale),
-            width: ceil(rect.width * scale),
-            height: ceil(rect.height * scale)
-        ).intersection(CGRect(x: 0, y: 0, width: sampler.width, height: sampler.height))
-
-        guard pxRect.width >= 2, pxRect.height >= 2 else { return }
-        let blurRadiusPx = max(6.0, blockSize * 1.45 * scale)
-        let key = BlurCacheKey(
-            samplerID: ObjectIdentifier(sampler),
-            x: Int(pxRect.minX),
-            y: Int(pxRect.minY),
-            w: Int(pxRect.width),
-            h: Int(pxRect.height),
-            radius: Int(blurRadiusPx.rounded())
-        )
-
-        let blurredCG: CGImage? = {
-            cacheLock.lock()
-            if let hit = blurCache[key] {
-                cacheLock.unlock()
-                return hit
-            }
-            cacheLock.unlock()
-
-            guard let cropped = sampler.cgImage.cropping(to: pxRect) else { return nil }
-            let ciInput = CIImage(cgImage: cropped)
-            let clamped = ciInput.clampedToExtent()
-            guard let filter = CIFilter(name: "CIGaussianBlur") else { return nil }
-            filter.setValue(clamped, forKey: kCIInputImageKey)
-            filter.setValue(blurRadiusPx, forKey: kCIInputRadiusKey)
-            guard let output = filter.outputImage?.cropped(to: ciInput.extent),
-                  let rendered = ciContext.createCGImage(output, from: ciInput.extent) else {
-                return nil
-            }
-
-            cacheLock.lock()
-            if blurCache.count >= 24 { blurCache.removeAll(keepingCapacity: true) }
-            blurCache[key] = rendered
-            cacheLock.unlock()
-            return rendered
-        }()
-
-        guard let blurredCG else { return }
-        let dstRect = CGRect(
-            x: pxRect.minX / scale,
-            y: pxRect.minY / scale,
-            width: pxRect.width / scale,
-            height: pxRect.height / scale
-        )
-        ctx.saveGState()
-        let clipPath = CGPath(roundedRect: rect, cornerWidth: 3, cornerHeight: 3, transform: nil)
-        ctx.addPath(clipPath)
-        ctx.clip()
-        ctx.translateBy(x: 0, y: dstRect.minY + dstRect.maxY)
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.draw(blurredCG, in: dstRect)
-        ctx.restoreGState()
     }
 }
 

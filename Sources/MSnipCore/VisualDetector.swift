@@ -40,32 +40,43 @@ public enum VisualDetector {
         if tops.last != minY { tops.append(minY) }
         if bottoms.last != maxY { bottoms.append(maxY) }
 
-        // 对四边组合执行「周长闭合度验证」，仅保留真正四面成框的 UI 区域（彻底过滤伪交集）
+        // 对四边组合执行「周长闭合度验证」：外提顶/底水平边预筛，仅对有效边组合检查左右竖边（零冗余采样）
         var verified: [CGRect] = []
+        let cornerCap = Int((10.0 * scale).rounded())
         for lx in lefts {
             for rx in rights where rx - lx >= minW {
-                for ty in tops {
-                    for by in bottoms where by - ty >= minH {
-                        let w = rx - lx
+                let w = rx - lx
+                let cornerX = min(cornerCap, w / 6)
+
+                let validTops = tops.filter { ty in
+                    (ty <= minY + 2) || checkHorizontalEdgeSpan(y: ty, x0: lx + cornerX, x1: rx - cornerX, span: spanStep, sampler: sampler)
+                }
+                if validTops.isEmpty { continue }
+
+                let validBottoms = bottoms.filter { by in
+                    (by >= maxY - 2) || checkHorizontalEdgeSpan(y: by, x0: lx + cornerX, x1: rx - cornerX, span: spanStep, sampler: sampler)
+                }
+                if validBottoms.isEmpty { continue }
+
+                for ty in validTops {
+                    for by in validBottoms where by - ty >= minH {
                         let h = by - ty
                         if w > h * 26 || h > w * 18 { continue }
-                        // 排除等同于整个 limitRect 的外框（由窗口层单独提供）
                         if lx == minX && rx == maxX && ty == minY && by == maxY { continue }
 
-                        if verifyClosedPerimeter(
-                            lx: lx, rx: rx, ty: ty, by: by,
-                            winMinX: minX, winMaxX: maxX, winMinY: minY, winMaxY: maxY,
-                            span: spanStep, scale: scale, sampler: sampler
-                        ) {
-                            let rect = CGRect(
-                                x: CGFloat(lx) / scale,
-                                y: CGFloat(ty) / scale,
-                                width: CGFloat(w) / scale,
-                                height: CGFloat(h) / scale
-                            ).intersection(limitRect)
-                            if rect.contains(point) {
-                                verified.append(rect)
-                            }
+                        let cornerY = min(cornerCap, h / 6)
+                        guard (lx <= minX + 2) || checkVerticalEdgeSpan(x: lx, y0: ty + cornerY, y1: by - cornerY, span: spanStep, sampler: sampler),
+                              (rx >= maxX - 2) || checkVerticalEdgeSpan(x: rx, y0: ty + cornerY, y1: by - cornerY, span: spanStep, sampler: sampler) else {
+                            continue
+                        }
+                        let rect = CGRect(
+                            x: CGFloat(lx) / scale,
+                            y: CGFloat(ty) / scale,
+                            width: CGFloat(w) / scale,
+                            height: CGFloat(h) / scale
+                        ).intersection(limitRect)
+                        if rect.contains(point) {
+                            verified.append(rect)
                         }
                     }
                 }
@@ -170,69 +181,55 @@ public enum VisualDetector {
 
     // MARK: - 4-Side Closed Perimeter Verification
 
-    private static func verifyClosedPerimeter(
-        lx: Int, rx: Int, ty: Int, by: Int,
-        winMinX: Int, winMaxX: Int, winMinY: Int, winMaxY: Int,
-        span: Int, scale: CGFloat, sampler: PixelSampler
-    ) -> Bool {
-        let w = rx - lx
-        let h = by - ty
-        // 自动缩进圆角半径区间（10pt 足以跨过 macOS 8~14pt 圆角切点）
-        let cornerX = min(Int((10.0 * scale).rounded()), w / 6)
-        let cornerY = min(Int((10.0 * scale).rounded()), h / 6)
+    @inline(__always)
+    private static func strongHorizontalAt(x: Int, y: Int, span: Int, sampler: PixelSampler) -> Bool {
+        if edgeStrengthH(sampler, x: x, y: y, span: span) >= 20 { return true }
+        if edgeStrengthH(sampler, x: x, y: y - 1, span: span) >= 20 { return true }
+        return edgeStrengthH(sampler, x: x, y: y + 1, span: span) >= 20
+    }
 
-        let topOK = (ty <= winMinY + 2) || checkHorizontalEdgeSpan(y: ty, x0: lx + cornerX, x1: rx - cornerX, span: span, sampler: sampler)
-        guard topOK else { return false }
-
-        let bottomOK = (by >= winMaxY - 2) || checkHorizontalEdgeSpan(y: by, x0: lx + cornerX, x1: rx - cornerX, span: span, sampler: sampler)
-        guard bottomOK else { return false }
-
-        let leftOK = (lx <= winMinX + 2) || checkVerticalEdgeSpan(x: lx, y0: ty + cornerY, y1: by - cornerY, span: span, sampler: sampler)
-        guard leftOK else { return false }
-
-        let rightOK = (rx >= winMaxX - 2) || checkVerticalEdgeSpan(x: rx, y0: ty + cornerY, y1: by - cornerY, span: span, sampler: sampler)
-        return rightOK
+    @inline(__always)
+    private static func strongVerticalAt(x: Int, y: Int, span: Int, sampler: PixelSampler) -> Bool {
+        if edgeStrengthV(sampler, x: x, y: y, span: span) >= 20 { return true }
+        if edgeStrengthV(sampler, x: x - 1, y: y, span: span) >= 20 { return true }
+        return edgeStrengthV(sampler, x: x + 1, y: y, span: span) >= 20
     }
 
     private static func checkHorizontalEdgeSpan(y: Int, x0: Int, x1: Int, span: Int, sampler: PixelSampler) -> Bool {
         guard x1 > x0 else { return false }
+        // 优先校验左右双肩端点闭合性，不闭合立即 O(1) 剪枝退出
+        guard strongHorizontalAt(x: x0, y: y, span: span, sampler: sampler),
+              strongHorizontalAt(x: x1, y: y, span: span, sampler: sampler) else {
+            return false
+        }
         let samples = 12
-        var hits = 0
-        for i in 0..<samples {
+        var misses = 0
+        for i in 1..<(samples - 1) {
             let x = x0 + ((x1 - x0) * i) / (samples - 1)
-            let s = max(
-                edgeStrengthH(sampler, x: x, y: y, span: span),
-                max(edgeStrengthH(sampler, x: x, y: y - 1, span: span),
-                    edgeStrengthH(sampler, x: x, y: y + 1, span: span))
-            )
-            if s >= 20 {
-                hits += 1
-            } else if i == 0 || i == samples - 1 {
-                // 两端肩部端点必须真实闭合，杜绝悬空卡片边与整窗外框乱配对
-                return false
+            if !strongHorizontalAt(x: x, y: y, span: span, sampler: sampler) {
+                misses += 1
+                if misses > 2 { return false }
             }
         }
-        return hits >= 10
+        return true
     }
 
     private static func checkVerticalEdgeSpan(x: Int, y0: Int, y1: Int, span: Int, sampler: PixelSampler) -> Bool {
         guard y1 > y0 else { return false }
+        guard strongVerticalAt(x: x, y: y0, span: span, sampler: sampler),
+              strongVerticalAt(x: x, y: y1, span: span, sampler: sampler) else {
+            return false
+        }
         let samples = 12
-        var hits = 0
-        for i in 0..<samples {
+        var misses = 0
+        for i in 1..<(samples - 1) {
             let y = y0 + ((y1 - y0) * i) / (samples - 1)
-            let s = max(
-                edgeStrengthV(sampler, x: x, y: y, span: span),
-                max(edgeStrengthV(sampler, x: x - 1, y: y, span: span),
-                    edgeStrengthV(sampler, x: x + 1, y: y, span: span))
-            )
-            if s >= 20 {
-                hits += 1
-            } else if i == 0 || i == samples - 1 {
-                return false
+            if !strongVerticalAt(x: x, y: y, span: span, sampler: sampler) {
+                misses += 1
+                if misses > 2 { return false }
             }
         }
-        return hits >= 10
+        return true
     }
 
     private static func refineVerticalPeak(around cx: Int, atY y: Int, span: Int, sampler: PixelSampler) -> Int {

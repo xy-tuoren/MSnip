@@ -23,6 +23,8 @@ final class RegionDetector {
     // 4pt 网格缓存，避免鼠标在同一微小区域高频重算
     private var lastGridKey: (Int, Int, CGDirectDisplayID)?
     private var cachedHierarchy: [CGRect] = []
+    private var appElementCache: [pid_t: AXUIElement] = [:]
+    private var unresponsivePIDs: Set<pid_t> = []
 
     init(windows: [WindowSnapshotItem], primaryScreenHeight: CGFloat) {
         self.windows = windows
@@ -178,10 +180,24 @@ final class RegionDetector {
         "AXScrollBar", "AXValueIndicator", "AXSplitter", "AXMenuItemMarkChar"
     ]
 
-    private func queryAXHierarchy(pid: pid_t, at globalPoint: CGPoint, clampTo windowBounds: CGRect) -> [CGRect] {
-        let appElem = AXUIElementCreateApplication(pid)
-        AXUIElementSetMessagingTimeout(appElem, 0.015) // 15ms 硬超时，防止无响应进程卡顿光标
+    private static let batchedAXAttrs: CFArray = [
+        kAXRoleAttribute as CFString,
+        kAXPositionAttribute as CFString,
+        kAXSizeAttribute as CFString,
+        kAXParentAttribute as CFString
+    ] as CFArray
 
+    private func queryAXHierarchy(pid: pid_t, at globalPoint: CGPoint, clampTo windowBounds: CGRect) -> [CGRect] {
+        guard !unresponsivePIDs.contains(pid) else { return [] }
+        let appElem: AXUIElement = {
+            if let cached = appElementCache[pid] { return cached }
+            let created = AXUIElementCreateApplication(pid)
+            AXUIElementSetMessagingTimeout(created, 0.015) // 15ms 硬超时，防止无响应进程卡顿光标
+            appElementCache[pid] = created
+            return created
+        }()
+
+        let t0 = CFAbsoluteTimeGetCurrent()
         var hitRef: AXUIElement?
         let status = AXUIElementCopyElementAtPosition(
             appElem,
@@ -189,12 +205,29 @@ final class RegionDetector {
             Float(globalPoint.y),
             &hitRef
         )
+        if status == .cannotComplete, (CFAbsoluteTimeGetCurrent() - t0) >= 0.012 {
+            // 熔断已卡死的后台应用，本轮截图会话后续移动 0ms 直接跳过其 AX IPC
+            unresponsivePIDs.insert(pid)
+            return []
+        }
         guard status == .success, var current = hitRef else { return [] }
 
         var rects: [CGRect] = []
         for _ in 0..<16 {
-            let role = axRole(current)
-            if !Self.ignoredAXRoles.contains(role), let r = axElementBounds(current) {
+            var valuesRef: CFArray?
+            let err = AXUIElementCopyMultipleAttributeValues(
+                current,
+                Self.batchedAXAttrs,
+                AXCopyMultipleAttributeOptions(rawValue: 0),
+                &valuesRef
+            )
+            guard err == .success, let arr = valuesRef as? [AnyObject], arr.count == 4 else {
+                break
+            }
+
+            let role = (arr[0] as? String) ?? ""
+            if !Self.ignoredAXRoles.contains(role),
+               let r = unpackAXBounds(posObj: arr[1], sizeObj: arr[2]) {
                 let clamped = r.intersection(windowBounds)
                 let minSizeOK = (role == "AXImage")
                     ? (clamped.width >= 48 && clamped.height >= 48)
@@ -203,37 +236,23 @@ final class RegionDetector {
                     rects.append(clamped)
                 }
             }
-            var parentRef: CFTypeRef?
-            let err = AXUIElementCopyAttributeValue(current, kAXParentAttribute as CFString, &parentRef)
-            guard err == .success, let parent = parentRef, CFGetTypeID(parent) == AXUIElementGetTypeID() else {
-                break
-            }
-            current = (parent as! AXUIElement)
+
+            let parentObj = arr[3]
+            guard CFGetTypeID(parentObj) == AXUIElementGetTypeID() else { break }
+            current = (parentObj as! AXUIElement)
         }
         return rects
     }
 
-    private func axRole(_ element: AXUIElement) -> String {
-        var ref: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &ref) == .success,
-              let s = ref as? String else { return "" }
-        return s
-    }
-
-    private func axElementBounds(_ element: AXUIElement) -> CGRect? {
-        var posRef: CFTypeRef?
-        var sizeRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &posRef) == .success,
-              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeRef) == .success,
-              let posVal = posRef, let sizeVal = sizeRef,
-              CFGetTypeID(posVal) == AXValueGetTypeID(),
-              CFGetTypeID(sizeVal) == AXValueGetTypeID() else {
+    private func unpackAXBounds(posObj: AnyObject, sizeObj: AnyObject) -> CGRect? {
+        guard CFGetTypeID(posObj) == AXValueGetTypeID(),
+              CFGetTypeID(sizeObj) == AXValueGetTypeID() else {
             return nil
         }
         var pt = CGPoint.zero
         var sz = CGSize.zero
-        guard AXValueGetValue(posVal as! AXValue, .cgPoint, &pt),
-              AXValueGetValue(sizeVal as! AXValue, .cgSize, &sz) else {
+        guard AXValueGetValue(posObj as! AXValue, .cgPoint, &pt),
+              AXValueGetValue(sizeObj as! AXValue, .cgSize, &sz) else {
             return nil
         }
         return CGRect(origin: pt, size: sz)

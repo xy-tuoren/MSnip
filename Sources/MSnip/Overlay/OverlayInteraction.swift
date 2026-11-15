@@ -8,16 +8,17 @@ extension OverlayView {
     // MARK: - Mouse & Auto-Snap Interaction
 
     override func mouseMoved(with event: NSEvent) {
+        let prevPt = lastMousePoint
         let p = convert(event.locationInWindow, from: nil)
         lastMousePoint = p
         if !toolbar.isHidden && toolbar.frame.contains(p) {
             NSCursor.arrow.set()
-            needsDisplay = true
+            invalidateMagnifierMove(from: prevPt, to: p)
             return
         }
         if eyedropperActive {
             NSCursor.crosshair.set()
-            needsDisplay = true
+            invalidateMagnifierMove(from: prevPt, to: p)
             return
         }
         if let sel = selection {
@@ -28,16 +29,14 @@ extension OverlayView {
             } else {
                 NSCursor.crosshair.set()
             }
-            if optionPressed || magnifierPinned || showShortcutTips {
-                needsDisplay = true
-            }
+            invalidateMagnifierMove(from: prevPt, to: p)
             return
         }
 
         onSelectionActivated?(self)
         updateAutoSnap(at: p)
         NSCursor.crosshair.set()
-        needsDisplay = true
+        invalidateMagnifierMove(from: prevPt, to: p)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -189,13 +188,18 @@ extension OverlayView {
             } else {
                 draftAnnotation = makeDraft(tool: tool, from: start, to: clampedP, shift: shift)
             }
+            invalidateMagnifierMove(from: prevPt, to: p)
 
         case .movingAnnotation(let index, let lastPoint, let moved):
             let dx = p.x - lastPoint.x
             let dy = p.y - lastPoint.y
+            let oldBounds = doc.objects[index].bounds.insetBy(dx: -14, dy: -14)
             doc.updateWithoutHistory(at: index) { $0.translate(dx: dx, dy: dy) }
+            let newBounds = doc.objects[index].bounds.insetBy(dx: -14, dy: -14)
             dragOp = .movingAnnotation(index: index, lastPoint: p, moved: moved || hypot(dx, dy) > 0.5)
-            needsDisplay = true
+            setNeedsDisplay(oldBounds)
+            setNeedsDisplay(newBounds)
+            invalidateMagnifierMove(from: prevPt, to: p)
         }
     }
 

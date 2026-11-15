@@ -7,7 +7,26 @@ import MSnipCore
 /// 1) 屏幕角落自适应避让的轻量快捷键速查面板 (`ShortcutTipsWidget`)
 /// 2) 选区尺寸与状态胶囊 (`drawHUDPill`) 及通用浅色小键帽绘制器 (`drawKeycapTip`)
 extension OverlayView {
-    func drawShortcutTipsHUD(ctx: CGContext) {
+    private static let hudPillAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+        .foregroundColor: NSColor.white
+    ]
+    private static let keycapKeyAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 10, weight: .bold),
+        .foregroundColor: NSColor(srgbRed: 0.10, green: 0.11, blue: 0.13, alpha: 1.0)
+    ]
+    private static let keycapDescAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 11, weight: .medium),
+        .foregroundColor: NSColor(white: 0.90, alpha: 1.0)
+    ]
+    private static var keycapSizeCache: [String: (kSz: CGSize, dSz: CGSize)] = [:]
+
+    func shortcutTipsBottomTriggerZone() -> CGRect {
+        // 覆盖左下角快捷键提示条及 24pt 避让缓冲区
+        CGRect(x: 0, y: bounds.height - 98, width: 620, height: 98)
+    }
+
+    func drawShortcutTipsHUD(ctx: CGContext, dirtyRect: CGRect) {
         guard showShortcutTips, !isEditingText else { return }
         if let sel = selection, sel.width > bounds.width * 0.88, sel.height > bounds.height * 0.82 {
             return
@@ -52,6 +71,8 @@ extension OverlayView {
         }
 
         let rect = CGRect(origin: origin, size: CGSize(width: cardW, height: cardH))
+        guard rect.insetBy(dx: -4, dy: -4).intersects(dirtyRect) else { return }
+
         let path = CGPath(roundedRect: rect, cornerWidth: 10, cornerHeight: 10, transform: nil)
         ctx.saveGState()
         ctx.setFillColor(NSColor(srgbRed: 0.08, green: 0.085, blue: 0.105, alpha: 0.80).cgColor)
@@ -74,11 +95,7 @@ extension OverlayView {
 
     func drawHUDPill(ctx: CGContext, anchorRect: CGRect, text: String) {
         let nsText = text as NSString
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
-            .foregroundColor: NSColor.white
-        ]
-        let textSize = nsText.size(withAttributes: attrs)
+        let textSize = nsText.size(withAttributes: Self.hudPillAttrs)
         let badgeW = ceil(textSize.width + 14)
         let badgeH: CGFloat = 22
         let badgeX = min(max(6, anchorRect.minX), bounds.width - badgeW - 6)
@@ -92,33 +109,30 @@ extension OverlayView {
         ctx.fillPath()
         nsText.draw(
             at: CGPoint(x: badgeRect.minX + 7, y: badgeRect.minY + (badgeH - textSize.height) * 0.5),
-            withAttributes: attrs
+            withAttributes: Self.hudPillAttrs
         )
         ctx.restoreGState()
     }
 
+    private static func cachedKeycapMetrics(key: String, desc: String) -> (kSz: CGSize, dSz: CGSize) {
+        let token = "\(key)\u{1F}\(desc)"
+        if let hit = keycapSizeCache[token] { return hit }
+        let kSz = (key as NSString).size(withAttributes: keycapKeyAttrs)
+        let dSz = (desc as NSString).size(withAttributes: keycapDescAttrs)
+        let pair = (kSz, dSz)
+        keycapSizeCache[token] = pair
+        return pair
+    }
+
     static func measureKeycapTipWidth(key: String, desc: String) -> CGFloat {
-        let kSz = (key as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 10, weight: .bold)])
-        let dSz = (desc as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11, weight: .medium)])
-        return max(16, ceil(kSz.width + 8)) + 5 + ceil(dSz.width)
+        let m = cachedKeycapMetrics(key: key, desc: desc)
+        return max(16, ceil(m.kSz.width + 8)) + 5 + ceil(m.dSz.width)
     }
 
     @discardableResult
     static func drawKeycapTip(ctx: CGContext, x: CGFloat, y: CGFloat, key: String, desc: String) -> CGFloat {
-        let keyAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 10, weight: .bold),
-            .foregroundColor: NSColor(srgbRed: 0.10, green: 0.11, blue: 0.13, alpha: 1.0)
-        ]
-        let descAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11, weight: .medium),
-            .foregroundColor: NSColor(white: 0.90, alpha: 1.0)
-        ]
-        let kNs = key as NSString
-        let dNs = desc as NSString
-        let kSz = kNs.size(withAttributes: keyAttrs)
-        let dSz = dNs.size(withAttributes: descAttrs)
-
-        let capW = max(16, ceil(kSz.width + 8))
+        let m = cachedKeycapMetrics(key: key, desc: desc)
+        let capW = max(16, ceil(m.kSz.width + 8))
         let capH: CGFloat = 15
         let capRect = CGRect(x: x, y: y + 0.5, width: capW, height: capH)
         let capPath = CGPath(roundedRect: capRect, cornerWidth: 3.5, cornerHeight: 3.5, transform: nil)
@@ -126,18 +140,17 @@ extension OverlayView {
         ctx.addPath(capPath)
         ctx.fillPath()
 
-        kNs.draw(
-            at: CGPoint(x: capRect.minX + (capW - kSz.width) * 0.5, y: capRect.minY + (capH - kSz.height) * 0.5),
-            withAttributes: keyAttrs
+        (key as NSString).draw(
+            at: CGPoint(x: capRect.minX + (capW - m.kSz.width) * 0.5, y: capRect.minY + (capH - m.kSz.height) * 0.5),
+            withAttributes: keycapKeyAttrs
         )
         let descX = capRect.maxX + 5
-        dNs.draw(at: CGPoint(x: descX, y: y + (16 - dSz.height) * 0.5), withAttributes: descAttrs)
-        return descX + ceil(dSz.width)
+        (desc as NSString).draw(at: CGPoint(x: descX, y: y + (16 - m.dSz.height) * 0.5), withAttributes: keycapDescAttrs)
+        return descX + ceil(m.dSz.width)
     }
 
     func drawSelectionChrome(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
         ctx.saveGState()
-        // 当启用美观背景衬底时，在选区外周渲染彩色渐变预览光环提示导出效果
         if backdropStyle != .none, let firstStop = backdropStyle.gradientStops.first {
             let halo = sel.insetBy(dx: -4, dy: -4)
             let haloR = max(10, cornerRadius + 4)

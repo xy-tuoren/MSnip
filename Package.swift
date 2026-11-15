@@ -15,6 +15,7 @@ let package = Package(
             name: "MSnipCore",
             path: "Sources/MSnipCore",
             linkerSettings: [
+                .linkedFramework("Accelerate"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("Carbon"),
@@ -31,6 +32,7 @@ let package = Package(
             dependencies: ["MSnipCore"],
             path: "Sources/MSnip",
             linkerSettings: [
+                .linkedFramework("Accelerate"),
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("AVFoundation"),
