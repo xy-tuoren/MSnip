@@ -3,16 +3,17 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 应用主控制器：管理菜单栏常驻图标、全局快捷键路由、截图会话与贴图池
+/// 应用主控制器：管理菜单栏常驻图标、全局快捷键路由、截图会话、滚动长截图与贴图池
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
-    private var statusItem: NSStatusItem!
-    private var axMenuItem: NSMenuItem?
-    private var config = AppConfig.load()
+    var statusItem: NSStatusItem!
+    var axMenuItem: NSMenuItem?
+    var config = AppConfig.load()
     private let hotKeyManager = HotKeyManager()
-    private let pinManager = PinManager()
+    let pinManager = PinManager()
     private let permissionGuide = PermissionGuideController()
     private var activeSession: OverlaySession?
+    private var activeLongShot: LongShotSession?
     private var isCapturing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -35,7 +36,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 button.title = "✂︎"
             }
-            button.toolTip = "MSnip（麦截）— 轻量截图与贴图"
+            button.toolTip = "MSnip（麦截）— 轻量截图、长截图与贴图"
         }
         rebuildMenu()
     }
@@ -69,7 +70,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     // MARK: - Core Actions
 
     @objc func startCapture() {
-        guard activeSession == nil, !isCapturing else { return }
+        guard activeSession == nil, activeLongShot == nil, !isCapturing else { return }
         guard CGPreflightScreenCaptureAccess() else {
             permissionGuide.show(opening: .screenRecording)
             return
@@ -129,6 +130,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
                 case .extractText(let img, let pt):
                     VisionTextExtractor.extractAndCopy(from: img, toastAnchor: pt)
+                case .startLongShot(let screen, let rect, let initialImg):
+                    self.startLongShotSession(screen: screen, rect: rect, initialFrame: initialImg)
                 case .cancelled:
                     break
                 }
@@ -146,20 +149,56 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func startLongShotSession(screen: NSScreen, rect: CGRect, initialFrame: CGImage?) {
+        let longShot = LongShotSession()
+        self.activeLongShot = longShot
+        longShot.onComplete = { [weak self] outcome in
+            guard let self else { return }
+            self.activeLongShot = nil
+            switch outcome {
+            case .copied(let img, let scale):
+                ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
+                ToastHUD.show(message: "长截图已复制 · \(img.width) × \(img.height) px")
+            case .saved(let img, let scale):
+                if let newDir = ClipboardAndSave.savePNGInteractive(
+                    cgImage: img,
+                    scaleFactor: scale,
+                    initialDirectory: self.config.lastSaveDirectory
+                ) {
+                    self.config.lastSaveDirectory = newDir
+                    self.config.save()
+                }
+            case .pinned(let img, let scale, let origin, let targetScreen):
+                self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: targetScreen)
+            case .cancelled:
+                break
+            }
+        }
+        longShot.start(
+            screen: screen,
+            selectionLocalTopLeft: rect,
+            initialCroppedFrame: initialFrame,
+            pinHint: config.hotKeyPreset.pinBadgeLabel
+        )
+    }
+
     @objc func handlePinHotKey() {
-        // 若当前正在截图中，按 ⌘2 直接将当前选区贴到桌面；否则从剪贴板贴图
+        // 若当前正在长截图或截图中，按 ⌘2 直接将当前长图/选区贴到桌面；否则从剪贴板贴图
+        if let ls = activeLongShot, ls.pinCurrentIfPossible() {
+            return
+        }
         if let session = activeSession, session.pinCurrentSelectionIfPossible() {
             return
         }
-        guard activeSession == nil else { return }
+        guard activeSession == nil, activeLongShot == nil else { return }
         pinManager.pinFromClipboard()
     }
 
-    @objc private func closeAllPins() {
+    @objc func closeAllPins() {
         pinManager.closeAll()
     }
 
-    @objc private func selectHotKeyPreset(_ sender: NSMenuItem) {
+    @objc func selectHotKeyPreset(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
               let preset = HotKeyPreset(rawValue: raw) else { return }
         config.hotKeyPreset = preset
@@ -169,131 +208,44 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildMenu()
     }
 
-    @objc private func toggleHotKeysEnabled() {
+    @objc func toggleHotKeysEnabled() {
         config.hotKeysEnabled.toggle()
         config.save()
-        hotKeyManager.apply(preset: config.hotKeyPreset, enabled: config.hotKeysEnabled)
+        hotKeyManager.apply(preset: presetForCurrent(), enabled: config.hotKeysEnabled)
         rebuildMenu()
     }
 
-    @objc private func toggleLaunchAtLogin() {
+    private func presetForCurrent() -> HotKeyPreset { config.hotKeyPreset }
+
+    @objc func toggleLaunchAtLogin() {
         let target = !LaunchAtLoginManager.isEnabled
         _ = LaunchAtLoginManager.setEnabled(target)
         rebuildMenu()
     }
 
-    @objc private func openPermissionGuide() {
+    @objc func openPermissionGuide() {
         let pane: PermissionPane? = !CGPreflightScreenCaptureAccess()
             ? .screenRecording
             : (!RegionDetector.checkAccessibilityPermission(prompt: false) ? .accessibility : nil)
         permissionGuide.show(opening: pane)
     }
 
-    @objc private func showAbout() {
+    @objc func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v0.7.0"
+        alert.messageText = "MSnip（麦截）v0.8.0"
         alert.informativeText = """
-        超轻量原生 macOS 截图、像素级取色、离线识字与贴图工具
-        • 纯 Swift + AppKit + CoreGraphics + Vision，零第三方依赖
-        • 跟随光标像素网格放大镜：按 C 提取色值、Shift 切换格式、T 识字/二维码
-        • 智能吸附多层窗口矩阵，支持圆角截图与色彩贴图卡
+        超轻量原生 macOS 截图、滚动长截图、像素取色、离线识字与贴图工具
+        • 纯 Swift + AppKit + CoreGraphics + ScreenCaptureKit + Vision，零第三方依赖
+        • 按 L 开启滚动长截图：支持手动滚轮与平滑自动滚动，自动剥离固定顶/底栏
+        • 跟随光标像素放大镜：按 C 提取色值、Shift 切换格式、T 识字/二维码
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好")
         alert.runModal()
     }
 
-    @objc private func quitApp() {
+    @objc func quitApp() {
         NSApp.terminate(nil)
-    }
-
-    // MARK: - Menu Construction
-
-    private func rebuildMenu() {
-        let menu = NSMenu()
-        let capKey = config.hotKeyPreset.captureShortcut
-        let pinKey = config.hotKeyPreset.pinShortcut
-
-        let shotItem = NSMenuItem(title: "区域截图", action: #selector(startCapture), keyEquivalent: capKey.keyEquivalent)
-        shotItem.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: capKey.mask)
-        shotItem.target = self
-        menu.addItem(shotItem)
-
-        let pinItem = NSMenuItem(title: "从剪贴板贴图", action: #selector(handlePinHotKey), keyEquivalent: pinKey.keyEquivalent)
-        pinItem.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: pinKey.mask)
-        pinItem.target = self
-        menu.addItem(pinItem)
-
-        if pinManager.count > 0 {
-            let clearItem = NSMenuItem(
-                title: "关闭全部贴图 (\(pinManager.count))",
-                action: #selector(closeAllPins),
-                keyEquivalent: ""
-            )
-            clearItem.target = self
-            menu.addItem(clearItem)
-        }
-
-        menu.addItem(.separator())
-
-        // 快捷键子菜单
-        let hkSubmenu = NSMenu()
-        let enableItem = NSMenuItem(title: "启用全局快捷键", action: #selector(toggleHotKeysEnabled), keyEquivalent: "")
-        enableItem.state = config.hotKeysEnabled ? .on : .off
-        enableItem.target = self
-        hkSubmenu.addItem(enableItem)
-        hkSubmenu.addItem(.separator())
-
-        for preset in HotKeyPreset.allCases {
-            let item = NSMenuItem(title: preset.menuTitle, action: #selector(selectHotKeyPreset(_:)), keyEquivalent: "")
-            item.representedObject = preset.rawValue
-            item.state = (config.hotKeyPreset == preset) ? .on : .off
-            item.target = self
-            hkSubmenu.addItem(item)
-        }
-        let hkRoot = NSMenuItem(title: "全局快捷键", action: nil, keyEquivalent: "")
-        hkRoot.submenu = hkSubmenu
-        menu.addItem(hkRoot)
-
-        let permItem = NSMenuItem(
-            title: "权限设置引导（拖拽开启）…",
-            action: #selector(openPermissionGuide),
-            keyEquivalent: ""
-        )
-        permItem.state = currentPermissionMenuState()
-        permItem.target = self
-        axMenuItem = permItem
-        menu.addItem(permItem)
-
-        let loginItem = NSMenuItem(title: "开机自动启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
-        loginItem.state = LaunchAtLoginManager.isEnabled ? .on : .off
-        loginItem.target = self
-        menu.addItem(loginItem)
-
-        menu.addItem(.separator())
-
-        let aboutItem = NSMenuItem(title: "关于 MSnip", action: #selector(showAbout), keyEquivalent: "")
-        aboutItem.target = self
-        menu.addItem(aboutItem)
-
-        let quitItem = NSMenuItem(title: "退出 MSnip", action: #selector(quitApp), keyEquivalent: "q")
-        quitItem.target = self
-        menu.addItem(quitItem)
-
-        menu.delegate = self
-        statusItem.menu = menu
-    }
-
-    func menuWillOpen(_ menu: NSMenu) {
-        axMenuItem?.state = currentPermissionMenuState()
-    }
-
-    private func currentPermissionMenuState() -> NSControl.StateValue {
-        let screenOK = CGPreflightScreenCaptureAccess()
-        let axOK = RegionDetector.checkAccessibilityPermission(prompt: false)
-        if screenOK && axOK { return .on }
-        if screenOK { return .mixed }
-        return .off
     }
 }

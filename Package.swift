@@ -23,10 +23,13 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("CoreGraphics"),
+                .linkedFramework("CoreMedia"),
+                .linkedFramework("CoreVideo"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("ScreenCaptureKit"),
                 .linkedFramework("ServiceManagement"),
+                .linkedFramework("VideoToolbox"),
                 .linkedFramework("Vision")
             ]
         ),

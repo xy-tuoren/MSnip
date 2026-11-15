@@ -37,6 +37,7 @@ final class OverlaySession {
         case copiedColor(String, RGBAColor, NSPoint)
         case copiedCoordinate(String, NSPoint)
         case extractText(CGImage, NSPoint)
+        case startLongShot(NSScreen, CGRect, CGImage?)
         case cancelled
     }
 
@@ -108,6 +109,10 @@ final class OverlaySession {
             view.onFinishExtractText = { [weak self] img, pt, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.extractText(img, pt))
+            }
+            view.onStartLongShot = { [weak self] screen, rect, initialImg in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
+                self?.finish(.startLongShot(screen, rect, initialImg))
             }
             view.onCancel = { [weak self] in
                 self?.finish(.cancelled)

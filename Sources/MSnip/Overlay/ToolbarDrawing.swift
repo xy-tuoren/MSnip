@@ -106,6 +106,8 @@ extension OverlayView {
             cycleCornerRadius()
         case .extractText:
             exportAndFinish(mode: .extractText)
+        case .startLongShot:
+            beginLongShot()
         case .pin:
             exportAndFinish(mode: .pin)
         case .save:
@@ -115,6 +117,33 @@ extension OverlayView {
         case .confirmCopy:
             exportAndFinish(mode: .copy)
         }
+    }
+
+    func beginLongShot() {
+        commitTextEditing()
+        guard let raw = selection ?? hoveredAutoRect else {
+            ToastHUD.show(message: "请先框选或悬停要滚动截取的区域")
+            return
+        }
+        let rect = CGRect(
+            x: round(raw.minX),
+            y: round(raw.minY),
+            width: round(raw.width),
+            height: round(raw.height)
+        ).intersection(bounds)
+        guard rect.width >= 48, rect.height >= 64 else {
+            ToastHUD.show(message: "长截图区域至少需 48 × 64 pt")
+            return
+        }
+        let s = snapshot.scaleFactor
+        let pxRect = CGRect(
+            x: round(rect.minX * s),
+            y: round(rect.minY * s),
+            width: CGFloat(Int((rect.width * s).rounded()) & ~1),
+            height: CGFloat(Int((rect.height * s).rounded()) & ~1)
+        )
+        let initial = snapshot.cgImage.cropping(to: pxRect)
+        onStartLongShot?(snapshot.screen, rect, initial)
     }
 
     func cycleCornerRadius() {

@@ -1,0 +1,150 @@
+import AppKit
+import CoreGraphics
+import Foundation
+
+/// 长截图底部非抢焦悬浮操作栏（支持自动滚动启停、贴图、保存、取消、完成复制）
+final class LongShotControlBarView: NSView {
+    enum Action {
+        case toggleAutoScroll
+        case pin
+        case save
+        case cancel
+        case finishCopy
+    }
+
+    var onAction: ((Action) -> Void)?
+    var isAutoScrolling = false { didSet { needsDisplay = true } }
+    var pinHint: String = "⌘2"
+
+    private struct ButtonSlot {
+        let rect: CGRect
+        let tip: String
+        let action: Action
+        let render: (CGContext, CGRect, Bool) -> Void
+    }
+
+    private var slots: [ButtonSlot] = []
+    private var hoveredIdx: Int?
+
+    override var isFlipped: Bool { true }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    static let barSize = NSSize(width: 283, height: 40)
+
+    init() {
+        super.init(frame: NSRect(origin: .zero, size: Self.barSize))
+        rebuildSlots()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func resetCursorRects() {
+        addCursorRect(bounds, cursor: .arrow)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach { removeTrackingArea($0) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        let idx = slots.firstIndex(where: { $0.rect.contains(p) })
+        if idx != hoveredIdx {
+            hoveredIdx = idx
+            toolTip = idx.map { slots[$0].tip }
+            needsDisplay = true
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) { hoveredIdx = nil; needsDisplay = true }
+
+    override func mouseDown(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if let slot = slots.first(where: { $0.rect.contains(p) }) {
+            onAction?(slot.action)
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        rebuildSlots()
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let bg = CGPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), cornerWidth: 9, cornerHeight: 9, transform: nil)
+        ctx.saveGState()
+        ctx.setFillColor(NSColor(calibratedWhite: 0.12, alpha: 0.94).cgColor)
+        ctx.addPath(bg)
+        ctx.fillPath()
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.18).cgColor)
+        ctx.setLineWidth(1.0)
+        ctx.addPath(bg)
+        ctx.strokePath()
+        ctx.restoreGState()
+
+        for (i, s) in slots.enumerated() {
+            s.render(ctx, s.rect, hoveredIdx == i)
+        }
+    }
+
+    private func rebuildSlots() {
+        var list: [ButtonSlot] = []
+        let y: CGFloat = 5, h: CGFloat = 30
+        var x: CGFloat = 7
+
+        let autoW: CGFloat = 92
+        let autoRect = CGRect(x: x, y: y, width: autoW, height: h)
+        let running = isAutoScrolling
+        list.append(ButtonSlot(
+            rect: autoRect,
+            tip: running ? "停止自动滚动" : "平滑自动向下滚动（需辅助功能权限）",
+            action: .toggleAutoScroll,
+            render: { ctx, r, hov in
+                ToolbarView.drawButtonBg(ctx: ctx, rect: r, active: running, hovered: hov)
+                let label = (running ? "⏸ 停止滚动" : "▶ 自动滚动") as NSString
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
+                    .foregroundColor: NSColor.white
+                ]
+                let sz = label.size(withAttributes: attrs)
+                label.draw(at: CGPoint(x: r.minX + (r.width - sz.width) * 0.5, y: r.minY + (r.height - sz.height) * 0.5), withAttributes: attrs)
+            }
+        ))
+        x += autoW + 8
+
+        let iconDefs: [(String, String, NSColor, Action)] = [
+            ("pin", "长图贴到屏幕 (\(pinHint))", .white, .pin),
+            ("square.and.arrow.down", "保存长图 PNG", .white, .save),
+            ("xmark", "取消长截图 (Esc)", .systemRed, .cancel)
+        ]
+        for (sym, tip, tint, act) in iconDefs {
+            let r = CGRect(x: x, y: y, width: 28, height: h)
+            x += 31
+            list.append(ButtonSlot(rect: r, tip: tip, action: act) { ctx, rect, hov in
+                ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: false, hovered: hov)
+                ToolbarView.drawSymbol(sym, in: rect, alpha: 0.95, tint: tint)
+            })
+        }
+
+        let okRect = CGRect(x: x + 2, y: y, width: 74, height: h)
+        list.append(ButtonSlot(rect: okRect, tip: "完成并复制长图到剪贴板", action: .finishCopy) { ctx, r, hov in
+            let p = CGPath(roundedRect: r, cornerWidth: 6, cornerHeight: 6, transform: nil)
+            ctx.setFillColor(NSColor.controlAccentColor.withAlphaComponent(hov ? 1.0 : 0.90).cgColor)
+            ctx.addPath(p)
+            ctx.fillPath()
+            let txt = "✓ 完成" as NSString
+            let attrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+                .foregroundColor: NSColor.white
+            ]
+            let sz = txt.size(withAttributes: attrs)
+            txt.draw(at: CGPoint(x: r.minX + (r.width - sz.width) * 0.5, y: r.minY + (r.height - sz.height) * 0.5), withAttributes: attrs)
+        })
+        slots = list
+    }
+}

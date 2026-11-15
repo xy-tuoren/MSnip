@@ -126,6 +126,9 @@ extension OverlayView {
             case "t":
                 exportAndFinish(mode: .extractText)
                 return
+            case "l":
+                beginLongShot()
+                return
             case "r":
                 if let prev = lastHistorySelection {
                     selection = Geometry.clampRect(prev, within: bounds)

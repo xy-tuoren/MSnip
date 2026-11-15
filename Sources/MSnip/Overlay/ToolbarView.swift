@@ -14,6 +14,7 @@ final class ToolbarView: NSView {
         case redo
         case cycleCornerRadius
         case extractText
+        case startLongShot
         case pin
         case save
         case cancel
@@ -46,7 +47,7 @@ final class ToolbarView: NSView {
     override var isFlipped: Bool { true }
 
     static let barHeight: CGFloat = 42
-    static let barWidth: CGFloat = 744
+    static let barWidth: CGFloat = 775
 
     init() {
         super.init(frame: NSRect(x: 0, y: 0, width: Self.barWidth, height: Self.barHeight))
@@ -216,11 +217,12 @@ final class ToolbarView: NSView {
 
         x = appendDivider(at: x, into: &list)
 
-        // 5) PixPin 快捷增强动作：圆角截图 / 识字与二维码提取
+        // 5) PixPin 快捷增强动作：圆角截图 / 识字与二维码提取 / 滚动长截图
         let hasCorner = cornerRadiusPt > 0.5
         let cornerTip = hasCorner ? "圆角截图：\(Int(cornerRadiusPt))pt (B 切换)" : "圆角截图 (B)"
         list.append(iconAction(x: &x, y: y, symbol: "rectangle.roundedtop", tip: cornerTip, enabled: true, active: hasCorner, action: .cycleCornerRadius))
         list.append(iconAction(x: &x, y: y, symbol: "text.viewfinder", tip: "识别文字 / 二维码并复制 (T)", enabled: true, action: .extractText))
+        list.append(iconAction(x: &x, y: y, symbol: "arrow.up.and.down.square", tip: "滚动长截图 (L)", enabled: true, action: .startLongShot))
 
         x = appendDivider(at: x, into: &list)
 

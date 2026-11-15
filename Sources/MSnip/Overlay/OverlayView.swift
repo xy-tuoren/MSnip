@@ -28,6 +28,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
     var onFinishCopyText: ((String, NSPoint) -> Void)?
     var onFinishExtractText: ((CGImage, NSPoint, CGRect) -> Void)?
+    var onStartLongShot: ((NSScreen, CGRect, CGImage?) -> Void)?
     var onCancel: (() -> Void)?
     var onStyleChanged: ((Int, CGFloat) -> Void)?
     var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
