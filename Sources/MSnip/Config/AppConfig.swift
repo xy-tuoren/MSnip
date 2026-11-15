@@ -12,10 +12,10 @@ enum HotKeyPreset: String, CaseIterable, Codable {
 
     var menuTitle: String {
         switch self {
-        case .cmd12:      return "⌘1 截图  /  ⌘2 贴图（默认）"
-        case .cmdShiftAP: return "⌘⇧A 截图  /  ⌘⇧P 贴图"
-        case .optAP:      return "⌥A 截图  /  ⌥P 贴图"
-        case .f1f3:       return "F1 截图  /  F3 贴图"
+        case .cmd12:      return "⌘1 截图  /  ⌘2 贴图  /  ⌘3 识字（默认）"
+        case .cmdShiftAP: return "⌘⇧A 截图  /  ⌘⇧P 贴图  /  ⌘⇧O 识字"
+        case .optAP:      return "⌥A 截图  /  ⌥P 贴图  /  ⌥O 识字"
+        case .f1f3:       return "F1 截图  /  F3 贴图  /  F2 识字"
         }
     }
 
@@ -51,6 +51,19 @@ enum HotKeyPreset: String, CaseIterable, Codable {
         case .cmdShiftAP: return "⌘⇧P"
         case .optAP:      return "⌥P"
         case .f1f3:       return "F3"
+        }
+    }
+
+    var ocrShortcut: (keyCode: UInt32, modifiers: UInt32, keyEquivalent: String, mask: UInt) {
+        switch self {
+        case .cmd12:
+            return (UInt32(kVK_ANSI_3), UInt32(cmdKey), "3", 1 << 20)
+        case .cmdShiftAP:
+            return (UInt32(kVK_ANSI_O), UInt32(cmdKey | shiftKey), "O", (1 << 20) | (1 << 17))
+        case .optAP:
+            return (UInt32(kVK_ANSI_O), UInt32(optionKey), "o", 1 << 19)
+        case .f1f3:
+            return (UInt32(kVK_F2), 0, "\u{F705}", 0)
         }
     }
 }

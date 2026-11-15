@@ -10,6 +10,7 @@ final class PinManager {
 
     var onCountChanged: ((Int) -> Void)?
     var onSaveImage: ((CGImage, CGFloat) -> Void)?
+    var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
 
     private var windows: [PinWindow] = []
 
@@ -36,6 +37,9 @@ final class PinManager {
         }
         win.onSavePNG = { [weak self] img, scale in
             self?.onSaveImage?(img, scale)
+        }
+        win.onExtractOCR = { [weak self] img, scale, scr in
+            self?.onExtractOCR?(img, scale, scr)
         }
 
         windows.append(win)

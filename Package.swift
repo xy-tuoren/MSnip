@@ -30,7 +30,8 @@ let package = Package(
                 .linkedFramework("ScreenCaptureKit"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("VideoToolbox"),
-                .linkedFramework("Vision")
+                .linkedFramework("Vision"),
+                .linkedFramework("VisionKit")
             ]
         ),
         .executableTarget(

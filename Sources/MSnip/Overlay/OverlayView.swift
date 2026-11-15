@@ -27,11 +27,12 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onFinishPin: ((CGImage, CGFloat, CGPoint, NSScreen, CGRect) -> Void)?
     var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
     var onFinishCopyText: ((String, NSPoint) -> Void)?
-    var onFinishExtractText: ((CGImage, NSPoint, CGRect) -> Void)?
+    var onFinishExtractText: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
     var onStartLongShot: ((NSScreen, CGRect, CGImage?) -> Void)?
     var onCancel: (() -> Void)?
     var onStyleChanged: ((Int, CGFloat) -> Void)?
     var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
+    var quickOCRMode = false
 
     // 自动矩阵识别预览与平滑过渡状态（逻辑见 OverlayAutoSnap.swift）
     var autoSnapStack: [CGRect] = []

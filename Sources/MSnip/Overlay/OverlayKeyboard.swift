@@ -207,7 +207,7 @@ extension OverlayView {
         case .copy:        onFinishCopy?(baked, snapshot.scaleFactor, targetRect)
         case .save:        onFinishSave?(baked, snapshot.scaleFactor, targetRect)
         case .pin:         onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen, targetRect)
-        case .extractText: onFinishExtractText?(baked, NSEvent.mouseLocation, targetRect)
+        case .extractText: onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         }
     }
 

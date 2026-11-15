@@ -6,13 +6,16 @@ final class HotKeyManager {
     private static let signature: OSType = 0x4D53_4E50 // 'MSNP'
     private static let captureHotKeyID: UInt32 = 1
     private static let pinHotKeyID: UInt32 = 2
+    private static let ocrHotKeyID: UInt32 = 3
 
     var onCapture: (() -> Void)?
     var onPin: (() -> Void)?
+    var onOCR: (() -> Void)?
 
     private var eventHandlerRef: EventHandlerRef?
     private var captureRef: EventHotKeyRef?
     private var pinRef: EventHotKeyRef?
+    private var ocrRef: EventHotKeyRef?
 
     init() {
         installCarbonHandler()
@@ -51,6 +54,17 @@ final class HotKeyManager {
             0,
             &pinRef
         )
+
+        let ocr = preset.ocrShortcut
+        let ocrID = EventHotKeyID(signature: Self.signature, id: Self.ocrHotKeyID)
+        RegisterEventHotKey(
+            ocr.keyCode,
+            ocr.modifiers,
+            ocrID,
+            GetApplicationEventTarget(),
+            0,
+            &ocrRef
+        )
     }
 
     func unregisterAll() {
@@ -61,6 +75,10 @@ final class HotKeyManager {
         if let ref = pinRef {
             UnregisterEventHotKey(ref)
             pinRef = nil
+        }
+        if let ref = ocrRef {
+            UnregisterEventHotKey(ref)
+            ocrRef = nil
         }
     }
 
@@ -94,6 +112,9 @@ final class HotKeyManager {
                     return noErr
                 case HotKeyManager.pinHotKeyID:
                     DispatchQueue.main.async { manager.onPin?() }
+                    return noErr
+                case HotKeyManager.ocrHotKeyID:
+                    DispatchQueue.main.async { manager.onOCR?() }
                     return noErr
                 default:
                     return OSStatus(eventNotHandledErr)

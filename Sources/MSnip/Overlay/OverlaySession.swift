@@ -36,7 +36,7 @@ final class OverlaySession {
         case pinned(CGImage, CGFloat, CGPoint, NSScreen)
         case copiedColor(String, RGBAColor, NSPoint)
         case copiedCoordinate(String, NSPoint)
-        case extractText(CGImage, NSPoint)
+        case extractText(CGImage, CGFloat, NSScreen)
         case startLongShot(NSScreen, CGRect, CGImage?)
         case cancelled
     }
@@ -59,7 +59,8 @@ final class OverlaySession {
         lineWidth: CGFloat,
         colorCopyFormat: ColorCopyFormat,
         showShortcutTips: Bool,
-        pinHint: String
+        pinHint: String,
+        quickOCRMode: Bool = false
     ) {
         let mouse = NSEvent.mouseLocation
         var targetWindowToFocus: OverlayWindow?
@@ -75,6 +76,7 @@ final class OverlaySession {
                 lastHistorySelection: Self.lastSelectionByDisplay[snap.displayID],
                 pinHint: pinHint
             )
+            view.quickOCRMode = quickOCRMode
             view.onSelectionActivated = { [weak self] sender in
                 self?.activateView(sender)
             }
@@ -106,9 +108,9 @@ final class OverlaySession {
             view.onFinishCopyText = { [weak self] value, pt in
                 self?.finish(.copiedCoordinate(value, pt))
             }
-            view.onFinishExtractText = { [weak self] img, pt, rect in
+            view.onFinishExtractText = { [weak self] img, scale, scr, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
-                self?.finish(.extractText(img, pt))
+                self?.finish(.extractText(img, scale, scr))
             }
             view.onStartLongShot = { [weak self] screen, rect, initialImg in
                 Self.lastSelectionByDisplay[snap.displayID] = rect

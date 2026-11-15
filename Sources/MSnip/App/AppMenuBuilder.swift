@@ -9,11 +9,17 @@ extension AppController {
         let menu = NSMenu()
         let capKey = config.hotKeyPreset.captureShortcut
         let pinKey = config.hotKeyPreset.pinShortcut
+        let ocrKey = config.hotKeyPreset.ocrShortcut
 
         let shotItem = NSMenuItem(title: "区域截图 / 长截图", action: #selector(startCapture), keyEquivalent: capKey.keyEquivalent)
         shotItem.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: capKey.mask)
         shotItem.target = self
         menu.addItem(shotItem)
+
+        let ocrItem = NSMenuItem(title: "截图提取文字 (OCR)", action: #selector(startQuickOCR), keyEquivalent: ocrKey.keyEquivalent)
+        ocrItem.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: ocrKey.mask)
+        ocrItem.target = self
+        menu.addItem(ocrItem)
 
         let pinItem = NSMenuItem(title: "从剪贴板贴图", action: #selector(handlePinHotKey), keyEquivalent: pinKey.keyEquivalent)
         pinItem.keyEquivalentModifierMask = NSEvent.ModifierFlags(rawValue: pinKey.mask)

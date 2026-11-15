@@ -194,11 +194,14 @@ extension OverlayView {
         case .pendingSnapOrCreate(_, let snapRect):
             if let snap = snapRect, snap.width >= 6, snap.height >= 6 {
                 selection = snap
+                if quickOCRMode { exportAndFinish(mode: .extractText) }
             }
         case .creatingSelection:
             if let sel = selection, (sel.width < 6 || sel.height < 6) {
                 selection = nil
                 updateAutoSnap(at: convert(event.locationInWindow, from: nil))
+            } else if quickOCRMode, selection != nil {
+                exportAndFinish(mode: .extractText)
             }
         case .movingSelection, .resizingSelection:
             needsDisplay = true

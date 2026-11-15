@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 应用主控制器：管理菜单栏常驻图标、全局快捷键路由、截图会话、滚动长截图与贴图池
+/// 应用主控制器：管理菜单栏常驻图标、全局快捷键路由、截图会话、滚动长截图、对照识字与贴图池
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
@@ -11,6 +11,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var config = AppConfig.load()
     private let hotKeyManager = HotKeyManager()
     let pinManager = PinManager()
+    private let ocrController = OCRResultController()
     private let permissionGuide = PermissionGuideController()
     private var activeSession: OverlaySession?
     private var activeLongShot: LongShotSession?
@@ -36,7 +37,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             } else {
                 button.title = "✂︎"
             }
-            button.toolTip = "MSnip（麦截）— 轻量截图、长截图与贴图"
+            button.toolTip = "MSnip（麦截）— 轻量截图、长截图、实况识字与贴图"
         }
         rebuildMenu()
     }
@@ -47,6 +48,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         hotKeyManager.onPin = { [weak self] in
             Task { @MainActor in self?.handlePinHotKey() }
+        }
+        hotKeyManager.onOCR = { [weak self] in
+            Task { @MainActor in self?.startQuickOCR() }
         }
         pinManager.onCountChanged = { [weak self] _ in
             self?.rebuildMenu()
@@ -65,11 +69,25 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.config.save()
             }
         }
+        pinManager.onExtractOCR = { [weak self] img, scale, scr in
+            self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr)
+        }
+        ocrController.onPinImage = { [weak self] img, scale, scr in
+            self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
+        }
     }
 
     // MARK: - Core Actions
 
     @objc func startCapture() {
+        beginCaptureSession(quickOCR: false)
+    }
+
+    @objc func startQuickOCR() {
+        beginCaptureSession(quickOCR: true)
+    }
+
+    private func beginCaptureSession(quickOCR: Bool) {
         guard activeSession == nil, activeLongShot == nil, !isCapturing else { return }
         guard CGPreflightScreenCaptureAccess() else {
             permissionGuide.show(opening: .screenRecording)
@@ -77,7 +95,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         isCapturing = true
-        // 在创建全屏覆盖层之前，先抓取当前所有可见窗口的真实 Z 序与几何边界
         let regionDetector = RegionDetector.captureBeforeOverlay()
         Task { @MainActor [weak self] in
             let snapshots = await ScreenCapturer.captureAllScreens()
@@ -128,8 +145,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 case .copiedCoordinate(let value, let pt):
                     ClipboardAndSave.copyText(value)
                     ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
-                case .extractText(let img, let pt):
-                    VisionTextExtractor.extractAndCopy(from: img, toastAnchor: pt)
+                case .extractText(let img, let scale, let scr):
+                    self.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr)
                 case .startLongShot(let screen, let rect, let initialImg):
                     self.startLongShotSession(screen: screen, rect: rect, initialFrame: initialImg)
                 case .cancelled:
@@ -144,7 +161,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 lineWidth: self.config.defaultLineWidth,
                 colorCopyFormat: self.config.colorCopyFormat,
                 showShortcutTips: self.config.showShortcutTips,
-                pinHint: self.config.hotKeyPreset.pinBadgeLabel
+                pinHint: self.config.hotKeyPreset.pinBadgeLabel,
+                quickOCRMode: quickOCR
             )
         }
     }
@@ -183,20 +201,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc func handlePinHotKey() {
-        // 若当前正在长截图或截图中，按 ⌘2 直接将当前长图/选区贴到桌面；否则从剪贴板贴图
-        if let ls = activeLongShot, ls.pinCurrentIfPossible() {
-            return
-        }
-        if let session = activeSession, session.pinCurrentSelectionIfPossible() {
-            return
-        }
+        if let ls = activeLongShot, ls.pinCurrentIfPossible() { return }
+        if let session = activeSession, session.pinCurrentSelectionIfPossible() { return }
         guard activeSession == nil, activeLongShot == nil else { return }
         pinManager.pinFromClipboard()
     }
 
-    @objc func closeAllPins() {
-        pinManager.closeAll()
-    }
+    @objc func closeAllPins() { pinManager.closeAll() }
 
     @objc func selectHotKeyPreset(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
@@ -211,11 +222,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func toggleHotKeysEnabled() {
         config.hotKeysEnabled.toggle()
         config.save()
-        hotKeyManager.apply(preset: presetForCurrent(), enabled: config.hotKeysEnabled)
+        hotKeyManager.apply(preset: config.hotKeyPreset, enabled: config.hotKeysEnabled)
         rebuildMenu()
     }
-
-    private func presetForCurrent() -> HotKeyPreset { config.hotKeyPreset }
 
     @objc func toggleLaunchAtLogin() {
         let target = !LaunchAtLoginManager.isEnabled
@@ -233,19 +242,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v0.8.0"
+        alert.messageText = "MSnip（麦截）v0.9.0"
         alert.informativeText = """
-        超轻量原生 macOS 截图、滚动长截图、像素取色、离线识字与贴图工具
-        • 纯 Swift + AppKit + CoreGraphics + ScreenCaptureKit + Vision，零第三方依赖
-        • 按 L 开启滚动长截图：支持手动滚轮与平滑自动滚动，自动剥离固定顶/底栏
-        • 跟随光标像素放大镜：按 C 提取色值、Shift 切换格式、T 识字/二维码
+        超轻量原生 macOS 截图、滚动长截图、实况识字与贴图工具
+        • 纯 Swift + AppKit + CoreGraphics + ScreenCaptureKit + VisionKit，零第三方依赖
+        • ⌘3 框选即识字 / 截图中按 T：弹出「左图实况划词 + 右侧可编辑/合并段落」对照窗
+        • 桌面贴图内置 Live Text：鼠标移到贴图文字上直接变 I 光标划词复制
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好")
         alert.runModal()
     }
 
-    @objc func quitApp() {
-        NSApp.terminate(nil)
-    }
+    @objc func quitApp() { NSApp.terminate(nil) }
 }

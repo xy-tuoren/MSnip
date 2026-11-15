@@ -78,10 +78,11 @@ extension OverlayView {
         // 尺寸数字始终读取目标整数矩阵（过渡动画期间数字不乱跳）
         let pxW = Int((targetRect.width * snapshot.scaleFactor).rounded())
         let pxH = Int((targetRect.height * snapshot.scaleFactor).rounded())
+        let prefix = quickOCRMode ? "识字 · " : ""
         let tierHint = autoSnapStack.count > 1
             ? "  ·  \(autoSnapIndex + 1)/\(autoSnapStack.count) 滚轮切换"
             : ""
-        drawHUDPill(ctx: ctx, anchorRect: displayRect, text: "\(pxW) × \(pxH)\(tierHint)")
+        drawHUDPill(ctx: ctx, anchorRect: displayRect, text: "\(prefix)\(pxW) × \(pxH)\(tierHint)")
     }
 
     // MARK: - Hysteresis & Smooth Interpolation
