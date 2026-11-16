@@ -202,19 +202,26 @@ extension OverlayView {
         ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.85).cgColor)
         ctx.setLineWidth(1.0)
         ctx.stroke(swRect)
-        colorNs.draw(at: CGPoint(x: swRect.maxX + 6, y: iy + 24.5), withAttributes: Self.colorValueAttrs)
+        colorNs.draw(at: CGPoint(x: round(swRect.maxX + 6), y: round(iy + 24.5)), withAttributes: Self.colorValueAttrs)
 
         let pickMode = eyedropperActive || (selection != nil && optionPressed)
-        Self.drawCenteredString("⇧: 切换颜色格式", centerX: x + cardW * 0.5, y: iy + 45, attrs: Self.hintLineAttrs)
+        Self.drawCenteredString("⇧: 切换颜色格式", centerX: x + cardW * 0.5, y: round(iy + 45), attrs: Self.hintLineAttrs)
         let copyHint = pickMode ? "单击: 吸取标注色" : "C: 复制色值   G: 相对坐标"
-        Self.drawCenteredString(copyHint, centerX: x + cardW * 0.5, y: iy + 64, attrs: Self.hintLineAttrs)
+        Self.drawCenteredString(copyHint, centerX: x + cardW * 0.5, y: round(iy + 64), attrs: Self.hintLineAttrs)
 
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.22).cgColor)
+        ctx.setLineWidth(1.0)
+        ctx.addPath(cardPath)
+        ctx.strokePath()
         ctx.restoreGState()
     }
 
     private static func drawCenteredString(_ text: String, centerX: CGFloat, y: CGFloat, attrs: [NSAttributedString.Key: Any]) {
         let ns = text as NSString
         let sz = ns.size(withAttributes: attrs)
-        ns.draw(at: CGPoint(x: round(centerX - sz.width * 0.5), y: y), withAttributes: attrs)
+        ns.draw(at: CGPoint(x: round(centerX - sz.width * 0.5), y: round(y)), withAttributes: attrs)
     }
 }

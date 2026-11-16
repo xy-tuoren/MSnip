@@ -3,22 +3,47 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 极简竖排双栏快捷键提示面板 (`ShortcutTipsWidget`) + 顶部选区坐标尺寸胶囊 (`drawHUDPill`)
-/// 采用「左列浅色圆角键帽右对齐 + 右列精简说明左对齐」的清爽两列布局，自动避让光标与选区。
+/// 高对比度清晰竖排双栏快捷键提示面板 (`ShortcutTipsWidget`) + 顶部选区坐标尺寸胶囊 (`drawHUDPill`)
+/// - 自动根据显示器 `visibleFrame` 避开底部程序坞 (Dock)、顶部菜单栏与屏幕物理边缘；
+/// - 采用高对比悬浮深蓝灰卡片 + 高亮描边 + 纯白立体键帽 + 全整数像素对齐排版，在 `@1x` (1080p) 与 `@2x` 暗色/亮色背景下均清晰醒目。
 extension OverlayView {
     private static let hudPillAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold),
         .foregroundColor: NSColor.white
     ]
+    private static let headerTitleAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
+        .foregroundColor: NSColor(srgbRed: 0.42, green: 0.78, blue: 1.0, alpha: 1.0)
+    ]
+    private static let headerHintAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 11.0, weight: .medium),
+        .foregroundColor: NSColor(white: 0.68, alpha: 1.0)
+    ]
     private static let keycapKeyAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 11.5, weight: .bold),
-        .foregroundColor: NSColor(srgbRed: 0.09, green: 0.10, blue: 0.12, alpha: 1.0)
+        .font: NSFont.systemFont(ofSize: 13.0, weight: .bold),
+        .foregroundColor: NSColor(srgbRed: 0.06, green: 0.07, blue: 0.10, alpha: 1.0)
     ]
     private static let keycapDescAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 12.5, weight: .medium),
-        .foregroundColor: NSColor(white: 0.94, alpha: 1.0)
+        .font: NSFont.systemFont(ofSize: 14.0, weight: .semibold),
+        .foregroundColor: NSColor.white
     ]
     private static var textSizeCache: [String: CGSize] = [:]
+
+    /// 计算当前屏幕安全内边距（自动避让底部 Dock、侧边 Dock 与顶部菜单栏，并向屏幕内侧舒适内收防贴边）
+    private func safeOverlayMargins() -> (left: CGFloat, right: CGFloat, top: CGFloat, bottom: CGFloat) {
+        let sf = snapshot.screen.frame
+        let vf = snapshot.screen.visibleFrame
+        let dockLeft = max(0, vf.minX - sf.minX)
+        let dockRight = max(0, sf.maxX - vf.maxX)
+        let menuTop = max(0, sf.maxY - vf.maxY)
+        let dockBottom = max(0, vf.minY - sf.minY)
+        return (
+            left: round(dockLeft + 58),
+            right: round(dockRight + 58),
+            top: round(menuTop + 44),
+            bottom: round(dockBottom + 54)
+        )
+    }
 
     private func currentShortcutTipRows() -> [(key: String, desc: String)] {
         if selection == nil {
@@ -28,7 +53,7 @@ extension OverlayView {
                 ("T", "识别文字"),
                 ("F", "纯净窗口截图"),
                 ("L / V", "长截图 / 录视频"),
-                ("R", "历史截图区域"),
+                ("R", "上次截图区域"),
                 (toolbar.pinHint, "贴图")
             ]
         } else {
@@ -44,29 +69,31 @@ extension OverlayView {
     }
 
     private func measureTipsCardLayout(rows: [(key: String, desc: String)]) -> (size: CGSize, maxKeyCapW: CGFloat) {
-        let padX: CGFloat = 16
-        let padY: CGFloat = 13
-        let rowStride: CGFloat = 29
-        let colGap: CGFloat = 13
+        let padX: CGFloat = 18
+        let headerH: CGFloat = 30
+        let padBottom: CGFloat = 15
+        let rowStride: CGFloat = 32
+        let colGap: CGFloat = 14
 
         var maxCapW: CGFloat = 0
         var maxDescW: CGFloat = 0
         for row in rows {
             let kSz = Self.cachedSize(row.key, isKey: true)
             let dSz = Self.cachedSize(row.desc, isKey: false)
-            maxCapW = max(maxCapW, max(22, ceil(kSz.width + 14)))
+            maxCapW = max(maxCapW, max(26, ceil(kSz.width + 16)))
             maxDescW = max(maxDescW, ceil(dSz.width))
         }
         let w = ceil(padX * 2 + maxCapW + colGap + maxDescW)
-        let h = ceil(padY * 2 + CGFloat(rows.count) * rowStride - 7)
-        return (CGSize(width: w, height: h), maxCapW)
+        let h = ceil(headerH + 10 + CGFloat(rows.count) * rowStride - 6 + padBottom)
+        return (CGSize(width: max(224, w), height: h), maxCapW)
     }
 
     func shortcutTipsBottomTriggerZone() -> CGRect {
         let layout = measureTipsCardLayout(rows: currentShortcutTipRows())
+        let m = safeOverlayMargins()
         let base = CGRect(
-            x: 20,
-            y: bounds.height - layout.size.height - 20,
+            x: m.left,
+            y: max(m.top, bounds.height - m.bottom - layout.size.height),
             width: layout.size.width,
             height: layout.size.height
         )
@@ -83,65 +110,97 @@ extension OverlayView {
         let layout = measureTipsCardLayout(rows: rows)
         let cardW = layout.size.width
         let cardH = layout.size.height
+        let m = safeOverlayMargins()
 
-        var origin = CGPoint(x: 20, y: bounds.height - cardH - 20)
+        var origin = CGPoint(
+            x: m.left,
+            y: max(m.top, round(bounds.height - m.bottom - cardH))
+        )
         let bottomTrigger = CGRect(origin: origin, size: layout.size).insetBy(dx: -24, dy: -24)
         let cursorNearBottom = lastMousePoint.map { bottomTrigger.contains($0) } ?? false
         let selNearBottom = selection.map { !$0.intersection(bottomTrigger).isNull } ?? false
         let barNearBottom = (!toolbar.isHidden && !toolbar.frame.intersection(bottomTrigger).isNull)
             || (!subbar.isHidden && !subbar.frame.intersection(bottomTrigger).isNull)
         if cursorNearBottom || selNearBottom || barNearBottom {
-            origin = CGPoint(x: 20, y: 24)
-            // 若左上角同样被选区覆盖，则平滑避让至右下角
-            let topCandidate = CGRect(origin: origin, size: layout.size).insetBy(dx: -12, dy: -12)
+            origin = CGPoint(x: m.left, y: m.top)
+            let topCandidate = CGRect(origin: origin, size: layout.size).insetBy(dx: -16, dy: -16)
             if let sel = selection, !sel.intersection(topCandidate).isNull {
-                origin = CGPoint(x: max(20, bounds.width - cardW - 20), y: bounds.height - cardH - 20)
+                origin = CGPoint(
+                    x: max(m.left, round(bounds.width - m.right - cardW)),
+                    y: max(m.top, round(bounds.height - m.bottom - cardH))
+                )
             }
         }
 
         let rect = CGRect(origin: origin, size: layout.size)
-        guard rect.insetBy(dx: -4, dy: -4).intersects(dirtyRect) else { return }
+        guard rect.insetBy(dx: -26, dy: -26).intersects(dirtyRect) else { return }
 
-        let path = CGPath(roundedRect: rect, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        let path = CGPath(roundedRect: rect, cornerWidth: 12, cornerHeight: 12, transform: nil)
+
+        // 1) 高对比悬浮阴影 + 亮蓝灰磨砂底色 + 天蓝高光描边（暗色终端背景下同样醒目突出）
         ctx.saveGState()
-        ctx.setFillColor(NSColor(srgbRed: 0.065, green: 0.07, blue: 0.085, alpha: 0.86).cgColor)
+        ctx.setShadow(offset: CGSize(width: 0, height: 8), blur: 24, color: NSColor.black.withAlphaComponent(0.60).cgColor)
+        ctx.setFillColor(NSColor(srgbRed: 0.145, green: 0.165, blue: 0.215, alpha: 0.96).cgColor)
         ctx.addPath(path)
         ctx.fillPath()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.10).cgColor)
-        ctx.setLineWidth(1.0)
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        ctx.setStrokeColor(NSColor(srgbRed: 0.45, green: 0.76, blue: 1.0, alpha: 0.48).cgColor)
+        ctx.setLineWidth(1.5)
         ctx.addPath(path)
         ctx.strokePath()
 
-        let padX: CGFloat = 16
-        let padY: CGFloat = 13
-        let rowStride: CGFloat = 29
-        let capH: CGFloat = 21
-        let keySpineRightX = rect.minX + padX + layout.maxKeyCapW
-        let descLeftX = keySpineRightX + 13
+        // 2) 卡片顶栏小标题与隐藏提示
+        let padX: CGFloat = 18
+        ("快捷键操作" as NSString).draw(
+            at: CGPoint(x: round(rect.minX + padX), y: round(rect.minY + 9)),
+            withAttributes: Self.headerTitleAttrs
+        )
+        let hideHint = "H 隐藏" as NSString
+        let hideSz = hideHint.size(withAttributes: Self.headerHintAttrs)
+        hideHint.draw(
+            at: CGPoint(x: round(rect.maxX - padX - hideSz.width), y: round(rect.minY + 9.5)),
+            withAttributes: Self.headerHintAttrs
+        )
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.12).cgColor)
+        ctx.fill(CGRect(x: rect.minX + padX, y: rect.minY + 31, width: cardW - padX * 2, height: 1))
+
+        // 3) 整数像素对齐的双栏键帽与说明行
+        let startY = rect.minY + 41
+        let rowStride: CGFloat = 32
+        let capH: CGFloat = 24
+        let keySpineRightX = round(rect.minX + padX + layout.maxKeyCapW)
+        let descLeftX = round(keySpineRightX + 14)
 
         for (idx, row) in rows.enumerated() {
-            let rowTopY = rect.minY + padY + CGFloat(idx) * rowStride
+            let rowTopY = round(startY + CGFloat(idx) * rowStride)
             let kSz = Self.cachedSize(row.key, isKey: true)
             let dSz = Self.cachedSize(row.desc, isKey: false)
 
-            let capW = max(22, ceil(kSz.width + 14))
+            let capW = max(26, ceil(kSz.width + 16))
             let capRect = CGRect(x: keySpineRightX - capW, y: rowTopY, width: capW, height: capH)
-            let capPath = CGPath(roundedRect: capRect, cornerWidth: 4.5, cornerHeight: 4.5, transform: nil)
-            ctx.setFillColor(NSColor(white: 0.93, alpha: 0.96).cgColor)
+            let capPath = CGPath(roundedRect: capRect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
+
+            // 键帽底部微立体投影 + 高亮纯白底色
+            ctx.saveGState()
+            ctx.setShadow(offset: CGSize(width: 0, height: 1.5), blur: 2.0, color: NSColor.black.withAlphaComponent(0.35).cgColor)
+            ctx.setFillColor(NSColor(srgbRed: 0.965, green: 0.97, blue: 0.985, alpha: 1.0).cgColor)
             ctx.addPath(capPath)
             ctx.fillPath()
+            ctx.restoreGState()
 
             (row.key as NSString).draw(
                 at: CGPoint(
-                    x: capRect.minX + (capW - kSz.width) * 0.5,
-                    y: capRect.minY + (capH - kSz.height) * 0.5
+                    x: round(capRect.minX + (capW - kSz.width) * 0.5),
+                    y: round(capRect.minY + (capH - kSz.height) * 0.5)
                 ),
                 withAttributes: Self.keycapKeyAttrs
             )
             (row.desc as NSString).draw(
                 at: CGPoint(
                     x: descLeftX,
-                    y: rowTopY + (capH - dSz.height) * 0.5
+                    y: round(rowTopY + (capH - dSz.height) * 0.5)
                 ),
                 withAttributes: Self.keycapDescAttrs
             )
@@ -152,19 +211,26 @@ extension OverlayView {
     func drawHUDPill(ctx: CGContext, anchorRect: CGRect, text: String) {
         let nsText = text as NSString
         let textSize = nsText.size(withAttributes: Self.hudPillAttrs)
-        let badgeW = ceil(textSize.width + 14)
-        let badgeH: CGFloat = 22
-        let badgeX = min(max(6, anchorRect.minX), bounds.width - badgeW - 6)
-        let badgeY = anchorRect.minY >= (badgeH + 8) ? (anchorRect.minY - badgeH - 6) : (anchorRect.minY + 6)
+        let badgeW = ceil(textSize.width + 16)
+        let badgeH: CGFloat = 24
+        let badgeX = round(min(max(8, anchorRect.minX), bounds.width - badgeW - 8))
+        let badgeY = round(anchorRect.minY >= (badgeH + 10) ? (anchorRect.minY - badgeH - 7) : (anchorRect.minY + 7))
         let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeW, height: badgeH)
 
         ctx.saveGState()
-        let pill = CGPath(roundedRect: badgeRect, cornerWidth: 5, cornerHeight: 5, transform: nil)
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.78).cgColor)
+        let pill = CGPath(roundedRect: badgeRect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
+        ctx.setFillColor(NSColor(srgbRed: 0.08, green: 0.09, blue: 0.12, alpha: 0.88).cgColor)
         ctx.addPath(pill)
         ctx.fillPath()
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.20).cgColor)
+        ctx.setLineWidth(1.0)
+        ctx.addPath(pill)
+        ctx.strokePath()
         nsText.draw(
-            at: CGPoint(x: badgeRect.minX + 7, y: badgeRect.minY + (badgeH - textSize.height) * 0.5),
+            at: CGPoint(
+                x: round(badgeRect.minX + 8),
+                y: round(badgeRect.minY + (badgeH - textSize.height) * 0.5)
+            ),
             withAttributes: Self.hudPillAttrs
         )
         ctx.restoreGState()
@@ -180,15 +246,6 @@ extension OverlayView {
 
     func drawSelectionChrome(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
         ctx.saveGState()
-        if backdropStyle != .none, let firstStop = backdropStyle.gradientStops.first {
-            let halo = sel.insetBy(dx: -4, dy: -4)
-            let haloR = max(10, cornerRadius + 4)
-            ctx.setStrokeColor(firstStop.cgColor.copy(alpha: 0.85) ?? NSColor.systemPurple.cgColor)
-            ctx.setLineWidth(5.0)
-            ctx.addPath(CGPath(roundedRect: halo, cornerWidth: haloR, cornerHeight: haloR, transform: nil))
-            ctx.strokePath()
-        }
-
         let accentSky = NSColor(srgbRed: 0.16, green: 0.58, blue: 1.0, alpha: 1.0)
         ctx.setStrokeColor(accentSky.cgColor)
         ctx.setLineWidth(2.0)

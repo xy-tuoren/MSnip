@@ -69,12 +69,13 @@ extension OverlayView {
             let cy = min(max(6, manual.y), bounds.height - barSize.height - 6)
             toolbar.setFrameOrigin(NSPoint(x: round(cx), y: round(cy)))
         } else {
-            let x = min(max(8, sel.maxX - barSize.width), bounds.width - barSize.width - 8)
+            let dockBottom = max(12, snapshot.screen.visibleFrame.minY - snapshot.screen.frame.minY + 12)
+            let x = min(max(16, sel.maxX - barSize.width), bounds.width - barSize.width - 16)
             let belowY = sel.maxY + 10
             let aboveY = sel.minY - barSize.height - 10
-            let y = (belowY + barSize.height + 44 <= bounds.height)
+            let y = (belowY + barSize.height + 44 <= bounds.height - dockBottom)
                 ? belowY
-                : (aboveY >= 8 ? aboveY : max(8, sel.maxY - barSize.height - 8))
+                : (aboveY >= 16 ? aboveY : max(16, sel.maxY - barSize.height - 10))
             toolbar.setFrameOrigin(NSPoint(x: round(x), y: round(y)))
         }
         repositionSubbar()
