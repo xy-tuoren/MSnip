@@ -33,11 +33,12 @@ extension OverlayView {
             ]
         } else {
             return [
-                ("1 - 9 / 0", "切换标注工具"),
-                ("P / B", "渐变衬底 / 圆角"),
-                ("K", "胶囊底色文字"),
-                ("⌘⇧S", "一键快存"),
-                ("H", "隐藏提示")
+                ("W / A / S / D", "移动鼠标光标"),
+                ("T", "检测文本并复制"),
+                ("`", "显示或隐藏放大镜"),
+                ("L / V", "长截图 / 录制视频"),
+                (toolbar.pinHint, "贴图"),
+                ("⇧⌘⌫", "清除所有标注")
             ]
         }
     }
@@ -87,7 +88,8 @@ extension OverlayView {
         let bottomTrigger = CGRect(origin: origin, size: layout.size).insetBy(dx: -24, dy: -24)
         let cursorNearBottom = lastMousePoint.map { bottomTrigger.contains($0) } ?? false
         let selNearBottom = selection.map { !$0.intersection(bottomTrigger).isNull } ?? false
-        let barNearBottom = !toolbar.isHidden && !toolbar.frame.intersection(bottomTrigger).isNull
+        let barNearBottom = (!toolbar.isHidden && !toolbar.frame.intersection(bottomTrigger).isNull)
+            || (!subbar.isHidden && !subbar.frame.intersection(bottomTrigger).isNull)
         if cursorNearBottom || selNearBottom || barNearBottom {
             origin = CGPoint(x: 20, y: 24)
             // 若左上角同样被选区覆盖，则平滑避让至右下角
@@ -187,8 +189,9 @@ extension OverlayView {
             ctx.strokePath()
         }
 
-        ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
-        ctx.setLineWidth(1.5)
+        let accentSky = NSColor(srgbRed: 0.16, green: 0.58, blue: 1.0, alpha: 1.0)
+        ctx.setStrokeColor(accentSky.cgColor)
+        ctx.setLineWidth(2.0)
         if cornerRadius > 0.5 {
             ctx.addPath(CGPath(roundedRect: sel, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil))
             ctx.strokePath()
@@ -198,11 +201,11 @@ extension OverlayView {
 
         for handle in ResizeHandle.allCases {
             let p = handle.point(in: sel)
-            let hr = CGRect(x: p.x - 4.0, y: p.y - 4.0, width: 8.0, height: 8.0)
-            ctx.setFillColor(NSColor.white.cgColor)
+            let hr = CGRect(x: p.x - 4.75, y: p.y - 4.75, width: 9.5, height: 9.5)
+            ctx.setFillColor(accentSky.cgColor)
             ctx.fillEllipse(in: hr)
-            ctx.setStrokeColor(NSColor.controlAccentColor.cgColor)
-            ctx.setLineWidth(1.5)
+            ctx.setStrokeColor(NSColor.white.cgColor)
+            ctx.setLineWidth(2.0)
             ctx.strokeEllipse(in: hr)
         }
         ctx.restoreGState()

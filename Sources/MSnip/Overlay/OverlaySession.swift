@@ -49,6 +49,7 @@ final class OverlaySession {
     var onStyleUpdated: ((Int, CGFloat) -> Void)?
     var onCapsuleUpdated: ((Bool) -> Void)?
     var onPrefsUpdated: ((ColorCopyFormat, Bool) -> Void)?
+    var onQuickSaveInPlace: ((CGImage, CGFloat) -> Void)?
     var onComplete: ((Outcome) -> Void)?
 
     private var windows: [OverlayWindow] = []
@@ -108,9 +109,9 @@ final class OverlaySession {
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.saved(img, scale))
             }
-            view.onFinishQuickSave = { [weak self] img, scale, rect in
+            view.onQuickSaveInPlace = { [weak self] img, scale, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
-                self?.finish(.quickSaved(img, scale))
+                self?.onQuickSaveInPlace?(img, scale)
             }
             view.onFinishPin = { [weak self] img, scale, origin, screen, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect

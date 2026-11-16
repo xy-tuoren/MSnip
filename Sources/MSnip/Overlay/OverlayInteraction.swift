@@ -11,8 +11,15 @@ extension OverlayView {
         let prevPt = lastMousePoint
         let p = convert(event.locationInWindow, from: nil)
         lastMousePoint = p
-        if !toolbar.isHidden && toolbar.frame.contains(p) {
+        let onChrome = (!toolbar.isHidden && toolbar.frame.contains(p))
+            || (!subbar.isHidden && subbar.frame.contains(p))
+            || (!sidePills.isHidden && sidePills.frame.contains(p))
+        if onChrome {
             NSCursor.arrow.set()
+            invalidateMagnifierMove(from: prevPt, to: p)
+            return
+        }
+        if toolbar.inPlaceOCRActive, let sel = selection, sel.contains(p) {
             invalidateMagnifierMove(from: prevPt, to: p)
             return
         }
@@ -62,8 +69,8 @@ extension OverlayView {
             return
         }
 
-        // 双击正式选区内部：双击文字重编辑，否则（非文字/非连续打点序号模式时）一键复制并退出
-        if event.clickCount == 2, let sel = selection, sel.contains(p) {
+        // 双击正式选区内部：双击文字重编辑，否则（非识字/非文字/非连续打点序号模式时）一键复制并退出
+        if event.clickCount == 2, let sel = selection, sel.contains(p), !toolbar.inPlaceOCRActive {
             if let hitIdx = doc.hitIndex(at: p), case .text = doc.objects[hitIdx].payload {
                 beginTextEditing(at: p, existingIndex: hitIdx)
                 return
@@ -84,8 +91,13 @@ extension OverlayView {
         }
 
         if let handle = Geometry.hitHandle(at: p, in: sel) {
+            deactivateInPlaceOCR()
             selectedObjectIndex = nil
             dragOp = .resizingSelection(handle: handle, initialRect: sel, mouseStart: p)
+            return
+        }
+
+        if toolbar.inPlaceOCRActive && sel.contains(p) {
             return
         }
 
@@ -211,14 +223,14 @@ extension OverlayView {
         case .pendingSnapOrCreate(_, let snapRect):
             if let snap = snapRect, snap.width >= 6, snap.height >= 6 {
                 selection = snap
-                if quickOCRMode { exportAndFinish(mode: .extractText) }
+                if quickOCRMode { activateInPlaceOCR() }
             }
         case .creatingSelection:
             if let sel = selection, (sel.width < 6 || sel.height < 6) {
                 selection = nil
                 updateAutoSnap(at: convert(event.locationInWindow, from: nil))
             } else if quickOCRMode, selection != nil {
-                exportAndFinish(mode: .extractText)
+                activateInPlaceOCR()
             }
         case .movingSelection, .resizingSelection:
             needsDisplay = true

@@ -40,7 +40,7 @@ extension OverlayView {
         switch mode {
         case .copy:        onFinishCopy?(baked, snapshot.scaleFactor, targetRect)
         case .save:        onFinishSave?(baked, snapshot.scaleFactor, targetRect)
-        case .quickSave:   onFinishQuickSave?(baked, snapshot.scaleFactor, targetRect)
+        case .quickSave:   onQuickSaveInPlace?(baked, snapshot.scaleFactor, targetRect)
         case .pin:         onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen, targetRect)
         case .extractText: onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         }

@@ -100,7 +100,7 @@ final class RecordingControlBarView: NSView {
                 let active = (format == fmt)
                 let r = CGRect(x: x, y: y, width: 44, height: h)
                 list.append(HitSlot(rect: r, tip: "切换为 \(fmt.badgeTitle) 格式", action: .selectFormat(fmt)) { ctx, rect, hov in
-                    ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov)
+                    ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov, darkSurface: true)
                     Self.drawLabel(fmt.badgeTitle, in: rect, color: active ? .white : NSColor(white: 0.78, alpha: 1))
                 })
                 x += 46
@@ -146,7 +146,7 @@ final class RecordingControlBarView: NSView {
         let r = CGRect(x: x, y: y, width: 28, height: 30)
         x += 31
         return HitSlot(rect: r, tip: tip, action: action) { ctx, rect, hov in
-            ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov)
+            ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov, darkSurface: true)
             ToolbarView.drawSymbol(symbol, in: rect, alpha: 0.95, tint: tint)
         }
     }

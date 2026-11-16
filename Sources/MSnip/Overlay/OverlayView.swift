@@ -13,17 +13,21 @@ enum DragOperation {
     case movingAnnotation(index: Int, lastPoint: CGPoint, moved: Bool)
 }
 
-/// 单块显示器的全屏冻结覆盖层画布（`isFlipped = true`，左上角为 `(0, 0)`，支持局部脏矩形极速重绘）
+/// 单块显示器的全屏冻结覆盖层画布（`isFlipped = true`，左上角为 `(0, 0)`，支持页内识字、双层工具栏与局部脏区重绘）
 final class OverlayView: NSView, NSTextFieldDelegate {
     let snapshot: ScreenSnapshot
     let regionDetector: RegionDetector
     let toolbar = ToolbarView()
+    let subbar = ToolbarSubbarView()
+    let sidePills = OverlaySidePillsView()
+    var inPlaceOCRView: LiveTextImageView?
+    var manualToolbarOrigin: NSPoint?
 
     // 外部会话回调
     var onSelectionActivated: ((OverlayView) -> Void)?
     var onFinishCopy: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishSave: ((CGImage, CGFloat, CGRect) -> Void)?
-    var onFinishQuickSave: ((CGImage, CGFloat, CGRect) -> Void)?
+    var onQuickSaveInPlace: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishPin: ((CGImage, CGFloat, CGPoint, NSScreen, CGRect) -> Void)?
     var onFinishIsolatedWindow: ((CGWindowID, CGFloat, BackdropStyle, Bool, CGPoint, NSScreen) -> Void)?
     var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
@@ -37,7 +41,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
     var quickOCRMode = false
 
-    // 自动矩阵识别预览与平滑过渡状态（逻辑见 OverlayAutoSnap.swift）
+    // 自动矩阵识别预览与平滑过渡状态
     var autoSnapStack: [CGRect] = []
     var autoSnapIndex: Int = 0
     var scrollSnapAccumulator: CGFloat = 0
@@ -58,9 +62,19 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var cornerRadiusPt: CGFloat = 0 { didSet { toolbar.cornerRadiusPt = cornerRadiusPt; needsDisplay = true } }
     var backdropStyle: BackdropStyle = .none { didSet { toolbar.backdropStyle = backdropStyle; needsDisplay = true } }
     var customPickedColor: RGBAColor? {
-        didSet { toolbar.customColor = customPickedColor; if let c = customPickedColor { style.color = c } }
+        didSet {
+            toolbar.customColor = customPickedColor
+            subbar.customColor = customPickedColor
+            if let c = customPickedColor { style.color = c }
+        }
     }
-    var eyedropperActive = false { didSet { toolbar.eyedropperActive = eyedropperActive; needsDisplay = true } }
+    var eyedropperActive = false {
+        didSet {
+            toolbar.eyedropperActive = eyedropperActive
+            subbar.eyedropperActive = eyedropperActive
+            needsDisplay = true
+        }
+    }
     var optionPressed = false { didSet { if oldValue != optionPressed { needsDisplay = true } } }
     var magnifierPinned = false { didSet { needsDisplay = true } }
     var useRelativeCoordinates = false { didSet { invalidateMagnifierAtCurrentMouse() } }
@@ -69,7 +83,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     // 正式选区与标注编辑状态
     var selection: CGRect? {
         didSet {
-            if selection != nil { stopSnapGlide() }
+            if selection != nil { stopSnapGlide() } else { manualToolbarOrigin = nil }
             updateToolbarLayout()
             needsDisplay = true
         }
@@ -78,6 +92,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var activeTool: ToolKind? {
         didSet {
             toolbar.activeTool = activeTool
+            subbar.activeTool = activeTool
             invalidateMagnifierAtCurrentMouse()
         }
     }
@@ -87,10 +102,11 @@ final class OverlayView: NSView, NSTextFieldDelegate {
                 style.color = RGBAColor.presets[min(max(0, colorIndex), RGBAColor.presets.count - 1)]
             }
             toolbar.colorIndex = colorIndex
+            subbar.colorIndex = colorIndex
         }
     }
     var style = AnnotationStyle()
-    var selectedObjectIndex: Int? { didSet { needsDisplay = true } }
+    var selectedObjectIndex: Int? { didSet { updateToolbarLayout(); needsDisplay = true } }
     var draftAnnotation: Annotation? {
         didSet {
             if let o = oldValue { setNeedsDisplay(o.bounds.insetBy(dx: -14, dy: -14)) }
@@ -100,7 +116,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var dragOp: DragOperation?
     var spacePressed = false
 
-    // 文本输入框状态（实现见 OverlayTextEdit.swift）
+    // 文本输入框状态
     var textField: NSTextField?
     var editingTextOrigin: CGPoint?
     var editingExistingIndex: Int?
@@ -134,10 +150,32 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         toolbar.lineWidth = initialLineWidth
         toolbar.pinHint = pinHint
         toolbar.isHidden = true
-        toolbar.onAction = { [weak self] action in
-            self?.handleToolbarAction(action)
+        toolbar.onAction = { [weak self] action in self?.handleToolbarAction(action) }
+        toolbar.onDraggedOrigin = { [weak self] origin in
+            self?.manualToolbarOrigin = origin
+            self?.repositionSubbar()
         }
+
+        subbar.colorIndex = initialColorIndex
+        subbar.lineWidth = initialLineWidth
+        subbar.isHidden = true
+        subbar.onAction = { [weak self] action in self?.handleToolbarAction(action) }
+
+        sidePills.isHidden = true
+        sidePills.onAction = { [weak self] act in
+            guard let self else { return }
+            switch act {
+            case .cycleCorner:   self.cycleCornerRadius()
+            case .cycleBackdrop: self.cycleBackdropStyle()
+            case .snapWindow(let opt):
+                if opt { self.captureCurrentWindowAndFinish(pin: false) }
+                else { self.snapSelectionToUnderlyingWindow() }
+            }
+        }
+
+        addSubview(sidePills)
         addSubview(toolbar)
+        addSubview(subbar)
     }
 
     @available(*, unavailable)
@@ -149,10 +187,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         super.updateTrackingAreas()
         trackingAreas.forEach { removeTrackingArea($0) }
         addTrackingArea(NSTrackingArea(
-            rect: bounds,
-            options: [.mouseMoved, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
+            rect: bounds, options: [.mouseMoved, .activeAlways, .inVisibleRect], owner: self, userInfo: nil
         ))
     }
 
@@ -212,20 +247,18 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             return
         }
 
-        if sel.intersects(clip) {
+        drawLiveBackdropFrameIfNeeded(ctx: ctx, sel: sel, cornerRadius: activeRadius)
+
+        if sel.intersects(clip), inPlaceOCRView == nil {
             ctx.saveGState()
             if activeRadius > 0.5 {
                 ctx.addPath(CGPath(roundedRect: sel, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))
                 ctx.clip()
             }
             AnnotationRenderer.drawAnnotations(
-                in: ctx,
-                annotations: doc.objects,
-                draft: draftAnnotation,
-                skipIndex: editingExistingIndex,
-                sampler: snapshot.sampler,
-                imageScale: snapshot.scaleFactor,
-                clipRect: sel
+                in: ctx, annotations: doc.objects, draft: draftAnnotation,
+                skipIndex: editingExistingIndex, sampler: snapshot.sampler,
+                imageScale: snapshot.scaleFactor, clipRect: sel
             )
             ctx.restoreGState()
         }
@@ -242,41 +275,5 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         drawSelectionChrome(ctx: ctx, sel: sel, cornerRadius: activeRadius)
         drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
         drawCursorMagnifier(ctx: ctx, dirtyRect: clip)
-    }
-
-    func updateToolbarLayout() {
-        toolbar.canUndo = doc.canUndo
-        toolbar.canRedo = doc.canRedo
-        toolbar.nextStepNumber = doc.nextStepNumber()
-        toolbar.textCapsule = style.textCapsule
-        toolbar.refreshState()
-
-        guard let sel = selection, sel.width >= 6, sel.height >= 6 else {
-            toolbar.isHidden = true
-            return
-        }
-        toolbar.isHidden = false
-        let barSize = toolbar.frame.size
-        let x = min(max(8, sel.maxX - barSize.width), bounds.width - barSize.width - 8)
-        let belowY = sel.maxY + 8
-        let aboveY = sel.minY - barSize.height - 8
-        let y = (belowY + barSize.height + 8 <= bounds.height)
-            ? belowY
-            : (aboveY >= 8 ? aboveY : max(8, sel.maxY - barSize.height - 8))
-        toolbar.setFrameOrigin(NSPoint(x: round(x), y: round(y)))
-    }
-
-    func clearSelectionFromSibling() {
-        cancelTextEditing()
-        stopSnapGlide()
-        selection = nil
-        lastMousePoint = nil
-        eyedropperActive = false
-        autoSnapStack = []
-        displayedAutoRect = nil
-        preferredSnapArea = nil
-        selectedObjectIndex = nil
-        draftAnnotation = nil
-        doc = AnnotationDocument()
     }
 }

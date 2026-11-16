@@ -6,13 +6,23 @@ import MSnipCore
 /// 贴图窗口伴随悬浮标注工具栏面板（自动吸附在贴图下方或上方，不受小尺寸贴图边框裁切）
 final class PinToolbarPanel: NSPanel {
     let barView = ToolbarView()
+    let subbarView = ToolbarSubbarView()
+    private let container = NSView()
 
     init() {
         barView.isPinEditorMode = true
         barView.activeTool = .rect
         barView.refreshState()
+        subbarView.isPinEditorMode = true
+        subbarView.activeTool = .rect
+        subbarView.refresh()
+
+        let w = max(barView.frame.width, subbarView.frame.width)
+        let h = ToolbarView.barHeight + 6 + ToolbarSubbarView.subHeight
+        container.frame = NSRect(x: 0, y: 0, width: w, height: h)
+
         super.init(
-            contentRect: barView.frame,
+            contentRect: container.frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -23,23 +33,35 @@ final class PinToolbarPanel: NSPanel {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         self.isOpaque = false
         self.backgroundColor = .clear
-        self.hasShadow = true
+        self.hasShadow = false
         self.acceptsMouseMovedEvents = true
-        self.contentView = barView
+        container.addSubview(subbarView)
+        container.addSubview(barView)
+        self.contentView = container
     }
 
     override var canBecomeKey: Bool { false }
 
     func reposition(anchoringTo pinFrame: NSRect, on screen: NSScreen?) {
         barView.refreshState()
-        let barSize = barView.frame.size
+        let showSub = (barView.activeTool != nil)
+        subbarView.isHidden = !showSub
+        if showSub { subbarView.refresh() }
+
+        let totalW = showSub ? max(barView.frame.width, subbarView.frame.width) : barView.frame.width
+        let totalH = showSub ? (ToolbarView.barHeight + 6 + ToolbarSubbarView.subHeight) : ToolbarView.barHeight
+        container.setFrameSize(NSSize(width: totalW, height: totalH))
+        // container 为标准左下角原点：barView 在顶部，subbarView 在下方
+        barView.setFrameOrigin(NSPoint(x: 0, y: totalH - ToolbarView.barHeight))
+        subbarView.setFrameOrigin(NSPoint(x: 0, y: 0))
+
         let visible = (screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let x = min(max(visible.minX + 8, pinFrame.midX - barSize.width * 0.5), visible.maxX - barSize.width - 8)
-        let belowY = pinFrame.minY - barSize.height - 8
+        let x = min(max(visible.minX + 8, pinFrame.midX - totalW * 0.5), visible.maxX - totalW - 8)
+        let belowY = pinFrame.minY - totalH - 8
         let aboveY = pinFrame.maxY + 8
-        let y = belowY >= visible.minY + 4 ? belowY : min(aboveY, visible.maxY - barSize.height - 4)
-        setFrame(NSRect(origin: NSPoint(x: round(x), y: round(y)), size: barSize), display: true)
+        let y = belowY >= visible.minY + 4 ? belowY : min(aboveY, visible.maxY - totalH - 4)
+        setFrame(NSRect(origin: NSPoint(x: round(x), y: round(y)), size: NSSize(width: totalW, height: totalH)), display: true)
     }
 }
 

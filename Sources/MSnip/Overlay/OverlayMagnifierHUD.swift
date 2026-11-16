@@ -33,6 +33,9 @@ extension OverlayView {
     func isMagnifierVisible(at point: CGPoint?) -> Bool {
         guard let pt = point, bounds.contains(pt), !isEditingText else { return false }
         if !toolbar.isHidden && toolbar.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
+        if !subbar.isHidden && subbar.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
+        if !sidePills.isHidden && sidePills.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
+        if toolbar.inPlaceOCRActive, let sel = selection, sel.contains(pt) { return false }
         if eyedropperActive { return true }
         if selection == nil { return true }
         if let op = dragOp {

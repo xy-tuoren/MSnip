@@ -5,6 +5,16 @@ import MSnipCore
 
 /// 覆盖层的 PixPin 风格全键盘快捷键路由扩展
 extension OverlayView {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "c",
+           toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() {
+            ToastHUD.show(message: "已复制划选文字")
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
     override func flagsChanged(with event: NSEvent) {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         optionPressed = flags.contains(.option)
@@ -38,14 +48,18 @@ extension OverlayView {
             spacePressed = true
             return
         }
-        if event.keyCode == 53 { // Esc 分层回退
+        if event.keyCode == 53 { // Esc 分层停留在页面回退
             if eyedropperActive {
                 eyedropperActive = false
+            } else if toolbar.inPlaceOCRActive {
+                deactivateInPlaceOCR()
             } else if selectedObjectIndex != nil {
                 selectedObjectIndex = nil
+            } else if activeTool != nil {
+                activeTool = nil
+                updateToolbarLayout()
             } else if selection != nil && doc.isEmpty {
                 selection = nil
-                activeTool = nil
                 cornerRadiusPt = 0
                 backdropStyle = .none
                 refreshAutoSnapAtCurrentMouse()
@@ -67,11 +81,19 @@ extension OverlayView {
             return
         }
         if cmd && chars == "c" {
-            exportAndFinish(mode: .copy)
+            if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() {
+                ToastHUD.show(message: "已复制划选文字")
+            } else {
+                exportAndFinish(mode: .copy)
+            }
             return
         }
         if cmd && chars == "s" {
-            exportAndFinish(mode: shift ? .quickSave : .save)
+            if shift {
+                quickSaveInPlace()
+            } else {
+                exportAndFinish(mode: .save)
+            }
             return
         }
         if cmd && chars == "b" {
@@ -126,16 +148,36 @@ extension OverlayView {
         if !cmd, !ctrl {
             switch chars {
             case "c":
-                copyColorAtCursorAndFinish()
+                if selection != nil {
+                    if let sample = samplePixelAtCursor() {
+                        let txt = sample.color.formatted(as: colorCopyFormat)
+                        ClipboardAndSave.copyText(txt)
+                        ToastHUD.show(message: "色值 \(txt) 已复制", swatch: sample.color)
+                    }
+                } else {
+                    copyColorAtCursorAndFinish()
+                }
                 return
             case "x":
-                copyCoordinatesAtCursorAndFinish()
+                if selection != nil {
+                    if let sample = samplePixelAtCursor() {
+                        let coord = formattedCoordinateAtCursor(px: sample.px, py: sample.py)
+                        ClipboardAndSave.copyText(coord.copyValue)
+                        ToastHUD.show(message: "坐标 \(coord.copyValue) 已复制")
+                    }
+                } else {
+                    copyCoordinatesAtCursorAndFinish()
+                }
                 return
             case "g":
                 useRelativeCoordinates.toggle()
                 return
             case "t":
-                exportAndFinish(mode: .extractText)
+                if flags.contains(.option) {
+                    exportAndFinish(mode: .extractText)
+                } else {
+                    toggleInPlaceOCR()
+                }
                 return
             case "l":
                 beginLongShot()
@@ -144,7 +186,11 @@ extension OverlayView {
                 beginRegionRecording()
                 return
             case "f":
-                captureCurrentWindowAndFinish(pin: flags.contains(.option))
+                if flags.contains(.option) {
+                    captureCurrentWindowAndFinish(pin: false)
+                } else {
+                    snapSelectionToUnderlyingWindow()
+                }
                 return
             case "k":
                 toggleTextCapsuleMode()
@@ -185,10 +231,12 @@ extension OverlayView {
 
             if let n = Int(chars), let tool = ToolKind(rawValue: n) {
                 eyedropperActive = false
+                deactivateInPlaceOCR()
                 if selection == nil, let snap = hoveredAutoRect {
                     selection = snap
                 }
                 activeTool = (activeTool == tool) ? nil : tool
+                updateToolbarLayout()
             }
         }
     }

@@ -41,23 +41,37 @@ extension PinWindow {
         canvas.onCancel = { [weak self] in self?.endAnnotationEditing(commit: false) }
 
         let panel = PinToolbarPanel()
-        canvas.onDocStateChanged = { [weak panel, weak canvas] in
-            guard let panel, let canvas else { return }
+        canvas.onDocStateChanged = { [weak self, weak panel, weak canvas] in
+            guard let self, let panel, let canvas else { return }
             panel.barView.activeTool = canvas.activeTool
             panel.barView.textCapsule = canvas.style.textCapsule
             panel.barView.canUndo = canvas.doc.canUndo
             panel.barView.canRedo = canvas.doc.canRedo
             panel.barView.nextStepNumber = canvas.doc.nextStepNumber()
-            panel.barView.refreshState()
+            panel.subbarView.activeTool = canvas.activeTool
+            panel.subbarView.lineWidth = canvas.style.lineWidth
+            panel.subbarView.colorIndex = canvas.colorIndex
+            panel.subbarView.textCapsule = canvas.style.textCapsule
+            panel.reposition(anchoringTo: self.frame, on: self.screen)
         }
-        panel.barView.onAction = { [weak self, weak canvas, weak panel] act in
+        let handleBarAct: (ToolbarView.Action) -> Void = { [weak self, weak canvas, weak panel] act in
             guard let self, let canvas, let panel else { return }
             canvas.commitTextField()
             switch act {
-            case .selectTool(let t): canvas.activeTool = t; panel.barView.activeTool = t
+            case .selectTool(let t):
+                canvas.activeTool = t
+                panel.barView.activeTool = t
+                panel.subbarView.activeTool = t
+                panel.reposition(anchoringTo: self.frame, on: self.screen)
             case .toggleTextCapsule: canvas.togglePinTextCapsule()
-            case .selectColor(let c): canvas.applyStyleColor(c); panel.barView.colorIndex = c
-            case .selectStroke(let w): canvas.applyStrokeWidth(w); panel.barView.lineWidth = w
+            case .selectColor(let c):
+                canvas.applyStyleColor(c)
+                panel.barView.colorIndex = c
+                panel.subbarView.colorIndex = c
+            case .selectStroke(let w):
+                canvas.applyStrokeWidth(w)
+                panel.barView.lineWidth = w
+                panel.subbarView.lineWidth = w
             case .undo: _ = canvas.doc.undo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .redo: _ = canvas.doc.redo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .cancel: self.endAnnotationEditing(commit: false)
@@ -65,6 +79,8 @@ extension PinWindow {
             default: break
             }
         }
+        panel.barView.onAction = handleBarAct
+        panel.subbarView.onAction = handleBarAct
 
         pinContentView.addSubview(canvas)
         editorCanvas = canvas

@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 截图选区下方的原生毛玻璃深色悬浮工具栏（含标注、吸管取色、圆角截图、识字提取与导出动作）
+/// 截图选区下方的浅色紧凑悬浮主工具栏（复刻 PixPin 单行清爽工具条，支持左侧手柄自由拖拽位置）
 final class ToolbarView: NSView {
     enum Action {
         case selectTool(ToolKind?)
@@ -16,7 +16,8 @@ final class ToolbarView: NSView {
         case cycleCornerRadius
         case cycleBackdrop
         case captureWindow
-        case extractText
+        case toggleInPlaceOCR
+        case extractTextWindow
         case startLongShot
         case startRecording
         case pin
@@ -35,9 +36,20 @@ final class ToolbarView: NSView {
     }
 
     var onAction: ((Action) -> Void)?
+    var onDraggedOrigin: ((NSPoint) -> Void)?
 
-    var activeTool: ToolKind? { didSet { if oldValue != activeTool { markItemsDirty() } } }
+    var activeTool: ToolKind? {
+        didSet {
+            if let t = activeTool { rememberGroupChoice(t) }
+            if oldValue != activeTool { markItemsDirty() }
+        }
+    }
+    var lastShapeTool: ToolKind = .rect
+    var lastBrushTool: ToolKind = .pen
+    var lastRedactTool: ToolKind = .mosaic
+
     var textCapsule: Bool = false { didSet { if oldValue != textCapsule { markItemsDirty() } } }
+    var inPlaceOCRActive: Bool = false { didSet { if oldValue != inPlaceOCRActive { markItemsDirty() } } }
     var nextStepNumber: Int = 1 { didSet { if oldValue != nextStepNumber { markItemsDirty() } } }
     var colorIndex: Int = 0 { didSet { if oldValue != colorIndex { markItemsDirty() } } }
     var customColor: RGBAColor? { didSet { if oldValue != customColor { markItemsDirty() } } }
@@ -53,14 +65,23 @@ final class ToolbarView: NSView {
     var items: [HitItem] = []
     private var itemsDirty = true
     private var hoveredIndex: Int?
+    private var isDraggingBar = false
+    private var dragMouseStart: NSPoint = .zero
+    private var dragOriginStart: NSPoint = .zero
 
     override var isFlipped: Bool { true }
 
-    static let barHeight: CGFloat = 42
-    static let barWidth: CGFloat = 850
+    static let barHeight: CGFloat = 38
+    static let gripWidth: CGFloat = 18
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: Self.barWidth, height: Self.barHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: 510, height: Self.barHeight))
+        wantsLayer = true
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.22
+        layer?.shadowRadius = 9
+        layer?.shadowOffset = CGSize(width: 0, height: 3)
         rebuildItems()
         itemsDirty = false
     }
@@ -69,6 +90,15 @@ final class ToolbarView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    private func rememberGroupChoice(_ tool: ToolKind) {
+        switch tool {
+        case .rect, .ellipse: lastShapeTool = tool
+        case .pen, .highlighter, .line: lastBrushTool = tool
+        case .mosaic, .gaussianBlur: lastRedactTool = tool
+        default: break
+        }
+    }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -97,10 +127,7 @@ final class ToolbarView: NSView {
     }
 
     private func ensureItemsUpToDate() {
-        if itemsDirty {
-            rebuildItems()
-            itemsDirty = false
-        }
+        if itemsDirty { rebuildItems(); itemsDirty = false }
     }
 
     override func mouseMoved(with event: NSEvent) {
@@ -110,36 +137,56 @@ final class ToolbarView: NSView {
         if idx != hoveredIndex {
             let oldIdx = hoveredIndex
             hoveredIndex = idx
-            toolTip = idx.map { items[$0].tooltip }
-            if let o = oldIdx, items.indices.contains(o) {
-                setNeedsDisplay(items[o].rect.insetBy(dx: -3, dy: -3))
-            }
-            if let n = idx, items.indices.contains(n) {
-                setNeedsDisplay(items[n].rect.insetBy(dx: -3, dy: -3))
-            }
+            toolTip = idx.map { items[$0].tooltip } ?? (p.x <= Self.gripWidth ? "按住拖拽移动工具栏位置" : nil)
+            if let o = oldIdx, items.indices.contains(o) { setNeedsDisplay(items[o].rect.insetBy(dx: -3, dy: -3)) }
+            if let n = idx, items.indices.contains(n) { setNeedsDisplay(items[n].rect.insetBy(dx: -3, dy: -3)) }
         }
     }
 
     override func mouseExited(with event: NSEvent) {
         if let old = hoveredIndex {
             hoveredIndex = nil
-            if items.indices.contains(old) {
-                setNeedsDisplay(items[old].rect.insetBy(dx: -3, dy: -3))
-            } else {
-                needsDisplay = true
-            }
+            if items.indices.contains(old) { setNeedsDisplay(items[old].rect.insetBy(dx: -3, dy: -3)) }
+            else { needsDisplay = true }
         }
     }
 
     override func mouseDown(with event: NSEvent) {
         ensureItemsUpToDate()
         let p = convert(event.locationInWindow, from: nil)
-        if let item = items.first(where: { $0.rect.contains(p) && $0.enabled }) {
-            if case .save = item.action, event.modifierFlags.contains(.option) {
-                onAction?(.quickSave)
-            } else {
-                onAction?(item.action)
-            }
+        if !isPinEditorMode && p.x <= Self.gripWidth + 2 {
+            isDraggingBar = true
+            dragMouseStart = NSEvent.mouseLocation
+            dragOriginStart = frame.origin
+            NSCursor.closedHand.push()
+            return
+        }
+        guard let item = items.first(where: { $0.rect.contains(p) && $0.enabled }) else { return }
+        if case .save = item.action, event.modifierFlags.contains(.option) {
+            onAction?(.quickSave)
+        } else if case .toggleInPlaceOCR = item.action, event.modifierFlags.contains(.option) {
+            onAction?(.extractTextWindow)
+        } else {
+            onAction?(item.action)
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isDraggingBar, let sup = superview else { return }
+        let now = NSEvent.mouseLocation
+        let dx = now.x - dragMouseStart.x
+        let dy = -(now.y - dragMouseStart.y) // superview (OverlayView) isFlipped = true
+        let nx = min(max(6, round(dragOriginStart.x + dx)), sup.bounds.width - bounds.width - 6)
+        let ny = min(max(6, round(dragOriginStart.y + dy)), sup.bounds.height - bounds.height - 6)
+        let nextOrigin = NSPoint(x: nx, y: ny)
+        setFrameOrigin(nextOrigin)
+        onDraggedOrigin?(nextOrigin)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        if isDraggingBar {
+            isDraggingBar = false
+            NSCursor.pop()
         }
     }
 
@@ -150,15 +197,19 @@ final class ToolbarView: NSView {
         ctx.saveGState()
         ctx.clip(to: dirtyRect)
 
-        let bgRect = bounds.insetBy(dx: 1, dy: 1)
-        let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 9, cornerHeight: 9, transform: nil)
-        ctx.setFillColor(NSColor(calibratedWhite: 0.12, alpha: 0.92).cgColor)
+        let bgRect = bounds.insetBy(dx: 0.5, dy: 0.5)
+        let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
+        ctx.setFillColor(NSColor(srgbRed: 0.965, green: 0.968, blue: 0.976, alpha: 0.96).cgColor)
         ctx.addPath(bgPath)
         ctx.fillPath()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.18).cgColor)
+        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.11).cgColor)
         ctx.setLineWidth(1.0)
         ctx.addPath(bgPath)
         ctx.strokePath()
+
+        if !isPinEditorMode {
+            Self.drawGripDots(ctx: ctx, in: CGRect(x: 4, y: 0, width: Self.gripWidth - 2, height: Self.barHeight))
+        }
 
         for (i, item) in items.enumerated() where item.rect.insetBy(dx: -4, dy: -4).intersects(dirtyRect) {
             item.draw(ctx, item.rect, hoveredIndex == i)

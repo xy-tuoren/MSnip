@@ -136,6 +136,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.config.showShortcutTips = showTips
                 self.config.save()
             }
+            session.onQuickSaveInPlace = { [weak self] img, scale in
+                guard let self else { return }
+                self.recordHistoryAndRefresh(img: img, scale: scale)
+                self.performQuickSave(img: img, scale: scale)
+            }
             session.onComplete = { [weak self] outcome in
                 self?.handleOverlayOutcome(outcome)
             }
