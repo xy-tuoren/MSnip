@@ -43,7 +43,7 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
     func show(opening pane: PermissionPane? = nil) {
         isSessionActive = true
         _ = ensureWindow()
-        lastScreenGranted = CGPreflightScreenCaptureAccess()
+        lastScreenGranted = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
         lastAXGranted = AXIsProcessTrusted()
         updateUI(screenOK: lastScreenGranted, axOK: lastAXGranted)
         startPolling()
@@ -208,13 +208,13 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
     private func startPolling() {
         pollTimer?.invalidate()
-        pollTimer = Timer.scheduledTimer(withTimeInterval: 0.8, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.refreshStatus() }
+        pollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in await self?.refreshStatus() }
         }
     }
 
-    private func refreshStatus() {
-        let screenOK = CGPreflightScreenCaptureAccess()
+    private func refreshStatus() async {
+        let screenOK = await ScreenCapturer.hasScreenCapturePermission()
         let axOK = AXIsProcessTrusted()
         let changed = (screenOK != lastScreenGranted || axOK != lastAXGranted)
         lastScreenGranted = screenOK
@@ -223,11 +223,16 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
         if changed {
             onPermissionChanged?()
+            if screenOK && axOK {
+                closeAll()
+                ToastHUD.show(message: "✓ 屏幕录制与辅助功能权限均已生效")
+                return
+            }
             let completedActivePane = settingsDock.isDockVisible && (
-                (settingsDock.activePane == .screenRecording && screenOK && !axOK) ||
-                (settingsDock.activePane == .accessibility && axOK && !screenOK)
+                (settingsDock.activePane == .screenRecording && screenOK) ||
+                (settingsDock.activePane == .accessibility && axOK)
             )
-            if (screenOK && axOK) || completedActivePane {
+            if completedActivePane {
                 prefersAccessoryMode = false
                 settingsDock.stopAndHide()
                 presentChecklistWindow()

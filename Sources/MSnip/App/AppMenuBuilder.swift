@@ -158,7 +158,7 @@ extension AppController {
     }
 
     func currentPermissionMenuState() -> NSControl.StateValue {
-        let screenOK = CGPreflightScreenCaptureAccess()
+        let screenOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
         let axOK = RegionDetector.checkAccessibilityPermission(prompt: false)
         if screenOK && axOK { return .on }
         if screenOK { return .mixed }
@@ -222,7 +222,8 @@ extension AppController {
     }
 
     @objc func openPermissionGuide() {
-        let pane: PermissionPane? = !CGPreflightScreenCaptureAccess()
+        let screenOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
+        let pane: PermissionPane? = !screenOK
             ? .screenRecording
             : (!RegionDetector.checkAccessibilityPermission(prompt: false) ? .accessibility : nil)
         permissionGuide.show(opening: pane)
@@ -231,7 +232,7 @@ extension AppController {
     @objc func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v1.2.0"
+        alert.messageText = "MSnip（麦截）v1.2.1"
         alert.informativeText = """
         超轻量纯原生 macOS 全能截图、动图录制、长截图、实况识字与贴图工具
         • 零第三方依赖：Swift + AppKit + CoreGraphics + Accelerate + ScreenCaptureKit + VisionKit + AVFoundation

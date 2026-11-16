@@ -26,9 +26,31 @@ final class ScreenSnapshot {
 /// - macOS 14.0+ 使用官方 `ScreenCaptureKit` (`SCScreenshotManager`) 多屏并发抓图，原生支持 Retina 与 HDR 色调映射；
 /// - macOS 12–13 自动回退 `CGDisplayCreateImage`（通过符号动态解析避开新 SDK 废弃编译限制）。
 enum ScreenCapturer {
+    /// 缓存运行期已由 ScreenCaptureKit 实时验证通过的录屏授权状态（绕过 `CGPreflightScreenCaptureAccess` 进程内旧缓存假阴性）
+    @MainActor static var runtimeVerifiedAccess = false
+
+    /// 实时检测屏幕录制权限（兼顾 `CGPreflight` 与 `SCShareableContent` 动态实时探测，授权后无需重启即可识别）
+    @MainActor
+    static func hasScreenCapturePermission() async -> Bool {
+        if runtimeVerifiedAccess || CGPreflightScreenCaptureAccess() {
+            runtimeVerifiedAccess = true
+            return true
+        }
+        if #available(macOS 14.0, *) {
+            if let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+               !content.displays.isEmpty {
+                runtimeVerifiedAccess = true
+                return true
+            }
+        }
+        return false
+    }
+
     /// 检查屏幕录制权限；若未授权则触发系统授权引导
+    @MainActor
     static func ensurePermission() -> Bool {
-        if CGPreflightScreenCaptureAccess() {
+        if runtimeVerifiedAccess || CGPreflightScreenCaptureAccess() {
+            runtimeVerifiedAccess = true
             return true
         }
         _ = CGRequestScreenCaptureAccess()
@@ -43,10 +65,13 @@ enum ScreenCapturer {
 
         if #available(macOS 14.0, *) {
             if let snapshots = await captureViaScreenCaptureKit(screens: screens), !snapshots.isEmpty {
+                runtimeVerifiedAccess = true
                 return snapshots
             }
         }
-        return captureViaLegacyCoreGraphics(screens: screens)
+        let fallback = captureViaLegacyCoreGraphics(screens: screens)
+        if !fallback.isEmpty { runtimeVerifiedAccess = true }
+        return fallback
     }
 
     @available(macOS 14.0, *)

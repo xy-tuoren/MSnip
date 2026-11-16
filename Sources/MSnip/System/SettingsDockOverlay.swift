@@ -84,19 +84,17 @@ final class SettingsAccessoryCardView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     func setPane(_ pane: PermissionPane) {
-        let permName = (pane == .screenRecording) ? "屏幕录制" : "辅助功能"
         let reg: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12.5, weight: .regular),
+            .font: NSFont.systemFont(ofSize: 12.0, weight: .regular),
             .foregroundColor: NSColor.secondaryLabelColor
         ]
         let bold: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold),
+            .font: NSFont.systemFont(ofSize: 12.0, weight: .semibold),
             .foregroundColor: NSColor.labelColor
         ]
-        let str = NSMutableAttributedString(string: "将 ", attributes: reg)
-        str.append(NSAttributedString(string: "MSnip", attributes: bold))
-        str.append(NSAttributedString(string: " 拖到上方列表中以允许", attributes: reg))
-        str.append(NSAttributedString(string: permName, attributes: bold))
+        let str = NSMutableAttributedString(string: "拖入上方列表开启", attributes: reg)
+        str.append(NSAttributedString(string: (pane == .screenRecording) ? "屏幕录制" : "辅助功能", attributes: bold))
+        str.append(NSAttributedString(string: "（若列表中已有 MSnip，请先关再开开关）", attributes: reg))
         promptLabel.attributedStringValue = str
     }
 }

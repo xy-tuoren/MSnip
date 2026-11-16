@@ -24,8 +24,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusBar()
         setupCallbacks()
         hotKeyManager.apply(config: config)
-        if !CGPreflightScreenCaptureAccess() {
-            permissionGuide.show(opening: .screenRecording)
+        Task { @MainActor [weak self] in
+            let ok = await ScreenCapturer.hasScreenCapturePermission()
+            guard let self else { return }
+            self.rebuildMenu()
+            if !ok {
+                self.permissionGuide.show(opening: .screenRecording)
+            }
         }
     }
 
@@ -100,10 +105,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func beginCaptureSession(quickOCR: Bool) {
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
-        guard CGPreflightScreenCaptureAccess() else {
-            permissionGuide.show(opening: .screenRecording)
-            return
-        }
 
         isCapturing = true
         let regionDetector = RegionDetector.captureBeforeOverlay()
@@ -112,6 +113,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             self.isCapturing = false
             guard !snapshots.isEmpty else {
+                ScreenCapturer.runtimeVerifiedAccess = false
                 self.permissionGuide.show(opening: .screenRecording)
                 return
             }
