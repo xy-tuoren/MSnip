@@ -44,6 +44,7 @@ extension PinWindow {
         canvas.onDocStateChanged = { [weak panel, weak canvas] in
             guard let panel, let canvas else { return }
             panel.barView.activeTool = canvas.activeTool
+            panel.barView.textCapsule = canvas.style.textCapsule
             panel.barView.canUndo = canvas.doc.canUndo
             panel.barView.canRedo = canvas.doc.canRedo
             panel.barView.nextStepNumber = canvas.doc.nextStepNumber()
@@ -54,6 +55,7 @@ extension PinWindow {
             canvas.commitTextField()
             switch act {
             case .selectTool(let t): canvas.activeTool = t; panel.barView.activeTool = t
+            case .toggleTextCapsule: canvas.togglePinTextCapsule()
             case .selectColor(let c): canvas.applyStyleColor(c); panel.barView.colorIndex = c
             case .selectStroke(let w): canvas.applyStrokeWidth(w); panel.barView.lineWidth = w
             case .undo: _ = canvas.doc.undo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
@@ -101,6 +103,7 @@ extension PinWindow {
         highlightMenuItem?.state = pinContentView.liveTextView.highlightBlocks ? .on : .off
     }
     @objc func saveImage() { onSavePNG?(currentCGImage, imageScale) }
+    @objc func quickSaveImage() { onQuickSavePNG?(currentCGImage, imageScale) }
     @objc func resetZoom() { applyZoom(newZoom: 1.0); alphaValue = 1.0 }
     @objc func toggleHalfOpacity() { alphaValue = alphaValue < 0.95 ? 1.0 : 0.55 }
     @objc func closePin() { endAnnotationEditing(commit: false); orderOut(nil); onClose?(self) }
@@ -130,6 +133,9 @@ extension PinWindow {
         menu.addItem(hlItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "复制贴图图像 (按住 ⌘ 可拖拽成文件)", action: #selector(copyImage), keyEquivalent: "c")
+        let quickItem = NSMenuItem(title: "一键快存到图片目录", action: #selector(quickSaveImage), keyEquivalent: "s")
+        quickItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(quickItem)
         menu.addItem(withTitle: "另存为 PNG...", action: #selector(saveImage), keyEquivalent: "s")
         menu.addItem(.separator())
         menu.addItem(withTitle: "重置 100% 大小与不透明", action: #selector(resetZoom), keyEquivalent: "0")

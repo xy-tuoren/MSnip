@@ -58,12 +58,24 @@ extension OverlayView {
             cycleColorFormat()
             return
         }
-        if event.keyCode == 36 || event.keyCode == 76 || (cmd && chars == "c") { // Return / Enter / ⌘C
+        if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
+            if shift && !cmd && !ctrl {
+                captureCurrentWindowAndFinish(pin: flags.contains(.option))
+            } else {
+                exportAndFinish(mode: .copy)
+            }
+            return
+        }
+        if cmd && chars == "c" {
             exportAndFinish(mode: .copy)
             return
         }
         if cmd && chars == "s" {
-            exportAndFinish(mode: .save)
+            exportAndFinish(mode: shift ? .quickSave : .save)
+            return
+        }
+        if cmd && chars == "b" {
+            toggleTextCapsuleMode()
             return
         }
         if (cmd && chars == "2") || event.keyCode == 99 { // ⌘2 或 F3 贴图
@@ -130,6 +142,12 @@ extension OverlayView {
                 return
             case "v":
                 beginRegionRecording()
+                return
+            case "f":
+                captureCurrentWindowAndFinish(pin: flags.contains(.option))
+                return
+            case "k":
+                toggleTextCapsuleMode()
                 return
             case "p":
                 cycleBackdropStyle()

@@ -1,10 +1,11 @@
 import AppKit
+import Carbon
 import CoreGraphics
 import Foundation
 import MSnipCore
 import UniformTypeIdentifiers
 
-/// 选区录制会话的窗口布局、全局按键监听、保存面板与跨线程状态原子盒扩展
+/// 选区录制会话的窗口布局、全局点击/快捷键回显监听、保存面板与跨线程状态原子盒扩展
 extension RegionRecordingSession {
     func finishSession(_ outcome: Outcome) {
         guard !closed else { return }
@@ -13,6 +14,7 @@ extension RegionRecordingSession {
         streamSampler.stop()
         if let m = localKeyMonitor { NSEvent.removeMonitor(m); localKeyMonitor = nil }
         if let g = globalKeyMonitor { NSEvent.removeMonitor(g); globalKeyMonitor = nil }
+        if let gm = globalMouseMonitor { NSEvent.removeMonitor(gm); globalMouseMonitor = nil }
         borderWindow?.orderOut(nil); borderWindow = nil
         controlWindow?.orderOut(nil); controlWindow = nil
         onComplete?(outcome)
@@ -48,8 +50,64 @@ extension RegionRecordingSession {
             return ev
         }
         globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] ev in
-            if ev.keyCode == 53 { Task { @MainActor in self?.cancel() } }
+            if ev.keyCode == 53 {
+                Task { @MainActor in self?.cancel() }
+                return
+            }
+            let badge = Self.formatSafeShortcutBadge(event: ev)
+            guard let badge else { return }
+            Task { @MainActor [weak self] in
+                guard let self, self.controlBar.isRecording, !self.paused else { return }
+                self.overlayCompositor.recordKeyBadge(badge, at: self.currentActiveDuration())
+            }
         }
+        globalMouseMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] ev in
+            let isRight = (ev.type == .rightMouseDown)
+            let pt = NSEvent.mouseLocation
+            Task { @MainActor [weak self] in
+                guard let self, self.controlBar.isRecording, !self.paused, let scr = self.targetScreen else { return }
+                if let cWin = self.controlWindow, cWin.frame.contains(pt) { return }
+                let capScreen = Self.toAppKitScreenRect(localTopLeft: self.localCaptureRect, on: scr)
+                guard capScreen.width > 1, capScreen.height > 1, capScreen.contains(pt) else { return }
+                let nx = (pt.x - capScreen.minX) / capScreen.width
+                let ny = (capScreen.maxY - pt.y) / capScreen.height
+                self.overlayCompositor.recordClick(
+                    normalizedX: nx,
+                    normalizedY: ny,
+                    isRightClick: isRight,
+                    at: self.currentActiveDuration()
+                )
+            }
+        }
+    }
+
+    /// 仅格式化带修饰符（⌘/⌃/⌥）的组合快捷键或特殊功能键，绝不回显普通打字字符以保护密码隐私
+    private static func formatSafeShortcutBadge(event: NSEvent) -> String? {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        var mods = ""
+        if flags.contains(.control) { mods += "⌃" }
+        if flags.contains(.option)  { mods += "⌥" }
+        if flags.contains(.shift)   { mods += "⇧" }
+        if flags.contains(.command) { mods += "⌘" }
+
+        let specialKey: String? = {
+            switch Int(event.keyCode) {
+            case kVK_Return, kVK_ANSI_KeypadEnter: return "↩"
+            case kVK_Tab:           return "⇥"
+            case kVK_Delete:        return "⌫"
+            case kVK_ForwardDelete: return "⌦"
+            case kVK_LeftArrow:     return "←"
+            case kVK_RightArrow:    return "→"
+            case kVK_UpArrow:       return "↑"
+            case kVK_DownArrow:     return "↓"
+            default:                return nil
+            }
+        }()
+
+        if let sp = specialKey {
+            return mods + sp
+        }
+        return KeyCombo.from(event: event)?.displayString
     }
 
     func repositionControlWindow(around screenRect: NSRect, on screen: NSScreen) {

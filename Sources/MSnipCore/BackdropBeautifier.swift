@@ -134,4 +134,51 @@ public enum BackdropBeautifier {
 
         return ctx.makeImage() ?? cardImage
     }
+
+    /// 为独立窗口截图套上原生 macOS 风格透明悬浮柔和阴影（四周全透明 Alpha 通道，无桌面杂物）
+    public static func applyTransparentWindowShadow(
+        to windowImage: CGImage,
+        imageScale: CGFloat
+    ) -> CGImage? {
+        let scale = max(1.0, imageScale)
+        let padSidePx = max(20, Int((34.0 * scale).rounded()))
+        let padTopPx = max(16, Int((24.0 * scale).rounded()))
+        let padBottomPx = max(24, Int((44.0 * scale).rounded()))
+        let canvasW = windowImage.width + padSidePx * 2
+        let canvasH = windowImage.height + padTopPx + padBottomPx
+
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil,
+            width: canvasW,
+            height: canvasH,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: cs,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return windowImage }
+
+        ctx.clear(CGRect(x: 0, y: 0, width: canvasW, height: canvasH))
+        let winRect = CGRect(
+            x: padSidePx,
+            y: padBottomPx,
+            width: windowImage.width,
+            height: windowImage.height
+        )
+
+        // 基于窗口自身 Alpha 轮廓投射柔和环境阴影，完美贴合圆角窗口与悬浮面板
+        ctx.saveGState()
+        ctx.setShadow(
+            offset: CGSize(width: 0, height: -10.0 * scale),
+            blur: 26.0 * scale,
+            color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.36)
+        )
+        ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+        ctx.interpolationQuality = .high
+        ctx.draw(windowImage, in: winRect)
+        ctx.endTransparencyLayer()
+        ctx.restoreGState()
+
+        return ctx.makeImage() ?? windowImage
+    }
 }

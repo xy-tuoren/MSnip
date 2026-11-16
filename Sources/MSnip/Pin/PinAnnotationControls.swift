@@ -96,10 +96,33 @@ extension PinAnnotationCanvasView {
             needsDisplay = true
             return
         }
+        if !cmd, chars == "k" || (cmd && chars == "b") {
+            togglePinTextCapsule()
+            return
+        }
+        if cmd, chars == "b" {
+            togglePinTextCapsule()
+            return
+        }
         if !cmd, let n = Int(chars), let tool = ToolKind(rawValue: n) {
             activeTool = (activeTool == tool) ? nil : tool
             onDocStateChanged?()
         }
+    }
+
+    func togglePinTextCapsule() {
+        style.textCapsule.toggle()
+        if let idx = selectedIndex, case .text(let o, let c, _) = doc.objects[idx].payload {
+            let newCap = !doc.objects[idx].style.textCapsule
+            style.textCapsule = newCap
+            let sz = AnnotationRenderer.measureText(c, fontSize: doc.objects[idx].style.fontSize, capsule: newCap)
+            doc.modifyWithHistory(at: idx) {
+                $0.style.textCapsule = newCap
+                $0.payload = .text(origin: o, content: c, measuredSize: sz)
+            }
+        }
+        onDocStateChanged?()
+        needsDisplay = true
     }
 
     func buildDraft(tool: ToolKind, from a: CGPoint, to b: CGPoint, shift: Bool) -> Annotation {
@@ -153,9 +176,12 @@ extension PinAnnotationCanvasView {
         textField = nil; editingOrigin = nil
         let editIdx = editingIndex; editingIndex = nil
         if !content.isEmpty {
-            let sz = AnnotationRenderer.measureText(content, fontSize: style.fontSize)
+            let sz = AnnotationRenderer.measureText(content, fontSize: style.fontSize, capsule: style.textCapsule)
             if let idx = editIdx {
-                doc.modifyWithHistory(at: idx) { $0.payload = .text(origin: origin, content: content, measuredSize: sz) }
+                doc.modifyWithHistory(at: idx) {
+                    $0.style.textCapsule = style.textCapsule
+                    $0.payload = .text(origin: origin, content: content, measuredSize: sz)
+                }
             } else {
                 doc.append(Annotation(payload: .text(origin: origin, content: content, measuredSize: sz), style: style))
             }

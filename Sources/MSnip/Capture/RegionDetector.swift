@@ -6,7 +6,9 @@ import MSnipCore
 
 /// 抓屏瞬间的桌面窗口快照项（Quartz 全局坐标系：主屏幕左上角为 (0,0)，向下为 +Y）
 struct WindowSnapshotItem {
+    let windowID: CGWindowID
     let ownerPID: pid_t
+    let ownerName: String
     let globalBounds: CGRect
     let layer: Int
 }
@@ -53,7 +55,8 @@ final class RegionDetector {
         var items: [WindowSnapshotItem] = []
         for entry in rawList {
             guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t,
-                  pid != selfPID else { continue }
+                  pid != selfPID,
+                  let rawWinID = entry[kCGWindowNumber as String] as? UInt32 else { continue }
             let layer = entry[kCGWindowLayer as String] as? Int ?? 0
             let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1.0
             // 仅保留正常应用窗口、悬浮面板、菜单栏与弹窗（过滤透明遮罩与桌面底层背景）
@@ -78,7 +81,13 @@ final class RegionDetector {
                 continue
             }
 
-            items.append(WindowSnapshotItem(ownerPID: pid, globalBounds: rect, layer: layer))
+            items.append(WindowSnapshotItem(
+                windowID: CGWindowID(rawWinID),
+                ownerPID: pid,
+                ownerName: ownerName,
+                globalBounds: rect,
+                layer: layer
+            ))
         }
         return RegionDetector(windows: items, primaryScreenHeight: primaryH)
     }
@@ -91,6 +100,19 @@ final class RegionDetector {
             return AXIsProcessTrustedWithOptions(opts)
         }
         return AXIsProcessTrusted()
+    }
+
+    /// 查询鼠标局部点正下方命中的最顶层独立应用窗口（供纯净透明阴影窗口截图使用）
+    func topWindow(at localPoint: CGPoint, in snapshot: ScreenSnapshot) -> (windowID: CGWindowID, ownerName: String, localRect: CGRect)? {
+        let screenFrame = snapshot.screen.frame
+        let screenBoundsLocal = CGRect(origin: .zero, size: screenFrame.size)
+        guard screenBoundsLocal.contains(localPoint) else { return nil }
+        let screenQuartzOrigin = CGPoint(x: screenFrame.minX, y: primaryScreenHeight - screenFrame.maxY)
+        let globalPoint = CGPoint(x: screenQuartzOrigin.x + localPoint.x, y: screenQuartzOrigin.y + localPoint.y)
+        guard let hit = windows.first(where: { $0.globalBounds.contains(globalPoint) }) else { return nil }
+        let localRect = toLocalRect(hit.globalBounds, screenQuartzOrigin: screenQuartzOrigin).intersection(screenBoundsLocal)
+        guard !localRect.isNull, localRect.width >= 24, localRect.height >= 24 else { return nil }
+        return (hit.windowID, hit.ownerName, localRect)
     }
 
     /// 查询指定显示器 `snapshot` 上局部点 `localPoint`（左上角原点）处的嵌套矩阵层级（从小到大排序）

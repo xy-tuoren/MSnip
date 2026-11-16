@@ -23,7 +23,9 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onSelectionActivated: ((OverlayView) -> Void)?
     var onFinishCopy: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishSave: ((CGImage, CGFloat, CGRect) -> Void)?
+    var onFinishQuickSave: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishPin: ((CGImage, CGFloat, CGPoint, NSScreen, CGRect) -> Void)?
+    var onFinishIsolatedWindow: ((CGWindowID, CGFloat, BackdropStyle, Bool, CGPoint, NSScreen) -> Void)?
     var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
     var onFinishCopyText: ((String, NSPoint) -> Void)?
     var onFinishExtractText: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
@@ -31,6 +33,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onStartRecording: ((NSScreen, CGRect, CGImage?) -> Void)?
     var onCancel: (() -> Void)?
     var onStyleChanged: ((Int, CGFloat) -> Void)?
+    var onCapsuleChanged: ((Bool) -> Void)?
     var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
     var quickOCRMode = false
 
@@ -245,6 +248,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         toolbar.canUndo = doc.canUndo
         toolbar.canRedo = doc.canRedo
         toolbar.nextStepNumber = doc.nextStepNumber()
+        toolbar.textCapsule = style.textCapsule
         toolbar.refreshState()
 
         guard let sel = selection, sel.width >= 6, sel.height >= 6 else {

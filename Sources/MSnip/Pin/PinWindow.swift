@@ -9,6 +9,7 @@ final class PinWindow: NSPanel {
     var onCloseAll: (() -> Void)?
     var onStateChanged: (() -> Void)?
     var onSavePNG: ((CGImage, CGFloat) -> Void)?
+    var onQuickSavePNG: ((CGImage, CGFloat) -> Void)?
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
 
     let baseCGImage: CGImage
@@ -186,7 +187,11 @@ final class PinWindow: NSPanel {
                 closePin()
             }
         } else if event.modifierFlags.contains(.command), chars == "s" {
-            saveImage()
+            if event.modifierFlags.contains(.shift) {
+                quickSaveImage()
+            } else {
+                saveImage()
+            }
         } else if chars == "e", !event.modifierFlags.contains(.command) {
             beginAnnotationEditing()
         } else if chars == "p", !event.modifierFlags.contains(.command) {

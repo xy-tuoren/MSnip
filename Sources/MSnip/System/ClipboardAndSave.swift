@@ -78,6 +78,40 @@ enum ClipboardAndSave {
         return nil
     }
 
+    /// 解析免弹窗快存目录（优先使用已配置的保存目录，否则默认归档至 `~/Pictures/MSnip`）
+    static func resolveQuickSaveDirectory(preferred: String?) -> URL {
+        let fm = FileManager.default
+        if let dir = preferred, !dir.isEmpty, fm.fileExists(atPath: dir) {
+            return URL(fileURLWithPath: dir, isDirectory: true)
+        }
+        let pictures = fm.urls(for: .picturesDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Pictures", isDirectory: true)
+        let target = pictures.appendingPathComponent("MSnip", isDirectory: true)
+        try? fm.createDirectory(at: target, withIntermediateDirectories: true)
+        return target
+    }
+
+    /// 免弹窗一键快存高清 PNG 至本地归档目录（`⌘⇧S`），成功返回文件 `URL`
+    static func quickSavePNG(
+        cgImage: CGImage,
+        scaleFactor: CGFloat,
+        preferredDirectory: String?
+    ) -> URL? {
+        guard let pngData = encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) else { return nil }
+        let dirURL = resolveQuickSaveDirectory(preferred: preferredDirectory)
+        try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
+        let outURL = dirURL.appendingPathComponent("MSnip-\(formatter.string(from: Date())).png")
+        do {
+            try pngData.write(to: outURL, options: .atomic)
+            return outURL
+        } catch {
+            return nil
+        }
+    }
+
     /// 弹出原生保存对话框导出 PNG，返回用户选定的新目录以便配置记忆
     @MainActor
     static func savePNGInteractive(

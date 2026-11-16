@@ -14,6 +14,7 @@ final class RegionRecordingSession {
     }
 
     var onFormatChanged: ((RecordingFormat) -> Void)?
+    var onHUDPrefChanged: ((Bool) -> Void)?
     var onComplete: ((Outcome) -> Void)?
 
     var borderWindow: NSPanel?
@@ -21,6 +22,7 @@ final class RegionRecordingSession {
     let borderView = LongShotBorderView()
     let controlBar = RecordingControlBarView()
     let streamSampler = RegionStreamSampler()
+    let overlayCompositor = RecordingOverlayCompositor(isEnabled: true)
 
     var encoder: MediaClipEncoder?
     var initialFrame: CGImage?
@@ -31,6 +33,7 @@ final class RegionRecordingSession {
     var tickTimer: Timer?
     var localKeyMonitor: Any?
     var globalKeyMonitor: Any?
+    var globalMouseMonitor: Any?
     var accumulatedActiveTime: TimeInterval = 0
     var segmentStartMediaTime: TimeInterval?
     var paused = false
@@ -45,6 +48,7 @@ final class RegionRecordingSession {
         selectionLocalTopLeft: CGRect,
         initialCroppedFrame: CGImage?,
         defaultFormat: RecordingFormat,
+        interactionHUD: Bool = true,
         initialSaveDirectory: String?
     ) {
         self.targetScreen = screen
@@ -53,6 +57,8 @@ final class RegionRecordingSession {
         self.saveDirHint = initialSaveDirectory
 
         controlBar.format = defaultFormat
+        controlBar.interactionHUDEnabled = interactionHUD
+        overlayCompositor.isEnabled = interactionHUD
         borderView.statusStyle = .ready
         borderView.statusText = "选区录屏就绪 · 选择 GIF/MP4 后点击开始录制"
 
@@ -86,6 +92,14 @@ final class RegionRecordingSession {
             guard !controlBar.isRecording else { return }
             controlBar.format = fmt
             onFormatChanged?(fmt)
+            if let scr = targetScreen {
+                repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: scr), on: scr)
+            }
+        case .toggleInteractionHUD:
+            let next = !controlBar.interactionHUDEnabled
+            controlBar.interactionHUDEnabled = next
+            overlayCompositor.isEnabled = next
+            onHUDPrefChanged?(next)
             if let scr = targetScreen {
                 repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: scr), on: scr)
             }
@@ -135,6 +149,7 @@ final class RegionRecordingSession {
         self.timeOffsetBox = timeOffsetBox
         self.segStartBox = segStartBox
 
+        let compositor = self.overlayCompositor
         streamSampler.start(
             screen: screen,
             localTopLeftRect: localCaptureRect,
@@ -143,7 +158,8 @@ final class RegionRecordingSession {
             onFrameBackground: { frame in
                 guard !pausedBox.value else { return }
                 let virtualTime = timeOffsetBox.value + max(0, CACurrentMediaTime() - segStartBox.value)
-                enc.appendFrame(frame, at: virtualTime)
+                let decorated = compositor.compositeIfNeeded(onto: frame, at: virtualTime)
+                enc.appendFrame(decorated, at: virtualTime)
             },
             onError: { [weak self] msg in
                 ToastHUD.show(message: msg)

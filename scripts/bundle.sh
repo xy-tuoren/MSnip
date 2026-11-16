@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 APP_NAME="MSnip"
-VERSION="1.0.1"
+VERSION="1.1.0"
 BUNDLE_ID="top.xy.msnip"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -178,7 +178,18 @@ cat > "$CONTENTS/Info.plist" << EOF
 </plist>
 EOF
 
-codesign --force --deep --sign - "$APP_BUNDLE"
+SIGN_ID="${MSNIP_SIGN_IDENTITY:-}"
+if [ -z "$SIGN_ID" ]; then
+    DETECTED_CERT="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/MSnip Local Signer|Apple Development/ {print $2; exit}')"
+    SIGN_ID="${DETECTED_CERT:--}"
+fi
+
+if [ "$SIGN_ID" != "-" ]; then
+    echo "  ✓ 使用本机固定证书签名 ($SIGN_ID) — 升级免重授系统权限"
+    codesign --force --deep --identifier "$BUNDLE_ID" -r="designated => identifier \"$BUNDLE_ID\"" --sign "$SIGN_ID" "$APP_BUNDLE"
+else
+    codesign --force --deep --identifier "$BUNDLE_ID" --sign - "$APP_BUNDLE"
+fi
 
 echo "==> [5/5] 压缩分发包并校验体积红线..."
 ZIP_PATH="$DIST_DIR/${APP_NAME}-v${VERSION}-macOS.zip"

@@ -7,6 +7,7 @@ import MSnipCore
 final class ToolbarView: NSView {
     enum Action {
         case selectTool(ToolKind?)
+        case toggleTextCapsule
         case selectColor(Int)
         case toggleEyedropper
         case selectStroke(CGFloat)
@@ -14,11 +15,13 @@ final class ToolbarView: NSView {
         case redo
         case cycleCornerRadius
         case cycleBackdrop
+        case captureWindow
         case extractText
         case startLongShot
         case startRecording
         case pin
         case save
+        case quickSave
         case cancel
         case confirmCopy
     }
@@ -34,6 +37,7 @@ final class ToolbarView: NSView {
     var onAction: ((Action) -> Void)?
 
     var activeTool: ToolKind? { didSet { if oldValue != activeTool { markItemsDirty() } } }
+    var textCapsule: Bool = false { didSet { if oldValue != textCapsule { markItemsDirty() } } }
     var nextStepNumber: Int = 1 { didSet { if oldValue != nextStepNumber { markItemsDirty() } } }
     var colorIndex: Int = 0 { didSet { if oldValue != colorIndex { markItemsDirty() } } }
     var customColor: RGBAColor? { didSet { if oldValue != customColor { markItemsDirty() } } }
@@ -131,7 +135,11 @@ final class ToolbarView: NSView {
         ensureItemsUpToDate()
         let p = convert(event.locationInWindow, from: nil)
         if let item = items.first(where: { $0.rect.contains(p) && $0.enabled }) {
-            onAction?(item.action)
+            if case .save = item.action, event.modifierFlags.contains(.option) {
+                onAction?(.quickSave)
+            } else {
+                onAction?(item.action)
+            }
         }
     }
 

@@ -12,6 +12,8 @@ extension OverlayView {
             eyedropperActive = false
             activeTool = tool
             if tool != nil { selectedObjectIndex = nil }
+        case .toggleTextCapsule:
+            toggleTextCapsuleMode()
         case .selectColor(let idx):
             eyedropperActive = false
             customPickedColor = nil
@@ -19,6 +21,7 @@ extension OverlayView {
             if let selIdx = selectedObjectIndex {
                 doc.modifyWithHistory(at: selIdx) { $0.style.color = style.color }
             }
+            applyTextFieldVisualStyle()
             onStyleChanged?(colorIndex, style.lineWidth)
             needsDisplay = true
         case .toggleEyedropper:
@@ -45,6 +48,8 @@ extension OverlayView {
             cycleCornerRadius()
         case .cycleBackdrop:
             cycleBackdropStyle()
+        case .captureWindow:
+            captureCurrentWindowAndFinish(pin: NSEvent.modifierFlags.contains(.option))
         case .extractText:
             exportAndFinish(mode: .extractText)
         case .startLongShot:
@@ -55,6 +60,8 @@ extension OverlayView {
             exportAndFinish(mode: .pin)
         case .save:
             exportAndFinish(mode: .save)
+        case .quickSave:
+            exportAndFinish(mode: .quickSave)
         case .cancel:
             onCancel?()
         case .confirmCopy:
@@ -107,6 +114,24 @@ extension OverlayView {
             selection = snap
         }
         backdropStyle = backdropStyle.next
+    }
+
+    func toggleTextCapsuleMode() {
+        style.textCapsule.toggle()
+        toolbar.textCapsule = style.textCapsule
+        applyTextFieldVisualStyle()
+        if let idx = selectedObjectIndex, case .text(let origin, let content, _) = doc.objects[idx].payload {
+            let newCap = !doc.objects[idx].style.textCapsule
+            style.textCapsule = newCap
+            toolbar.textCapsule = newCap
+            let sz = AnnotationRenderer.measureText(content, fontSize: doc.objects[idx].style.fontSize, capsule: newCap)
+            doc.modifyWithHistory(at: idx) {
+                $0.style.textCapsule = newCap
+                $0.payload = .text(origin: origin, content: content, measuredSize: sz)
+            }
+        }
+        onCapsuleChanged?(style.textCapsule)
+        needsDisplay = true
     }
 
     func beginRegionRecording() {

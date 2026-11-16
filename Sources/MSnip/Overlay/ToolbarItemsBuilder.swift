@@ -38,6 +38,20 @@ extension ToolbarView {
             x += 30
         }
 
+        // 文字工具激活时，紧随其后展示「胶囊底色文字」一键开关
+        let capTip = textCapsule
+            ? "已启用：圆角胶囊底色文字标签 (K / ⌘B 切回纯字)"
+            : "开启圆角胶囊底色文字标签 (K / ⌘B)"
+        list.append(iconAction(
+            x: &x, y: y,
+            symbol: "character.textbox",
+            tip: capTip,
+            enabled: true,
+            active: textCapsule,
+            tint: textCapsule ? .white : NSColor(white: 0.88, alpha: 1),
+            action: .toggleTextCapsule
+        ))
+
         x = appendDivider(at: x, into: &list)
 
         // 2) 3 档线宽圆点
@@ -123,6 +137,7 @@ extension ToolbarView {
             let bdTip = hasBackdrop ? "美观背景衬底：\(backdropStyle.title) (P 切换)" : "美观背景衬底：圆角+阴影+渐变留白 (P)"
             list.append(iconAction(x: &x, y: y, symbol: "sparkles.rectangle.stack", tip: bdTip, enabled: true, active: hasBackdrop, action: .cycleBackdrop))
 
+            list.append(iconAction(x: &x, y: y, symbol: "macwindow", tip: "独立窗口纯净透明阴影截图 (F / ⇧↩ 复制 · ⌥⇧↩ 贴图)", enabled: true, action: .captureWindow))
             list.append(iconAction(x: &x, y: y, symbol: "text.viewfinder", tip: "识别文字 / 二维码并复制 (T)", enabled: true, action: .extractText))
             list.append(iconAction(x: &x, y: y, symbol: "arrow.up.and.down.square", tip: "滚动长截图 (L)", enabled: true, action: .startLongShot))
             list.append(iconAction(x: &x, y: y, symbol: "record.circle", tip: "选区录制 GIF / MP4 动图 (V)", enabled: true, tint: .systemRed, action: .startRecording))
@@ -131,7 +146,7 @@ extension ToolbarView {
 
             // 6) 输出动作组：贴图 / 保存 / 取消 / 完成复制
             list.append(iconAction(x: &x, y: y, symbol: "pin", tip: "贴到屏幕 (\(pinHint))", enabled: true, action: .pin))
-            list.append(iconAction(x: &x, y: y, symbol: "square.and.arrow.down", tip: "保存 PNG (⌘S)", enabled: true, action: .save))
+            list.append(iconAction(x: &x, y: y, symbol: "square.and.arrow.down", tip: "保存 PNG（⌘S 另存… · ⌘⇧S 或 ⌥+点击 一键快存）", enabled: true, action: .save))
             list.append(iconAction(x: &x, y: y, symbol: "xmark", tip: "取消截图 (Esc)", enabled: true, tint: .systemRed, action: .cancel))
             list.append(iconAction(x: &x, y: y, symbol: "checkmark", tip: "复制到剪贴板 (↩ / 双击)", enabled: true, tint: .systemGreen, prominent: true, action: .confirmCopy))
         }

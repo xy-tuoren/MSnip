@@ -57,6 +57,14 @@ extension AppController {
         histRoot.submenu = buildHistorySubmenu()
         menu.addItem(histRoot)
 
+        let openDirItem = NSMenuItem(
+            title: "打开快存图片目录…",
+            action: #selector(openQuickSaveFolder),
+            keyEquivalent: ""
+        )
+        openDirItem.target = self
+        menu.addItem(openDirItem)
+
         // 快捷键预设与自由录制子菜单
         let hkSubmenu = NSMenu()
         let enableItem = NSMenuItem(title: "启用全局快捷键", action: #selector(toggleHotKeysEnabled), keyEquivalent: "")
@@ -223,15 +231,65 @@ extension AppController {
     @objc func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v1.0.1"
+        alert.messageText = "MSnip（麦截）v1.1.0"
         alert.informativeText = """
         超轻量纯原生 macOS 全能截图、动图录制、长截图、实况识字与贴图工具
         • 零第三方依赖：Swift + AppKit + CoreGraphics + Accelerate + ScreenCaptureKit + VisionKit + AVFoundation
-        • 全套标注、渐变美化衬底、选区录 GIF/MP4、滚动长截图、双栏 OCR 与穿透/直投贴图
+        • 独立窗口纯净阴影截图、一键快存、胶囊文字、录屏点击波纹/快捷键回显、滚动长图与双栏 OCR
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好")
         alert.runModal()
+    }
+
+    @objc func openQuickSaveFolder() {
+        let url = ClipboardAndSave.resolveQuickSaveDirectory(preferred: config.lastSaveDirectory)
+        NSWorkspace.shared.open(url)
+    }
+
+    func performQuickSave(img: CGImage, scale: CGFloat) {
+        guard let url = ClipboardAndSave.quickSavePNG(
+            cgImage: img,
+            scaleFactor: scale,
+            preferredDirectory: config.lastSaveDirectory
+        ) else {
+            ToastHUD.show(message: "快速保存图片失败")
+            return
+        }
+        ToastHUD.show(
+            message: "已快存 \(url.lastPathComponent)",
+            actionTitle: "在 Finder 显示 ›",
+            onAction: { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+        )
+    }
+
+    func captureAndExportIsolatedWindow(
+        windowID: CGWindowID,
+        scale: CGFloat,
+        backdrop: BackdropStyle,
+        pin: Bool,
+        origin: CGPoint,
+        screen: NSScreen
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let winImg = await ScreenCapturer.captureIsolatedWindow(
+                windowID: windowID,
+                scaleFactor: scale,
+                backdropStyle: backdrop
+            ) else {
+                ToastHUD.show(message: "抓取独立窗口失败，请确认屏幕录制权限已开启")
+                return
+            }
+            self.recordHistoryAndRefresh(img: winImg, scale: scale)
+            if pin {
+                self.pinManager.pin(cgImage: winImg, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
+                ToastHUD.show(message: "已将纯净独立窗口贴到桌面")
+            } else {
+                ClipboardAndSave.copyToClipboard(cgImage: winImg, scaleFactor: scale)
+                ToastHUD.show(message: "纯净独立窗口（含悬浮阴影）已复制到剪贴板")
+            }
+        }
     }
 
     @objc func quitApp() { NSApp.terminate(nil) }

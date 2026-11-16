@@ -5,7 +5,7 @@ import MSnipCore
 
 /// 覆盖层的标注草稿构建、取色/坐标复制、1px 边缘微调与导出烘焙扩展
 extension OverlayView {
-    enum FinishMode { case copy, save, pin, extractText }
+    enum FinishMode { case copy, save, quickSave, pin, extractText }
 
     func cycleColorFormat() {
         colorCopyFormat = colorCopyFormat.next
@@ -40,9 +40,30 @@ extension OverlayView {
         switch mode {
         case .copy:        onFinishCopy?(baked, snapshot.scaleFactor, targetRect)
         case .save:        onFinishSave?(baked, snapshot.scaleFactor, targetRect)
+        case .quickSave:   onFinishQuickSave?(baked, snapshot.scaleFactor, targetRect)
         case .pin:         onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen, targetRect)
         case .extractText: onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         }
+    }
+
+    /// 识别当前光标或选区中心命中的顶层窗口，一键执行独立窗口纯净透明阴影截图
+    func captureCurrentWindowAndFinish(pin: Bool) {
+        commitTextEditing()
+        let probe = selection.map { CGPoint(x: $0.midX, y: $0.midY) }
+            ?? lastMousePoint
+            ?? CGPoint(x: bounds.midX, y: bounds.midY)
+        guard let hit = regionDetector.topWindow(at: probe, in: snapshot) else {
+            ToastHUD.show(message: "当前位置未命中独立应用窗口，请将鼠标移至目标窗口上再按 F 或 ⇧↩")
+            return
+        }
+        onFinishIsolatedWindow?(
+            hit.windowID,
+            snapshot.scaleFactor,
+            backdropStyle,
+            pin,
+            hit.localRect.origin,
+            snapshot.screen
+        )
     }
 
     func makeDraft(tool: ToolKind, from a: CGPoint, to b: CGPoint, shift: Bool) -> Annotation {

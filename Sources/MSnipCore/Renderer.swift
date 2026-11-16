@@ -65,14 +65,19 @@ public enum AnnotationRenderer {
         AnnotationEffectsRenderer.purgeCaches()
     }
 
-    /// 测量文本在给定字号下的排版尺寸（供命中框与布局缓存）
-    public static func measureText(_ text: String, fontSize: CGFloat) -> CGSize {
+    /// 测量文本在给定字号与样式（纯字/胶囊底色块）下的排版尺寸（供命中框与布局缓存）
+    public static func measureText(_ text: String, fontSize: CGFloat, capsule: Bool = false) -> CGSize {
         let attrs = textAttributes(color: RGBAColor(255, 255, 255), fontSize: fontSize)
         let size = (text as NSString).boundingRect(
             with: CGSize(width: 2000, height: 2000),
             options: [.usesLineFragmentOrigin, .usesFontLeading],
             attributes: attrs
         ).size
+        if capsule {
+            let padX = max(9.0, round(fontSize * 0.52))
+            let padY = max(5.0, round(fontSize * 0.28))
+            return CGSize(width: ceil(max(24, size.width + padX * 2)), height: ceil(max(fontSize * 1.5, size.height + padY * 2)))
+        }
         return CGSize(width: ceil(max(12, size.width + 4)), height: ceil(max(fontSize * 1.25, size.height + 2)))
     }
 
@@ -183,8 +188,12 @@ public enum AnnotationRenderer {
                 isDraft: isDraft
             )
 
-        case .text(let origin, let content, _):
-            drawText(content, at: origin, style: item.style, in: ctx)
+        case .text(let origin, let content, let measured):
+            if item.style.textCapsule {
+                AnnotationEffectsRenderer.drawCapsuleText(content, at: origin, measuredSize: measured, style: item.style, in: ctx)
+            } else {
+                drawText(content, at: origin, style: item.style, in: ctx)
+            }
         }
         ctx.restoreGState()
     }

@@ -82,6 +82,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.config.save()
             }
         }
+        pinManager.onQuickSaveImage = { [weak self] img, scale in
+            self?.performQuickSave(img: img, scale: scale)
+        }
         pinManager.onExtractOCR = { [weak self] img, scale, scr in
             self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr)
         }
@@ -122,6 +125,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.config.defaultLineWidth = width
                 self.config.save()
             }
+            session.onCapsuleUpdated = { [weak self] cap in
+                guard let self else { return }
+                self.config.defaultTextCapsule = cap
+                self.config.save()
+            }
             session.onPrefsUpdated = { [weak self] fmt, showTips in
                 guard let self else { return }
                 self.config.colorCopyFormat = fmt
@@ -139,6 +147,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 lineWidth: self.config.defaultLineWidth,
                 colorCopyFormat: self.config.colorCopyFormat,
                 showShortcutTips: self.config.showShortcutTips,
+                textCapsule: self.config.defaultTextCapsule,
                 pinHint: self.config.activePinCombo.displayString,
                 quickOCRMode: quickOCR
             )
@@ -161,9 +170,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 config.lastSaveDirectory = newDir
                 config.save()
             }
+        case .quickSaved(let img, let scale):
+            recordHistoryAndRefresh(img: img, scale: scale)
+            performQuickSave(img: img, scale: scale)
         case .pinned(let img, let scale, let origin, let screen):
             recordHistoryAndRefresh(img: img, scale: scale)
             pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
+        case .isolatedWindow(let winID, let scale, let backdrop, let shouldPin, let origin, let screen):
+            captureAndExportIsolatedWindow(
+                windowID: winID, scale: scale, backdrop: backdrop,
+                pin: shouldPin, origin: origin, screen: screen
+            )
         case .copiedColor(let value, let swatch, let pt):
             ClipboardAndSave.copyText(value)
             ToastHUD.show(message: "\(value) 已复制  ·  \(config.activePinCombo.displayString) 贴色卡", swatch: swatch, near: pt)
@@ -230,6 +247,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.config.preferredRecordingFormat = fmt
             self.config.save()
         }
+        rec.onHUDPrefChanged = { [weak self] enabled in
+            guard let self else { return }
+            self.config.recordInteractionHUD = enabled
+            self.config.save()
+        }
         rec.onComplete = { [weak self] outcome in
             guard let self else { return }
             self.activeRecording = nil
@@ -250,6 +272,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             selectionLocalTopLeft: rect,
             initialCroppedFrame: initialFrame,
             defaultFormat: config.preferredRecordingFormat,
+            interactionHUD: config.recordInteractionHUD,
             initialSaveDirectory: config.lastSaveDirectory
         )
     }

@@ -7,6 +7,7 @@ import MSnipCore
 final class RecordingControlBarView: NSView {
     enum Action {
         case selectFormat(RecordingFormat)
+        case toggleInteractionHUD
         case startRecording
         case togglePause
         case finishSave
@@ -18,6 +19,7 @@ final class RecordingControlBarView: NSView {
 
     var onAction: ((Action) -> Void)?
     var format: RecordingFormat = .gif { didSet { refreshLayout() } }
+    var interactionHUDEnabled: Bool = true { didSet { refreshLayout() } }
     var isRecording: Bool = false { didSet { refreshLayout() } }
     var isPaused: Bool = false { didSet { refreshLayout() } }
     var isEncoding: Bool = false { didSet { refreshLayout() } }
@@ -89,6 +91,10 @@ final class RecordingControlBarView: NSView {
             return
         }
 
+        let hudTip = interactionHUDEnabled
+            ? "已开启：录屏显示鼠标点击波纹与快捷键角标（点击关闭）"
+            : "已关闭：点击开启录屏鼠标波纹与快捷键角标回显"
+
         if !isRecording {
             for fmt in RecordingFormat.allCases {
                 let active = (format == fmt)
@@ -99,7 +105,8 @@ final class RecordingControlBarView: NSView {
                 })
                 x += 46
             }
-            x += 6
+            list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? .systemCyan : .white, active: interactionHUDEnabled, action: .toggleInteractionHUD))
+            x += 4
             let recRect = CGRect(x: x, y: y, width: 96, height: h)
             list.append(HitSlot(rect: recRect, tip: "开始录制选区画面 (↩)", action: .startRecording) { ctx, rect, hov in
                 let p = CGPath(roundedRect: rect, cornerWidth: 6, cornerHeight: 6, transform: nil)
@@ -113,6 +120,7 @@ final class RecordingControlBarView: NSView {
         } else {
             // 留出左侧 106pt 绘制动态计时器
             x = 114
+            list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? .systemCyan : .white, active: interactionHUDEnabled, action: .toggleInteractionHUD))
             let pauseSym = isPaused ? "play.fill" : "pause.fill"
             let pauseTip = isPaused ? "继续录制 (Space)" : "暂停录制 (Space)"
             list.append(iconSlot(x: &x, y: y, symbol: pauseSym, tip: pauseTip, tint: isPaused ? .systemYellow : .white, action: .togglePause))
@@ -134,11 +142,11 @@ final class RecordingControlBarView: NSView {
         needsDisplay = true
     }
 
-    private func iconSlot(x: inout CGFloat, y: CGFloat, symbol: String, tip: String, tint: NSColor, action: Action) -> HitSlot {
+    private func iconSlot(x: inout CGFloat, y: CGFloat, symbol: String, tip: String, tint: NSColor, active: Bool = false, action: Action) -> HitSlot {
         let r = CGRect(x: x, y: y, width: 28, height: 30)
         x += 31
         return HitSlot(rect: r, tip: tip, action: action) { ctx, rect, hov in
-            ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: false, hovered: hov)
+            ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov)
             ToolbarView.drawSymbol(symbol, in: rect, alpha: 0.95, tint: tint)
         }
     }

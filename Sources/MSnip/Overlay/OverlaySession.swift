@@ -33,7 +33,9 @@ final class OverlaySession {
     enum Outcome {
         case copied(CGImage, CGFloat)
         case saved(CGImage, CGFloat)
+        case quickSaved(CGImage, CGFloat)
         case pinned(CGImage, CGFloat, CGPoint, NSScreen)
+        case isolatedWindow(CGWindowID, CGFloat, BackdropStyle, Bool, CGPoint, NSScreen)
         case copiedColor(String, RGBAColor, NSPoint)
         case copiedCoordinate(String, NSPoint)
         case extractText(CGImage, CGFloat, NSScreen)
@@ -45,6 +47,7 @@ final class OverlaySession {
     private static var lastSelectionByDisplay: [CGDirectDisplayID: CGRect] = [:]
 
     var onStyleUpdated: ((Int, CGFloat) -> Void)?
+    var onCapsuleUpdated: ((Bool) -> Void)?
     var onPrefsUpdated: ((ColorCopyFormat, Bool) -> Void)?
     var onComplete: ((Outcome) -> Void)?
 
@@ -60,6 +63,7 @@ final class OverlaySession {
         lineWidth: CGFloat,
         colorCopyFormat: ColorCopyFormat,
         showShortcutTips: Bool,
+        textCapsule: Bool = false,
         pinHint: String,
         quickOCRMode: Bool = false
     ) {
@@ -77,12 +81,17 @@ final class OverlaySession {
                 lastHistorySelection: Self.lastSelectionByDisplay[snap.displayID],
                 pinHint: pinHint
             )
+            view.style.textCapsule = textCapsule
+            view.toolbar.textCapsule = textCapsule
             view.quickOCRMode = quickOCRMode
             view.onSelectionActivated = { [weak self] sender in
                 self?.activateView(sender)
             }
             view.onStyleChanged = { [weak self] cIdx, width in
                 self?.onStyleUpdated?(cIdx, width)
+            }
+            view.onCapsuleChanged = { [weak self] enabled in
+                self?.onCapsuleUpdated?(enabled)
             }
             view.onPrefsChanged = { [weak self] fmt, showTips in
                 self?.onPrefsUpdated?(fmt, showTips)
@@ -99,9 +108,16 @@ final class OverlaySession {
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.saved(img, scale))
             }
+            view.onFinishQuickSave = { [weak self] img, scale, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
+                self?.finish(.quickSaved(img, scale))
+            }
             view.onFinishPin = { [weak self] img, scale, origin, screen, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.pinned(img, scale, origin, screen))
+            }
+            view.onFinishIsolatedWindow = { [weak self] winID, scale, backdrop, pin, origin, screen in
+                self?.finish(.isolatedWindow(winID, scale, backdrop, pin, origin, screen))
             }
             view.onFinishCopyColor = { [weak self] value, color, pt in
                 self?.finish(.copiedColor(value, color, pt))

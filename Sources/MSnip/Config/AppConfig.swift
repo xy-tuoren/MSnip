@@ -60,6 +60,8 @@ struct AppConfig: Codable {
     var colorCopyFormat: ColorCopyFormat = .hex
     var showShortcutTips: Bool = true
     var preferredRecordingFormat: RecordingFormat = .gif
+    var recordInteractionHUD: Bool = true
+    var defaultTextCapsule: Bool = false
 
     init() {}
 
@@ -76,6 +78,8 @@ struct AppConfig: Codable {
         colorCopyFormat = try c.decodeIfPresent(ColorCopyFormat.self, forKey: .colorCopyFormat) ?? .hex
         showShortcutTips = try c.decodeIfPresent(Bool.self, forKey: .showShortcutTips) ?? true
         preferredRecordingFormat = try c.decodeIfPresent(RecordingFormat.self, forKey: .preferredRecordingFormat) ?? .gif
+        recordInteractionHUD = try c.decodeIfPresent(Bool.self, forKey: .recordInteractionHUD) ?? true
+        defaultTextCapsule = try c.decodeIfPresent(Bool.self, forKey: .defaultTextCapsule) ?? false
     }
 
     var activeCaptureCombo: KeyCombo { customCaptureCombo ?? hotKeyPreset.captureCombo }

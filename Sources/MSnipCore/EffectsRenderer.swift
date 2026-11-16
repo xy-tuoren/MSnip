@@ -148,6 +148,71 @@ enum AnnotationEffectsRenderer {
             withAttributes: attrs
         )
     }
+
+    /// 渲染圆角胶囊底色文字标签（高对比气泡底 + 自适应黑白粗体字 + 柔和投影，杂乱背景下依旧清晰醒目）
+    static func drawCapsuleText(
+        _ text: String,
+        at origin: CGPoint,
+        measuredSize: CGSize,
+        style: AnnotationStyle,
+        in ctx: CGContext
+    ) {
+        let font = NSFont.systemFont(ofSize: style.fontSize, weight: .semibold)
+        let luma = 0.299 * Double(style.color.r) + 0.587 * Double(style.color.g) + 0.114 * Double(style.color.b)
+        let isLightFill = luma > 195.0
+        let fgColor = isLightFill
+            ? NSColor(srgbRed: 0.10, green: 0.11, blue: 0.14, alpha: 1.0)
+            : NSColor.white
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: font,
+            .foregroundColor: fgColor
+        ]
+
+        let rawSz = (text as NSString).boundingRect(
+            with: CGSize(width: 2000, height: 2000),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            attributes: attrs
+        ).size
+        let padX = max(9.0, round(style.fontSize * 0.52))
+        let padY = max(5.0, round(style.fontSize * 0.28))
+        let pillW = max(measuredSize.width, ceil(rawSz.width + padX * 2))
+        let pillH = max(measuredSize.height, ceil(rawSz.height + padY * 2))
+        let pillRect = CGRect(origin: origin, size: CGSize(width: pillW, height: pillH))
+        let radius = min(12.0, pillH * 0.42)
+        let pillPath = CGPath(roundedRect: pillRect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+
+        ctx.saveGState()
+        ctx.setShadow(
+            offset: CGSize(width: 0, height: 2.0),
+            blur: 5.0,
+            color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.32)
+        )
+        ctx.setFillColor(style.color.cgColor)
+        ctx.addPath(pillPath)
+        ctx.fillPath()
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        let borderColor = isLightFill
+            ? CGColor(srgbRed: 0.10, green: 0.12, blue: 0.16, alpha: 0.22)
+            : CGColor(srgbRed: 1.0, green: 1.0, blue: 1.0, alpha: 0.32)
+        ctx.setStrokeColor(borderColor)
+        ctx.setLineWidth(1.2)
+        ctx.addPath(pillPath)
+        ctx.strokePath()
+        ctx.restoreGState()
+
+        let prev = NSGraphicsContext.current
+        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
+        defer { NSGraphicsContext.current = prev }
+        (text as NSString).draw(
+            at: CGPoint(
+                x: pillRect.minX + (pillW - rawSz.width) * 0.5,
+                y: pillRect.minY + (pillH - rawSz.height) * 0.5
+            ),
+            withAttributes: attrs
+        )
+    }
 }
 
 private extension Array {

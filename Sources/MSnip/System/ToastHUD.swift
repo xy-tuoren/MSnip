@@ -2,17 +2,32 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 轻量非抢焦悬浮胶囊提示（取色复制、坐标复制、OCR 识字反馈，1.2 秒自动渐隐销毁）
+/// 轻量非抢焦悬浮胶囊提示（支持纯状态反馈自动渐隐，以及快存后带「在 Finder 显示」的可点击交互按钮）
 @MainActor
 enum ToastHUD {
     private static var activePanel: NSPanel?
     private static var dismissWorkItem: DispatchWorkItem?
 
-    static func show(message: String, swatch: RGBAColor? = nil, near screenPoint: NSPoint? = nil) {
+    static func show(
+        message: String,
+        swatch: RGBAColor? = nil,
+        near screenPoint: NSPoint? = nil,
+        actionTitle: String? = nil,
+        onAction: (() -> Void)? = nil
+    ) {
         dismissWorkItem?.cancel()
         activePanel?.orderOut(nil)
 
-        let contentView = ToastPillView(message: message, swatch: swatch)
+        let isInteractive = (actionTitle != nil && onAction != nil)
+        let contentView = ToastPillView(
+            message: message,
+            swatch: swatch,
+            actionTitle: actionTitle,
+            onTrigger: {
+                dismissImmediate()
+                onAction?()
+            }
+        )
         let size = contentView.intrinsicSize
         contentView.frame = NSRect(origin: .zero, size: size)
 
@@ -35,7 +50,7 @@ enum ToastHUD {
         panel.level = .statusBar
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
-        panel.ignoresMouseEvents = true
+        panel.ignoresMouseEvents = !isInteractive
         panel.isOpaque = false
         panel.backgroundColor = .clear
         panel.hasShadow = true
@@ -46,6 +61,7 @@ enum ToastHUD {
         panel.animator().alphaValue = 1.0
         activePanel = panel
 
+        let holdDuration: TimeInterval = isInteractive ? 3.4 : 1.25
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
                 guard let current = activePanel, current === panel else { return }
@@ -63,35 +79,77 @@ enum ToastHUD {
             }
         }
         dismissWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.25, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: work)
+    }
+
+    private static func dismissImmediate() {
+        dismissWorkItem?.cancel()
+        dismissWorkItem = nil
+        activePanel?.orderOut(nil)
+        activePanel = nil
     }
 }
 
 private final class ToastPillView: NSView {
     private let message: String
     private let swatch: RGBAColor?
+    private let actionTitle: String?
+    private let onTrigger: (() -> Void)?
+    private var isHovered = false
     let intrinsicSize: NSSize
 
-    init(message: String, swatch: RGBAColor?) {
+    init(message: String, swatch: RGBAColor?, actionTitle: String?, onTrigger: (() -> Void)?) {
         self.message = message
         self.swatch = swatch
-        let attrs: [NSAttributedString.Key: Any] = [
+        self.actionTitle = actionTitle
+        self.onTrigger = onTrigger
+
+        let msgAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold)
         ]
-        let textSz = (message as NSString).size(withAttributes: attrs)
-        let extraW: CGFloat = (swatch != nil) ? 22 : 0
-        self.intrinsicSize = NSSize(width: ceil(textSz.width + 26 + extraW), height: 32)
+        let textSz = (message as NSString).size(withAttributes: msgAttrs)
+        let swatchW: CGFloat = (swatch != nil) ? 22 : 0
+        var actionW: CGFloat = 0
+        if let act = actionTitle {
+            let actSz = (act as NSString).size(withAttributes: [
+                .font: NSFont.systemFont(ofSize: 12.0, weight: .semibold)
+            ])
+            actionW = ceil(actSz.width + 24)
+        }
+        self.intrinsicSize = NSSize(width: ceil(textSz.width + 26 + swatchW + actionW), height: 34)
         super.init(frame: .zero)
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach { removeTrackingArea($0) }
+        guard actionTitle != nil else { return }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    override func resetCursorRects() {
+        if actionTitle != nil { addCursorRect(bounds, cursor: .pointingHand) }
+    }
+
+    override func mouseEntered(with event: NSEvent) { isHovered = true; needsDisplay = true }
+    override func mouseExited(with event: NSEvent) { isHovered = false; needsDisplay = true }
+    override func mouseDown(with event: NSEvent) { if actionTitle != nil { onTrigger?() } }
+
     override func draw(_ dirtyRect: NSRect) {
         let bg = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 9, yRadius: 9)
-        NSColor(srgbRed: 0.10, green: 0.105, blue: 0.125, alpha: 0.92).setFill()
+        NSColor(srgbRed: 0.10, green: 0.105, blue: 0.125, alpha: isHovered ? 0.98 : 0.93).setFill()
         bg.fill()
-        NSColor.white.withAlphaComponent(0.18).setStroke()
+        (isHovered ? NSColor.systemCyan.withAlphaComponent(0.55) : NSColor.white.withAlphaComponent(0.18)).setStroke()
         bg.lineWidth = 1.0
         bg.stroke()
 
@@ -114,5 +172,18 @@ private final class ToastPillView: NSView {
         let ns = message as NSString
         let sz = ns.size(withAttributes: attrs)
         ns.draw(at: NSPoint(x: textX, y: round((bounds.height - sz.height) * 0.5)), withAttributes: attrs)
+
+        if let act = actionTitle {
+            let actAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 12.0, weight: .semibold),
+                .foregroundColor: NSColor.systemCyan
+            ]
+            let actNs = act as NSString
+            let actSz = actNs.size(withAttributes: actAttrs)
+            let sepX = bounds.width - actSz.width - 20
+            NSColor.white.withAlphaComponent(0.16).setFill()
+            NSRect(x: sepX, y: 8, width: 1, height: bounds.height - 16).fill()
+            actNs.draw(at: NSPoint(x: sepX + 9, y: round((bounds.height - actSz.height) * 0.5)), withAttributes: actAttrs)
+        }
     }
 }

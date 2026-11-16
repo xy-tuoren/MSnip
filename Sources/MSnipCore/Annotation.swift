@@ -76,23 +76,35 @@ public struct RGBAColor: Equatable, Codable, Sendable {
     ]
 }
 
-/// 标注样式（颜色、线宽、字号、马赛克/毛玻璃强度）
+/// 标注样式（颜色、线宽、字号、马赛克/毛玻璃强度、胶囊底色文字开关）
 public struct AnnotationStyle: Equatable, Codable, Sendable {
     public var color: RGBAColor
     public var lineWidth: CGFloat
     public var fontSize: CGFloat
     public var mosaicBlockSize: CGFloat
+    public var textCapsule: Bool
 
     public init(
         color: RGBAColor = RGBAColor.presets[0],
         lineWidth: CGFloat = 3.0,
         fontSize: CGFloat = 18.0,
-        mosaicBlockSize: CGFloat = 10.0
+        mosaicBlockSize: CGFloat = 10.0,
+        textCapsule: Bool = false
     ) {
         self.color = color
         self.lineWidth = lineWidth
         self.fontSize = fontSize
         self.mosaicBlockSize = mosaicBlockSize
+        self.textCapsule = textCapsule
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        color = try c.decode(RGBAColor.self, forKey: .color)
+        lineWidth = try c.decode(CGFloat.self, forKey: .lineWidth)
+        fontSize = try c.decode(CGFloat.self, forKey: .fontSize)
+        mosaicBlockSize = try c.decode(CGFloat.self, forKey: .mosaicBlockSize)
+        textCapsule = try c.decodeIfPresent(Bool.self, forKey: .textCapsule) ?? false
     }
 
     public var highlighterWidth: CGFloat { max(14.0, lineWidth * 4.2) }

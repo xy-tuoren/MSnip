@@ -135,4 +135,48 @@ enum ScreenCapturer {
         (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)
             .map { CGDirectDisplayID($0.uint32Value) }
     }
+
+    /// 抓取单个独立应用窗口的纯净透明图层（剥离桌面背景与前后遮挡窗口，可选叠加 macOS 原生柔和悬浮阴影或渐变衬底）
+    @MainActor
+    static func captureIsolatedWindow(
+        windowID: CGWindowID,
+        scaleFactor: CGFloat,
+        backdropStyle: BackdropStyle = .none
+    ) async -> CGImage? {
+        let scale = max(1.0, scaleFactor)
+        if #available(macOS 14.0, *),
+           let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true),
+           let scWin = content.windows.first(where: { $0.windowID == windowID }) {
+            let filter = SCContentFilter(desktopIndependentWindow: scWin)
+            let cfg = SCStreamConfiguration()
+            cfg.width = max(16, Int((scWin.frame.width * scale).rounded()))
+            cfg.height = max(16, Int((scWin.frame.height * scale).rounded()))
+            cfg.showsCursor = false
+            cfg.capturesAudio = false
+            cfg.shouldBeOpaque = false
+            cfg.backgroundColor = .clear
+            cfg.ignoreShadowsSingleWindow = true
+
+            if let rawWin = try? await SCScreenshotManager.captureImage(contentFilter: filter, configuration: cfg) {
+                if backdropStyle != .none {
+                    return BackdropBeautifier.apply(to: rawWin, style: backdropStyle, imageScale: scale, innerCornerRadiusPt: 12)
+                }
+                return BackdropBeautifier.applyTransparentWindowShadow(to: rawWin, imageScale: scale)
+            }
+        }
+
+        // 回退路径：通过符号动态解析调用 CGWindowListCreateImage 抓取含原生阴影的独立窗口
+        typealias LegacyWinCaptureFn = @convention(c) (CGRect, UInt32, CGWindowID, UInt32) -> Unmanaged<CGImage>?
+        guard let sym = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "CGWindowListCreateImage") else {
+            return nil
+        }
+        let fn = unsafeBitCast(sym, to: LegacyWinCaptureFn.self)
+        let listOpt = CGWindowListOption.optionIncludingWindow.rawValue
+        let imgOpt: UInt32 = (backdropStyle != .none) ? CGWindowImageOption.boundsIgnoreFraming.rawValue : 0
+        guard let raw = fn(.null, listOpt, windowID, imgOpt)?.takeRetainedValue() else { return nil }
+        if backdropStyle != .none {
+            return BackdropBeautifier.apply(to: raw, style: backdropStyle, imageScale: scale, innerCornerRadiusPt: 12)
+        }
+        return raw
+    }
 }
