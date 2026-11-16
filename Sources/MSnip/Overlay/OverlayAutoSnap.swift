@@ -76,14 +76,13 @@ extension OverlayView {
         ctx.stroke(displayRect.insetBy(dx: 0.5, dy: 0.5))
         ctx.restoreGState()
 
-        // 尺寸数字始终读取目标整数矩阵（过渡动画期间数字不乱跳）
+        // 尺寸数字始终读取目标整数矩阵（极简显示 左上角坐标 + 物理像素宽高）
+        let pxX = Int((targetRect.minX * snapshot.scaleFactor).rounded())
+        let pxY = Int((targetRect.minY * snapshot.scaleFactor).rounded())
         let pxW = Int((targetRect.width * snapshot.scaleFactor).rounded())
         let pxH = Int((targetRect.height * snapshot.scaleFactor).rounded())
         let prefix = quickOCRMode ? "识字 · " : ""
-        let tierHint = autoSnapStack.count > 1
-            ? "  ·  \(autoSnapIndex + 1)/\(autoSnapStack.count) 滚轮切换"
-            : ""
-        drawHUDPill(ctx: ctx, anchorRect: displayRect, text: "\(prefix)\(pxW) × \(pxH)\(tierHint)")
+        drawHUDPill(ctx: ctx, anchorRect: displayRect, text: "\(prefix)\(pxX),\(pxY)  \(pxW) × \(pxH) px")
     }
 
     // MARK: - Hysteresis & Smooth Interpolation
