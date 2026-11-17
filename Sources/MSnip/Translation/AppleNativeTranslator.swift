@@ -86,18 +86,13 @@ enum AppleNativeTranslator {
                 TranslationSession.Request(sourceText: txt, clientIdentifier: "\(idx)")
             }
 
-            if #available(macOS 26.0, *), status == .installed {
-                let session = TranslationSession(installedSource: srcLang, target: dstLang)
-                let responses = try await session.translations(from: requests)
-                return mapOrderedResponses(responses, original: lines)
-            }
-
-            // 语言包尚未安装 (.supported)：通过 1×1 桥接视图唤起 macOS 官方语言包下载面板并完成翻译
+            // 通过 1×1 隐形桥接视图获取系统 TranslationSession（兼容 macOS 15+ 全版本 SDK；未安装语言包时自动唤起下载）
             return try await translateViaDownloadBridge(
                 src: srcLang,
                 dst: dstLang,
                 requests: requests,
                 original: lines,
+                needsDownload: (status != .installed),
                 hostWindow: hostWindow
             )
         }
@@ -157,6 +152,7 @@ enum AppleNativeTranslator {
         dst: Locale.Language,
         requests: [TranslationSession.Request],
         original: [String],
+        needsDownload: Bool,
         hostWindow: NSWindow?
     ) async throws -> [String] {
         var tempHelperPanel: NSPanel?
@@ -180,7 +176,9 @@ enum AppleNativeTranslator {
         let cfg = TranslationSession.Configuration(source: src, target: dst)
         let hosting = NSHostingView(rootView: SystemTranslationTaskView(config: cfg) { session in
             do {
-                try await session.prepareTranslation()
+                if needsDownload {
+                    try await session.prepareTranslation()
+                }
                 let responses = try await session.translations(from: requests)
                 box.finish(.success(mapOrderedResponses(responses, original: original)))
             } catch {
