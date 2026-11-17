@@ -6,7 +6,7 @@ import MSnipCore
 /// 选区右侧悬浮三联快捷圆钮（复刻参考图选区右缘圆钮：停留在当前页面实时切换圆角、渐变衬底与整窗对齐）
 final class OverlaySidePillsView: NSView {
     enum PillAction {
-        case cycleCorner
+        case cycleCorner(optionHeld: Bool)
         case cycleBackdrop
         case snapWindow(optionHeld: Bool)
     }
@@ -59,7 +59,7 @@ final class OverlaySidePillsView: NSView {
         if hit != hoveredIdx {
             hoveredIdx = hit
             switch hit {
-            case 0: toolTip = "切换圆角裁切预览 (B)"
+            case 0: toolTip = "调节圆角比例进度条（B · ⌥+点击归零）"
             case 1: toolTip = "切换渐变美化衬底实时预览 (P)"
             case 2: toolTip = "对齐底层应用窗口（⌥+点击导出独立透明阴影窗口）"
             default: toolTip = nil
@@ -74,7 +74,7 @@ final class OverlaySidePillsView: NSView {
         let p = convert(event.locationInWindow, from: nil)
         guard let idx = (0..<3).first(where: { rectForSlot($0).contains(p) }) else { return }
         switch idx {
-        case 0: onAction?(.cycleCorner)
+        case 0: onAction?(.cycleCorner(optionHeld: event.modifierFlags.contains(.option)))
         case 1: onAction?(.cycleBackdrop)
         case 2: onAction?(.snapWindow(optionHeld: event.modifierFlags.contains(.option)))
         default: break

@@ -280,7 +280,7 @@ extension OverlayView {
         let pxW = Int((sel.width * snapshot.scaleFactor).rounded())
         let pxH = Int((sel.height * snapshot.scaleFactor).rounded())
         var parts = ["\(pxX),\(pxY)  \(pxW) × \(pxH) px"]
-        if cornerRadius > 0.5 { parts.append("圆角 \(Int(cornerRadiusPt))pt") }
+        if cornerRadius > 0.5 { parts.append("圆角 \(Int((cornerRadiusRatio * 100).rounded()))%") }
         if backdropStyle != .none { parts.append(backdropStyle.title) }
         drawHUDPill(ctx: ctx, anchorRect: sel, text: parts.joined(separator: "  ·  "))
     }

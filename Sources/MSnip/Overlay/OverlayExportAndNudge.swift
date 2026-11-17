@@ -17,6 +17,21 @@ extension OverlayView {
                     innerCornerRadiusPt: cornerRadiusPt
                 )
             }
+            if cornerRadiusPt > 0.5 {
+                let rPx = min(cornerRadiusPt * snapshot.scaleFactor, CGFloat(min(translated.width, translated.height)) * 0.5)
+                let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+                if let ctx = CGContext(
+                    data: nil, width: translated.width, height: translated.height,
+                    bitsPerComponent: 8, bytesPerRow: 0, space: cs,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                ) {
+                    let rect = CGRect(x: 0, y: 0, width: translated.width, height: translated.height)
+                    ctx.addPath(CGPath(roundedRect: rect, cornerWidth: rPx, cornerHeight: rPx, transform: nil))
+                    ctx.clip()
+                    ctx.draw(translated, in: rect)
+                    if let clipped = ctx.makeImage() { return clipped }
+                }
+            }
             return translated
         }
         return AnnotationRenderer.bakeExportImage(

@@ -14,6 +14,7 @@ extension OverlayView {
         let onChrome = (!toolbar.isHidden && toolbar.frame.contains(p))
             || (!subbar.isHidden && subbar.frame.contains(p))
             || (!sidePills.isHidden && sidePills.frame.contains(p))
+            || (!cornerSlider.isHidden && cornerSlider.frame.contains(p))
         if onChrome {
             NSCursor.arrow.set()
             invalidateMagnifierMove(from: prevPt, to: p)

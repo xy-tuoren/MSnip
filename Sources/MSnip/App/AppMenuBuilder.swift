@@ -253,7 +253,7 @@ extension AppController {
     @objc func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v1.4.1"
+        alert.messageText = "MSnip（麦截）v1.4.2"
         alert.informativeText = """
         超轻量纯原生 macOS 全能截图、截图翻译、长截图、动图录制、实况识字与贴图工具
         • 全系清爽浅色白底（Daylight Porcelain）统一设计系统，零第三方依赖

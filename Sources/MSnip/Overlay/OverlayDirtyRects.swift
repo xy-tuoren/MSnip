@@ -80,6 +80,7 @@ extension OverlayView {
             toolbar.isHidden = true
             subbar.isHidden = true
             sidePills.isHidden = true
+            cornerSlider.isHidden = true
             if let ocrV = inPlaceOCRView, let sel = selection { ocrV.frame = sel }
             if let trV = inPlaceTranslateView, let sel = selection { trV.frame = sel }
             return
@@ -98,13 +99,15 @@ extension OverlayView {
         subbar.eyedropperActive = eyedropperActive
         subbar.textCapsule = style.textCapsule
 
-        sidePills.hasCorner = cornerRadiusPt > 0.5
+        sidePills.hasCorner = (cornerRadiusRatio > 0.005 || isCornerSliderVisible)
         sidePills.hasBackdrop = backdropStyle != .none
 
         guard let sel = selection, sel.width >= 6, sel.height >= 6 else {
             toolbar.isHidden = true
             subbar.isHidden = true
             sidePills.isHidden = true
+            isCornerSliderVisible = false
+            cornerSlider.isHidden = true
             return
         }
         toolbar.isHidden = false
@@ -133,6 +136,21 @@ extension OverlayView {
         let py = min(max(8, sel.minY + 2), bounds.height - pillSz.height - 8)
         sidePills.setFrameOrigin(NSPoint(x: round(px), y: round(py)))
 
+        if isCornerSliderVisible {
+            cornerSlider.ratio = cornerRadiusRatio
+            cornerSlider.isHidden = false
+            let sSz = OverlayCornerSliderView.barSize
+            let preferRightX = sidePills.frame.maxX + 8
+            let altLeftX = sidePills.frame.minX - sSz.width - 8
+            let sx = (preferRightX + sSz.width + 6 <= bounds.width)
+                ? preferRightX
+                : max(6, min(altLeftX, bounds.width - sSz.width - 6))
+            let sy = min(max(6, sidePills.frame.minY - 1), bounds.height - sSz.height - 6)
+            cornerSlider.setFrameOrigin(NSPoint(x: round(sx), y: round(sy)))
+        } else {
+            cornerSlider.isHidden = true
+        }
+
         if let ocrV = inPlaceOCRView { ocrV.frame = sel }
         if let trV = inPlaceTranslateView { trV.frame = sel }
     }
@@ -142,6 +160,9 @@ extension OverlayView {
         deactivateInPlaceOCR()
         deactivateInPlaceTranslate()
         stopSnapGlide()
+        isCornerSliderVisible = false
+        cornerRadiusRatio = 0
+        cornerSlider.isHidden = true
         selection = nil
         lastMousePoint = nil
         syncMagnifierView()

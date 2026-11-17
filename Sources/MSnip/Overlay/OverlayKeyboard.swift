@@ -51,6 +51,9 @@ extension OverlayView {
         if event.keyCode == 53 { // Esc 分层停留在页面回退
             if eyedropperActive {
                 eyedropperActive = false
+            } else if isCornerSliderVisible {
+                isCornerSliderVisible = false
+                updateToolbarLayout()
             } else if toolbar.inPlaceTranslateActive {
                 deactivateInPlaceTranslate()
             } else if toolbar.inPlaceOCRActive {
@@ -62,7 +65,7 @@ extension OverlayView {
                 updateToolbarLayout()
             } else if selection != nil && doc.isEmpty {
                 selection = nil
-                cornerRadiusPt = 0
+                cornerRadiusRatio = 0
                 backdropStyle = .none
                 refreshAutoSnapAtCurrentMouse()
             } else {
@@ -213,7 +216,7 @@ extension OverlayView {
                 }
                 return
             case "b":
-                cycleCornerRadius()
+                toggleCornerRadiusSlider(resetOnly: flags.contains(.option))
                 return
             case "i":
                 if selection == nil, let snap = hoveredAutoRect { selection = snap }

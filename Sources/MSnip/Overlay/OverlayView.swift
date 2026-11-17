@@ -20,6 +20,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     let toolbar = ToolbarView()
     let subbar = ToolbarSubbarView()
     let sidePills = OverlaySidePillsView()
+    let cornerSlider = OverlayCornerSliderView()
     let magnifierView = OverlayMagnifierLayerView()
     var inPlaceOCRView: LiveTextImageView?
     var inPlaceTranslateView: InPlaceTranslationOverlayView?
@@ -66,7 +67,20 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var colorCopyFormat: ColorCopyFormat { didSet { syncMagnifierView() } }
     var showShortcutTips: Bool { didSet { needsDisplay = true } }
     var lastHistorySelection: CGRect?
-    var cornerRadiusPt: CGFloat = 0 { didSet { toolbar.cornerRadiusPt = cornerRadiusPt; needsDisplay = true } }
+    var isCornerSliderVisible = false
+    var cornerRadiusRatio: CGFloat = 0 {
+        didSet {
+            toolbar.cornerRadiusPt = cornerRadiusPt
+            sidePills.hasCorner = (cornerRadiusRatio > 0.005 || isCornerSliderVisible)
+            cornerSlider.ratio = cornerRadiusRatio
+            if let sel = selection { setNeedsDisplay(selectionDirtyBounds(for: sel)) }
+            else { needsDisplay = true }
+        }
+    }
+    var cornerRadiusPt: CGFloat {
+        guard let sel = selection ?? hoveredAutoRect, cornerRadiusRatio > 0.005 else { return 0 }
+        return min(sel.width, sel.height) * 0.5 * min(1.0, max(0.0, cornerRadiusRatio))
+    }
     var backdropStyle: BackdropStyle = .none { didSet { toolbar.backdropStyle = backdropStyle; needsDisplay = true } }
     var customPickedColor: RGBAColor? {
         didSet {
@@ -153,40 +167,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         self.colorIndex = initialColorIndex
         self.style.color = RGBAColor.presets[min(max(0, initialColorIndex), RGBAColor.presets.count - 1)]
         self.style.lineWidth = initialLineWidth
-
-        toolbar.colorIndex = initialColorIndex
-        toolbar.lineWidth = initialLineWidth
-        toolbar.pinHint = pinHint
-        toolbar.isHidden = true
-        toolbar.onAction = { [weak self] action in self?.handleToolbarAction(action) }
-        toolbar.onDraggedOrigin = { [weak self] origin in
-            self?.manualToolbarOrigin = origin
-            self?.repositionSubbar()
-        }
-
-        subbar.colorIndex = initialColorIndex
-        subbar.lineWidth = initialLineWidth
-        subbar.isHidden = true
-        subbar.onAction = { [weak self] action in self?.handleToolbarAction(action) }
-
-        sidePills.isHidden = true
-        sidePills.onAction = { [weak self] act in
-            guard let self else { return }
-            switch act {
-            case .cycleCorner:   self.cycleCornerRadius()
-            case .cycleBackdrop: self.cycleBackdropStyle()
-            case .snapWindow(let opt):
-                if opt { self.captureCurrentWindowAndFinish(pin: false) }
-                else { self.snapSelectionToUnderlyingWindow() }
-            }
-        }
-
-        magnifierView.ownerOverlay = self
-
-        addSubview(sidePills)
-        addSubview(toolbar)
-        addSubview(subbar)
-        addSubview(magnifierView)
+        setupFloatingControls(initialColorIndex: initialColorIndex, initialLineWidth: initialLineWidth, pinHint: pinHint)
     }
 
     @available(*, unavailable)

@@ -55,7 +55,7 @@ extension OverlayView {
             selectedObjectIndex = nil
             if doc.redo() { updateToolbarLayout(); needsDisplay = true }
         case .cycleCornerRadius:
-            cycleCornerRadius()
+            toggleCornerRadiusSlider()
         case .cycleBackdrop:
             cycleBackdropStyle()
         case .captureWindow:
@@ -122,11 +122,22 @@ extension OverlayView {
         onStartLongShot?(snapshot.screen, rect, snapshot.cgImage.cropping(to: pxRect))
     }
 
-    func cycleCornerRadius() {
+    func toggleCornerRadiusSlider(resetOnly: Bool = false) {
         if selection == nil, let snap = hoveredAutoRect { selection = snap }
-        if cornerRadiusPt < 1 { cornerRadiusPt = 10 }
-        else if cornerRadiusPt < 14 { cornerRadiusPt = 18 }
-        else { cornerRadiusPt = 0 }
+        if resetOnly {
+            cornerRadiusRatio = 0
+            isCornerSliderVisible = false
+            updateToolbarLayout()
+            return
+        }
+        if !isCornerSliderVisible {
+            isCornerSliderVisible = true
+            if cornerRadiusRatio < 0.01 {
+                cornerRadiusRatio = 0.16
+            }
+        } else {
+            isCornerSliderVisible = false
+        }
         updateToolbarLayout()
     }
 
