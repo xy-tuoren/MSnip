@@ -59,6 +59,7 @@ final class PinWindow: NSPanel {
         )
 
         self.level = .floating
+        self.animationBehavior = .none
         self.isFloatingPanel = true
         self.hidesOnDeactivate = false
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]

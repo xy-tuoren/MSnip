@@ -39,37 +39,26 @@ final class RegionDetector {
         let primaryH = NSScreen.screens.first?.frame.height ?? 0
         let selfPID = ProcessInfo.processInfo.processIdentifier
 
-        let rawList = CGWindowListCopyWindowInfo(
-            [.optionOnScreenOnly, .excludeDesktopElements],
-            kCGNullWindowID
-        ) as? [[String: Any]] ?? []
-
+        let rawList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         var pidBundleCache: [pid_t: String] = [:]
         let ignoredShellBundles: Set<String> = [
-            "com.apple.dock",
-            "com.apple.WindowManager",
-            "com.apple.wallpaper.agent",
-            "com.apple.notificationcenterui"
+            "com.apple.dock", "com.apple.WindowManager", "com.apple.wallpaper.agent", "com.apple.notificationcenterui"
         ]
 
         var items: [WindowSnapshotItem] = []
         for entry in rawList {
-            guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t,
-                  pid != selfPID,
+            guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, pid != selfPID,
                   let rawWinID = entry[kCGWindowNumber as String] as? UInt32 else { continue }
             let layer = entry[kCGWindowLayer as String] as? Int ?? 0
             let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1.0
             // 仅保留正常应用窗口、悬浮面板、菜单栏与弹窗（过滤透明遮罩与桌面底层背景）
             guard alpha > 0.05, layer >= 0, layer < 500 else { continue }
-
             guard let boundsDict = entry[kCGWindowBounds as String] as? NSDictionary,
                   let rect = CGRect(dictionaryRepresentation: boundsDict),
                   rect.width >= 20, rect.height >= 20 else { continue }
 
             let ownerName = entry[kCGWindowOwnerName as String] as? String ?? ""
-            if ownerName == "Window Server" && rect.height > 80 {
-                continue
-            }
+            if ownerName == "Window Server" && rect.height > 80 { continue }
             let bundleID: String = {
                 if let cached = pidBundleCache[pid] { return cached }
                 let resolved = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
@@ -77,16 +66,10 @@ final class RegionDetector {
                 return resolved
             }()
             // 过滤程序坞 (Dock) 与台前调度 (WindowManager) 覆盖全屏的透明容器层，避免遮挡真实应用窗口
-            if ignoredShellBundles.contains(bundleID) && rect.width > 400 && rect.height > 400 {
-                continue
-            }
+            if ignoredShellBundles.contains(bundleID) && rect.width > 400 && rect.height > 400 { continue }
 
             items.append(WindowSnapshotItem(
-                windowID: CGWindowID(rawWinID),
-                ownerPID: pid,
-                ownerName: ownerName,
-                globalBounds: rect,
-                layer: layer
+                windowID: CGWindowID(rawWinID), ownerPID: pid, ownerName: ownerName, globalBounds: rect, layer: layer
             ))
         }
         return RegionDetector(windows: items, primaryScreenHeight: primaryH)
@@ -116,16 +99,19 @@ final class RegionDetector {
     }
 
     /// 查询指定显示器 `snapshot` 上局部点 `localPoint`（左上角原点）处的嵌套矩阵层级（从小到大排序）
-    func detectHierarchy(at localPoint: CGPoint, in snapshot: ScreenSnapshot) -> [CGRect] {
+    /// `fastWindowOnly = true` 时（高速扫过鼠标期间）仅执行 0.001ms 窗口 Z 序命中，完全跳过跨进程 AX IPC 阻塞
+    func detectHierarchy(at localPoint: CGPoint, in snapshot: ScreenSnapshot, fastWindowOnly: Bool = false) -> [CGRect] {
         let screenFrame = snapshot.screen.frame
         let screenBoundsLocal = CGRect(origin: .zero, size: screenFrame.size)
         guard screenBoundsLocal.contains(localPoint) else { return [screenBoundsLocal] }
 
-        let gx = Int((localPoint.x / 4.0).rounded())
-        let gy = Int((localPoint.y / 4.0).rounded())
-        let key = (gx, gy, snapshot.displayID)
-        if let last = lastGridKey, last == key, !cachedHierarchy.isEmpty {
-            return cachedHierarchy
+        if !fastWindowOnly {
+            let gx = Int((localPoint.x / 6.0).rounded())
+            let gy = Int((localPoint.y / 6.0).rounded())
+            let key = (gx, gy, snapshot.displayID)
+            if let last = lastGridKey, last == key, !cachedHierarchy.isEmpty {
+                return cachedHierarchy
+            }
         }
 
         // 将当前显示器的覆盖层局部坐标换算为 Quartz 全局坐标（主屏左上角为原点）
@@ -137,6 +123,20 @@ final class RegionDetector {
             x: screenQuartzOrigin.x + localPoint.x,
             y: screenQuartzOrigin.y + localPoint.y
         )
+
+        if fastWindowOnly {
+            if let topWin = windows.first(where: { $0.globalBounds.contains(globalPoint) }) {
+                let winLocal = toLocalRect(topWin.globalBounds, screenQuartzOrigin: screenQuartzOrigin).intersection(screenBoundsLocal)
+                if !winLocal.isNull, winLocal.width >= 24, winLocal.height >= 24 {
+                    return VisualDetector.normalizeHierarchy([winLocal, screenBoundsLocal])
+                }
+            }
+            return [screenBoundsLocal]
+        }
+
+        let gx = Int((localPoint.x / 6.0).rounded())
+        let gy = Int((localPoint.y / 6.0).rounded())
+        let key = (gx, gy, snapshot.displayID)
 
         var candidatesLocal: [CGRect] = [screenBoundsLocal]
 
@@ -214,7 +214,7 @@ final class RegionDetector {
         let appElem: AXUIElement = {
             if let cached = appElementCache[pid] { return cached }
             let created = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(created, 0.015) // 15ms 硬超时，防止无响应进程卡顿光标
+            AXUIElementSetMessagingTimeout(created, 0.006) // 6ms 超紧上限，杜绝 Electron/浏览器深 DOM 树拖拽卡顿
             appElementCache[pid] = created
             return created
         }()
@@ -227,15 +227,14 @@ final class RegionDetector {
             Float(globalPoint.y),
             &hitRef
         )
-        if status == .cannotComplete, (CFAbsoluteTimeGetCurrent() - t0) >= 0.012 {
-            // 熔断已卡死的后台应用，本轮截图会话后续移动 0ms 直接跳过其 AX IPC
+        if status == .cannotComplete, (CFAbsoluteTimeGetCurrent() - t0) >= 0.005 {
             unresponsivePIDs.insert(pid)
             return []
         }
         guard status == .success, var current = hitRef else { return [] }
 
         var rects: [CGRect] = []
-        for _ in 0..<16 {
+        for _ in 0..<10 {
             var valuesRef: CFArray?
             let err = AXUIElementCopyMultipleAttributeValues(
                 current,

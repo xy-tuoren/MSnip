@@ -2,15 +2,36 @@ import AppKit
 import CoreGraphics
 import Foundation
 import MSnipCore
+import QuartzCore
 
-/// 覆盖层局部脏矩形失效（Partial Dirty-Rect Invalidation）与零拷贝底图切片绘制支持
+/// 覆盖层局部脏矩形失效（Partial Dirty-Rect Invalidation）、拖拽期无遮挡隐藏与零拷贝底图切片绘制支持
 extension OverlayView {
+    var isDraggingSelectionBox: Bool {
+        guard let op = dragOp else { return false }
+        switch op {
+        case .creatingSelection, .movingSelection, .resizingSelection:
+            return true
+        case .pendingSnapOrCreate, .drawingAnnotation, .movingAnnotation:
+            return false
+        }
+    }
+
     func autoSnapDirtyBounds(for rect: CGRect) -> CGRect {
         CGRect(
-            x: rect.minX - 8,
-            y: rect.minY - 34,
-            width: max(rect.width + 16, 280),
-            height: rect.height + 42
+            x: rect.minX - 10,
+            y: rect.minY - 38,
+            width: max(rect.width + 20, 310),
+            height: rect.height + 48
+        ).intersection(bounds)
+    }
+
+    func selectionDirtyBounds(for rect: CGRect) -> CGRect {
+        let pad: CGFloat = (backdropStyle != .none) ? 28 : 14
+        return CGRect(
+            x: rect.minX - pad,
+            y: rect.minY - 40 - pad,
+            width: max(rect.width + pad * 2, 340),
+            height: rect.height + 50 + pad * 2
         ).intersection(bounds)
     }
 
@@ -19,27 +40,51 @@ extension OverlayView {
         if let n = newRect { setNeedsDisplay(autoSnapDirtyBounds(for: n)) }
     }
 
-    func invalidateMagnifierAtCurrentMouse() {
-        if let pt = lastMousePoint {
-            setNeedsDisplay(magnifierCardFrame(at: pt).insetBy(dx: -22, dy: -24))
+    func invalidateSelectionTransition(from oldSel: CGRect?, to newSel: CGRect?) {
+        if (oldSel == nil) != (newSel == nil) {
+            needsDisplay = true
+            return
         }
+        if showShortcutTips {
+            let zone = shortcutTipsBottomTriggerZone()
+            let oldHit = oldSel.map { !$0.intersection(zone).isNull } ?? false
+            let newHit = newSel.map { !$0.intersection(zone).isNull } ?? false
+            if oldHit != newHit {
+                needsDisplay = true
+                return
+            }
+        }
+        if let o = oldSel { setNeedsDisplay(selectionDirtyBounds(for: o)) }
+        if let n = newSel { setNeedsDisplay(selectionDirtyBounds(for: n)) }
     }
 
     func invalidateMagnifierMove(from oldPt: CGPoint?, to newPt: CGPoint?) {
+        syncMagnifierView()
         if showShortcutTips {
             let zone = shortcutTipsBottomTriggerZone()
             let wasIn = oldPt.map { zone.contains($0) } ?? false
             let nowIn = newPt.map { zone.contains($0) } ?? false
             if wasIn != nowIn {
                 needsDisplay = true
-                return
             }
         }
-        if let r = magnifierDirtyRectIfVisible(at: oldPt) { setNeedsDisplay(r) }
-        if let r = magnifierDirtyRectIfVisible(at: newPt) { setNeedsDisplay(r) }
     }
 
     func updateToolbarLayout() {
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        defer { CATransaction.commit() }
+
+        // PixPin 丝滑交互：拖拽拉框、平移或缩放选区期间暂时隐藏悬浮栏，松手瞬间一步到位呈现，零遮挡零阴影重算卡顿
+        if isDraggingSelectionBox {
+            toolbar.isHidden = true
+            subbar.isHidden = true
+            sidePills.isHidden = true
+            if let ocrV = inPlaceOCRView, let sel = selection { ocrV.frame = sel }
+            if let trV = inPlaceTranslateView, let sel = selection { trV.frame = sel }
+            return
+        }
+
         toolbar.canUndo = doc.canUndo
         toolbar.canRedo = doc.canRedo
         toolbar.nextStepNumber = doc.nextStepNumber()
@@ -99,6 +144,7 @@ extension OverlayView {
         stopSnapGlide()
         selection = nil
         lastMousePoint = nil
+        syncMagnifierView()
         eyedropperActive = false
         autoSnapStack = []
         displayedAutoRect = nil
@@ -124,7 +170,6 @@ extension OverlayView {
         subbar.setFrameOrigin(NSPoint(x: round(sx), y: round(sy)))
     }
 
-    /// 停留在页面实时预览渐变美化衬底外框
     func drawLiveBackdropFrameIfNeeded(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
         guard backdropStyle != .none else { return }
         let stops = backdropStyle.gradientStops
@@ -153,7 +198,6 @@ extension OverlayView {
         ctx.restoreGState()
     }
 
-    /// 仅裁剪并绘制 `dirtyRect` 对应的物理像素子图（`CGImage.cropping` 零拷贝，大幅降低 4K/5K 带宽）
     func drawFrozenBackgroundSlice(in ctx: CGContext, dirtyRect: CGRect) {
         let scale = snapshot.scaleFactor
         let imgW = snapshot.cgImage.width

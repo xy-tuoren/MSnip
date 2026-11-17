@@ -174,13 +174,11 @@ final class LongShotSession {
     private func makePanel(frame: NSRect, ignoresMouse: Bool) -> NSPanel {
         let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.level = .statusBar
-        p.isFloatingPanel = true
-        p.hidesOnDeactivate = false
+        p.animationBehavior = .none
+        p.isFloatingPanel = true; p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.hasShadow = !ignoresMouse
-        p.ignoresMouseEvents = ignoresMouse
+        p.isOpaque = false; p.backgroundColor = .clear
+        p.hasShadow = !ignoresMouse; p.ignoresMouseEvents = ignoresMouse
         return p
     }
 
@@ -193,10 +191,7 @@ final class LongShotSession {
         case .toggleAutoScroll:
             let primaryH = NSScreen.screens.first?.frame.height ?? targetScreen.frame.height
             let quartzOriginY = primaryH - targetScreen.frame.maxY + captureLocalRect.minY
-            let centerQuartz = CGPoint(
-                x: targetScreen.frame.minX + captureLocalRect.midX,
-                y: quartzOriginY + captureLocalRect.height * 0.5
-            )
+            let centerQuartz = CGPoint(x: targetScreen.frame.minX + captureLocalRect.midX, y: quartzOriginY + captureLocalRect.height * 0.5)
             autoScroller.toggle(targetQuartzPoint: centerQuartz) {
                 ToastHUD.show(message: "开启「辅助功能」后可用自动滚动，当前可直接手动滚轮")
                 _ = RegionDetector.checkAccessibilityPermission(prompt: true)

@@ -41,7 +41,7 @@ extension OverlayView {
         }
 
         onSelectionActivated?(self)
-        updateAutoSnap(at: p)
+        updateAutoSnap(at: p, previousPoint: prevPt)
         NSCursor.crosshair.set()
         invalidateMagnifierMove(from: prevPt, to: p)
     }
@@ -230,13 +230,15 @@ extension OverlayView {
         case .creatingSelection:
             if let sel = selection, (sel.width < 6 || sel.height < 6) {
                 selection = nil
-                updateAutoSnap(at: convert(event.locationInWindow, from: nil))
+                updateAutoSnap(at: convert(event.locationInWindow, from: nil), immediate: true)
             } else if selection != nil {
+                updateToolbarLayout()
                 if quickTranslateMode { activateInPlaceTranslate() }
                 else if quickOCRMode { activateInPlaceOCR() }
             }
         case .movingSelection, .resizingSelection:
-            needsDisplay = true
+            updateToolbarLayout()
+            syncMagnifierView()
         case .drawingAnnotation(_, let start):
             let end = convert(event.locationInWindow, from: nil)
             if let draft = draftAnnotation, !draft.isTrivial {

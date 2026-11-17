@@ -2,10 +2,10 @@ import AppKit
 import CoreGraphics
 import Foundation
 import MSnipCore
+import QuartzCore
 
-/// 覆盖层的智能矩阵防抖驻留、滚轮尺度记忆与 60fps 丝滑过渡动画扩展
+/// 覆盖层的智能矩阵防抖驻留、高速扫鼠防 IPC 阻塞与硬件 VSync (`CADisplayLink`) 60/120Hz 丝滑过渡扩展
 extension OverlayView {
-    /// 按全局鼠标位置初始化首帧自动高亮框（首帧直接到位，无入场位移）
     func refreshAutoSnapAtCurrentMouse() {
         guard let win = window else { return }
         let winPt = win.convertPoint(fromScreen: NSEvent.mouseLocation)
@@ -15,14 +15,33 @@ extension OverlayView {
         }
     }
 
-    /// 刷新局部坐标处的自动识别矩阵栈（带边界防抖驻留与滚轮层级尺度保持）
-    func updateAutoSnap(at localPoint: CGPoint, immediate: Bool = false) {
+    /// 刷新局部坐标处的自动识别矩阵栈（高速移动时先瞬时对齐窗口，停顿 22ms 后无感补齐子控件）
+    func updateAutoSnap(at localPoint: CGPoint, previousPoint: CGPoint? = nil, immediate: Bool = false) {
         guard selection == nil else { return }
-        let newStack = regionDetector.detectHierarchy(at: localPoint, in: snapshot)
-        guard !newStack.isEmpty else { return }
+        deferredSnapWork?.cancel()
 
+        let stepDist = previousPoint.map { hypot(localPoint.x - $0.x, localPoint.y - $0.y) } ?? 0
+        let fastSweep = !immediate && stepDist > 18.0
+
+        let newStack = regionDetector.detectHierarchy(at: localPoint, in: snapshot, fastWindowOnly: fastSweep)
+        applyDetectedSnapStack(newStack, at: localPoint, immediate: immediate)
+
+        if fastSweep {
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, self.selection == nil, let curPt = self.lastMousePoint else { return }
+                    let refined = self.regionDetector.detectHierarchy(at: curPt, in: self.snapshot, fastWindowOnly: false)
+                    self.applyDetectedSnapStack(refined, at: curPt, immediate: false)
+                }
+            }
+            deferredSnapWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.022, execute: work)
+        }
+    }
+
+    private func applyDetectedSnapStack(_ newStack: [CGRect], at localPoint: CGPoint, immediate: Bool) {
+        guard !newStack.isEmpty else { return }
         let prevTarget = hoveredAutoRect
-        // 若移出了原先所在的顶层窗口，重置滚轮偏好的层级面积
         if newStack.count <= 1 {
             preferredSnapArea = nil
         } else if let prevWin = autoSnapStack.dropLast().last,
@@ -31,12 +50,7 @@ extension OverlayView {
             preferredSnapArea = nil
         }
 
-        let chosenIndex = chooseStableIndex(
-            in: newStack,
-            at: localPoint,
-            previousTarget: prevTarget
-        )
-
+        let chosenIndex = chooseStableIndex(in: newStack, at: localPoint, previousTarget: prevTarget)
         autoSnapStack = newStack
         autoSnapIndex = chosenIndex
         scrollSnapAccumulator = 0
@@ -52,7 +66,6 @@ extension OverlayView {
         }
     }
 
-    /// 滚轮切换当前光标下的嵌套矩阵层级（小控件 <-> 父容器 <-> 整窗口）
     func stepAutoSnapTier(by step: Int) {
         guard autoSnapStack.count > 1 else { return }
         let nextIdx = min(max(0, autoSnapIndex + step), autoSnapStack.count - 1)
@@ -65,49 +78,43 @@ extension OverlayView {
     }
 
     func stopSnapGlide() {
+        deferredSnapWork?.cancel()
+        deferredSnapWork = nil
         snapAnimTimer?.invalidate()
         snapAnimTimer = nil
+        if #available(macOS 14.0, *), let dl = snapDisplayLink as? CADisplayLink {
+            dl.invalidate()
+        }
+        snapDisplayLink = nil
     }
 
     func drawAutoSnapChrome(ctx: CGContext, displayRect: CGRect, targetRect: CGRect) {
         ctx.saveGState()
-        ctx.setStrokeColor(NSColor.systemCyan.withAlphaComponent(0.95).cgColor)
+        ctx.setStrokeColor(MSnipUITheme.accent.withAlphaComponent(0.95).cgColor)
         ctx.setLineWidth(2.0)
         ctx.stroke(displayRect.insetBy(dx: 0.5, dy: 0.5))
         ctx.restoreGState()
 
-        // 尺寸数字始终读取目标整数矩阵（极简显示 左上角坐标 + 物理像素宽高）
         let pxX = Int((targetRect.minX * snapshot.scaleFactor).rounded())
         let pxY = Int((targetRect.minY * snapshot.scaleFactor).rounded())
         let pxW = Int((targetRect.width * snapshot.scaleFactor).rounded())
         let pxH = Int((targetRect.height * snapshot.scaleFactor).rounded())
-        let prefix = quickOCRMode ? "识字 · " : ""
+        let prefix = quickTranslateMode ? "翻译 · " : (quickOCRMode ? "识字 · " : "")
         drawHUDPill(ctx: ctx, anchorRect: displayRect, text: "\(prefix)\(pxX),\(pxY)  \(pxW) × \(pxH) px")
     }
 
-    // MARK: - Hysteresis & Smooth Interpolation
-
-    private func chooseStableIndex(
-        in stack: [CGRect],
-        at pt: CGPoint,
-        previousTarget: CGRect?
-    ) -> Int {
-        // 1) 若用户刚用滚轮选定过偏好尺度（如切到了『侧边栏』或『整窗』），移动鼠标时优先保持同一量级
+    private func chooseStableIndex(in stack: [CGRect], at pt: CGPoint, previousTarget: CGRect?) -> Int {
         if let prefArea = preferredSnapArea, prefArea > 0 {
             let targetLog = log(Double(prefArea))
             var bestIdx = 0
             var bestDiff = Double.greatestFiniteMagnitude
             for (i, r) in stack.enumerated() {
                 let diff = abs(log(Double(max(1, r.width * r.height))) - targetLog)
-                if diff < bestDiff {
-                    bestDiff = diff
-                    bestIdx = i
-                }
+                if diff < bestDiff { bestDiff = diff; bestIdx = i }
             }
             return bestIdx
         }
 
-        // 2) 擦边防闪烁：若最小框刚擦到边缘 (< 3.5pt)，暂不切入，优先驻留在上一帧稳定框
         let smallest = stack[0]
         let wellInsideSmallest = smallest.width < 12 || smallest.height < 12
             || smallest.insetBy(dx: 3.5, dy: 3.5).contains(pt)
@@ -116,19 +123,12 @@ extension OverlayView {
            let prevIdxInNew = stack.firstIndex(where: { Self.isSameRegion($0, prev, tol: 8) }) {
             let prevArea = prev.width * prev.height
             let smallestArea = smallest.width * smallest.height
-            // 仅当真正深入了一个明显更小的子控件（面积 < 62%）时才向下收缩，杜绝同级包裹层来回跳变
             if prevIdxInNew > 0 {
-                if wellInsideSmallest && smallestArea < prevArea * 0.62 {
-                    return 0
-                }
+                if wellInsideSmallest && smallestArea < prevArea * 0.62 { return 0 }
                 return prevIdxInNew
             }
         }
-
-        if !wellInsideSmallest && stack.count > 1 {
-            return 1
-        }
-        return 0
+        return (!wellInsideSmallest && stack.count > 1) ? 1 : 0
     }
 
     private func startSnapGlideToTarget() {
@@ -138,37 +138,52 @@ extension OverlayView {
             invalidateAutoSnapTransition(from: nil, to: target)
             return
         }
-        guard snapAnimTimer == nil else { return }
+        if snapDisplayLink != nil || snapAnimTimer != nil { return }
+
+        if #available(macOS 14.0, *) {
+            let link = self.displayLink(target: self, selector: #selector(onSnapDisplayLinkTick(_:)))
+            link.add(to: .main, forMode: .common)
+            snapDisplayLink = link
+            return
+        }
 
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated {
-                guard let self else { return }
-                guard self.selection == nil, let target = self.hoveredAutoRect, var cur = self.displayedAutoRect else {
-                    self.stopSnapGlide()
-                    return
-                }
-                let prevDisplayed = cur
-                let k: CGFloat = 0.42
-                cur.origin.x += (target.origin.x - cur.origin.x) * k
-                cur.origin.y += (target.origin.y - cur.origin.y) * k
-                cur.size.width += (target.size.width - cur.size.width) * k
-                cur.size.height += (target.size.height - cur.size.height) * k
-
-                let maxErr = max(
-                    max(abs(target.origin.x - cur.origin.x), abs(target.origin.y - cur.origin.y)),
-                    max(abs(target.size.width - cur.size.width), abs(target.size.height - cur.size.height))
-                )
-                if maxErr < 0.6 {
-                    self.displayedAutoRect = target
-                    self.stopSnapGlide()
-                } else {
-                    self.displayedAutoRect = cur
-                }
-                self.invalidateAutoSnapTransition(from: prevDisplayed, to: self.displayedAutoRect)
-            }
+            MainActor.assumeIsolated { self?.advanceSnapGlide(dt: 1.0 / 60.0) }
         }
         RunLoop.main.add(timer, forMode: .common)
         snapAnimTimer = timer
+    }
+
+    @available(macOS 14.0, *)
+    @objc private func onSnapDisplayLinkTick(_ link: CADisplayLink) {
+        let dt = min(0.05, max(0.004, link.duration))
+        advanceSnapGlide(dt: dt)
+    }
+
+    private func advanceSnapGlide(dt: TimeInterval) {
+        guard selection == nil, let target = hoveredAutoRect, var cur = displayedAutoRect else {
+            stopSnapGlide()
+            return
+        }
+        let prevDisplayed = cur
+        // 帧率无关指数阻尼，60Hz 与 120Hz ProMotion 下手感完全一致且紧贴垂直同步
+        let k = CGFloat(1.0 - pow(0.00004, dt))
+        cur.origin.x += (target.origin.x - cur.origin.x) * k
+        cur.origin.y += (target.origin.y - cur.origin.y) * k
+        cur.size.width += (target.size.width - cur.size.width) * k
+        cur.size.height += (target.size.height - cur.size.height) * k
+
+        let maxErr = max(
+            max(abs(target.origin.x - cur.origin.x), abs(target.origin.y - cur.origin.y)),
+            max(abs(target.size.width - cur.size.width), abs(target.size.height - cur.size.height))
+        )
+        if maxErr < 0.6 {
+            displayedAutoRect = target
+            stopSnapGlide()
+        } else {
+            displayedAutoRect = cur
+        }
+        invalidateAutoSnapTransition(from: prevDisplayed, to: displayedAutoRect)
     }
 
     private static func isSameRegion(_ a: CGRect, _ b: CGRect, tol: CGFloat) -> Bool {

@@ -58,7 +58,11 @@ extension OverlayView {
         textField = field
         applyTextFieldVisualStyle()
         addSubview(field)
+        if !NSApp.isActive {
+            NSApp.activate(ignoringOtherApps: true)
+        }
         window?.makeFirstResponder(field)
+        syncMagnifierView()
         needsDisplay = true
     }
 

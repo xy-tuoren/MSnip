@@ -20,6 +20,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     let toolbar = ToolbarView()
     let subbar = ToolbarSubbarView()
     let sidePills = OverlaySidePillsView()
+    let magnifierView = OverlayMagnifierLayerView()
     var inPlaceOCRView: LiveTextImageView?
     var inPlaceTranslateView: InPlaceTranslationOverlayView?
     var manualToolbarOrigin: NSPoint?
@@ -52,6 +53,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var preferredSnapArea: CGFloat?
     var displayedAutoRect: CGRect?
     var snapAnimTimer: Timer?
+    var snapDisplayLink: AnyObject?
+    var deferredSnapWork: DispatchWorkItem?
 
     var hoveredAutoRect: CGRect? {
         guard selection == nil, autoSnapStack.indices.contains(autoSnapIndex) else { return nil }
@@ -60,7 +63,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
     // PixPin 风格取色放大镜、快捷键提示与选区增强状态
     var lastMousePoint: CGPoint?
-    var colorCopyFormat: ColorCopyFormat { didSet { invalidateMagnifierAtCurrentMouse() } }
+    var colorCopyFormat: ColorCopyFormat { didSet { syncMagnifierView() } }
     var showShortcutTips: Bool { didSet { needsDisplay = true } }
     var lastHistorySelection: CGRect?
     var cornerRadiusPt: CGFloat = 0 { didSet { toolbar.cornerRadiusPt = cornerRadiusPt; needsDisplay = true } }
@@ -76,12 +79,12 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         didSet {
             toolbar.eyedropperActive = eyedropperActive
             subbar.eyedropperActive = eyedropperActive
-            needsDisplay = true
+            syncMagnifierView()
         }
     }
-    var optionPressed = false { didSet { if oldValue != optionPressed { needsDisplay = true } } }
-    var magnifierPinned = false { didSet { needsDisplay = true } }
-    var useRelativeCoordinates = false { didSet { invalidateMagnifierAtCurrentMouse() } }
+    var optionPressed = false { didSet { if oldValue != optionPressed { syncMagnifierView() } } }
+    var magnifierPinned = false { didSet { syncMagnifierView() } }
+    var useRelativeCoordinates = false { didSet { syncMagnifierView() } }
     var shiftTapCandidate = false
 
     // 正式选区与标注编辑状态
@@ -89,7 +92,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         didSet {
             if selection != nil { stopSnapGlide() } else { manualToolbarOrigin = nil }
             updateToolbarLayout()
-            needsDisplay = true
+            invalidateSelectionTransition(from: oldValue, to: selection)
+            syncMagnifierView()
         }
     }
     var doc = AnnotationDocument()
@@ -97,7 +101,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         didSet {
             toolbar.activeTool = activeTool
             subbar.activeTool = activeTool
-            invalidateMagnifierAtCurrentMouse()
+            syncMagnifierView()
         }
     }
     var colorIndex: Int = 0 {
@@ -177,9 +181,12 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             }
         }
 
+        magnifierView.ownerOverlay = self
+
         addSubview(sidePills)
         addSubview(toolbar)
         addSubview(subbar)
+        addSubview(magnifierView)
     }
 
     @available(*, unavailable)
@@ -241,13 +248,11 @@ final class OverlayView: NSView, NSTextFieldDelegate {
                 }
             }
             drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
-            drawCursorMagnifier(ctx: ctx, dirtyRect: clip)
             return
         }
 
         guard let sel = selection, sel.width >= 1, sel.height >= 1 else {
             drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
-            drawCursorMagnifier(ctx: ctx, dirtyRect: clip)
             return
         }
 
@@ -278,6 +283,5 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
         drawSelectionChrome(ctx: ctx, sel: sel, cornerRadius: activeRadius)
         drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
-        drawCursorMagnifier(ctx: ctx, dirtyRect: clip)
     }
 }

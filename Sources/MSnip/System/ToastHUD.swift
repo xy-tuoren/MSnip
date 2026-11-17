@@ -48,6 +48,7 @@ enum ToastHUD {
             defer: false
         )
         panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
+        panel.animationBehavior = .none
         panel.isFloatingPanel = true
         panel.hidesOnDeactivate = false
         panel.ignoresMouseEvents = !isInteractive

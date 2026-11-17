@@ -2,15 +2,43 @@ import AppKit
 import CoreGraphics
 import Foundation
 import MSnipCore
+import QuartzCore
 
-/// PixPin 极简风格跟随光标取色放大镜 (`PointInfoWidget`)：
-/// 上半部为带十字蓝色高亮条带的 15×9 物理像素网格，下半部为居中的简洁坐标、色值与无边框轻提示。
+/// 独立 GPU 图层承载的 120fps 零全屏重绘光标放大镜视图（彻底隔离放大镜移动与全屏主画布脏区）
+final class OverlayMagnifierLayerView: NSView {
+    weak var ownerOverlay: OverlayView?
+    override var isFlipped: Bool { true }
+
+    init() {
+        super.init(frame: NSRect(x: 0, y: 0, width: OverlayView.loupeCardW, height: OverlayView.loupeCardH))
+        wantsLayer = true
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.22
+        layer?.shadowRadius = 10
+        layer?.shadowOffset = CGSize(width: 0, height: 4)
+        isHidden = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext,
+              let owner = ownerOverlay else { return }
+        owner.renderMagnifierContent(in: ctx, cardRect: bounds)
+    }
+}
+
+/// PixPin 极简风格跟随光标取色放大镜逻辑与局部绘制扩展
 extension OverlayView {
-    private static let loupeCols = 15
-    private static let loupeRows = 9
-    private static let loupeCell: CGFloat = 11
-    private static let loupeCardW: CGFloat = 165
-    private static let loupeCardH: CGFloat = 187
+    static let loupeCols = 15
+    static let loupeRows = 9
+    static let loupeCell: CGFloat = 11
+    static let loupeCardW: CGFloat = 165
+    static let loupeCardH: CGFloat = 187
     private static let loupeSRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
     private static let coordTextAttrs: [NSAttributedString.Key: Any] = [
@@ -35,7 +63,7 @@ extension OverlayView {
         if !toolbar.isHidden && toolbar.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if !subbar.isHidden && subbar.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if !sidePills.isHidden && sidePills.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
-        if toolbar.inPlaceOCRActive, let sel = selection, sel.contains(pt) { return false }
+        if (toolbar.inPlaceOCRActive || toolbar.inPlaceTranslateActive), let sel = selection, sel.contains(pt) { return false }
         if eyedropperActive { return true }
         if selection == nil { return true }
         if let op = dragOp {
@@ -61,9 +89,21 @@ extension OverlayView {
         return CGRect(x: x, y: y, width: cardW, height: cardH)
     }
 
-    func magnifierDirtyRectIfVisible(at point: CGPoint?) -> CGRect? {
-        guard let pt = point, isMagnifierVisible(at: pt) else { return nil }
-        return magnifierCardFrame(at: pt).insetBy(dx: -22, dy: -24)
+    /// 零隐式动画同步独立 GPU 放大镜视图位置（避免触发 `OverlayView` 主画布重绘）
+    func syncMagnifierView() {
+        guard let pt = lastMousePoint, isMagnifierVisible(at: pt) else {
+            if !magnifierView.isHidden { magnifierView.isHidden = true }
+            return
+        }
+        let nextFrame = magnifierCardFrame(at: pt)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if magnifierView.isHidden { magnifierView.isHidden = false }
+        if magnifierView.frame.origin != nextFrame.origin {
+            magnifierView.setFrameOrigin(nextFrame.origin)
+        }
+        CATransaction.commit()
+        magnifierView.needsDisplay = true
     }
 
     func samplePixelAtCursor() -> (px: Int, py: Int, color: RGBAColor)? {
@@ -83,11 +123,8 @@ extension OverlayView {
         return ("POS", "(\(px), \(py))", "\(px), \(py)")
     }
 
-    func drawCursorMagnifier(ctx: CGContext, dirtyRect: CGRect) {
-        guard shouldShowMagnifier, let pt = lastMousePoint else { return }
-        let cardRect = magnifierCardFrame(at: pt)
-        guard cardRect.insetBy(dx: -22, dy: -24).intersects(dirtyRect),
-              let sample = samplePixelAtCursor() else { return }
+    func renderMagnifierContent(in ctx: CGContext, cardRect: CGRect) {
+        guard let sample = samplePixelAtCursor() else { return }
 
         let cols = Self.loupeCols
         let rows = Self.loupeRows
@@ -98,23 +135,16 @@ extension OverlayView {
         let x = cardRect.minX
         let y = cardRect.minY
 
+        let cardPath = CGPath(roundedRect: cardRect.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 9, cornerHeight: 9, transform: nil)
         ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: 6), blur: 16, color: NSColor.black.withAlphaComponent(0.24).cgColor)
-        let cardPath = CGPath(roundedRect: cardRect, cornerWidth: 9, cornerHeight: 9, transform: nil)
         ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
         ctx.addPath(cardPath)
         ctx.fillPath()
-        ctx.restoreGState()
-
-        ctx.saveGState()
         ctx.addPath(cardPath)
         ctx.clip()
 
-        // 1) 单次位图块拷贝渲染 15 × 9 物理像素放大网格
-        let halfC = cols / 2
-        let halfR = rows / 2
-        let wMax = snapshot.sampler.width
-        let hMax = snapshot.sampler.height
+        let halfC = cols / 2, halfR = rows / 2
+        let wMax = snapshot.sampler.width, hMax = snapshot.sampler.height
         var patch = [UInt8](repeating: 255, count: cols * rows * 4)
         patch.withUnsafeMutableBufferPointer { buf in
             guard let base = buf.baseAddress else { return }
@@ -148,7 +178,6 @@ extension OverlayView {
             ctx.restoreGState()
         }
 
-        // 中心行列半透明天蓝十字高亮条带（复刻参考图视觉风格）
         let centerRect = CGRect(x: x + CGFloat(halfC) * cell, y: y + CGFloat(halfR) * cell, width: cell, height: cell)
         let bandColor = (eyedropperActive ? NSColor.systemYellow : NSColor(srgbRed: 0.22, green: 0.56, blue: 0.98, alpha: 1.0))
             .withAlphaComponent(0.32).cgColor
@@ -158,23 +187,19 @@ extension OverlayView {
         ctx.fill(CGRect(x: x, y: centerRect.minY, width: centerRect.minX - x, height: cell))
         ctx.fill(CGRect(x: centerRect.maxX, y: centerRect.minY, width: (x + loupeW) - centerRect.maxX, height: cell))
 
-        // 像素细网格线
-        ctx.setStrokeColor(NSColor(white: 0.5, alpha: 0.28).cgColor)
+        ctx.setStrokeColor(NSColor(white: 0.5, alpha: 0.26).cgColor)
         ctx.setLineWidth(0.5)
         for c in 1..<cols {
             let gx = x + CGFloat(c) * cell
-            ctx.move(to: CGPoint(x: gx, y: y))
-            ctx.addLine(to: CGPoint(x: gx, y: y + loupeH))
+            ctx.move(to: CGPoint(x: gx, y: y)); ctx.addLine(to: CGPoint(x: gx, y: y + loupeH))
         }
         for r in 1..<rows {
             let gy = y + CGFloat(r) * cell
-            ctx.move(to: CGPoint(x: x, y: gy))
-            ctx.addLine(to: CGPoint(x: x + loupeW, y: gy))
+            ctx.move(to: CGPoint(x: x, y: gy)); ctx.addLine(to: CGPoint(x: x + loupeW, y: gy))
         }
         ctx.strokePath()
 
-        // 网格白色外框 + 中心像素高对比瞄准框
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.82).cgColor)
+        ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
         ctx.setLineWidth(1.0)
         ctx.stroke(loupeRect.insetBy(dx: 0.5, dy: 0.5))
 
@@ -185,7 +210,6 @@ extension OverlayView {
         ctx.setLineWidth(1.0)
         ctx.stroke(centerRect.insetBy(dx: 0.5, dy: 0.5))
 
-        // 2) 底部居中极简信息区：坐标 + 色块色值 + 两行轻量文字提示
         let iy = y + loupeH
         let coord = formattedCoordinateAtCursor(px: sample.px, py: sample.py)
         Self.drawCenteredString(coord.text, centerX: x + cardW * 0.5, y: iy + 6, attrs: Self.coordTextAttrs)
@@ -208,7 +232,6 @@ extension OverlayView {
         Self.drawCenteredString("⇧ 切格式   ·   ` 锁定放大镜", centerX: x + cardW * 0.5, y: round(iy + 45), attrs: Self.hintLineAttrs)
         let copyHint = pickMode ? "单击吸取标注颜色" : "C 复制色值   ·   G 相对坐标"
         Self.drawCenteredString(copyHint, centerX: x + cardW * 0.5, y: round(iy + 64), attrs: Self.hintLineAttrs)
-
         ctx.restoreGState()
 
         ctx.saveGState()

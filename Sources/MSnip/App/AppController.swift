@@ -25,6 +25,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusBar()
         setupCallbacks()
         hotKeyManager.apply(config: config)
+        ScreenCapturer.prewarmDisplayCache()
         Task { @MainActor [weak self] in
             let ok = await ScreenCapturer.hasScreenCapturePermission()
             guard let self else { return }

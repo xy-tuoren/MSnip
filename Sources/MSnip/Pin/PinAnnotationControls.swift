@@ -28,6 +28,7 @@ final class PinToolbarPanel: NSPanel {
             defer: false
         )
         self.level = .floating
+        self.animationBehavior = .none
         self.isFloatingPanel = true
         self.hidesOnDeactivate = false
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
