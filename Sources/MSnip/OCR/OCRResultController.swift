@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 支持 Esc 键快速关闭与 ⌘↩ 一键复制的 OCR 对照浮窗面板
+/// 支持 Esc 键快速关闭与 ⌘↩ 一键复制的 OCR / 翻译双栏对照浮窗面板
 final class OCRFloatingWindow: NSPanel {
     var onEscape: (() -> Void)?
     var onQuickCopy: (() -> Void)?
@@ -25,10 +25,11 @@ final class OCRFloatingWindow: NSPanel {
     }
 }
 
-/// 左图（原生 Live Text 实况划词）+ 右文（可编辑 / 保持换行与合并段落切换 / 二维码提取）对照窗口控制器
+/// 左图（原生 Live Text 实况划词）+ 右文（可编辑原文 + 流式多引擎译文对照 / 二维码提取）窗口控制器
 @MainActor
 final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate {
     var onPinImage: ((CGImage, CGFloat, NSScreen) -> Void)?
+    var onOpenSettings: (() -> Void)?
 
     var window: OCRFloatingWindow?
     var titleLabel: NSTextField!
@@ -36,6 +37,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var leftTipLabel: NSTextField!
     var liveImageView: LiveTextImageView!
     var statusBadgeLabel: NSTextField!
+    var translateButton: OCRPillButton!
     var highlightButton: OCRPillButton!
     var modeSwitch: OCRModeSegmentView!
     var rightCard: NSView!
@@ -45,6 +47,16 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var qrOpenBtn: OCRPillButton!
     var textScrollView: NSScrollView!
     var textView: NSTextView!
+
+    // 流式翻译分栏控件
+    var transControlStrip: NSView!
+    var transHeaderLabel: NSTextField!
+    var enginePill: LightDropdownPill!
+    var targetLangPill: LightDropdownPill!
+    var transConfigBtn: OCRPillButton!
+    var transScrollView: NSScrollView!
+    var transTextView: NSTextView!
+
     var statsLabel: NSTextField!
     var pinButton: OCRPillButton!
     var copyButton: OCRPillButton!
@@ -54,20 +66,33 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var currentScreen: NSScreen?
     var currentOutput: OCRRecognitionOutput?
     var layoutMode: OCRLayoutMode = .preserveLines
+    var isTranslationActive: Bool = false
+    var selectedEngineID: UUID?
+    var selectedTargetLang: TranslationTargetLang?
+    var translationTask: Task<Void, Never>?
     var userEditedManually = false
     private var requestToken: UInt64 = 0
 
-    func present(cgImage: CGImage, scaleFactor: CGFloat, screen: NSScreen) {
+    func present(cgImage: CGImage, scaleFactor: CGFloat, screen: NSScreen, autoTranslate: Bool = false) {
         self.requestToken &+= 1
         let token = self.requestToken
+        translationTask?.cancel()
         self.currentCGImage = cgImage
         self.currentScale = max(1.0, scaleFactor)
         self.currentScreen = screen
         self.currentOutput = nil
         self.userEditedManually = false
+        self.isTranslationActive = autoTranslate
+        if autoTranslate { self.layoutMode = .mergeParagraphs }
 
         ensureWindowCreated()
         guard let win = window else { return }
+
+        modeSwitch.mode = layoutMode
+        translateButton.isToggledOn = isTranslationActive
+        titleLabel.stringValue = isTranslationActive ? "截图识字与翻译" : "截图提取文字"
+        copyButton.title = isTranslationActive ? "复制译文 (⌘↩)" : "复制文本 (⌘↩)"
+        refreshTranslationPopups()
 
         let logicalSize = NSSize(
             width: CGFloat(cgImage.width) / currentScale,
@@ -75,15 +100,16 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         )
         liveImageView.setPreviewImageOnly(cgImage: cgImage, logicalSize: logicalSize, highlightBlocks: highlightButton.isToggledOn)
         statusBadgeLabel.stringValue = "正在离线识别…"
-        statusBadgeLabel.textColor = NSColor(white: 0.72, alpha: 1)
+        statusBadgeLabel.textColor = MSnipUITheme.inkSecondary
         textView.string = ""
+        transTextView.string = autoTranslate ? "等待文字识别后立即翻译…" : ""
         qrBannerBox.isHidden = true
         updateStatsLabel()
         relayoutContent()
 
         if !win.isVisible {
             let vf = screen.visibleFrame
-            let w: CGFloat = 750, h: CGFloat = 468
+            let w: CGFloat = 810, h: CGFloat = 510
             win.setFrame(NSRect(x: round(vf.midX - w * 0.5), y: round(vf.midY - h * 0.5), width: w, height: h), display: true)
         }
         NSApp.activate(ignoringOtherApps: true)
@@ -101,8 +127,9 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         self.currentOutput = output
         if output.isEmpty {
             statusBadgeLabel.stringValue = "未识别到文字或二维码"
-            statusBadgeLabel.textColor = .systemOrange
+            statusBadgeLabel.textColor = MSnipUITheme.warning
             textView.string = ""
+            transTextView.string = ""
             qrBannerBox.isHidden = true
             updateStatsLabel()
             relayoutContent()
@@ -112,10 +139,12 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         let body = output.formattedText(for: layoutMode)
         textView.string = body
 
-        let autoClip = output.initialClipboardText
-        ClipboardAndSave.copyText(autoClip)
-        statusBadgeLabel.stringValue = "✓ 已自动复制 · \(autoClip.count) 字"
-        statusBadgeLabel.textColor = .systemGreen
+        if !isTranslationActive {
+            let autoClip = output.initialClipboardText
+            ClipboardAndSave.copyText(autoClip)
+            statusBadgeLabel.stringValue = "✓ 已自动复制 · \(autoClip.count) 字"
+            statusBadgeLabel.textColor = MSnipUITheme.success
+        }
 
         if let firstQR = output.qrPayloads.first {
             qrBannerBox.isHidden = false
@@ -127,6 +156,10 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         }
         updateStatsLabel()
         relayoutContent()
+
+        if isTranslationActive {
+            triggerStreamingTranslation()
+        }
     }
 
     func copyPreferredText() {
@@ -134,19 +167,40 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
             let sel = liveImageView.selectedText
             ClipboardAndSave.copyText(sel)
             statusBadgeLabel.stringValue = "✓ 已复制左图划选（\(sel.count) 字）"
-            statusBadgeLabel.textColor = .systemGreen
+            statusBadgeLabel.textColor = MSnipUITheme.success
+            relayoutContent()
             return
+        }
+        if isTranslationActive {
+            let selTrans = transTextView.selectedRange()
+            if selTrans.length > 0, let sub = (transTextView.string as NSString?)?.substring(with: selTrans) {
+                ClipboardAndSave.copyText(sub)
+                statusBadgeLabel.stringValue = "✓ 已复制选中译文（\(sub.count) 字）"
+                statusBadgeLabel.textColor = MSnipUITheme.success
+                relayoutContent()
+                return
+            }
+            let fullTrans = transTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !fullTrans.isEmpty {
+                ClipboardAndSave.copyText(fullTrans)
+                statusBadgeLabel.stringValue = "✓ 已复制全文译文（\(fullTrans.count) 字）"
+                statusBadgeLabel.textColor = MSnipUITheme.success
+                relayoutContent()
+                return
+            }
         }
         let selectedRange = textView.selectedRange()
         if selectedRange.length > 0, let sub = (textView.string as NSString?)?.substring(with: selectedRange) {
             ClipboardAndSave.copyText(sub)
             statusBadgeLabel.stringValue = "✓ 已复制选中文本（\(sub.count) 字）"
-            statusBadgeLabel.textColor = .systemGreen
+            statusBadgeLabel.textColor = MSnipUITheme.success
+            relayoutContent()
             return
         }
         ClipboardAndSave.copyText(textView.string)
         statusBadgeLabel.stringValue = "✓ 已复制全文（\(textView.string.count) 字）"
-        statusBadgeLabel.textColor = .systemGreen
+        statusBadgeLabel.textColor = MSnipUITheme.success
+        relayoutContent()
     }
 
     func updateStatsLabel() {

@@ -1,24 +1,33 @@
 import CoreGraphics
 import Foundation
 
-/// 单行一维多点像素特征签名（兼顾 O(H) 极速比对与水平多列防重名）
+/// 单行 6 分区抗亚像素抖动特征签名：
+/// - 纵向经过 `[1, 2, 1]/4` 平滑，彻底消除 `@1x` (1080p) 平滑滚动 `0.5px` 抗锯齿闪烁；
+/// - 配合 `detectActiveBands` 自动剥离未滚动的左/右侧固定目录栏或 Minimap，同时保留正文区全部水平特征防跨页误配。
 struct ScrollRowSig {
-    var luma: Int32      // 0...1020
-    var grad: Int32      // 行水平边缘梯度能量
-    var c0: SIMD3<Int16> // 4 个水平检查点 RGB
-    var c1: SIMD3<Int16>
-    var c2: SIMD3<Int16>
-    var c3: SIMD3<Int16>
+    var luma: Int32
+    var grad: Int32
+    var bands: SIMD8<Int16>  // 槽 0..5: 6 个水平分区的平滑亮度 (0..1020)
+    var chroma: SIMD8<Int16> // 槽 0..5: 6 个水平分区的平滑红蓝差色度
 
     @inline(__always)
-    func diff(to other: ScrollRowSig) -> Int32 {
-        let dl = abs(luma - other.luma) >> 2
+    func fullDiff(to other: ScrollRowSig) -> Int32 {
+        maskedDiff(to: other, activeMask: 0b111111, activeCount: 6)
+    }
+
+    @inline(__always)
+    func maskedDiff(to other: ScrollRowSig, activeMask: UInt8, activeCount: Int32) -> Int32 {
+        var bSum: Int32 = 0
+        var cSum: Int32 = 0
+        for i in 0..<6 where (activeMask & (1 << i)) != 0 {
+            bSum += Int32(abs(bands[i] - other.bands[i]))
+            cSum += Int32(abs(chroma[i] - other.chroma[i]))
+        }
+        let denom = max(1, activeCount)
+        let meanBand = bSum / (denom * 3)
+        let meanChroma = cSum / (denom * 3)
         let dg = abs(grad - other.grad) >> 1
-        let dc0 = abs(Int32(c0.x - other.c0.x)) + abs(Int32(c0.y - other.c0.y)) + abs(Int32(c0.z - other.c0.z))
-        let dc1 = abs(Int32(c1.x - other.c1.x)) + abs(Int32(c1.y - other.c1.y)) + abs(Int32(c1.z - other.c1.z))
-        let dc2 = abs(Int32(c2.x - other.c2.x)) + abs(Int32(c2.y - other.c2.y)) + abs(Int32(c2.z - other.c2.z))
-        let dc3 = abs(Int32(c3.x - other.c3.x)) + abs(Int32(c3.y - other.c3.y)) + abs(Int32(c3.z - other.c3.z))
-        return dl + dg + ((dc0 + dc1 + dc2 + dc3) / 12)
+        return meanBand + meanChroma + dg
     }
 }
 
@@ -27,132 +36,192 @@ struct ScrollFrameDigest {
     let sampler: PixelSampler
     let rows: [ScrollRowSig]
 
-    static func build(for image: CGImage) -> ScrollFrameDigest {
-        let sampler = PixelSampler(cgImage: image)
+    static func build(for image: CGImage, detach: Bool = false) -> ScrollFrameDigest {
+        let owned = detach
+            ? (detachCopy(image, rect: CGRect(x: 0, y: 0, width: image.width, height: image.height)) ?? image)
+            : image
+        let sampler = PixelSampler(cgImage: owned)
         let w = sampler.width, h = sampler.height
-        let rightMargin = min(max(8, w / 22), 36)
-        let x0 = min(4, w / 10)
-        let x1 = max(x0 + 4, w - rightMargin)
-        let span = max(1, x1 - x0)
-        let cp0 = x0 + span * 18 / 100
-        let cp1 = x0 + span * 40 / 100
-        let cp2 = x0 + span * 62 / 100
-        let cp3 = x0 + span * 84 / 100
-        let stepX = max(2, span / 48)
+        let rightMargin = min(max(10, w / 18), 42)
+        let x0 = min(4, w / 16)
+        let x1 = max(x0 + 12, w - rightMargin)
+        let span = max(6, x1 - x0)
 
-        var sigs: [ScrollRowSig] = []
-        sigs.reserveCapacity(h)
+        var rawBands = [[Int32]](repeating: [Int32](repeating: 0, count: 6), count: h)
+        var rawChroma = [[Int32]](repeating: [Int32](repeating: 0, count: 6), count: h)
+        var rawGrad = [Int32](repeating: 0, count: h)
+        var rawLuma = [Int32](repeating: 0, count: h)
 
         for y in 0..<h {
-            var lumaSum: Int32 = 0
             var gradSum: Int32 = 0
-            var count: Int32 = 0
+            var gradCnt: Int32 = 0
+            var lumaSum: Int32 = 0
             var prevL: Int32?
-            var x = x0
-            while x < x1 {
-                let (r, g, b) = sampler.sampleRGB(px: x, py: y)
-                let l = Int32(r + (g << 1) + b)
-                lumaSum += l
-                if let pl = prevL { gradSum += abs(l - pl) }
-                prevL = l
-                count += 1
-                x += stepX
+
+            for b in 0..<6 {
+                let bx0 = x0 + span * b / 6
+                let bx1 = x0 + span * (b + 1) / 6
+                let bSpan = max(1, bx1 - bx0)
+                var bSum: Int32 = 0
+                var cSum: Int32 = 0
+                for s in 0..<4 {
+                    let px = bx0 + bSpan * (s * 2 + 1) / 8
+                    let (r, g, bl) = sampler.sampleRGB(px: px, py: y)
+                    let l = Int32(r + (g << 1) + bl)
+                    bSum += l
+                    cSum += Int32(r - bl) + Int32(g - bl)
+                    lumaSum += l
+                    if let pl = prevL { gradSum += abs(l - pl); gradCnt += 1 }
+                    prevL = l
+                }
+                rawBands[y][b] = bSum >> 2
+                rawChroma[y][b] = cSum >> 2
             }
-            let p0 = sampler.sampleRGB(px: cp0, py: y)
-            let p1 = sampler.sampleRGB(px: cp1, py: y)
-            let p2 = sampler.sampleRGB(px: cp2, py: y)
-            let p3 = sampler.sampleRGB(px: cp3, py: y)
-            sigs.append(ScrollRowSig(
-                luma: count > 0 ? (lumaSum / count) : 0,
-                grad: count > 1 ? (gradSum / (count - 1)) : 0,
-                c0: SIMD3(Int16(p0.0), Int16(p0.1), Int16(p0.2)),
-                c1: SIMD3(Int16(p1.0), Int16(p1.1), Int16(p1.2)),
-                c2: SIMD3(Int16(p2.0), Int16(p2.1), Int16(p2.2)),
-                c3: SIMD3(Int16(p3.0), Int16(p3.1), Int16(p3.2))
-            ))
+            rawLuma[y] = lumaSum / 24
+            rawGrad[y] = gradCnt > 0 ? (gradSum / gradCnt) : 0
         }
-        return ScrollFrameDigest(image: image, sampler: sampler, rows: sigs)
+
+        // 纵向 [1, 2, 1] / 4 平滑，抑制 @1x 屏幕亚像素抗锯齿跳变，同时保留单像素峰值定位
+        var sigs: [ScrollRowSig] = []
+        sigs.reserveCapacity(h)
+        for y in 0..<h {
+            let ym = max(0, y - 1), yp = min(h - 1, y + 1)
+            var sb = SIMD8<Int16>()
+            var sc = SIMD8<Int16>()
+            for k in 0..<6 {
+                sb[k] = Int16(clamping: (rawBands[ym][k] + (rawBands[y][k] << 1) + rawBands[yp][k]) >> 2)
+                sc[k] = Int16(clamping: (rawChroma[ym][k] + (rawChroma[y][k] << 1) + rawChroma[yp][k]) >> 2)
+            }
+            let sl = (rawLuma[ym] + (rawLuma[y] << 1) + rawLuma[yp]) >> 2
+            let sg = (rawGrad[ym] + (rawGrad[y] << 1) + rawGrad[yp]) >> 2
+            sigs.append(ScrollRowSig(luma: sl, grad: sg, bands: sb, chroma: sc))
+        }
+        return ScrollFrameDigest(image: owned, sampler: sampler, rows: sigs)
     }
 
-    /// 识别顶/底连续未变化区：返回用于匹配排他区的 `(matchTop, matchBottom)` 及真正含固定控件的 `(stickyTop, stickyBottom)`
+    /// 自动识别在两帧之间实际发生滚动变化的水平分区掩码（自动排除左侧固定目录栏或右侧静态边栏）
+    static func detectActiveBands(
+        a: [ScrollRowSig],
+        b: [ScrollRowSig],
+        workTop: Int,
+        workBottom: Int
+    ) -> (mask: UInt8, count: Int32) {
+        let spanH = max(1, workBottom - workTop)
+        var mask: UInt8 = 0
+        var count: Int32 = 0
+        for i in 0..<6 {
+            var changedRows = 0
+            for y in workTop..<workBottom {
+                let db = abs(Int32(a[y].bands[i] - b[y].bands[i]))
+                let dc = abs(Int32(a[y].chroma[i] - b[y].chroma[i]))
+                if db > 10 || dc > 10 { changedRows += 1 }
+            }
+            // 若该纵向条带有 >= 6% 的行发生变化，则属于正在滚动的正文列；否则为静态侧边栏
+            if changedRows * 100 >= spanH * 6 {
+                mask |= (1 << i)
+                count += 1
+            }
+        }
+        if count == 0 { return (0b111111, 6) }
+        return (mask, count)
+    }
+
+    /// 识别顶/底连续未变化区：仅当静态带内部具备足够 UI 纹理行时才认定为 Sticky 固定栏（防止将段落留白误锁为导航栏）
     static func detectStaticMargins(
         a: [ScrollRowSig],
         b: [ScrollRowSig],
         height: Int
     ) -> (matchTop: Int, matchBottom: Int, stickyTop: Int, stickyBottom: Int) {
-        let limit = height * 40 / 100
+        let limit = height * 28 / 100
 
         var topEnd = 0
-        var hasTopTexture = false
+        var topTexturedRows = 0
         for y in 0..<limit {
-            if a[y].diff(to: b[y]) <= 5 {
+            if a[y].fullDiff(to: b[y]) <= 6 {
                 topEnd = y + 1
-                if a[y].grad >= 3 { hasTopTexture = true }
-            } else {
-                break
-            }
+                if a[y].grad >= 4 { topTexturedRows += 1 }
+            } else { break }
         }
 
         var botCount = 0
-        var hasBotTexture = false
+        var botTexturedRows = 0
         for offset in 0..<limit {
             let y = height - 1 - offset
-            if a[y].diff(to: b[y]) <= 5 {
+            if a[y].fullDiff(to: b[y]) <= 6 {
                 botCount = offset + 1
-                if a[y].grad >= 3 { hasBotTexture = true }
-            } else {
-                break
-            }
+                if a[y].grad >= 4 { botTexturedRows += 1 }
+            } else { break }
         }
-        if topEnd > 0, topEnd < height, abs(a[topEnd - 1].luma - a[topEnd].luma) >= 24 {
-            hasTopTexture = true
-        }
-        let botEdgeY = height - botCount
-        if botCount > 0, botEdgeY > 0, abs(a[botEdgeY].luma - a[botEdgeY - 1].luma) >= 24 {
-            hasBotTexture = true
-        }
+
+        let isTrueStickyTop = topEnd >= 10 && topTexturedRows >= max(3, topEnd / 10)
+        let isTrueStickyBot = botCount >= 10 && botTexturedRows >= max(3, botCount / 10)
 
         return (
             matchTop: topEnd,
             matchBottom: botCount,
-            stickyTop: hasTopTexture ? topEnd : 0,
-            stickyBottom: hasBotTexture ? botCount : 0
+            stickyTop: isTrueStickyTop ? topEnd : 0,
+            stickyBottom: isTrueStickyBot ? botCount : 0
         )
     }
 
+    /// 二维像素验证：仅在活跃滚动列内抽检，支持 `±1px` 亚像素插值容差，确保跨页空白不会误匹配
     static func verify2DOverlap(
         anchor: PixelSampler,
         curr: PixelSampler,
         width: Int,
+        height: Int,
         workTop: Int,
         workBottom: Int,
-        dy: Int
+        dy: Int,
+        activeMask: UInt8
     ) -> Bool {
         let startY = max(workTop, workTop - dy)
         let endY = min(workBottom, workBottom - dy)
-        guard endY - startY >= 20 else { return false }
-        let usableW = max(16, width - min(max(8, width / 22), 36))
-        let xs = [usableW * 15 / 100, usableW * 32 / 100, usableW * 50 / 100, usableW * 68 / 100, usableW * 85 / 100]
-        let stepY = max(2, (endY - startY) / 28)
+        guard endY - startY >= 16 else { return false }
 
-        var errSum = 0
+        let rightMargin = min(max(10, width / 18), 42)
+        let x0 = min(4, width / 16)
+        let span = max(12, max(x0 + 12, width - rightMargin) - x0)
+
+        var xs: [Int] = []
+        for b in 0..<6 where (activeMask & (1 << b)) != 0 {
+            xs.append(x0 + span * (b * 2 + 1) / 12)
+            xs.append(x0 + span * (b * 2 + 1) / 12 + max(2, span / 24))
+        }
+        if xs.isEmpty { xs = [width * 30 / 100, width * 50 / 100, width * 70 / 100] }
+
+        let stepY = max(1, (endY - startY) / 36)
+        var totalErr: Double = 0
         var samples = 0
         var cy = startY
         while cy < endY {
             let ay = cy + dy
+            let ayPrev = max(0, ay - 1)
+            let ayNext = min(height - 1, ay + 1)
             for x in xs {
-                let pa = anchor.sampleRGB(px: x, py: ay)
                 let pc = curr.sampleRGB(px: x, py: cy)
-                errSum += abs(pa.0 - pc.0) + abs(pa.1 - pc.1) + abs(pa.2 - pc.2)
+                let p0 = anchor.sampleRGB(px: x, py: ay)
+                let e0 = abs(p0.0 - pc.0) + abs(p0.1 - pc.1) + abs(p0.2 - pc.2)
+                if e0 <= 9 {
+                    totalErr += Double(e0)
+                } else {
+                    let pPrev = anchor.sampleRGB(px: x, py: ayPrev)
+                    let pNext = anchor.sampleRGB(px: x, py: ayNext)
+                    let ePrev = abs(pPrev.0 - pc.0) + abs(pPrev.1 - pc.1) + abs(pPrev.2 - pc.2) + 3
+                    let eNext = abs(pNext.0 - pc.0) + abs(pNext.1 - pc.1) + abs(pNext.2 - pc.2) + 3
+                    let eMid = abs(((p0.0 + pNext.0) >> 1) - pc.0)
+                        + abs(((p0.1 + pNext.1) >> 1) - pc.1)
+                        + abs(((p0.2 + pNext.2) >> 1) - pc.2) + 2
+                    totalErr += Double(min(min(e0, eMid), min(ePrev, eNext)))
+                }
                 samples += 3
             }
             cy += stepY
         }
         guard samples > 0 else { return false }
-        return Double(errSum) / Double(samples) <= 12.0
+        return (totalErr / Double(samples)) <= 16.0
     }
 
-    /// 将裁剪区域拷贝至独立内存位图，立即释放 SCStream 的底层 IOSurface 缓冲池
     static func detachCopy(_ src: CGImage, rect: CGRect) -> CGImage? {
         guard let cropped = src.cropping(to: rect), cropped.width > 0, cropped.height > 0 else { return nil }
         let w = cropped.width, h = cropped.height
@@ -163,6 +232,61 @@ struct ScrollFrameDigest {
         ) else { return nil }
         ctx.interpolationQuality = .none
         ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage()
+    }
+
+    static func makePreviewSlice(_ src: CGImage, maxWidthPx: Int = 340) -> CGImage {
+        guard src.width > maxWidthPx else { return src }
+        let ratio = CGFloat(maxWidthPx) / CGFloat(src.width)
+        let ph = max(1, Int((CGFloat(src.height) * ratio).rounded()))
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil, width: maxWidthPx, height: ph, bitsPerComponent: 8, bytesPerRow: 0,
+            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return src }
+        ctx.interpolationQuality = .medium
+        ctx.draw(src, in: CGRect(x: 0, y: 0, width: maxWidthPx, height: ph))
+        return ctx.makeImage() ?? src
+    }
+
+    static func composeStrips(
+        widthPx fullW: Int,
+        totalHeightPx fullH: Int,
+        strips: [CGImage],
+        previewStrips: [CGImage],
+        footer: CGImage?,
+        previewFooter: CGImage?,
+        scaleDownToMaxSide: Int?,
+        usePreviewSlices: Bool
+    ) -> CGImage? {
+        guard fullW > 0, fullH > 0 else { return nil }
+        var scale: CGFloat = 1.0
+        if let maxSide = scaleDownToMaxSide, max(fullW, fullH) > maxSide {
+            scale = CGFloat(maxSide) / CGFloat(max(fullW, fullH))
+        }
+        let outW = max(1, Int((CGFloat(fullW) * scale).rounded()))
+        let outH = max(1, Int((CGFloat(fullH) * scale).rounded()))
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(
+            data: nil, width: outW, height: outH, bitsPerComponent: 8, bytesPerRow: 0,
+            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.interpolationQuality = scale < 1.0 ? .medium : .none
+        var cursorTopPx = 0
+        for i in strips.indices {
+            let ph = strips[i].height
+            let tex = (usePreviewSlices && previewStrips.indices.contains(i)) ? previewStrips[i] : strips[i]
+            let dstY = CGFloat(fullH - cursorTopPx - ph) * scale
+            ctx.draw(tex, in: CGRect(x: 0, y: dstY, width: CGFloat(outW), height: CGFloat(ph) * scale))
+            cursorTopPx += ph
+        }
+        if let footer {
+            let ph = footer.height
+            let tex = (usePreviewSlices ? previewFooter : nil) ?? footer
+            let dstY = CGFloat(fullH - cursorTopPx - ph) * scale
+            ctx.draw(tex, in: CGRect(x: 0, y: dstY, width: CGFloat(outW), height: CGFloat(ph) * scale))
+        }
         return ctx.makeImage()
     }
 }

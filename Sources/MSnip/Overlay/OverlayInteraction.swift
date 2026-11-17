@@ -92,12 +92,13 @@ extension OverlayView {
 
         if let handle = Geometry.hitHandle(at: p, in: sel) {
             deactivateInPlaceOCR()
+            deactivateInPlaceTranslate()
             selectedObjectIndex = nil
             dragOp = .resizingSelection(handle: handle, initialRect: sel, mouseStart: p)
             return
         }
 
-        if toolbar.inPlaceOCRActive && sel.contains(p) {
+        if (toolbar.inPlaceOCRActive || toolbar.inPlaceTranslateActive) && sel.contains(p) {
             return
         }
 
@@ -223,14 +224,16 @@ extension OverlayView {
         case .pendingSnapOrCreate(_, let snapRect):
             if let snap = snapRect, snap.width >= 6, snap.height >= 6 {
                 selection = snap
-                if quickOCRMode { activateInPlaceOCR() }
+                if quickTranslateMode { activateInPlaceTranslate() }
+                else if quickOCRMode { activateInPlaceOCR() }
             }
         case .creatingSelection:
             if let sel = selection, (sel.width < 6 || sel.height < 6) {
                 selection = nil
                 updateAutoSnap(at: convert(event.locationInWindow, from: nil))
-            } else if quickOCRMode, selection != nil {
-                activateInPlaceOCR()
+            } else if selection != nil {
+                if quickTranslateMode { activateInPlaceTranslate() }
+                else if quickOCRMode { activateInPlaceOCR() }
             }
         case .movingSelection, .resizingSelection:
             needsDisplay = true

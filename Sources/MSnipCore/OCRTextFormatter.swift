@@ -165,7 +165,7 @@ public enum OCRTextFormatter {
     }
 
     /// 中日韩字符之间无缝拼接，拉丁词/数字之间自动补单个空格
-    static func smartInlineJoiner(left: String, right: String) -> String {
+    public static func smartInlineJoiner(left: String, right: String) -> String {
         guard let lScalar = left.unicodeScalars.last,
               let rScalar = right.unicodeScalars.first else { return "" }
         if isCJKOrFullwidth(lScalar) || isCJKOrFullwidth(rScalar) {

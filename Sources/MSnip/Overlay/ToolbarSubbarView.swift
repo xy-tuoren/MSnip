@@ -60,6 +60,7 @@ final class ToolbarSubbarView: NSView {
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let idx = slots.firstIndex(where: { $0.rect.contains(p) })
+        if idx != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         if idx != hoveredIndex {
             hoveredIndex = idx
             toolTip = idx.map { slots[$0].tip }
@@ -195,17 +196,9 @@ final class ToolbarSubbarView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let bgRect = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 7.5, cornerHeight: 7.5, transform: nil)
+        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 8.5)
         ctx.saveGState()
-        ctx.setFillColor(NSColor(srgbRed: 0.965, green: 0.968, blue: 0.976, alpha: 0.96).cgColor)
-        ctx.addPath(bgPath)
-        ctx.fillPath()
-        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.11).cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.addPath(bgPath)
-        ctx.strokePath()
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.10).cgColor)
+        ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
         for sx in sepXs {
             ctx.fill(CGRect(x: sx, y: 8, width: 1, height: Self.subHeight - 16))
         }

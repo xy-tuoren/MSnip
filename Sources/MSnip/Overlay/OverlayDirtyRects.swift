@@ -89,11 +89,13 @@ extension OverlayView {
         sidePills.setFrameOrigin(NSPoint(x: round(px), y: round(py)))
 
         if let ocrV = inPlaceOCRView { ocrV.frame = sel }
+        if let trV = inPlaceTranslateView { trV.frame = sel }
     }
 
     func clearSelectionFromSibling() {
         cancelTextEditing()
         deactivateInPlaceOCR()
+        deactivateInPlaceTranslate()
         stopSnapGlide()
         selection = nil
         lastMousePoint = nil
@@ -107,7 +109,7 @@ extension OverlayView {
     }
 
     func repositionSubbar() {
-        let shouldShow = !toolbar.isHidden && !toolbar.inPlaceOCRActive && (activeTool != nil || selectedObjectIndex != nil)
+        let shouldShow = !toolbar.isHidden && !toolbar.inPlaceOCRActive && !toolbar.inPlaceTranslateActive && (activeTool != nil || selectedObjectIndex != nil)
         guard shouldShow else {
             subbar.isHidden = true
             return

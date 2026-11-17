@@ -12,6 +12,7 @@ extension OverlayView {
             eyedropperActive = false
             if tool != nil {
                 deactivateInPlaceOCR()
+                deactivateInPlaceTranslate()
                 selectedObjectIndex = nil
             }
             activeTool = tool
@@ -67,6 +68,10 @@ extension OverlayView {
             toggleInPlaceOCR()
         case .extractTextWindow:
             exportAndFinish(mode: .extractText)
+        case .toggleInPlaceTranslate:
+            toggleInPlaceTranslate()
+        case .translateWindow:
+            exportAndFinish(mode: .translateWindow)
         case .startLongShot:
             beginLongShot()
         case .startRecording:
@@ -88,20 +93,14 @@ extension OverlayView {
         commitTextEditing()
         guard let targetRect = selection ?? hoveredAutoRect,
               targetRect.width >= 2, targetRect.height >= 2,
-              let baked = AnnotationRenderer.bakeExportImage(
-                  sampler: snapshot.sampler,
-                  selection: targetRect,
-                  imageScale: snapshot.scaleFactor,
-                  annotations: doc.objects,
-                  cornerRadiusPt: cornerRadiusPt,
-                  backdropStyle: backdropStyle
-              ) else { return }
+              let baked = currentExportableImage(for: targetRect, plainForOCR: false) else { return }
         onQuickSaveInPlace?(baked, snapshot.scaleFactor, targetRect)
     }
 
     func beginLongShot() {
         commitTextEditing()
         deactivateInPlaceOCR()
+        deactivateInPlaceTranslate()
         guard let raw = selection ?? hoveredAutoRect else {
             ToastHUD.show(message: "请先框选或悬停要滚动截取的区域")
             return
@@ -117,8 +116,8 @@ extension OverlayView {
         let s = snapshot.scaleFactor
         let pxRect = CGRect(
             x: round(rect.minX * s), y: round(rect.minY * s),
-            width: CGFloat(Int((rect.width * s).rounded()) & ~1),
-            height: CGFloat(Int((rect.height * s).rounded()) & ~1)
+            width: CGFloat(max(24, Int((rect.width * s).rounded()))),
+            height: CGFloat(max(32, Int((rect.height * s).rounded())))
         )
         onStartLongShot?(snapshot.screen, rect, snapshot.cgImage.cropping(to: pxRect))
     }

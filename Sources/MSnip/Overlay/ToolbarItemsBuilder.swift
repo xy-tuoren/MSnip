@@ -89,10 +89,10 @@ extension ToolbarView {
         x = appendDivider(at: x, into: &list)
 
         if isPinEditorMode {
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "放弃修改 (Esc)", enabled: true, tint: .systemRed, action: .cancel))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "checkmark", tip: "更新贴图 (↩)", enabled: true, tint: Self.accentBlue, prominent: true, action: .confirmCopy))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "放弃修改 (Esc)", enabled: true, tint: MSnipUITheme.danger, action: .cancel))
+            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "完成", tip: "更新贴图 (↩)"))
         } else {
-            // 3) 页面内交互与多模态功能键（长截图 / 录视频 / 页内实况识字 [A]）
+            // 3) 页面内交互与多模态功能键（长截图 / 录视频 / 页内实况识字 / 页内翻译）
             list.append(iconAction(x: &x, y: y, h: h, symbol: "scissors", tip: "滚动长截图 (L)", enabled: true, action: .startLongShot))
             list.append(iconAction(x: &x, y: y, h: h, symbol: "video", tip: "选区录制 GIF / MP4 视频 (V)", enabled: true, action: .startRecording))
             list.append(iconAction(
@@ -106,14 +106,25 @@ extension ToolbarView {
                 tint: inPlaceOCRActive ? Self.accentBlue : Self.inkDark,
                 action: .toggleInPlaceOCR
             ))
+            list.append(iconAction(
+                x: &x, y: y, h: h,
+                symbol: "character.bubble",
+                tip: inPlaceTranslateActive
+                    ? "正在页内原位翻译：可按住画面对比原图，按 ↩ 复制翻译图（再次点击还原 · ⌥+点击打开双栏流式翻译窗）"
+                    : "截图翻译：原位替换译文 (Y · ⌥+点击打开双栏流式对照翻译窗)",
+                enabled: true,
+                active: inPlaceTranslateActive,
+                tint: inPlaceTranslateActive ? Self.accentBlue : Self.inkDark,
+                action: .toggleInPlaceTranslate
+            ))
 
             x = appendDivider(at: x, into: &list)
 
-            // 4) 终态输出组：贴图 / 保存 / 关闭 / 复制完成
+            // 4) 终态输出组：贴图 / 保存 / 关闭 / 醒目蓝色复制主胶囊
             list.append(iconAction(x: &x, y: y, h: h, symbol: "pin", tip: "贴到桌面 (\(pinHint))", enabled: true, action: .pin))
             list.append(iconAction(x: &x, y: y, h: h, symbol: "square.and.arrow.down", tip: "保存图片（⌘S 另存… · ⌘⇧S 或 ⌥+点击 一键快存）", enabled: true, action: .save))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出截图 (Esc)", enabled: true, action: .cancel))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "doc.on.doc", tip: "复制到剪贴板 (↩ / 双击选区)", enabled: true, tint: Self.accentBlue, prominent: true, action: .confirmCopy))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出截图 (Esc)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
+            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "复制", tip: "复制到剪贴板 (↩ / 双击选区)"))
         }
 
         items = list
@@ -192,6 +203,39 @@ extension ToolbarView {
                 Self.drawSymbol(symbol, in: r, alpha: enabled ? 0.94 : 0.30, tint: tint)
             },
             action: action
+        )
+    }
+
+    private func primaryConfirmItem(
+        x: inout CGFloat,
+        y: CGFloat,
+        h: CGFloat,
+        label: String,
+        tip: String
+    ) -> HitItem {
+        let w: CGFloat = 58
+        let rect = CGRect(x: x + 2, y: y, width: w, height: h)
+        x += w + 4
+        return HitItem(
+            rect: rect,
+            tooltip: tip,
+            enabled: true,
+            draw: { ctx, r, hov in
+                MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 6.5, hovered: hov)
+                let iconRect = CGRect(x: r.minX + 6, y: r.minY, width: 15, height: r.height)
+                Self.drawSymbol("checkmark", in: iconRect, alpha: 1.0, tint: .white)
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+                    .foregroundColor: NSColor.white
+                ]
+                let ns = label as NSString
+                let sz = ns.size(withAttributes: attrs)
+                ns.draw(
+                    at: CGPoint(x: round(iconRect.maxX + 2), y: round(r.minY + (r.height - sz.height) * 0.5)),
+                    withAttributes: attrs
+                )
+            },
+            action: .confirmCopy
         )
     }
 }

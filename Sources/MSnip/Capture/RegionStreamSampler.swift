@@ -6,7 +6,7 @@ import Foundation
 import ScreenCaptureKit
 import VideoToolbox
 
-/// 面向长截图的局部选区实时帧采集器：
+/// 面向长截图与区域录屏的局部选区实时帧采集器：
 /// 基于 `SCStream` 仅抓取选区矩形，并自动在 `SCContentFilter` 中剔除 `MSnip` 自身全部窗口。
 @MainActor
 final class RegionStreamSampler {
@@ -20,6 +20,7 @@ final class RegionStreamSampler {
         localTopLeftRect: CGRect,
         fps: Int = 20,
         showsCursor: Bool = false,
+        losslessBGRA: Bool = false,
         onFrameBackground: @escaping @Sendable (CGImage) -> Void,
         onError: @escaping @MainActor (String) -> Void
     ) {
@@ -55,11 +56,38 @@ final class RegionStreamSampler {
                 let filter = SCContentFilter(display: scDisplay, excludingWindows: ownWindows)
 
                 let cfg = SCStreamConfiguration()
-                cfg.sourceRect = clampedRect
-                cfg.width = max(24, Int((clampedRect.width * scale).rounded()) & ~1)
-                cfg.height = max(32, Int((clampedRect.height * scale).rounded()) & ~1)
+                if losslessBGRA {
+                    // 长截图模式：严格对齐物理整数像素并使用无损 32BGRA + sRGB，杜绝奇偶宽高二次缩放与色度抽样失真
+                    let pxX = round(clampedRect.minX * scale)
+                    let pxY = round(clampedRect.minY * scale)
+                    let pxW = max(24, Int((clampedRect.width * scale).rounded()))
+                    let pxH = max(32, Int((clampedRect.height * scale).rounded()))
+                    cfg.sourceRect = CGRect(
+                        x: pxX / scale,
+                        y: pxY / scale,
+                        width: CGFloat(pxW) / scale,
+                        height: CGFloat(pxH) / scale
+                    )
+                    cfg.width = pxW
+                    cfg.height = pxH
+                    cfg.pixelFormat = kCVPixelFormatType_32BGRA
+                    cfg.colorSpaceName = CGColorSpace.sRGB
+                    cfg.queueDepth = 8
+                } else {
+                    // 视频编码模式：保持偶数像素尺寸以满足 H.264 4:2:0 要求
+                    let evenW = max(24, Int((clampedRect.width * scale).rounded()) & ~1)
+                    let evenH = max(32, Int((clampedRect.height * scale).rounded()) & ~1)
+                    cfg.sourceRect = CGRect(
+                        x: clampedRect.minX,
+                        y: clampedRect.minY,
+                        width: CGFloat(evenW) / scale,
+                        height: CGFloat(evenH) / scale
+                    )
+                    cfg.width = evenW
+                    cfg.height = evenH
+                    cfg.queueDepth = 5
+                }
                 cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(5, fps)))
-                cfg.queueDepth = 4
                 cfg.showsCursor = showsCursor
                 cfg.capturesAudio = false
 

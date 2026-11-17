@@ -76,13 +76,19 @@ final class LongShotSession {
         }
 
         let stitcherRef = self.stitcher
+        let previewGate = PreviewThrottleGate(minInterval: 0.075)
         sampler.start(
             screen: screen,
             localTopLeftRect: rounded,
+            fps: 60,
+            losslessBGRA: true,
             onFrameBackground: { [weak self] frame in
                 let step = stitcherRef.ingest(frame: frame)
                 guard step != .unchanged, step != .scrolledBackward else { return }
-                let preview = stitcherRef.renderPreviewImage()
+                let forcePreview = (step == .reachedHeightLimit)
+                let preview = previewGate.shouldRender(force: forcePreview)
+                    ? stitcherRef.renderPreviewImage()
+                    : nil
                 Task { @MainActor [weak self] in
                     self?.applyStitchResult(step, preview: preview)
                 }
@@ -219,7 +225,7 @@ final class LongShotSession {
         case .mismatchLostOverlap:
             autoScroller.stop()
             borderView?.statusStyle = .warning
-            borderView?.statusText = "⚠ 滚动过快，请稍微往回滚一点对齐"
+            borderView?.statusText = "⚠ 跨屏略快：往回滚可对齐，继续下滚自动续接"
         case .reachedHeightLimit:
             autoScroller.stop()
             borderView?.statusStyle = .finishedBottom

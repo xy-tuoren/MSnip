@@ -3,33 +3,31 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 贴图内容容器：承载实况文本图层、右上角悬停微操作胶囊（二次标注 / 拖出 PNG）与 `NSDraggingSource` 外部文件直投
+/// 贴图内容容器：承载实况文本图层、右上角清爽白底四联悬停微操作胶囊（圈记 / 识字翻译 / 拖出 PNG / 关闭）
 final class PinContentView: NSView, NSDraggingSource {
     let liveTextView = LiveTextImageView(scaling: .scaleAxesIndependently)
     var onRequestAnnotate: (() -> Void)?
+    var onRequestOCR: (() -> Void)?
+    var onRequestClose: (() -> Void)?
     var onRequestFileDrag: ((NSEvent) -> Void)?
 
-    var isGhostMode: Bool = false {
-        didSet { updateChromeState() }
-    }
-    var isAnnotating: Bool = false {
-        didSet { updateChromeState() }
-    }
+    var isGhostMode: Bool = false { didSet { updateChromeState() } }
+    var isAnnotating: Bool = false { didSet { updateChromeState() } }
+    private var isMouseInside = false { didSet { updateChromeState() } }
 
-    private var isMouseInside = false {
-        didSet { updateChromeState() }
-    }
     private let hoverBar = NSView()
     private let annotatePill = PinMicroButton(symbol: "pencil.tip", tip: "二次圈记标注贴图 (E)")
-    private let dragOutPill = PinMicroButton(symbol: "arrow.up.forward.square", tip: "按住拖出为 PNG 文件 (或按住 ⌘ 拖拽贴图)")
+    private let ocrPill = PinMicroButton(symbol: "text.viewfinder", tip: "提取文字与对照翻译 (T)")
+    private let dragOutPill = PinMicroButton(symbol: "arrow.up.forward.square", tip: "按住直拖 PNG 文件到微信/飞书 (⌘+拖拽)")
+    private let closePill = PinMicroButton(symbol: "xmark", tip: "关闭贴图 (Esc / 双击)", tint: MSnipUITheme.danger)
 
     init(cgImage: CGImage, baseSize: NSSize) {
         super.init(frame: NSRect(origin: .zero, size: baseSize))
         wantsLayer = true
-        layer?.cornerRadius = 4
+        layer?.cornerRadius = 6
         layer?.masksToBounds = true
         layer?.borderWidth = 1.0
-        layer?.borderColor = NSColor.white.withAlphaComponent(0.45).cgColor
+        layer?.borderColor = MSnipUITheme.borderStrong.cgColor
 
         liveTextView.frame = bounds
         liveTextView.autoresizingMask = [.width, .height]
@@ -45,22 +43,26 @@ final class PinContentView: NSView, NSDraggingSource {
 
     private func setupHoverBar() {
         hoverBar.wantsLayer = true
-        hoverBar.layer?.backgroundColor = NSColor(calibratedWhite: 0.10, alpha: 0.84).cgColor
-        hoverBar.layer?.cornerRadius = 6
-        hoverBar.layer?.borderWidth = 0.8
-        hoverBar.layer?.borderColor = NSColor.white.withAlphaComponent(0.22).cgColor
+        hoverBar.layer?.backgroundColor = MSnipUITheme.cardBg.cgColor
+        hoverBar.layer?.cornerRadius = 7.5
+        hoverBar.layer?.borderWidth = 1.0
+        hoverBar.layer?.borderColor = MSnipUITheme.borderStrong.cgColor
+        hoverBar.layer?.shadowColor = NSColor.black.cgColor
+        hoverBar.layer?.shadowOpacity = 0.14
+        hoverBar.layer?.shadowRadius = 6
+        hoverBar.layer?.shadowOffset = CGSize(width: 0, height: -1)
         hoverBar.isHidden = true
 
-        annotatePill.frame = NSRect(x: 3, y: 2, width: 22, height: 22)
-        dragOutPill.frame = NSRect(x: 27, y: 2, width: 22, height: 22)
-        annotatePill.onMouseDown = { [weak self] _ in
-            self?.onRequestAnnotate?()
+        let buttons = [annotatePill, ocrPill, dragOutPill, closePill]
+        for (i, b) in buttons.enumerated() {
+            b.frame = NSRect(x: 4 + CGFloat(i) * 25, y: 3, width: 23, height: 22)
+            hoverBar.addSubview(b)
         }
-        dragOutPill.onMouseDown = { [weak self] event in
-            self?.onRequestFileDrag?(event)
-        }
-        hoverBar.addSubview(annotatePill)
-        hoverBar.addSubview(dragOutPill)
+        annotatePill.onMouseDown = { [weak self] _ in self?.onRequestAnnotate?() }
+        ocrPill.onMouseDown = { [weak self] _ in self?.onRequestOCR?() }
+        dragOutPill.onMouseDown = { [weak self] ev in self?.onRequestFileDrag?(ev) }
+        closePill.onMouseDown = { [weak self] _ in self?.onRequestClose?() }
+
         addSubview(hoverBar)
         layoutHoverBar()
     }
@@ -71,8 +73,8 @@ final class PinContentView: NSView, NSDraggingSource {
     }
 
     private func layoutHoverBar() {
-        let w: CGFloat = 52
-        let h: CGFloat = 26
+        let w: CGFloat = 106
+        let h: CGFloat = 28
         hoverBar.frame = NSRect(x: max(4, bounds.width - w - 6), y: max(4, bounds.height - h - 6), width: w, height: h)
     }
 
@@ -97,23 +99,21 @@ final class PinContentView: NSView, NSDraggingSource {
     override func mouseExited(with event: NSEvent) { isMouseInside = false }
 
     private func updateChromeState() {
-        hoverBar.isHidden = !isMouseInside || isGhostMode || isAnnotating || bounds.width < 64 || bounds.height < 42
+        hoverBar.isHidden = !isMouseInside || isGhostMode || isAnnotating || bounds.width < 116 || bounds.height < 44
         if isAnnotating {
             layer?.borderWidth = 1.8
-            layer?.borderColor = NSColor.controlAccentColor.cgColor
+            layer?.borderColor = MSnipUITheme.accent.cgColor
         } else if isGhostMode {
             layer?.borderWidth = 1.2
-            layer?.borderColor = NSColor.systemCyan.withAlphaComponent(0.65).cgColor
+            layer?.borderColor = MSnipUITheme.accent.withAlphaComponent(0.55).cgColor
         } else if isMouseInside {
-            layer?.borderWidth = 1.2
-            layer?.borderColor = NSColor.controlAccentColor.withAlphaComponent(0.9).cgColor
+            layer?.borderWidth = 1.4
+            layer?.borderColor = MSnipUITheme.accent.withAlphaComponent(0.85).cgColor
         } else {
             layer?.borderWidth = 1.0
-            layer?.borderColor = NSColor.white.withAlphaComponent(0.45).cgColor
+            layer?.borderColor = MSnipUITheme.borderStrong.cgColor
         }
     }
-
-    // MARK: - NSDraggingSource (Direct PNG File Drop to WeChat / Feishu / Browser / Finder)
 
     func startPNGFileDrag(with event: NSEvent, cgImage: CGImage, scaleFactor: CGFloat) {
         guard let fileURL = ClipboardAndSave.writeTempPNGFile(cgImage: cgImage, scaleFactor: scaleFactor) else {
@@ -142,19 +142,20 @@ final class PinContentView: NSView, NSDraggingSource {
         .copy
     }
 
-    func ignoreModifierKeys(for session: NSDraggingSession) -> Bool {
-        true
-    }
+    func ignoreModifierKeys(for session: NSDraggingSession) -> Bool { true }
 }
 
-/// 贴图右上角悬停微操作图标按钮
+/// 贴图右上角清爽浅色微操作图标按钮
 private final class PinMicroButton: NSView {
     let symbol: String
+    let tint: NSColor
     var onMouseDown: ((NSEvent) -> Void)?
     private var hovered = false { didSet { needsDisplay = true } }
+    override var isFlipped: Bool { true }
 
-    init(symbol: String, tip: String) {
+    init(symbol: String, tip: String, tint: NSColor = MSnipUITheme.inkPrimary) {
         self.symbol = symbol
+        self.tint = tint
         super.init(frame: .zero)
         self.toolTip = tip
     }
@@ -163,6 +164,7 @@ private final class PinMicroButton: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -180,16 +182,10 @@ private final class PinMicroButton: NSView {
     override func mouseDown(with event: NSEvent) { onMouseDown?(event) }
 
     override func draw(_ dirtyRect: NSRect) {
-        if hovered, let ctx = NSGraphicsContext.current?.cgContext {
-            let p = CGPath(roundedRect: bounds, cornerWidth: 4, cornerHeight: 4, transform: nil)
-            ctx.setFillColor(NSColor.white.withAlphaComponent(0.18).cgColor)
-            ctx.addPath(p)
-            ctx.fillPath()
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        if hovered {
+            ToolbarView.drawButtonBg(ctx: ctx, rect: bounds, active: false, hovered: true)
         }
-        guard let img = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)?
-            .withSymbolConfiguration(.init(pointSize: 11.5, weight: .semibold)) else { return }
-        let sz = img.size
-        let r = NSRect(x: (bounds.width - sz.width) * 0.5, y: (bounds.height - sz.height) * 0.5, width: sz.width, height: sz.height)
-        img.draw(in: r, from: .zero, operation: .sourceOver, fraction: 0.95)
+        ToolbarView.drawSymbol(symbol, in: bounds, alpha: 0.94, tint: tint)
     }
 }

@@ -18,6 +18,8 @@ final class ToolbarView: NSView {
         case captureWindow
         case toggleInPlaceOCR
         case extractTextWindow
+        case toggleInPlaceTranslate
+        case translateWindow
         case startLongShot
         case startRecording
         case pin
@@ -50,6 +52,7 @@ final class ToolbarView: NSView {
 
     var textCapsule: Bool = false { didSet { if oldValue != textCapsule { markItemsDirty() } } }
     var inPlaceOCRActive: Bool = false { didSet { if oldValue != inPlaceOCRActive { markItemsDirty() } } }
+    var inPlaceTranslateActive: Bool = false { didSet { if oldValue != inPlaceTranslateActive { markItemsDirty() } } }
     var nextStepNumber: Int = 1 { didSet { if oldValue != nextStepNumber { markItemsDirty() } } }
     var colorIndex: Int = 0 { didSet { if oldValue != colorIndex { markItemsDirty() } } }
     var customColor: RGBAColor? { didSet { if oldValue != customColor { markItemsDirty() } } }
@@ -71,17 +74,17 @@ final class ToolbarView: NSView {
 
     override var isFlipped: Bool { true }
 
-    static let barHeight: CGFloat = 38
+    static let barHeight: CGFloat = 40
     static let gripWidth: CGFloat = 18
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 510, height: Self.barHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: 540, height: Self.barHeight))
         wantsLayer = true
         layer?.masksToBounds = false
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.22
-        layer?.shadowRadius = 9
-        layer?.shadowOffset = CGSize(width: 0, height: 3)
+        layer?.shadowColor = NSColor(srgbRed: 0.04, green: 0.08, blue: 0.16, alpha: 1.0).cgColor
+        layer?.shadowOpacity = 0.18
+        layer?.shadowRadius = 12
+        layer?.shadowOffset = CGSize(width: 0, height: 4)
         rebuildItems()
         itemsDirty = false
     }
@@ -134,6 +137,13 @@ final class ToolbarView: NSView {
         ensureItemsUpToDate()
         let p = convert(event.locationInWindow, from: nil)
         let idx = items.firstIndex(where: { $0.rect.contains(p) && $0.enabled })
+        if idx != nil {
+            NSCursor.pointingHand.set()
+        } else if !isPinEditorMode && p.x <= Self.gripWidth + 2 {
+            NSCursor.openHand.set()
+        } else {
+            NSCursor.arrow.set()
+        }
         if idx != hoveredIndex {
             let oldIdx = hoveredIndex
             hoveredIndex = idx
@@ -166,6 +176,8 @@ final class ToolbarView: NSView {
             onAction?(.quickSave)
         } else if case .toggleInPlaceOCR = item.action, event.modifierFlags.contains(.option) {
             onAction?(.extractTextWindow)
+        } else if case .toggleInPlaceTranslate = item.action, event.modifierFlags.contains(.option) {
+            onAction?(.translateWindow)
         } else {
             onAction?(item.action)
         }
@@ -197,15 +209,7 @@ final class ToolbarView: NSView {
         ctx.saveGState()
         ctx.clip(to: dirtyRect)
 
-        let bgRect = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 8, cornerHeight: 8, transform: nil)
-        ctx.setFillColor(NSColor(srgbRed: 0.965, green: 0.968, blue: 0.976, alpha: 0.96).cgColor)
-        ctx.addPath(bgPath)
-        ctx.fillPath()
-        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.11).cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.addPath(bgPath)
-        ctx.strokePath()
+        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 9.5)
 
         if !isPinEditorMode {
             Self.drawGripDots(ctx: ctx, in: CGRect(x: 4, y: 0, width: Self.gripWidth - 2, height: Self.barHeight))

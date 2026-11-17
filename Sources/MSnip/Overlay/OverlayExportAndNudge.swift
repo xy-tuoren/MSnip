@@ -5,7 +5,29 @@ import MSnipCore
 
 /// 覆盖层的标注草稿构建、取色/坐标复制、1px 边缘微调与导出烘焙扩展
 extension OverlayView {
-    enum FinishMode { case copy, save, quickSave, pin, extractText }
+    enum FinishMode { case copy, save, quickSave, pin, extractText, translateWindow }
+
+    func currentExportableImage(for targetRect: CGRect, plainForOCR: Bool) -> CGImage? {
+        if !plainForOCR, let translated = inPlaceTranslateView?.translatedImage {
+            if backdropStyle != .none {
+                return BackdropBeautifier.apply(
+                    to: translated,
+                    style: backdropStyle,
+                    imageScale: snapshot.scaleFactor,
+                    innerCornerRadiusPt: cornerRadiusPt
+                )
+            }
+            return translated
+        }
+        return AnnotationRenderer.bakeExportImage(
+            sampler: snapshot.sampler,
+            selection: targetRect,
+            imageScale: snapshot.scaleFactor,
+            annotations: doc.objects,
+            cornerRadiusPt: plainForOCR ? 0 : cornerRadiusPt,
+            backdropStyle: plainForOCR ? .none : backdropStyle
+        )
+    }
 
     func cycleColorFormat() {
         colorCopyFormat = colorCopyFormat.next
@@ -26,23 +48,18 @@ extension OverlayView {
 
     func exportAndFinish(mode: FinishMode) {
         commitTextEditing()
+        let isPlainOCR = (mode == .extractText || mode == .translateWindow)
         guard let targetRect = selection ?? hoveredAutoRect,
               targetRect.width >= 2, targetRect.height >= 2,
-              let baked = AnnotationRenderer.bakeExportImage(
-                  sampler: snapshot.sampler,
-                  selection: targetRect,
-                  imageScale: snapshot.scaleFactor,
-                  annotations: doc.objects,
-                  cornerRadiusPt: (mode == .extractText) ? 0 : cornerRadiusPt,
-                  backdropStyle: (mode == .extractText) ? .none : backdropStyle
-              ) else { return }
+              let baked = currentExportableImage(for: targetRect, plainForOCR: isPlainOCR) else { return }
 
         switch mode {
-        case .copy:        onFinishCopy?(baked, snapshot.scaleFactor, targetRect)
-        case .save:        onFinishSave?(baked, snapshot.scaleFactor, targetRect)
-        case .quickSave:   onQuickSaveInPlace?(baked, snapshot.scaleFactor, targetRect)
-        case .pin:         onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen, targetRect)
-        case .extractText: onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
+        case .copy:            onFinishCopy?(baked, snapshot.scaleFactor, targetRect)
+        case .save:            onFinishSave?(baked, snapshot.scaleFactor, targetRect)
+        case .quickSave:       onQuickSaveInPlace?(baked, snapshot.scaleFactor, targetRect)
+        case .pin:             onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen, targetRect)
+        case .extractText:     onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
+        case .translateWindow: onFinishTranslateWindow?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         }
     }
 

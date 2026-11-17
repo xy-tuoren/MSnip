@@ -21,6 +21,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     let subbar = ToolbarSubbarView()
     let sidePills = OverlaySidePillsView()
     var inPlaceOCRView: LiveTextImageView?
+    var inPlaceTranslateView: InPlaceTranslationOverlayView?
     var manualToolbarOrigin: NSPoint?
 
     // 外部会话回调
@@ -33,6 +34,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
     var onFinishCopyText: ((String, NSPoint) -> Void)?
     var onFinishExtractText: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
+    var onFinishTranslateWindow: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
+    var onOpenTranslationSettings: (() -> Void)?
     var onStartLongShot: ((NSScreen, CGRect, CGImage?) -> Void)?
     var onStartRecording: ((NSScreen, CGRect, CGImage?) -> Void)?
     var onCancel: (() -> Void)?
@@ -40,6 +43,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onCapsuleChanged: ((Bool) -> Void)?
     var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
     var quickOCRMode = false
+    var quickTranslateMode = false
 
     // 自动矩阵识别预览与平滑过渡状态
     var autoSnapStack: [CGRect] = []
@@ -249,7 +253,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
         drawLiveBackdropFrameIfNeeded(ctx: ctx, sel: sel, cornerRadius: activeRadius)
 
-        if sel.intersects(clip), inPlaceOCRView == nil {
+        if sel.intersects(clip), inPlaceOCRView == nil, inPlaceTranslateView == nil {
             ctx.saveGState()
             if activeRadius > 0.5 {
                 ctx.addPath(CGPath(roundedRect: sel, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))

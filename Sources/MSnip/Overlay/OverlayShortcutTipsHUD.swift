@@ -8,24 +8,24 @@ import MSnipCore
 /// - 采用高对比悬浮深蓝灰卡片 + 高亮描边 + 纯白立体键帽 + 全整数像素对齐排版，在 `@1x` (1080p) 与 `@2x` 暗色/亮色背景下均清晰醒目。
 extension OverlayView {
     private static let hudPillAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold),
-        .foregroundColor: NSColor.white
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .semibold),
+        .foregroundColor: MSnipUITheme.inkPrimary
     ]
     private static let headerTitleAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
-        .foregroundColor: NSColor(srgbRed: 0.42, green: 0.78, blue: 1.0, alpha: 1.0)
+        .font: NSFont.systemFont(ofSize: 12.0, weight: .bold),
+        .foregroundColor: MSnipUITheme.accent
     ]
     private static let headerHintAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 11.0, weight: .medium),
-        .foregroundColor: NSColor(white: 0.68, alpha: 1.0)
+        .foregroundColor: MSnipUITheme.inkMuted
     ]
     private static let keycapKeyAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 13.0, weight: .bold),
-        .foregroundColor: NSColor(srgbRed: 0.06, green: 0.07, blue: 0.10, alpha: 1.0)
+        .font: NSFont.systemFont(ofSize: 12.5, weight: .bold),
+        .foregroundColor: MSnipUITheme.inkPrimary
     ]
     private static let keycapDescAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 14.0, weight: .semibold),
-        .foregroundColor: NSColor.white
+        .font: NSFont.systemFont(ofSize: 13.5, weight: .medium),
+        .foregroundColor: MSnipUITheme.inkPrimary
     ]
     private static var textSizeCache: [String: CGSize] = [:]
 
@@ -50,7 +50,7 @@ extension OverlayView {
             return [
                 ("W / A / S / D", "移动光标"),
                 ("鼠标滚轮", "切换元素层级"),
-                ("T", "识别文字"),
+                ("T / Y", "识字 / 原位翻译"),
                 ("F", "纯净窗口截图"),
                 ("L / V", "长截图 / 录视频"),
                 ("R", "上次截图区域"),
@@ -59,7 +59,7 @@ extension OverlayView {
         } else {
             return [
                 ("W / A / S / D", "移动鼠标光标"),
-                ("T", "检测文本并复制"),
+                ("T / Y", "识字 / 原位翻译"),
                 ("`", "显示或隐藏放大镜"),
                 ("L / V", "长截图 / 录制视频"),
                 (toolbar.pinHint, "贴图"),
@@ -137,17 +137,17 @@ extension OverlayView {
 
         let path = CGPath(roundedRect: rect, cornerWidth: 12, cornerHeight: 12, transform: nil)
 
-        // 1) 高对比悬浮阴影 + 亮蓝灰磨砂底色 + 天蓝高光描边（暗色终端背景下同样醒目突出）
+        // 1) 清爽浅色白底悬浮卡片 + 柔和投影 + 细腻深蓝灰边框（在截图半透明暗化遮罩上形成极高对比度）
         ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: 8), blur: 24, color: NSColor.black.withAlphaComponent(0.60).cgColor)
-        ctx.setFillColor(NSColor(srgbRed: 0.145, green: 0.165, blue: 0.215, alpha: 0.96).cgColor)
+        ctx.setShadow(offset: CGSize(width: 0, height: 8), blur: 22, color: NSColor.black.withAlphaComponent(0.28).cgColor)
+        ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
         ctx.addPath(path)
         ctx.fillPath()
         ctx.restoreGState()
 
         ctx.saveGState()
-        ctx.setStrokeColor(NSColor(srgbRed: 0.45, green: 0.76, blue: 1.0, alpha: 0.48).cgColor)
-        ctx.setLineWidth(1.5)
+        ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
+        ctx.setLineWidth(1.0)
         ctx.addPath(path)
         ctx.strokePath()
 
@@ -157,16 +157,16 @@ extension OverlayView {
             at: CGPoint(x: round(rect.minX + padX), y: round(rect.minY + 9)),
             withAttributes: Self.headerTitleAttrs
         )
-        let hideHint = "H 隐藏" as NSString
+        let hideHint = "按 H 隐藏" as NSString
         let hideSz = hideHint.size(withAttributes: Self.headerHintAttrs)
         hideHint.draw(
-            at: CGPoint(x: round(rect.maxX - padX - hideSz.width), y: round(rect.minY + 9.5)),
+            at: CGPoint(x: round(rect.maxX - padX - hideSz.width), y: round(rect.minY + 9)),
             withAttributes: Self.headerHintAttrs
         )
-        ctx.setFillColor(NSColor.white.withAlphaComponent(0.12).cgColor)
+        ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
         ctx.fill(CGRect(x: rect.minX + padX, y: rect.minY + 31, width: cardW - padX * 2, height: 1))
 
-        // 3) 整数像素对齐的双栏键帽与说明行
+        // 3) 整数像素对齐的双栏浅色立体键帽与说明行
         let startY = rect.minY + 41
         let rowStride: CGFloat = 32
         let capH: CGFloat = 24
@@ -182,13 +182,17 @@ extension OverlayView {
             let capRect = CGRect(x: keySpineRightX - capW, y: rowTopY, width: capW, height: capH)
             let capPath = CGPath(roundedRect: capRect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
 
-            // 键帽底部微立体投影 + 高亮纯白底色
             ctx.saveGState()
-            ctx.setShadow(offset: CGSize(width: 0, height: 1.5), blur: 2.0, color: NSColor.black.withAlphaComponent(0.35).cgColor)
-            ctx.setFillColor(NSColor(srgbRed: 0.965, green: 0.97, blue: 0.985, alpha: 1.0).cgColor)
+            ctx.setShadow(offset: CGSize(width: 0, height: 1), blur: 1.0, color: NSColor.black.withAlphaComponent(0.08).cgColor)
+            ctx.setFillColor(MSnipUITheme.subtleFill.cgColor)
             ctx.addPath(capPath)
             ctx.fillPath()
             ctx.restoreGState()
+
+            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
+            ctx.setLineWidth(1.0)
+            ctx.addPath(capPath)
+            ctx.strokePath()
 
             (row.key as NSString).draw(
                 at: CGPoint(
@@ -218,11 +222,15 @@ extension OverlayView {
         let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeW, height: badgeH)
 
         ctx.saveGState()
-        let pill = CGPath(roundedRect: badgeRect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
-        ctx.setFillColor(NSColor(srgbRed: 0.08, green: 0.09, blue: 0.12, alpha: 0.88).cgColor)
+        let pill = CGPath(roundedRect: badgeRect, cornerWidth: 6.0, cornerHeight: 6.0, transform: nil)
+        ctx.setShadow(offset: CGSize(width: 0, height: 2), blur: 6, color: NSColor.black.withAlphaComponent(0.18).cgColor)
+        ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
         ctx.addPath(pill)
         ctx.fillPath()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.20).cgColor)
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
         ctx.setLineWidth(1.0)
         ctx.addPath(pill)
         ctx.strokePath()

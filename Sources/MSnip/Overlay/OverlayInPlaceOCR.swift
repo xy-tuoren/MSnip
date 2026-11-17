@@ -17,12 +17,18 @@ final class OverlaySidePillsView: NSView {
     private var hoveredIdx: Int?
 
     override var isFlipped: Bool { true }
-    static let pillSize: CGFloat = 28
+    static let pillSize: CGFloat = 30
     static let gap: CGFloat = 8
-    static let viewSize = NSSize(width: 30, height: 28 * 3 + 8 * 2)
+    static let viewSize = NSSize(width: 32, height: 30 * 3 + 8 * 2)
 
     init() {
         super.init(frame: NSRect(origin: .zero, size: Self.viewSize))
+        wantsLayer = true
+        layer?.masksToBounds = false
+        layer?.shadowColor = NSColor(srgbRed: 0.04, green: 0.08, blue: 0.16, alpha: 1.0).cgColor
+        layer?.shadowOpacity = 0.16
+        layer?.shadowRadius = 7
+        layer?.shadowOffset = CGSize(width: 0, height: 2)
     }
 
     @available(*, unavailable)
@@ -49,6 +55,7 @@ final class OverlaySidePillsView: NSView {
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let hit = (0..<3).first(where: { rectForSlot($0).contains(p) })
+        if hit != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         if hit != hoveredIdx {
             hoveredIdx = hit
             switch hit {
@@ -85,15 +92,17 @@ final class OverlaySidePillsView: NSView {
             let r = rectForSlot(i)
             let hov = (hoveredIdx == i)
             ctx.saveGState()
-            let bgAlpha: CGFloat = hov ? 0.92 : 0.80
-            ctx.setFillColor(NSColor(srgbRed: 0.08, green: 0.09, blue: 0.12, alpha: bgAlpha).cgColor)
+            let fill = active
+                ? MSnipUITheme.accent
+                : (hov ? MSnipUITheme.subtleFill : MSnipUITheme.cardBg)
+            ctx.setFillColor(fill.cgColor)
             ctx.fillEllipse(in: r)
-            let border = active ? NSColor.systemCyan : NSColor.white.withAlphaComponent(0.22)
+            let border = active ? MSnipUITheme.accent : MSnipUITheme.borderStrong
             ctx.setStrokeColor(border.cgColor)
-            ctx.setLineWidth(active ? 1.5 : 1.0)
+            ctx.setLineWidth(1.0)
             ctx.strokeEllipse(in: r.insetBy(dx: 0.5, dy: 0.5))
             ctx.restoreGState()
-            ToolbarView.drawSymbol(sym, in: r, alpha: 0.96, tint: active ? .systemCyan : .white)
+            ToolbarView.drawSymbol(sym, in: r, alpha: 0.96, tint: active ? .white : MSnipUITheme.inkPrimary)
         }
     }
 }
@@ -111,6 +120,7 @@ extension OverlayView {
 
     func activateInPlaceOCR() {
         commitTextEditing()
+        deactivateInPlaceTranslate()
         if selection == nil, let snap = hoveredAutoRect {
             selection = snap
         }
@@ -182,6 +192,7 @@ extension OverlayView {
             return
         }
         deactivateInPlaceOCR()
+        deactivateInPlaceTranslate()
         selection = hit.localRect
         ToastHUD.show(message: "已对齐窗口：\(hit.ownerName.isEmpty ? "当前窗口" : hit.ownerName)（⌥+点击可直出透明阴影图）")
     }

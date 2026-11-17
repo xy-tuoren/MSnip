@@ -89,6 +89,41 @@ enum VisionTextExtractor {
         }
     }
 
+    /// 提取带精确归一化边界框 (`0..1` 左下角原点) 的视觉合并行，供页内原位覆盖翻译渲染
+    static func recognizeVisualLinesOffMain(cgImage: CGImage) async -> [OCRLineObservation] {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let textReq = VNRecognizeTextRequest()
+                textReq.recognitionLevel = .accurate
+                textReq.usesLanguageCorrection = true
+                textReq.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"]
+                try? VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([textReq])
+
+                let rawObs: [OCRLineObservation] = (textReq.results ?? []).compactMap { item in
+                    guard let s = item.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines),
+                          !s.isEmpty else { return nil }
+                    return OCRLineObservation(box: item.boundingBox, text: s)
+                }
+                let grouped = OCRTextFormatter.groupIntoVisualRows(rawObs)
+                let mergedLines: [OCRLineObservation] = grouped.map { segs in
+                    var txt = ""
+                    for (i, seg) in segs.enumerated() {
+                        txt += (i == 0) ? seg.text : (OCRTextFormatter.smartInlineJoiner(left: txt, right: seg.text) + seg.text)
+                    }
+                    let minX = segs.map(\.box.minX).min() ?? 0
+                    let maxX = segs.map(\.box.maxX).max() ?? 1
+                    let minY = segs.map(\.box.minY).min() ?? 0
+                    let maxY = segs.map(\.box.maxY).max() ?? 0
+                    return OCRLineObservation(
+                        box: CGRect(x: minX, y: minY, width: max(0.01, maxX - minX), height: max(0.01, maxY - minY)),
+                        text: txt
+                    )
+                }
+                cont.resume(returning: mergedLines)
+            }
+        }
+    }
+
     private static func recognizeFallbackVision(cgImage: CGImage) -> OCRRecognitionOutput {
         let barcodeReq = VNDetectBarcodesRequest()
         barcodeReq.symbologies = [.qr]

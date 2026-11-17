@@ -1,6 +1,6 @@
 cask "msnip" do
-  version "1.2.2"
-  sha256 "c27bafe437115c68007bc9ea37d8d930eb3677d42e23a235ec1053fb07cdecc5"
+  version "1.4.0"
+  sha256 "b03cdeb42ac2e44ebdfeeaf3736281355f39463caaf8d1843561fc3b7418c298"
 
   url "https://github.com/xy-tuoren/MSnip/releases/download/v#{version}/MSnip-v#{version}-macOS.zip"
   name "MSnip"

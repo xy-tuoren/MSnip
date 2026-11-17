@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 选区动图/视频录制的深色毛玻璃悬浮控制条（录制前可切换 GIF/MP4，录制中显示计时、暂停、另存与完成复制）
+/// 选区动图/视频录制的清爽浅色磨砂白底悬浮控制条（录制前可切换 GIF/MP4，录制中显示计时、暂停、另存与完成复制）
 final class RecordingControlBarView: NSView {
     enum Action {
         case selectFormat(RecordingFormat)
@@ -38,7 +38,7 @@ final class RecordingControlBarView: NSView {
     override var isFlipped: Bool { true }
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 290, height: Self.barHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: Self.barHeight))
         refreshLayout()
     }
 
@@ -61,6 +61,7 @@ final class RecordingControlBarView: NSView {
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let next = slots.firstIndex(where: { $0.rect.contains(p) })
+        if next != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         if next != hoveredIdx {
             hoveredIdx = next
             toolTip = next.map { slots[$0].tip }
@@ -85,7 +86,7 @@ final class RecordingControlBarView: NSView {
         let h: CGFloat = 30
 
         if isEncoding {
-            setFrameSize(NSSize(width: 210, height: Self.barHeight))
+            setFrameSize(NSSize(width: 220, height: Self.barHeight))
             slots = []
             needsDisplay = true
             return
@@ -100,40 +101,34 @@ final class RecordingControlBarView: NSView {
                 let active = (format == fmt)
                 let r = CGRect(x: x, y: y, width: 44, height: h)
                 list.append(HitSlot(rect: r, tip: "切换为 \(fmt.badgeTitle) 格式", action: .selectFormat(fmt)) { ctx, rect, hov in
-                    ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov, darkSurface: true)
-                    Self.drawLabel(fmt.badgeTitle, in: rect, color: active ? .white : NSColor(white: 0.78, alpha: 1))
+                    ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov)
+                    Self.drawLabel(fmt.badgeTitle, in: rect, color: active ? MSnipUITheme.accent : MSnipUITheme.inkSecondary)
                 })
                 x += 46
             }
-            list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? .systemCyan : .white, active: interactionHUDEnabled, action: .toggleInteractionHUD))
+            list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? MSnipUITheme.accent : MSnipUITheme.inkPrimary, active: interactionHUDEnabled, action: .toggleInteractionHUD))
             x += 4
-            let recRect = CGRect(x: x, y: y, width: 96, height: h)
+            let recRect = CGRect(x: x, y: y, width: 98, height: h)
             list.append(HitSlot(rect: recRect, tip: "开始录制选区画面 (↩)", action: .startRecording) { ctx, rect, hov in
-                let p = CGPath(roundedRect: rect, cornerWidth: 6, cornerHeight: 6, transform: nil)
-                ctx.setFillColor(NSColor.systemRed.withAlphaComponent(hov ? 1.0 : 0.88).cgColor)
-                ctx.addPath(p)
-                ctx.fillPath()
-                Self.drawLabel("● 开始录制", in: rect, color: .white)
+                MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: rect, radius: 6.5, color: MSnipUITheme.danger, hovered: hov)
+                MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: rect.minX + 15, y: rect.midY), color: .white, halo: false)
+                Self.drawLabel("开始录制", in: CGRect(x: rect.minX + 22, y: rect.minY, width: rect.width - 26, height: rect.height), color: .white)
             })
-            x += 100
-            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "取消 (Esc)", tint: .white, action: .cancel))
+            x += 102
+            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "取消 (Esc)", tint: MSnipUITheme.inkSecondary, action: .cancel))
         } else {
-            // 留出左侧 106pt 绘制动态计时器
-            x = 114
-            list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? .systemCyan : .white, active: interactionHUDEnabled, action: .toggleInteractionHUD))
+            x = 116
+            list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? MSnipUITheme.accent : MSnipUITheme.inkPrimary, active: interactionHUDEnabled, action: .toggleInteractionHUD))
             let pauseSym = isPaused ? "play.fill" : "pause.fill"
             let pauseTip = isPaused ? "继续录制 (Space)" : "暂停录制 (Space)"
-            list.append(iconSlot(x: &x, y: y, symbol: pauseSym, tip: pauseTip, tint: isPaused ? .systemYellow : .white, action: .togglePause))
-            list.append(iconSlot(x: &x, y: y, symbol: "square.and.arrow.down", tip: "结束并另存为 \(format.badgeTitle)…", tint: .white, action: .finishSave))
-            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "放弃录制 (Esc)", tint: .systemRed, action: .cancel))
-            let okRect = CGRect(x: x, y: y, width: 34, height: h)
-            x += 37
+            list.append(iconSlot(x: &x, y: y, symbol: pauseSym, tip: pauseTip, tint: isPaused ? MSnipUITheme.warning : MSnipUITheme.inkPrimary, action: .togglePause))
+            list.append(iconSlot(x: &x, y: y, symbol: "square.and.arrow.down", tip: "结束并另存为 \(format.badgeTitle)…", tint: MSnipUITheme.inkPrimary, action: .finishSave))
+            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "放弃录制 (Esc)", tint: MSnipUITheme.danger, action: .cancel))
+            let okRect = CGRect(x: x, y: y, width: 56, height: h)
+            x += 59
             list.append(HitSlot(rect: okRect, tip: "完成并复制 \(format.badgeTitle) 到剪贴板 (↩)", action: .finishCopy) { ctx, rect, hov in
-                let p = CGPath(roundedRect: rect, cornerWidth: 6, cornerHeight: 6, transform: nil)
-                ctx.setFillColor(NSColor.controlAccentColor.withAlphaComponent(hov ? 1.0 : 0.88).cgColor)
-                ctx.addPath(p)
-                ctx.fillPath()
-                ToolbarView.drawSymbol("checkmark", in: rect, alpha: 1.0, tint: .white)
+                MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: rect, radius: 6.5, hovered: hov)
+                Self.drawLabel("完成", in: rect, color: .white)
             })
         }
 
@@ -146,41 +141,34 @@ final class RecordingControlBarView: NSView {
         let r = CGRect(x: x, y: y, width: 28, height: 30)
         x += 31
         return HitSlot(rect: r, tip: tip, action: action) { ctx, rect, hov in
-            ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov, darkSurface: true)
+            ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov)
             ToolbarView.drawSymbol(symbol, in: rect, alpha: 0.95, tint: tint)
         }
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let bg = CGPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 9, cornerHeight: 9, transform: nil)
-        ctx.saveGState()
-        ctx.setFillColor(NSColor(calibratedWhite: 0.11, alpha: 0.93).cgColor)
-        ctx.addPath(bg)
-        ctx.fillPath()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.18).cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.addPath(bg)
-        ctx.strokePath()
-        ctx.restoreGState()
+        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 9.5)
 
         if isEncoding {
-            Self.drawLabel("正在合成 \(format.badgeTitle) 动图…", in: bounds, color: .systemCyan)
+            Self.drawLabel("正在合成 \(format.badgeTitle) 动图…", in: bounds, color: MSnipUITheme.accent)
             return
         }
 
         if isRecording {
-            let dot = CGRect(x: 12, y: (Self.barHeight - 8) * 0.5, width: 8, height: 8)
-            ctx.setFillColor((isPaused ? NSColor.systemYellow : NSColor.systemRed).cgColor)
-            ctx.fillEllipse(in: dot)
-
+            MSnipUITheme.drawStatusDot(
+                ctx: ctx,
+                center: CGPoint(x: 16, y: Self.barHeight * 0.5),
+                color: isPaused ? MSnipUITheme.warning : MSnipUITheme.danger,
+                halo: true
+            )
             let mins = Int(elapsedSeconds) / 60
             let secs = Int(elapsedSeconds) % 60
             let txt = String(format: "%02d:%02d · %@", mins, secs, format.badgeTitle)
-            Self.drawLabel(txt, in: CGRect(x: 24, y: 0, width: 84, height: Self.barHeight), color: .white, alignLeft: true)
+            Self.drawLabel(txt, in: CGRect(x: 27, y: 0, width: 82, height: Self.barHeight), color: MSnipUITheme.inkPrimary, alignLeft: true)
 
-            ctx.setFillColor(NSColor.white.withAlphaComponent(0.16).cgColor)
-            ctx.fill(CGRect(x: 109, y: 10, width: 1, height: Self.barHeight - 20))
+            ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
+            ctx.fill(CGRect(x: 111, y: 10, width: 1, height: Self.barHeight - 20))
         }
 
         for (i, s) in slots.enumerated() {
@@ -195,7 +183,7 @@ final class RecordingControlBarView: NSView {
         ]
         let ns = text as NSString
         let sz = ns.size(withAttributes: attrs)
-        let x = alignLeft ? rect.minX : rect.minX + (rect.width - sz.width) * 0.5
-        ns.draw(at: CGPoint(x: x, y: rect.minY + (rect.height - sz.height) * 0.5), withAttributes: attrs)
+        let x = alignLeft ? rect.minX : round(rect.minX + (rect.width - sz.width) * 0.5)
+        ns.draw(at: CGPoint(x: x, y: round(rect.minY + (rect.height - sz.height) * 0.5)), withAttributes: attrs)
     }
 }

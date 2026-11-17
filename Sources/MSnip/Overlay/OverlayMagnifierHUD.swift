@@ -15,15 +15,15 @@ extension OverlayView {
 
     private static let coordTextAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold),
-        .foregroundColor: NSColor(white: 0.96, alpha: 1.0)
+        .foregroundColor: MSnipUITheme.inkSecondary
     ]
     private static let colorValueAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .bold),
-        .foregroundColor: NSColor.white
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .bold),
+        .foregroundColor: MSnipUITheme.inkPrimary
     ]
     private static let hintLineAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 11.0, weight: .medium),
-        .foregroundColor: NSColor(white: 0.88, alpha: 1.0)
+        .foregroundColor: MSnipUITheme.inkMuted
     ]
 
     var shouldShowMagnifier: Bool {
@@ -99,9 +99,9 @@ extension OverlayView {
         let y = cardRect.minY
 
         ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: 4), blur: 12, color: NSColor.black.withAlphaComponent(0.40).cgColor)
-        let cardPath = CGPath(roundedRect: cardRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
-        ctx.setFillColor(NSColor(srgbRed: 0.055, green: 0.06, blue: 0.075, alpha: 0.90).cgColor)
+        ctx.setShadow(offset: CGSize(width: 0, height: 6), blur: 16, color: NSColor.black.withAlphaComponent(0.24).cgColor)
+        let cardPath = CGPath(roundedRect: cardRect, cornerWidth: 9, cornerHeight: 9, transform: nil)
+        ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
         ctx.addPath(cardPath)
         ctx.fillPath()
         ctx.restoreGState()
@@ -199,20 +199,20 @@ extension OverlayView {
         let swRect = CGRect(x: swX, y: iy + 26, width: swSide, height: swSide)
         ctx.setFillColor(sample.color.cgColor)
         ctx.fill(swRect)
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.85).cgColor)
+        ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
         ctx.setLineWidth(1.0)
         ctx.stroke(swRect)
         colorNs.draw(at: CGPoint(x: round(swRect.maxX + 6), y: round(iy + 24.5)), withAttributes: Self.colorValueAttrs)
 
         let pickMode = eyedropperActive || (selection != nil && optionPressed)
-        Self.drawCenteredString("⇧: 切换颜色格式", centerX: x + cardW * 0.5, y: round(iy + 45), attrs: Self.hintLineAttrs)
-        let copyHint = pickMode ? "单击: 吸取标注色" : "C: 复制色值   G: 相对坐标"
+        Self.drawCenteredString("⇧ 切格式   ·   ` 锁定放大镜", centerX: x + cardW * 0.5, y: round(iy + 45), attrs: Self.hintLineAttrs)
+        let copyHint = pickMode ? "单击吸取标注颜色" : "C 复制色值   ·   G 相对坐标"
         Self.drawCenteredString(copyHint, centerX: x + cardW * 0.5, y: round(iy + 64), attrs: Self.hintLineAttrs)
 
         ctx.restoreGState()
 
         ctx.saveGState()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.22).cgColor)
+        ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
         ctx.setLineWidth(1.0)
         ctx.addPath(cardPath)
         ctx.strokePath()

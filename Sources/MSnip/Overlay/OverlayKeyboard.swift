@@ -51,6 +51,8 @@ extension OverlayView {
         if event.keyCode == 53 { // Esc 分层停留在页面回退
             if eyedropperActive {
                 eyedropperActive = false
+            } else if toolbar.inPlaceTranslateActive {
+                deactivateInPlaceTranslate()
             } else if toolbar.inPlaceOCRActive {
                 deactivateInPlaceOCR()
             } else if selectedObjectIndex != nil {
@@ -179,6 +181,13 @@ extension OverlayView {
                     toggleInPlaceOCR()
                 }
                 return
+            case "y":
+                if flags.contains(.option) {
+                    exportAndFinish(mode: .translateWindow)
+                } else {
+                    toggleInPlaceTranslate()
+                }
+                return
             case "l":
                 beginLongShot()
                 return
@@ -232,6 +241,7 @@ extension OverlayView {
             if let n = Int(chars), let tool = ToolKind(rawValue: n) {
                 eyedropperActive = false
                 deactivateInPlaceOCR()
+                deactivateInPlaceTranslate()
                 if selection == nil, let snap = hoveredAutoRect {
                     selection = snap
                 }

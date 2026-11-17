@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 顶部状态栏菜单构建、最近截图历史回溯、贴图穿透解锁与自定义热键入口扩展
+/// 顶部状态栏菜单构建（全系矢量 SF Symbols 图标化）、最近截图历史回溯、贴图穿透解锁与设置中心入口扩展
 extension AppController {
     func rebuildMenu() {
         let menu = NSMenu()
@@ -13,16 +13,24 @@ extension AppController {
 
         let shotItem = NSMenuItem(title: "区域截图 / 长截图 / 录动图", action: #selector(startCapture), keyEquivalent: capKey.menuKeyEquivalent)
         shotItem.keyEquivalentModifierMask = capKey.cocoaModifierMask
+        shotItem.image = MSnipUITheme.menuSymbol("viewfinder")
         shotItem.target = self
         menu.addItem(shotItem)
 
         let ocrItem = NSMenuItem(title: "截图提取文字 (OCR)", action: #selector(startQuickOCR), keyEquivalent: ocrKey.menuKeyEquivalent)
         ocrItem.keyEquivalentModifierMask = ocrKey.cocoaModifierMask
+        ocrItem.image = MSnipUITheme.menuSymbol("text.viewfinder")
         ocrItem.target = self
         menu.addItem(ocrItem)
 
+        let transItem = NSMenuItem(title: "截图翻译（原位覆盖 / 双栏对照）", action: #selector(startQuickTranslate), keyEquivalent: "")
+        transItem.image = MSnipUITheme.menuSymbol("character.bubble")
+        transItem.target = self
+        menu.addItem(transItem)
+
         let pinItem = NSMenuItem(title: "从剪贴板贴图", action: #selector(handlePinHotKey), keyEquivalent: pinKey.menuKeyEquivalent)
         pinItem.keyEquivalentModifierMask = pinKey.cocoaModifierMask
+        pinItem.image = MSnipUITheme.menuSymbol("pin")
         pinItem.target = self
         menu.addItem(pinItem)
 
@@ -32,6 +40,7 @@ extension AppController {
                 action: #selector(restoreClickThroughPins),
                 keyEquivalent: ""
             )
+            unghostItem.image = MSnipUITheme.menuSymbol("hand.point.up.left")
             unghostItem.target = self
             menu.addItem(unghostItem)
         }
@@ -42,18 +51,19 @@ extension AppController {
                 action: #selector(closeAllPins),
                 keyEquivalent: ""
             )
+            clearItem.image = MSnipUITheme.menuSymbol("xmark.circle")
             clearItem.target = self
             menu.addItem(clearItem)
         }
 
         menu.addItem(.separator())
 
-        // 最近 15 张截图历史回溯子菜单
         let histRoot = NSMenuItem(
             title: "最近截图记录 (\(historyRing.entries.count))",
             action: nil,
             keyEquivalent: ""
         )
+        histRoot.image = MSnipUITheme.menuSymbol("clock.arrow.circlepath")
         histRoot.submenu = buildHistorySubmenu()
         menu.addItem(histRoot)
 
@@ -62,10 +72,22 @@ extension AppController {
             action: #selector(openQuickSaveFolder),
             keyEquivalent: ""
         )
+        openDirItem.image = MSnipUITheme.menuSymbol("folder")
         openDirItem.target = self
         menu.addItem(openDirItem)
 
-        // 快捷键预设与自由录制子菜单
+        menu.addItem(.separator())
+
+        let transCfgItem = NSMenuItem(
+            title: "偏好与翻译 API 设置中心…",
+            action: #selector(openTranslationSettings),
+            keyEquivalent: ","
+        )
+        transCfgItem.keyEquivalentModifierMask = [.command]
+        transCfgItem.image = MSnipUITheme.menuSymbol("slider.horizontal.3")
+        transCfgItem.target = self
+        menu.addItem(transCfgItem)
+
         let hkSubmenu = NSMenu()
         let enableItem = NSMenuItem(title: "启用全局快捷键", action: #selector(toggleHotKeysEnabled), keyEquivalent: "")
         enableItem.state = config.hotKeysEnabled ? .on : .off
@@ -88,7 +110,8 @@ extension AppController {
             item.target = self
             hkSubmenu.addItem(item)
         }
-        let hkRoot = NSMenuItem(title: "全局快捷键", action: nil, keyEquivalent: "")
+        let hkRoot = NSMenuItem(title: "全局快捷键方案", action: nil, keyEquivalent: "")
+        hkRoot.image = MSnipUITheme.menuSymbol("keyboard")
         hkRoot.submenu = hkSubmenu
         menu.addItem(hkRoot)
 
@@ -97,12 +120,14 @@ extension AppController {
             action: #selector(openPermissionGuide),
             keyEquivalent: ""
         )
+        permItem.image = MSnipUITheme.menuSymbol("checkmark.shield")
         permItem.state = currentPermissionMenuState()
         permItem.target = self
         axMenuItem = permItem
         menu.addItem(permItem)
 
         let loginItem = NSMenuItem(title: "开机自动启动", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        loginItem.image = MSnipUITheme.menuSymbol("bolt.horizontal.circle")
         loginItem.state = LaunchAtLoginManager.isEnabled ? .on : .off
         loginItem.target = self
         menu.addItem(loginItem)
@@ -110,10 +135,12 @@ extension AppController {
         menu.addItem(.separator())
 
         let aboutItem = NSMenuItem(title: "关于 MSnip", action: #selector(showAbout), keyEquivalent: "")
+        aboutItem.image = MSnipUITheme.menuSymbol("info.circle")
         aboutItem.target = self
         menu.addItem(aboutItem)
 
         let quitItem = NSMenuItem(title: "退出 MSnip", action: #selector(quitApp), keyEquivalent: "q")
+        quitItem.image = MSnipUITheme.menuSymbol("power")
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -148,6 +175,7 @@ extension AppController {
 
         sub.addItem(.separator())
         let clear = NSMenuItem(title: "清空最近截图记录", action: #selector(clearCaptureHistory), keyEquivalent: "")
+        clear.image = MSnipUITheme.menuSymbol("trash")
         clear.target = self
         sub.addItem(clear)
         return sub
@@ -165,18 +193,14 @@ extension AppController {
         return .off
     }
 
-    // MARK: - Menu Actions
-
     @objc func restoreHistoryItem(_ sender: NSMenuItem) {
         let idx = sender.tag
         guard historyRing.entries.indices.contains(idx) else { return }
         let entry = historyRing.entries[idx]
         guard let cg = historyRing.loadCGImage(for: entry) else {
-            NSSound.beep()
-            return
+            NSSound.beep(); return
         }
-        let pinDirectly = NSEvent.modifierFlags.contains(.option)
-        if pinDirectly, let scr = NSScreen.main ?? NSScreen.screens.first {
+        if NSEvent.modifierFlags.contains(.option), let scr = NSScreen.main ?? NSScreen.screens.first {
             pinManager.pin(cgImage: cg, scaleFactor: entry.scaleFactor, topLeftOnScreen: nil, screen: scr)
             ToastHUD.show(message: "已将历史截图贴到屏幕")
         } else {
@@ -193,10 +217,7 @@ extension AppController {
 
     @objc func restoreClickThroughPins() { pinManager.restoreAllClickThroughPins() }
     @objc func closeAllPins() { pinManager.closeAll() }
-
-    @objc func openHotKeyRecorder() {
-        hotKeyRecorder.show(with: config)
-    }
+    @objc func openHotKeyRecorder() { hotKeyRecorder.show(with: config) }
 
     @objc func selectHotKeyPreset(_ sender: NSMenuItem) {
         guard let raw = sender.representedObject as? String,
@@ -232,11 +253,11 @@ extension AppController {
     @objc func showAbout() {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
-        alert.messageText = "MSnip（麦截）v1.2.2"
+        alert.messageText = "MSnip（麦截）v1.4.0"
         alert.informativeText = """
-        超轻量纯原生 macOS 全能截图、动图录制、长截图、实况识字与贴图工具
-        • 零第三方依赖：Swift + AppKit + CoreGraphics + Accelerate + ScreenCaptureKit + VisionKit + AVFoundation
-        • 独立窗口纯净阴影截图、一键快存、胶囊文字、录屏点击波纹/快捷键回显、滚动长图与双栏 OCR
+        超轻量纯原生 macOS 全能截图、截图翻译、长截图、动图录制、实况识字与贴图工具
+        • 全系清爽浅色白底（Daylight Porcelain）统一设计系统，零第三方依赖
+        • 支持页内原位翻译、双栏流式翻译（内置免费 macOS 原生离线神经模型 + 通用大模型与国内云翻译 API）
         """
         alert.alertStyle = .informational
         alert.addButton(withTitle: "好")
@@ -246,51 +267,6 @@ extension AppController {
     @objc func openQuickSaveFolder() {
         let url = ClipboardAndSave.resolveQuickSaveDirectory(preferred: config.lastSaveDirectory)
         NSWorkspace.shared.open(url)
-    }
-
-    func performQuickSave(img: CGImage, scale: CGFloat) {
-        guard let url = ClipboardAndSave.quickSavePNG(
-            cgImage: img,
-            scaleFactor: scale,
-            preferredDirectory: config.lastSaveDirectory
-        ) else {
-            ToastHUD.show(message: "快速保存图片失败")
-            return
-        }
-        ToastHUD.show(
-            message: "已快存 \(url.lastPathComponent)",
-            actionTitle: "在 Finder 显示 ›",
-            onAction: { NSWorkspace.shared.activateFileViewerSelecting([url]) }
-        )
-    }
-
-    func captureAndExportIsolatedWindow(
-        windowID: CGWindowID,
-        scale: CGFloat,
-        backdrop: BackdropStyle,
-        pin: Bool,
-        origin: CGPoint,
-        screen: NSScreen
-    ) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            guard let winImg = await ScreenCapturer.captureIsolatedWindow(
-                windowID: windowID,
-                scaleFactor: scale,
-                backdropStyle: backdrop
-            ) else {
-                ToastHUD.show(message: "抓取独立窗口失败，请确认屏幕录制权限已开启")
-                return
-            }
-            self.recordHistoryAndRefresh(img: winImg, scale: scale)
-            if pin {
-                self.pinManager.pin(cgImage: winImg, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
-                ToastHUD.show(message: "已将纯净独立窗口贴到桌面")
-            } else {
-                ClipboardAndSave.copyToClipboard(cgImage: winImg, scaleFactor: scale)
-                ToastHUD.show(message: "纯净独立窗口（含悬浮阴影）已复制到剪贴板")
-            }
-        }
     }
 
     @objc func quitApp() { NSApp.terminate(nil) }

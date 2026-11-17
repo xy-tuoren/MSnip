@@ -39,6 +39,8 @@ final class OverlaySession {
         case copiedColor(String, RGBAColor, NSPoint)
         case copiedCoordinate(String, NSPoint)
         case extractText(CGImage, CGFloat, NSScreen)
+        case translateText(CGImage, CGFloat, NSScreen)
+        case openTranslationSettings
         case startLongShot(NSScreen, CGRect, CGImage?)
         case startRecording(NSScreen, CGRect, CGImage?)
         case cancelled
@@ -66,7 +68,8 @@ final class OverlaySession {
         showShortcutTips: Bool,
         textCapsule: Bool = false,
         pinHint: String,
-        quickOCRMode: Bool = false
+        quickOCRMode: Bool = false,
+        quickTranslateMode: Bool = false
     ) {
         let mouse = NSEvent.mouseLocation
         var targetWindowToFocus: OverlayWindow?
@@ -85,6 +88,7 @@ final class OverlaySession {
             view.style.textCapsule = textCapsule
             view.toolbar.textCapsule = textCapsule
             view.quickOCRMode = quickOCRMode
+            view.quickTranslateMode = quickTranslateMode
             view.onSelectionActivated = { [weak self] sender in
                 self?.activateView(sender)
             }
@@ -129,6 +133,13 @@ final class OverlaySession {
             view.onFinishExtractText = { [weak self] img, scale, scr, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.extractText(img, scale, scr))
+            }
+            view.onFinishTranslateWindow = { [weak self] img, scale, scr, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
+                self?.finish(.translateText(img, scale, scr))
+            }
+            view.onOpenTranslationSettings = { [weak self] in
+                self?.finish(.openTranslationSettings)
             }
             view.onStartLongShot = { [weak self] screen, rect, initialImg in
                 Self.lastSelectionByDisplay[snap.displayID] = rect

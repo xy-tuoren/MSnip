@@ -56,6 +56,8 @@ final class HotKeyRecorderController: NSObject, NSWindowDelegate {
         win.titlebarAppearsTransparent = true
         win.isMovableByWindowBackground = true
         win.isReleasedWhenClosed = false
+        win.appearance = NSAppearance(named: .aqua)
+        win.backgroundColor = MSnipUITheme.canvasBg
         win.level = .floating
         win.delegate = self
         win.onKeyDownIntercept = { [weak self] event in
@@ -106,8 +108,10 @@ final class HotKeyRecorderController: NSObject, NSWindowDelegate {
     private func buildRow(for slot: Slot, y: CGFloat) -> NSView {
         let card = NSView(frame: NSRect(x: 24, y: y, width: 412, height: 46))
         card.wantsLayer = true
-        card.layer?.cornerRadius = 8
-        card.layer?.backgroundColor = NSColor.labelColor.withAlphaComponent(0.05).cgColor
+        card.layer?.cornerRadius = 9
+        card.layer?.backgroundColor = MSnipUITheme.cardSolid.cgColor
+        card.layer?.borderWidth = 1.0
+        card.layer?.borderColor = MSnipUITheme.borderHairline.cgColor
 
         let title = NSTextField(labelWithString: slot.title)
         title.font = .systemFont(ofSize: 13, weight: .semibold)

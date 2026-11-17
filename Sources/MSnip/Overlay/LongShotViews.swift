@@ -3,6 +3,23 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
+/// 采集线程轻量节流闸门：保证 60Hz 高帧率拼接不被缩略图重绘阻塞导致 SCStream 丢帧
+final class PreviewThrottleGate: @unchecked Sendable {
+    private let minInterval: TimeInterval
+    private var lastRenderUptime: TimeInterval = 0
+
+    init(minInterval: TimeInterval) { self.minInterval = minInterval }
+
+    func shouldRender(force: Bool) -> Bool {
+        let now = ProcessInfo.processInfo.systemUptime
+        if force || (now - lastRenderUptime) >= minInterval {
+            lastRenderUptime = now
+            return true
+        }
+        return false
+    }
+}
+
 /// 长截图镂空穿透取景框视图（完全鼠标穿透 `ignoresMouseEvents = true`，不遮挡下方窗口滚轮）
 final class LongShotBorderView: NSView {
     enum StatusStyle {
@@ -34,11 +51,11 @@ final class LongShotBorderView: NSView {
 
         let accent: NSColor
         switch statusStyle {
-        case .ready:          accent = .systemCyan
-        case .stitching:      accent = .systemGreen
-        case .recording:      accent = .systemRed
-        case .warning:        accent = .systemOrange
-        case .finishedBottom: accent = .controlAccentColor
+        case .ready:          accent = MSnipUITheme.accent
+        case .stitching:      accent = MSnipUITheme.success
+        case .recording:      accent = MSnipUITheme.danger
+        case .warning:        accent = MSnipUITheme.warning
+        case .finishedBottom: accent = MSnipUITheme.accent
         }
 
         // 1) 外侧镂空高光边框（严丝合缝贴在采集区外沿，不污染内部像素）
@@ -67,40 +84,42 @@ final class LongShotBorderView: NSView {
         ctx.strokePath()
         ctx.restoreGState()
 
-        // 2) 顶部状态胶囊徽标
+        // 2) 顶部清爽浅色白底状态胶囊徽标
         let nsText = statusText as NSString
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold),
-            .foregroundColor: NSColor.white
+            .foregroundColor: MSnipUITheme.inkPrimary
         ]
         let tSz = nsText.size(withAttributes: attrs)
-        let pillW = min(bounds.width - 8, ceil(tSz.width + 26))
-        let pillH: CGFloat = 23
+        let pillW = min(bounds.width - 8, ceil(tSz.width + 28))
+        let pillH: CGFloat = 24
         let pillRect = CGRect(x: frameRect.minX, y: max(2, frameRect.minY - pillH - 5), width: pillW, height: pillH)
 
         ctx.saveGState()
-        let pillPath = CGPath(roundedRect: pillRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
-        ctx.setFillColor(NSColor(srgbRed: 0.08, green: 0.09, blue: 0.11, alpha: 0.88).cgColor)
+        let pillPath = CGPath(roundedRect: pillRect, cornerWidth: 6.5, cornerHeight: 6.5, transform: nil)
+        ctx.setShadow(offset: CGSize(width: 0, height: 2), blur: 6, color: NSColor.black.withAlphaComponent(0.16).cgColor)
+        ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
         ctx.addPath(pillPath)
         ctx.fillPath()
-        ctx.setStrokeColor(accent.withAlphaComponent(0.55).cgColor)
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        ctx.setStrokeColor(accent.withAlphaComponent(0.45).cgColor)
         ctx.setLineWidth(1.0)
         ctx.addPath(pillPath)
         ctx.strokePath()
 
-        let dotRect = CGRect(x: pillRect.minX + 8, y: pillRect.midY - 3.5, width: 7, height: 7)
-        ctx.setFillColor(accent.cgColor)
-        ctx.fillEllipse(in: dotRect)
+        MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: pillRect.minX + 11.5, y: pillRect.midY), color: accent, halo: true)
 
         nsText.draw(
-            at: CGPoint(x: dotRect.maxX + 6, y: pillRect.minY + (pillH - tSz.height) * 0.5),
+            at: CGPoint(x: round(pillRect.minX + 21), y: round(pillRect.minY + (pillH - tSz.height) * 0.5)),
             withAttributes: attrs
         )
         ctx.restoreGState()
     }
 }
 
-/// 右侧实时拼接长图缩略预览卡片
+/// 右侧实时拼接长图清爽白底缩略预览卡片
 final class LongShotPreviewView: NSView {
     var previewImage: CGImage? { didSet { needsDisplay = true } }
     var pixelWidth: Int = 0 { didSet { needsDisplay = true } }
@@ -112,66 +131,58 @@ final class LongShotPreviewView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        let bgRect = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let bgPath = CGPath(roundedRect: bgRect, cornerWidth: 10, cornerHeight: 10, transform: nil)
+        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 10)
         ctx.saveGState()
-        ctx.setFillColor(NSColor(srgbRed: 0.09, green: 0.095, blue: 0.115, alpha: 0.92).cgColor)
-        ctx.addPath(bgPath)
-        ctx.fillPath()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.18).cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.addPath(bgPath)
-        ctx.strokePath()
 
         ("长图预览" as NSString).draw(at: CGPoint(x: 10, y: 7), withAttributes: [
-            .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
-            .foregroundColor: NSColor(white: 0.88, alpha: 1.0)
+            .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
+            .foregroundColor: MSnipUITheme.inkPrimary
         ])
         if pixelHeight > 0, baseHeightPx > 0 {
             let ratio = Double(pixelHeight) / Double(max(1, baseHeightPx))
             let badge = String(format: "%.1f×", ratio) as NSString
             let bAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .bold),
-                .foregroundColor: NSColor.systemGreen
+                .font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .bold),
+                .foregroundColor: MSnipUITheme.success
             ]
             let bSz = badge.size(withAttributes: bAttrs)
-            badge.draw(at: CGPoint(x: bounds.width - bSz.width - 10, y: 7.5), withAttributes: bAttrs)
+            badge.draw(at: CGPoint(x: round(bounds.width - bSz.width - 10), y: 7.5), withAttributes: bAttrs)
         }
 
         let viewport = CGRect(x: 9, y: 27, width: bounds.width - 18, height: bounds.height - 52)
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.32).cgColor)
-        ctx.addPath(CGPath(roundedRect: viewport, cornerWidth: 5, cornerHeight: 5, transform: nil))
+        ctx.setFillColor(MSnipUITheme.subtleFill.cgColor)
+        ctx.addPath(CGPath(roundedRect: viewport, cornerWidth: 6, cornerHeight: 6, transform: nil))
         ctx.fillPath()
 
         if let img = previewImage, img.width > 0, img.height > 0 {
             let aspect = CGFloat(img.height) / CGFloat(img.width)
-            var drawW = viewport.width - 4
+            var drawW = viewport.width - 6
             var drawH = drawW * aspect
-            if drawH > viewport.height - 4 {
-                drawH = viewport.height - 4
+            if drawH > viewport.height - 6 {
+                drawH = viewport.height - 6
                 drawW = drawH / max(0.05, aspect)
             }
             let dst = CGRect(
                 x: round(viewport.midX - drawW * 0.5),
-                y: round(viewport.minY + 2),
+                y: round(viewport.minY + 3),
                 width: max(2, round(drawW)),
                 height: max(2, round(drawH))
             )
             let nsImg = NSImage(cgImage: img, size: dst.size)
             nsImg.draw(in: dst, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
 
-            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.26).cgColor)
-            ctx.setLineWidth(0.8)
+            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
+            ctx.setLineWidth(1.0)
             ctx.stroke(dst)
         }
 
         let dimStr = (pixelWidth > 0 ? "\(pixelWidth) × \(pixelHeight)" : "等待画面…") as NSString
         let dAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium),
-            .foregroundColor: NSColor(white: 0.78, alpha: 1.0)
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold),
+            .foregroundColor: MSnipUITheme.inkSecondary
         ]
         let dSz = dimStr.size(withAttributes: dAttrs)
-        dimStr.draw(at: CGPoint(x: (bounds.width - dSz.width) * 0.5, y: bounds.height - 19), withAttributes: dAttrs)
+        dimStr.draw(at: CGPoint(x: round((bounds.width - dSz.width) * 0.5), y: bounds.height - 19), withAttributes: dAttrs)
         ctx.restoreGState()
     }
 }

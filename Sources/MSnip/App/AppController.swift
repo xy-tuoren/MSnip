@@ -14,6 +14,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let historyRing = CaptureHistoryRing(maxCount: 15)
     let pinManager = PinManager()
     let ocrController = OCRResultController()
+    let translationSettings = TranslationSettingsWindow()
     let permissionGuide = PermissionGuideController()
     var activeSession: OverlaySession?
     var activeLongShot: LongShotSession?
@@ -96,14 +97,34 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ocrController.onPinImage = { [weak self] img, scale, scr in
             self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
         }
+        ocrController.onOpenSettings = { [weak self] in
+            self?.translationSettings.show(tab: .translation)
+        }
+        translationSettings.appConfigProvider = { [weak self] in
+            self?.config ?? AppConfig()
+        }
+        translationSettings.onAppConfigMutated = { [weak self] mutate in
+            guard let self else { return }
+            mutate(&self.config)
+            self.config.save()
+            self.hotKeyManager.apply(config: self.config)
+            self.rebuildMenu()
+        }
+        translationSettings.onOpenHotKeyRecorder = { [weak self] in
+            guard let self else { return }
+            self.hotKeyRecorder.show(with: self.config)
+        }
+        translationSettings.onOpenPermissionGuide = { [weak self] in
+            self?.openPermissionGuide()
+        }
     }
 
     // MARK: - Core Capture & LongShot Actions
 
-    @objc func startCapture() { beginCaptureSession(quickOCR: false) }
-    @objc func startQuickOCR() { beginCaptureSession(quickOCR: true) }
+    @objc func startCapture() { beginCaptureSession(quickOCR: false, quickTranslate: false) }
+    @objc func startQuickOCR() { beginCaptureSession(quickOCR: true, quickTranslate: false) }
 
-    private func beginCaptureSession(quickOCR: Bool) {
+    func beginCaptureSession(quickOCR: Bool, quickTranslate: Bool) {
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
 
         isCapturing = true
@@ -156,7 +177,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 showShortcutTips: self.config.showShortcutTips,
                 textCapsule: self.config.defaultTextCapsule,
                 pinHint: self.config.activePinCombo.displayString,
-                quickOCRMode: quickOCR
+                quickOCRMode: quickOCR,
+                quickTranslateMode: quickTranslate
             )
         }
     }
@@ -195,7 +217,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ClipboardAndSave.copyText(value)
             ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
         case .extractText(let img, let scale, let scr):
-            ocrController.present(cgImage: img, scaleFactor: scale, screen: scr)
+            ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: false)
+        case .translateText(let img, let scale, let scr):
+            ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: true)
+        case .openTranslationSettings:
+            translationSettings.show()
         case .startLongShot(let screen, let rect, let initialImg):
             startLongShotSession(screen: screen, rect: rect, initialFrame: initialImg)
         case .startRecording(let screen, let rect, let initialImg):
@@ -244,44 +270,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func recordHistoryAndRefresh(img: CGImage, scale: CGFloat) {
         historyRing.record(cgImage: img, scaleFactor: scale)
         rebuildMenu()
-    }
-
-    private func startRecordingSession(screen: NSScreen, rect: CGRect, initialFrame: CGImage?) {
-        let rec = RegionRecordingSession()
-        self.activeRecording = rec
-        rec.onFormatChanged = { [weak self] fmt in
-            guard let self else { return }
-            self.config.preferredRecordingFormat = fmt
-            self.config.save()
-        }
-        rec.onHUDPrefChanged = { [weak self] enabled in
-            guard let self else { return }
-            self.config.recordInteractionHUD = enabled
-            self.config.save()
-        }
-        rec.onComplete = { [weak self] outcome in
-            guard let self else { return }
-            self.activeRecording = nil
-            switch outcome {
-            case .copiedFile(let url, let fmt):
-                let kb = ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) / 1024
-                ToastHUD.show(message: "\(fmt.badgeTitle) 已复制到剪贴板 (\(max(1, kb)) KB) · 可直接粘贴发送")
-            case .savedFile(let url, let fmt, let dir):
-                self.config.lastSaveDirectory = dir
-                self.config.save()
-                ToastHUD.show(message: "已保存 \(fmt.badgeTitle)：\(url.lastPathComponent)")
-            case .cancelled:
-                break
-            }
-        }
-        rec.start(
-            screen: screen,
-            selectionLocalTopLeft: rect,
-            initialCroppedFrame: initialFrame,
-            defaultFormat: config.preferredRecordingFormat,
-            interactionHUD: config.recordInteractionHUD,
-            initialSaveDirectory: config.lastSaveDirectory
-        )
     }
 
     @objc func handlePinHotKey() {

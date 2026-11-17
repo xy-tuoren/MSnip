@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 轻量非抢焦悬浮胶囊提示（支持纯状态反馈自动渐隐，以及快存后带「在 Finder 显示」的可点击交互按钮）
+/// 清爽浅色白底非抢焦悬浮胶囊提示（自动匹配语义 SF Symbol 矢量徽标，支持可点击快捷动作）
 @MainActor
 enum ToastHUD {
     private static var activePanel: NSPanel?
@@ -20,7 +20,7 @@ enum ToastHUD {
 
         let isInteractive = (actionTitle != nil && onAction != nil)
         let contentView = ToastPillView(
-            message: message,
+            rawMessage: message,
             swatch: swatch,
             actionTitle: actionTitle,
             onTrigger: {
@@ -37,9 +37,9 @@ enum ToastHUD {
             ?? NSScreen.screens.first
         let vf = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
-        let x = min(max(vf.minX + 12, round(anchor.x - size.width * 0.5)), vf.maxX - size.width - 12)
+        let x = min(max(vf.minX + 14, round(anchor.x - size.width * 0.5)), vf.maxX - size.width - 14)
         let preferredY = round(anchor.y + 22)
-        let y = (preferredY + size.height + 12 <= vf.maxY) ? preferredY : max(vf.minY + 12, round(anchor.y - size.height - 26))
+        let y = (preferredY + size.height + 14 <= vf.maxY) ? preferredY : max(vf.minY + 14, round(anchor.y - size.height - 26))
 
         let panel = NSPanel(
             contentRect: NSRect(x: x, y: y, width: size.width, height: size.height),
@@ -61,12 +61,12 @@ enum ToastHUD {
         panel.animator().alphaValue = 1.0
         activePanel = panel
 
-        let holdDuration: TimeInterval = isInteractive ? 3.4 : 1.25
+        let holdDuration: TimeInterval = isInteractive ? 3.5 : 1.35
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
                 guard let current = activePanel, current === panel else { return }
                 NSAnimationContext.runAnimationGroup { ctx in
-                    ctx.duration = 0.22
+                    ctx.duration = 0.20
                     current.animator().alphaValue = 0.0
                 } completionHandler: {
                     MainActor.assumeIsolated {
@@ -91,32 +91,38 @@ enum ToastHUD {
 }
 
 private final class ToastPillView: NSView {
-    private let message: String
+    private let cleanMessage: String
+    private let statusSymbol: String
+    private let statusTint: NSColor
     private let swatch: RGBAColor?
     private let actionTitle: String?
     private let onTrigger: (() -> Void)?
     private var isHovered = false
     let intrinsicSize: NSSize
+    override var isFlipped: Bool { true }
 
-    init(message: String, swatch: RGBAColor?, actionTitle: String?, onTrigger: (() -> Void)?) {
-        self.message = message
+    init(rawMessage: String, swatch: RGBAColor?, actionTitle: String?, onTrigger: (() -> Void)?) {
+        var trimmed = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isWarn = trimmed.hasPrefix("⚠") || trimmed.contains("失败") || trimmed.contains("未") || trimmed.contains("请先")
+        let isOK = trimmed.hasPrefix("✓") || trimmed.contains("已")
+        if trimmed.hasPrefix("✓") || trimmed.hasPrefix("⚠") {
+            trimmed = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        self.cleanMessage = trimmed
+        self.statusSymbol = isWarn ? "exclamationmark.triangle.fill" : (isOK ? "checkmark.circle.fill" : "info.circle.fill")
+        self.statusTint = isWarn ? MSnipUITheme.warning : (isOK ? MSnipUITheme.success : MSnipUITheme.accent)
         self.swatch = swatch
         self.actionTitle = actionTitle
         self.onTrigger = onTrigger
 
-        let msgAttrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold)
-        ]
-        let textSz = (message as NSString).size(withAttributes: msgAttrs)
-        let swatchW: CGFloat = (swatch != nil) ? 22 : 0
+        let msgAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)]
+        let textSz = (trimmed as NSString).size(withAttributes: msgAttrs)
         var actionW: CGFloat = 0
         if let act = actionTitle {
-            let actSz = (act as NSString).size(withAttributes: [
-                .font: NSFont.systemFont(ofSize: 12.0, weight: .semibold)
-            ])
-            actionW = ceil(actSz.width + 24)
+            let actSz = (act as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12.0, weight: .semibold)])
+            actionW = ceil(actSz.width + 26)
         }
-        self.intrinsicSize = NSSize(width: ceil(textSz.width + 26 + swatchW + actionW), height: 34)
+        self.intrinsicSize = NSSize(width: ceil(textSz.width + 46 + actionW), height: 36)
         super.init(frame: .zero)
     }
 
@@ -146,44 +152,52 @@ private final class ToastPillView: NSView {
     override func mouseDown(with event: NSEvent) { if actionTitle != nil { onTrigger?() } }
 
     override func draw(_ dirtyRect: NSRect) {
-        let bg = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.5, dy: 0.5), xRadius: 9, yRadius: 9)
-        NSColor(srgbRed: 0.10, green: 0.105, blue: 0.125, alpha: isHovered ? 0.98 : 0.93).setFill()
-        bg.fill()
-        (isHovered ? NSColor.systemCyan.withAlphaComponent(0.55) : NSColor.white.withAlphaComponent(0.18)).setStroke()
-        bg.lineWidth = 1.0
-        bg.stroke()
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 10)
+        if isHovered {
+            ctx.saveGState()
+            ctx.setStrokeColor(MSnipUITheme.accent.withAlphaComponent(0.55).cgColor)
+            ctx.setLineWidth(1.2)
+            ctx.addPath(CGPath(roundedRect: bounds.insetBy(dx: 0.6, dy: 0.6), cornerWidth: 10, cornerHeight: 10, transform: nil))
+            ctx.strokePath()
+            ctx.restoreGState()
+        }
 
-        var textX: CGFloat = 13
         if let sw = swatch {
-            let swRect = NSRect(x: 11, y: round((bounds.height - 14) * 0.5), width: 14, height: 14)
-            let swPath = NSBezierPath(roundedRect: swRect, xRadius: 3.5, yRadius: 3.5)
-            NSColor(srgbRed: CGFloat(sw.r) / 255.0, green: CGFloat(sw.g) / 255.0, blue: CGFloat(sw.b) / 255.0, alpha: 1.0).setFill()
-            swPath.fill()
-            NSColor.white.withAlphaComponent(0.85).setStroke()
-            swPath.lineWidth = 1.0
-            swPath.stroke()
-            textX = swRect.maxX + 8
+            let swRect = CGRect(x: 12, y: round((bounds.height - 14) * 0.5), width: 14, height: 14)
+            ctx.saveGState()
+            ctx.setFillColor(sw.cgColor)
+            ctx.addPath(CGPath(roundedRect: swRect, cornerWidth: 3.5, cornerHeight: 3.5, transform: nil))
+            ctx.fillPath()
+            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
+            ctx.setLineWidth(1.0)
+            ctx.addPath(CGPath(roundedRect: swRect, cornerWidth: 3.5, cornerHeight: 3.5, transform: nil))
+            ctx.strokePath()
+            ctx.restoreGState()
+        } else {
+            let iconRect = CGRect(x: 11, y: 0, width: 16, height: bounds.height)
+            ToolbarView.drawSymbol(statusSymbol, in: iconRect, alpha: 1.0, tint: statusTint)
         }
 
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold),
-            .foregroundColor: NSColor.white
+            .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold),
+            .foregroundColor: MSnipUITheme.inkPrimary
         ]
-        let ns = message as NSString
+        let ns = cleanMessage as NSString
         let sz = ns.size(withAttributes: attrs)
-        ns.draw(at: NSPoint(x: textX, y: round((bounds.height - sz.height) * 0.5)), withAttributes: attrs)
+        ns.draw(at: CGPoint(x: 33, y: round((bounds.height - sz.height) * 0.5)), withAttributes: attrs)
 
         if let act = actionTitle {
             let actAttrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 12.0, weight: .semibold),
-                .foregroundColor: NSColor.systemCyan
+                .foregroundColor: MSnipUITheme.accent
             ]
             let actNs = act as NSString
             let actSz = actNs.size(withAttributes: actAttrs)
-            let sepX = bounds.width - actSz.width - 20
-            NSColor.white.withAlphaComponent(0.16).setFill()
-            NSRect(x: sepX, y: 8, width: 1, height: bounds.height - 16).fill()
-            actNs.draw(at: NSPoint(x: sepX + 9, y: round((bounds.height - actSz.height) * 0.5)), withAttributes: actAttrs)
+            let sepX = round(bounds.width - actSz.width - 20)
+            ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
+            ctx.fill(CGRect(x: sepX, y: 8, width: 1, height: bounds.height - 16))
+            actNs.draw(at: CGPoint(x: sepX + 9, y: round((bounds.height - actSz.height) * 0.5)), withAttributes: actAttrs)
         }
     }
 }

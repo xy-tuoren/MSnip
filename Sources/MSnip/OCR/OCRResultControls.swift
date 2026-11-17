@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// OCR 结果窗顶栏与底栏使用的精致胶囊按钮
+/// OCR 与翻译对照窗使用的清爽浅色白底胶囊按钮（支持高亮激活态、主色调 CTA 态及手指光标）
 final class OCRPillButton: NSView {
     var title: String { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
     var symbolName: String? { didSet { invalidateIntrinsicContentSize(); needsDisplay = true } }
@@ -29,8 +29,10 @@ final class OCRPillButton: NSView {
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .medium)]
         let tw = (title as NSString).size(withAttributes: attrs).width
         let iconW: CGFloat = symbolName != nil ? 17 : 0
-        return NSSize(width: ceil(tw + iconW + 22), height: 26)
+        return NSSize(width: ceil(tw + iconW + 22), height: 28)
     }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -50,55 +52,44 @@ final class OCRPillButton: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = CGPath(roundedRect: r, cornerWidth: 6.5, cornerHeight: 6.5, transform: nil)
+        let path = CGPath(roundedRect: r, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil)
 
         ctx.saveGState()
+        let fg: NSColor
         if isPrimaryAccent {
-            ctx.setFillColor(NSColor.controlAccentColor.withAlphaComponent(hovered ? 1.0 : 0.90).cgColor)
-            ctx.addPath(path)
-            ctx.fillPath()
+            MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 7.0, hovered: hovered)
+            fg = .white
         } else if isToggledOn {
-            ctx.setFillColor(NSColor.controlAccentColor.withAlphaComponent(0.28).cgColor)
+            ctx.setFillColor(MSnipUITheme.activeSoftFill.cgColor)
             ctx.addPath(path)
             ctx.fillPath()
-            ctx.setStrokeColor(NSColor.controlAccentColor.withAlphaComponent(0.85).cgColor)
+            ctx.setStrokeColor(MSnipUITheme.accent.withAlphaComponent(0.55).cgColor)
             ctx.setLineWidth(1.0)
             ctx.addPath(path)
             ctx.strokePath()
+            fg = MSnipUITheme.accent
         } else {
-            ctx.setFillColor(NSColor.white.withAlphaComponent(hovered ? 0.14 : 0.08).cgColor)
+            ctx.setFillColor((hovered ? MSnipUITheme.subtleFill : MSnipUITheme.cardSolid).cgColor)
             ctx.addPath(path)
             ctx.fillPath()
-            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.15).cgColor)
+            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
             ctx.setLineWidth(1.0)
             ctx.addPath(path)
             ctx.strokePath()
+            fg = MSnipUITheme.inkPrimary
         }
 
-        let fg: NSColor = isPrimaryAccent ? .white : (isToggledOn ? .white : NSColor(white: 0.90, alpha: 1))
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12, weight: isPrimaryAccent ? .semibold : .medium),
+            .font: NSFont.systemFont(ofSize: 12, weight: (isPrimaryAccent || isToggledOn) ? .semibold : .medium),
             .foregroundColor: fg
         ]
         let tSz = (title as NSString).size(withAttributes: attrs)
         var startX = (bounds.width - tSz.width - (symbolName != nil ? 16 : 0)) * 0.5
 
-        if let sym = symbolName,
-           let baseImg = NSImage(systemSymbolName: sym, accessibilityDescription: nil) {
-            let cfg = NSImage.SymbolConfiguration(pointSize: 11.5, weight: .semibold)
-            if let configured = baseImg.withSymbolConfiguration(cfg),
-               let cg = configured.cgImage(forProposedRect: nil, context: nil, hints: nil) {
-                let sz = configured.size
-                let ir = CGRect(x: round(startX), y: round((bounds.height - sz.height) * 0.5), width: sz.width, height: sz.height)
-                ctx.saveGState()
-                ctx.translateBy(x: 0, y: ir.minY + ir.maxY)
-                ctx.scaleBy(x: 1, y: -1)
-                ctx.clip(to: ir, mask: cg)
-                ctx.setFillColor(fg.cgColor)
-                ctx.fill(ir)
-                ctx.restoreGState()
-                startX += 16
-            }
+        if let sym = symbolName {
+            let ir = CGRect(x: round(startX), y: 0, width: 14, height: bounds.height)
+            ToolbarView.drawSymbol(sym, in: ir, alpha: 0.96, tint: fg)
+            startX += 16
         }
         (title as NSString).draw(
             at: CGPoint(x: round(startX), y: round((bounds.height - tSz.height) * 0.5)),
@@ -108,13 +99,14 @@ final class OCRPillButton: NSView {
     }
 }
 
-/// 保持换行 / 合并段落 双态分段切换控件
+/// 清爽浅色白底「保持换行 / 合并段落」双态分段切换控件
 final class OCRModeSegmentView: NSView {
     var mode: OCRLayoutMode = .preserveLines { didSet { needsDisplay = true } }
     var onModeChanged: ((OCRLayoutMode) -> Void)?
 
     override var isFlipped: Bool { true }
-    override var intrinsicContentSize: NSSize { NSSize(width: 148, height: 26) }
+    override var intrinsicContentSize: NSSize { NSSize(width: 150, height: 28) }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
@@ -129,20 +121,24 @@ final class OCRModeSegmentView: NSView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let outer = bounds.insetBy(dx: 0.5, dy: 0.5)
         ctx.saveGState()
-        ctx.setFillColor(NSColor.black.withAlphaComponent(0.28).cgColor)
-        ctx.addPath(CGPath(roundedRect: outer, cornerWidth: 6.5, cornerHeight: 6.5, transform: nil))
+        ctx.setFillColor(MSnipUITheme.sidebarBg.cgColor)
+        ctx.addPath(CGPath(roundedRect: outer, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil))
         ctx.fillPath()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.14).cgColor)
+        ctx.setStrokeColor(MSnipUITheme.borderHairline.cgColor)
         ctx.setLineWidth(1.0)
-        ctx.addPath(CGPath(roundedRect: outer, cornerWidth: 6.5, cornerHeight: 6.5, transform: nil))
+        ctx.addPath(CGPath(roundedRect: outer, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil))
         ctx.strokePath()
 
         let halfW = (bounds.width - 4) * 0.5
         let selX: CGFloat = mode == .preserveLines ? 2 : (2 + halfW)
         let selRect = CGRect(x: selX, y: 2, width: halfW, height: bounds.height - 4)
-        ctx.setFillColor(NSColor.white.withAlphaComponent(0.18).cgColor)
-        ctx.addPath(CGPath(roundedRect: selRect, cornerWidth: 5, cornerHeight: 5, transform: nil))
+        let thumbPath = CGPath(roundedRect: selRect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
+        ctx.setFillColor(MSnipUITheme.cardSolid.cgColor)
+        ctx.addPath(thumbPath)
         ctx.fillPath()
+        ctx.setStrokeColor(MSnipUITheme.borderHairline.cgColor)
+        ctx.addPath(thumbPath)
+        ctx.strokePath()
 
         let labels: [(String, CGRect, Bool)] = [
             ("保持换行", CGRect(x: 2, y: 0, width: halfW, height: bounds.height), mode == .preserveLines),
@@ -150,12 +146,12 @@ final class OCRModeSegmentView: NSView {
         ]
         for (txt, rect, active) in labels {
             let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11.5, weight: active ? .semibold : .regular),
-                .foregroundColor: active ? NSColor.white : NSColor(white: 0.72, alpha: 1)
+                .font: NSFont.systemFont(ofSize: 11.5, weight: active ? .semibold : .medium),
+                .foregroundColor: active ? MSnipUITheme.inkPrimary : MSnipUITheme.inkSecondary
             ]
             let sz = (txt as NSString).size(withAttributes: attrs)
             (txt as NSString).draw(
-                at: CGPoint(x: rect.minX + (rect.width - sz.width) * 0.5, y: (rect.height - sz.height) * 0.5),
+                at: CGPoint(x: round(rect.minX + (rect.width - sz.width) * 0.5), y: round((rect.height - sz.height) * 0.5)),
                 withAttributes: attrs
             )
         }

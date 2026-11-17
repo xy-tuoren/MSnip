@@ -68,6 +68,8 @@ final class PinWindow: NSPanel {
         self.contentView = pinContentView
 
         pinContentView.onRequestAnnotate = { [weak self] in self?.beginAnnotationEditing() }
+        pinContentView.onRequestOCR = { [weak self] in self?.openOCRPanel() }
+        pinContentView.onRequestClose = { [weak self] in self?.closePin() }
         pinContentView.onRequestFileDrag = { [weak self] ev in
             guard let self else { return }
             self.pinContentView.startPNGFileDrag(with: ev, cgImage: self.currentCGImage, scaleFactor: self.imageScale)

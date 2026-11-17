@@ -2,7 +2,7 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// 长截图底部非抢焦悬浮操作栏（支持自动滚动启停、贴图、保存、取消、完成复制）
+/// 长截图底部非抢焦悬浮操作栏（清爽浅色磨砂白底风 + 矢量 SF Symbols + 蓝色主完成胶囊）
 final class LongShotControlBarView: NSView {
     enum Action {
         case toggleAutoScroll
@@ -29,7 +29,7 @@ final class LongShotControlBarView: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    static let barSize = NSSize(width: 283, height: 40)
+    static let barSize = NSSize(width: 292, height: 40)
 
     init() {
         super.init(frame: NSRect(origin: .zero, size: Self.barSize))
@@ -39,9 +39,7 @@ final class LongShotControlBarView: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
 
-    override func resetCursorRects() {
-        addCursorRect(bounds, cursor: .arrow)
-    }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
 
     override func updateTrackingAreas() {
         super.updateTrackingAreas()
@@ -57,6 +55,7 @@ final class LongShotControlBarView: NSView {
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         let idx = slots.firstIndex(where: { $0.rect.contains(p) })
+        if idx != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         if idx != hoveredIdx {
             hoveredIdx = idx
             toolTip = idx.map { slots[$0].tip }
@@ -76,17 +75,7 @@ final class LongShotControlBarView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         rebuildSlots()
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let bg = CGPath(roundedRect: bounds.insetBy(dx: 1, dy: 1), cornerWidth: 9, cornerHeight: 9, transform: nil)
-        ctx.saveGState()
-        ctx.setFillColor(NSColor(calibratedWhite: 0.12, alpha: 0.94).cgColor)
-        ctx.addPath(bg)
-        ctx.fillPath()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.18).cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.addPath(bg)
-        ctx.strokePath()
-        ctx.restoreGState()
-
+        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 9.5)
         for (i, s) in slots.enumerated() {
             s.render(ctx, s.rect, hoveredIdx == i)
         }
@@ -97,7 +86,7 @@ final class LongShotControlBarView: NSView {
         let y: CGFloat = 5, h: CGFloat = 30
         var x: CGFloat = 7
 
-        let autoW: CGFloat = 92
+        let autoW: CGFloat = 96
         let autoRect = CGRect(x: x, y: y, width: autoW, height: h)
         let running = isAutoScrolling
         list.append(ButtonSlot(
@@ -106,21 +95,28 @@ final class LongShotControlBarView: NSView {
             action: .toggleAutoScroll,
             render: { ctx, r, hov in
                 ToolbarView.drawButtonBg(ctx: ctx, rect: r, active: running, hovered: hov)
-                let label = (running ? "⏸ 停止滚动" : "▶ 自动滚动") as NSString
+                let sym = running ? "pause.fill" : "play.fill"
+                let fg = running ? MSnipUITheme.accent : MSnipUITheme.inkPrimary
+                let iconR = CGRect(x: r.minX + 8, y: r.minY, width: 14, height: r.height)
+                ToolbarView.drawSymbol(sym, in: iconR, alpha: 0.95, tint: fg)
+                let label = (running ? "停止滚动" : "自动滚动") as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
-                    .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
-                    .foregroundColor: NSColor.white
+                    .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
+                    .foregroundColor: fg
                 ]
                 let sz = label.size(withAttributes: attrs)
-                label.draw(at: CGPoint(x: r.minX + (r.width - sz.width) * 0.5, y: r.minY + (r.height - sz.height) * 0.5), withAttributes: attrs)
+                label.draw(
+                    at: CGPoint(x: round(iconR.maxX + 4), y: round(r.minY + (r.height - sz.height) * 0.5)),
+                    withAttributes: attrs
+                )
             }
         ))
         x += autoW + 8
 
         let iconDefs: [(String, String, NSColor, Action)] = [
-            ("pin", "长图贴到屏幕 (\(pinHint))", .white, .pin),
-            ("square.and.arrow.down", "保存长图 PNG", .white, .save),
-            ("xmark", "取消长截图 (Esc)", .systemRed, .cancel)
+            ("pin", "长图贴到屏幕 (\(pinHint))", MSnipUITheme.inkPrimary, .pin),
+            ("square.and.arrow.down", "保存长图 PNG", MSnipUITheme.inkPrimary, .save),
+            ("xmark", "取消长截图 (Esc)", MSnipUITheme.danger, .cancel)
         ]
         for (sym, tip, tint, act) in iconDefs {
             let r = CGRect(x: x, y: y, width: 28, height: h)
@@ -131,19 +127,21 @@ final class LongShotControlBarView: NSView {
             })
         }
 
-        let okRect = CGRect(x: x + 2, y: y, width: 74, height: h)
-        list.append(ButtonSlot(rect: okRect, tip: "完成并复制长图到剪贴板", action: .finishCopy) { ctx, r, hov in
-            let p = CGPath(roundedRect: r, cornerWidth: 6, cornerHeight: 6, transform: nil)
-            ctx.setFillColor(NSColor.controlAccentColor.withAlphaComponent(hov ? 1.0 : 0.90).cgColor)
-            ctx.addPath(p)
-            ctx.fillPath()
-            let txt = "✓ 完成" as NSString
+        let okRect = CGRect(x: x + 2, y: y, width: 76, height: h)
+        list.append(ButtonSlot(rect: okRect, tip: "完成并复制长图到剪贴板 (↩)", action: .finishCopy) { ctx, r, hov in
+            MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 6.5, hovered: hov)
+            let iconR = CGRect(x: r.minX + 10, y: r.minY, width: 14, height: r.height)
+            ToolbarView.drawSymbol("checkmark", in: iconR, alpha: 1.0, tint: .white)
+            let txt = "完成" as NSString
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
                 .foregroundColor: NSColor.white
             ]
             let sz = txt.size(withAttributes: attrs)
-            txt.draw(at: CGPoint(x: r.minX + (r.width - sz.width) * 0.5, y: r.minY + (r.height - sz.height) * 0.5), withAttributes: attrs)
+            txt.draw(
+                at: CGPoint(x: round(iconR.maxX + 4), y: round(r.minY + (r.height - sz.height) * 0.5)),
+                withAttributes: attrs
+            )
         })
         slots = list
     }
