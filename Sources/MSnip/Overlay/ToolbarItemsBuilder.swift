@@ -19,7 +19,7 @@ extension ToolbarView {
             symbol: curShape.sfSymbolName,
             hasChevron: true,
             active: shapeActive,
-            tip: "形状工具：矩形 / 椭圆 (1 / 2)",
+            tip: "形状：矩形 (R) / 椭圆 (⇧R)",
             targetTool: shapeActive ? nil : curShape
         ))
 
@@ -31,7 +31,7 @@ extension ToolbarView {
             symbol: brushSym,
             hasChevron: true,
             active: brushActive,
-            tip: "画笔工具：画笔 / 荧光笔 / 直线 (5 / 6 / 4)",
+            tip: "画笔 (D) / 荧光笔 (⇧D) / 直线 (4)",
             targetTool: brushActive ? nil : curBrush
         ))
 
@@ -41,7 +41,7 @@ extension ToolbarView {
             symbol: ToolKind.arrow.sfSymbolName,
             hasChevron: true,
             active: arrowActive,
-            tip: "箭头指示 (3)",
+            tip: "箭头指示 (A)",
             targetTool: arrowActive ? nil : .arrow
         ))
 
@@ -51,7 +51,7 @@ extension ToolbarView {
             symbol: "character",
             hasChevron: true,
             active: textActive,
-            tip: "文字与胶囊标签标注 (0 · 按 K 切胶囊底色)",
+            tip: "文字标注 (W · 按 K 切胶囊底色)",
             targetTool: textActive ? nil : .text
         ))
 
@@ -65,7 +65,7 @@ extension ToolbarView {
             symbol: stepSym,
             hasChevron: false,
             active: stepActive,
-            tip: "自增步骤序号 ①②③（单击落点 · 拖拽拉出箭头）(7)",
+            tip: "步骤序号 ①②③ (N · 拖拽可拉出箭头)",
             targetTool: stepActive ? nil : .step
         ))
 
@@ -76,15 +76,15 @@ extension ToolbarView {
             symbol: curRedact.sfSymbolName,
             hasChevron: true,
             active: redactActive,
-            tip: "隐私打码：像素马赛克 / 高斯毛玻璃 (8 / 9)",
+            tip: "马赛克 (M) / 高斯毛玻璃 (⇧M)",
             targetTool: redactActive ? nil : curRedact
         ))
 
         x = appendDivider(at: x, into: &list)
 
         // 2) 撤销 / 重做
-        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.backward", tip: "撤销 (⌘Z)", enabled: canUndo, action: .undo))
-        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.forward", tip: "重做 (⌘⇧Z)", enabled: canRedo, action: .redo))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.backward", tip: "撤销 (Z / ⌘Z)", enabled: canUndo, action: .undo))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.forward", tip: "重做 (⇧Z / ⌘⇧Z)", enabled: canRedo, action: .redo))
 
         x = appendDivider(at: x, into: &list)
 
@@ -121,10 +121,10 @@ extension ToolbarView {
             x = appendDivider(at: x, into: &list)
 
             // 4) 终态输出组：贴图 / 保存 / 关闭 / 醒目蓝色复制主胶囊
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "pin", tip: "贴到桌面 (\(pinHint))", enabled: true, action: .pin))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "square.and.arrow.down", tip: "保存图片（⌘S 另存… · ⌘⇧S 或 ⌥+点击 一键快存）", enabled: true, action: .save))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出截图 (Esc)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
-            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "复制", tip: "复制到剪贴板 (↩ / 双击选区)"))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "pin", tip: "贴到桌面 (P / \(pinHint))", enabled: true, action: .pin))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "square.and.arrow.down", tip: "保存图片 (S 一键快存 · ⇧S / ⌘S 另存为)", enabled: true, action: .save))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出截图 (Q / Esc / 右键)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
+            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "复制", tip: "复制到剪贴板 (C / ↩ / 双击选区)"))
         }
 
         items = list

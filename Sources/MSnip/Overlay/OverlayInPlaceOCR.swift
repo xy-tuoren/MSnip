@@ -60,7 +60,7 @@ final class OverlaySidePillsView: NSView {
             hoveredIdx = hit
             switch hit {
             case 0: toolTip = "调节圆角比例进度条（B · ⌥+点击归零）"
-            case 1: toolTip = "切换渐变美化衬底实时预览 (P)"
+            case 1: toolTip = "切换渐变美化衬底实时预览 (G)"
             case 2: toolTip = "对齐底层应用窗口（⌥+点击导出独立透明阴影窗口）"
             default: toolTip = nil
             }
