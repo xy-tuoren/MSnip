@@ -127,6 +127,7 @@ extension RegionRecordingSession {
     static func makePanel(frame: NSRect, ignoresMouse: Bool, contentView: NSView) -> NSPanel {
         let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.level = .screenSaver
+        p.sharingType = .none
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]

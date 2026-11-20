@@ -35,6 +35,7 @@ final class LongShotSession {
     private var targetScreen: NSScreen!
     private var captureLocalRect: CGRect = .zero
     private var scaleFactor: CGFloat = 2.0
+    private var fallbackInitialFrame: CGImage?
     private var finished = false
 
     func start(
@@ -69,10 +70,14 @@ final class LongShotSession {
             }
         }
 
-        // 先喂入首帧使右侧预览栏 0ms 立即可见
+        // 首帧快照仅作 0ms 瞬时预览与兜底；拼接状态机由 SCStream 首帧实时初始化，避免前后管线差异导致首页重复拼接
+        self.fallbackInitialFrame = initialCroppedFrame
         if let initImg = initialCroppedFrame {
-            let step = stitcher.ingest(frame: initImg)
-            applyStitchResult(step, preview: stitcher.renderPreviewImage())
+            previewView?.previewImage = initImg
+            previewView?.pixelWidth = initImg.width
+            previewView?.pixelHeight = initImg.height
+            borderView?.statusStyle = .ready
+            borderView?.statusText = "长截图 · 在框内向下滚轮 (\(initImg.width) × \(initImg.height))"
         }
 
         let stitcherRef = self.stitcher
@@ -173,8 +178,7 @@ final class LongShotSession {
 
     private func makePanel(frame: NSRect, ignoresMouse: Bool) -> NSPanel {
         let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        p.level = .statusBar
-        p.animationBehavior = .none
+        p.level = .statusBar; p.animationBehavior = .none; p.sharingType = .none
         p.isFloatingPanel = true; p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.isOpaque = false; p.backgroundColor = .clear
@@ -264,7 +268,7 @@ final class LongShotSession {
     private func finishWithExport(mode: ExportMode) {
         autoScroller.stop()
         sampler.stop()
-        guard let finalImg = stitcher.renderFinalImage() else {
+        guard let finalImg = stitcher.renderFinalImage() ?? fallbackInitialFrame else {
             finish(.cancelled)
             return
         }

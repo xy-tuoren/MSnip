@@ -44,7 +44,7 @@ final class RegionStreamSampler {
         Task { @MainActor [weak self] in
             guard let self, !self.stopped else { return }
             do {
-                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
                 guard !self.stopped else { return }
                 guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else {
                     onError("未找到目标屏幕采集源")
@@ -52,8 +52,15 @@ final class RegionStreamSampler {
                 }
 
                 let selfPID = ProcessInfo.processInfo.processIdentifier
-                let ownWindows = content.windows.filter { $0.owningApplication?.processID == selfPID }
-                let filter = SCContentFilter(display: scDisplay, excludingWindows: ownWindows)
+                let ownApps = content.applications.filter { $0.processID == selfPID }
+                let filter: SCContentFilter
+                if !ownApps.isEmpty {
+                    // 按进程级排除自身全部现有与未来悬浮窗（配合各面板 sharingType = .none 双重隔离）
+                    filter = SCContentFilter(display: scDisplay, excludingApplications: ownApps, exceptingWindows: [])
+                } else {
+                    let ownWindows = content.windows.filter { $0.owningApplication?.processID == selfPID }
+                    filter = SCContentFilter(display: scDisplay, excludingWindows: ownWindows)
+                }
 
                 let cfg = SCStreamConfiguration()
                 if losslessBGRA {
