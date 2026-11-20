@@ -271,18 +271,6 @@ extension OverlayView {
             return
         }
 
-        let delta: CGFloat = event.scrollingDeltaY > 0 ? 0.5 : -0.5
-        style.lineWidth = min(18.0, max(1.0, style.lineWidth + delta))
-        style.fontSize = min(64.0, max(12.0, style.fontSize + delta * 2.0))
-        style.mosaicBlockSize = min(32.0, max(5.0, style.mosaicBlockSize + delta * 1.5))
-        toolbar.lineWidth = style.lineWidth
-        if let idx = selectedObjectIndex {
-            doc.modifyWithHistory(at: idx) {
-                $0.style.lineWidth = style.lineWidth
-                $0.style.fontSize = style.fontSize
-                $0.style.mosaicBlockSize = style.mosaicBlockSize
-            }
-            needsDisplay = true
-        }
+        adjustAnnotationSize(by: event.scrollingDeltaY > 0 ? 1.0 : -1.0)
     }
 }

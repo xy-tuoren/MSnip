@@ -171,6 +171,10 @@ extension OverlayView {
                 copyCoordinatesAtCursorAndFinish()
             }
         case "`", "~": magnifierPinned.toggle()
+        case "[", "-":
+            if selection != nil { adjustAnnotationSize(by: shift ? -3.0 : -1.0) }
+        case "]", "=", "+":
+            if selection != nil { adjustAnnotationSize(by: shift ? 3.0 : 1.0) }
         case "h", "/", "?":
             showShortcutTips.toggle()
             onPrefsChanged?(colorCopyFormat, showShortcutTips)
@@ -222,6 +226,8 @@ extension OverlayView {
         case kVK_ANSI_Q: return "q"; case kVK_ANSI_R: return "r"; case kVK_ANSI_S: return "s"
         case kVK_ANSI_T: return "t"; case kVK_ANSI_V: return "v"; case kVK_ANSI_W: return "w"
         case kVK_ANSI_X: return "x"; case kVK_ANSI_Y: return "y"; case kVK_ANSI_Z: return "z"
+        case kVK_ANSI_LeftBracket: return "["; case kVK_ANSI_RightBracket: return "]"
+        case kVK_ANSI_Minus: return "-"; case kVK_ANSI_Equal: return "="
         case kVK_ANSI_Grave: return "`"
         default: return nil
         }

@@ -158,12 +158,44 @@ extension OverlayView {
         invalidateMagnifierMove(from: curLocal, to: nextLocal)
     }
 
+    /// 统一同步画笔粗细、文字字号、马赛克/毛玻璃颗粒大小与二级进度条读数
+    func applyAnnotationSize(_ rawWidth: CGFloat) {
+        let w = min(ToolbarSubbarView.maxStroke, max(ToolbarSubbarView.minStroke, rawWidth.rounded()))
+        style.lineWidth = w
+        style.fontSize = min(64.0, max(12.0, round(10.0 + w * 3.0)))
+        style.mosaicBlockSize = min(36.0, max(5.0, round(4.0 + w * 1.8)))
+        toolbar.lineWidth = w
+        subbar.lineWidth = w
+        applyTextFieldVisualStyle()
+        if let selIdx = selectedObjectIndex {
+            doc.modifyWithHistory(at: selIdx) {
+                $0.style.lineWidth = style.lineWidth
+                $0.style.fontSize = style.fontSize
+                $0.style.mosaicBlockSize = style.mosaicBlockSize
+            }
+        }
+        onStyleChanged?(colorIndex, style.lineWidth)
+        needsDisplay = true
+    }
+
+    func adjustAnnotationSize(by delta: CGFloat) {
+        applyAnnotationSize(style.lineWidth + delta)
+    }
+
     func handleArrowKey(dx: CGFloat, dy: CGFloat, ctrl: Bool, shift: Bool) {
         if let idx = selectedObjectIndex {
             let step: CGFloat = shift ? 5.0 : 1.0
             doc.modifyWithHistory(at: idx) { $0.translate(dx: dx * step, dy: dy * step) }
             updateToolbarLayout()
             needsDisplay = true
+            return
+        }
+
+        // 激活任意标注工具时（画笔/马赛克/毛玻璃/矩形/箭头/文字/序号），方向键 ↑/→ 调大、↓/← 缩小（按住 ⇧ 加速）
+        if selection != nil, activeTool != nil, !ctrl {
+            let step: CGFloat = shift ? 3.0 : 1.0
+            let dir: CGFloat = (dy < 0 || dx > 0) ? 1.0 : -1.0
+            adjustAnnotationSize(by: dir * step)
             return
         }
 

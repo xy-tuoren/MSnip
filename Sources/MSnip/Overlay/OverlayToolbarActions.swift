@@ -34,20 +34,7 @@ extension OverlayView {
             eyedropperActive.toggle()
             updateToolbarLayout()
         case .selectStroke(let w):
-            style.lineWidth = w
-            style.fontSize = max(14, w * 4.5)
-            style.mosaicBlockSize = max(6, w * 2.6)
-            toolbar.lineWidth = w
-            subbar.lineWidth = w
-            if let selIdx = selectedObjectIndex {
-                doc.modifyWithHistory(at: selIdx) {
-                    $0.style.lineWidth = w
-                    $0.style.fontSize = max(14, w * 4.5)
-                    $0.style.mosaicBlockSize = max(6, w * 2.6)
-                }
-            }
-            onStyleChanged?(colorIndex, style.lineWidth)
-            needsDisplay = true
+            applyAnnotationSize(w)
         case .undo:
             selectedObjectIndex = nil
             if doc.undo() { updateToolbarLayout(); needsDisplay = true }

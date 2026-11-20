@@ -3,17 +3,27 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 二级标注样式悬浮子栏：仅当激活任意标注工具或选中已有标注时弹出，承载「子形态切换 + 粗细 + 预设颜色 + 吸管」
+/// 二级标注样式悬浮子栏：承载「子形态切换 + 连续可拖拽大小进度条（支持方向键/滚轮同步）+ 预设颜色 + 吸管」
 final class ToolbarSubbarView: NSView {
     var onAction: ((ToolbarView.Action) -> Void)?
 
     var activeTool: ToolKind? { didSet { if oldValue != activeTool { refresh() } } }
-    var lineWidth: CGFloat = 3.0 { didSet { if oldValue != lineWidth { refresh() } } }
+    var lineWidth: CGFloat = 3.0 {
+        didSet {
+            let clamped = min(Self.maxStroke, max(Self.minStroke, lineWidth))
+            if abs(lineWidth - clamped) > 0.001 { lineWidth = clamped }
+            if abs(oldValue - lineWidth) > 0.001 { needsDisplay = true }
+        }
+    }
     var colorIndex: Int = 0 { didSet { if oldValue != colorIndex { refresh() } } }
     var customColor: RGBAColor? { didSet { if oldValue != customColor { refresh() } } }
     var eyedropperActive: Bool = false { didSet { if oldValue != eyedropperActive { refresh() } } }
     var textCapsule: Bool = false { didSet { if oldValue != textCapsule { refresh() } } }
     var isPinEditorMode: Bool = false { didSet { if oldValue != isPinEditorMode { refresh() } } }
+
+    static let minStroke: CGFloat = 1.0
+    static let maxStroke: CGFloat = 18.0
+    static let subHeight: CGFloat = 34
 
     private struct Slot {
         let rect: CGRect
@@ -23,13 +33,19 @@ final class ToolbarSubbarView: NSView {
     }
 
     private var slots: [Slot] = []
+    private var sepXs: [CGFloat] = []
+    private var sliderHitRect: CGRect = .zero
+    private var sliderTrackMinX: CGFloat = 0
+    private var sliderTrackMaxX: CGFloat = 0
+    private var sliderLabelX: CGFloat = 0
     private var hoveredIndex: Int?
+    private var hoveredSlider = false { didSet { if oldValue != hoveredSlider { needsDisplay = true } } }
+    private var isDraggingSlider = false { didSet { if oldValue != isDraggingSlider { needsDisplay = true } } }
 
     override var isFlipped: Bool { true }
-    static let subHeight: CGFloat = 34
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 280, height: Self.subHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: Self.subHeight))
         wantsLayer = true
         layer?.masksToBounds = false
         layer?.shadowColor = NSColor.black.cgColor
@@ -59,24 +75,67 @@ final class ToolbarSubbarView: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
-        let idx = slots.firstIndex(where: { $0.rect.contains(p) })
-        if idx != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+        let onSlider = sliderHitRect.contains(p)
+        let idx = onSlider ? nil : slots.firstIndex(where: { $0.rect.contains(p) })
+        if onSlider || idx != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+        hoveredSlider = onSlider
         if idx != hoveredIndex {
             hoveredIndex = idx
-            toolTip = idx.map { slots[$0].tip }
             needsDisplay = true
+        }
+        if onSlider {
+            toolTip = "拖动进度条调节大小（方向键 ↑↓←→ 或滚轮也可快速调大缩小）"
+        } else {
+            toolTip = idx.map { slots[$0].tip }
         }
     }
 
     override func mouseExited(with event: NSEvent) {
         hoveredIndex = nil
+        hoveredSlider = false
         needsDisplay = true
     }
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
+        if sliderHitRect.contains(p) {
+            isDraggingSlider = true
+            updateStroke(atX: p.x)
+            return
+        }
         if let hit = slots.first(where: { $0.rect.contains(p) }) {
             onAction?(hit.action)
+        }
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard isDraggingSlider else { return }
+        let p = convert(event.locationInWindow, from: nil)
+        updateStroke(atX: p.x)
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        isDraggingSlider = false
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        let delta: CGFloat = event.scrollingDeltaY > 0 ? 1.0 : (event.scrollingDeltaY < 0 ? -1.0 : 0)
+        guard abs(delta) > 0.01 else { return }
+        let next = min(Self.maxStroke, max(Self.minStroke, (lineWidth + delta).rounded()))
+        lineWidth = next
+        onAction?(.selectStroke(next))
+    }
+
+    private func updateStroke(atX x: CGFloat) {
+        let span = max(1, sliderTrackMaxX - sliderTrackMinX)
+        let t = min(1.0, max(0.0, (x - sliderTrackMinX) / span))
+        let raw = Self.minStroke + t * (Self.maxStroke - Self.minStroke)
+        let snapped = raw.rounded()
+        if abs(snapped - lineWidth) > 0.01 {
+            lineWidth = snapped
+            onAction?(.selectStroke(snapped))
+        } else {
+            needsDisplay = true
         }
     }
 
@@ -92,11 +151,11 @@ final class ToolbarSubbarView: NSView {
             let variants: [(ToolKind, String, String)] = {
                 switch tool {
                 case .rect, .ellipse:
-                    return [(.rect, "rectangle", "矩形框 (1)"), (.ellipse, "circle", "椭圆圈记 (2)")]
+                    return [(.rect, "rectangle", "矩形框 (R)"), (.ellipse, "circle", "椭圆圈记 (⇧R)")]
                 case .pen, .highlighter, .line:
-                    return [(.pen, "pencil", "自由画笔 (5)"), (.highlighter, "highlighter", "荧光马克笔 (6)"), (.line, "line.diagonal", "直线 (4)")]
+                    return [(.pen, "pencil", "自由画笔 (D)"), (.highlighter, "highlighter", "荧光马克笔 (⇧D)"), (.line, "line.diagonal", "直线 (4)")]
                 case .mosaic, .gaussianBlur:
-                    return [(.mosaic, "checkerboard.rectangle", "方格像素马赛克 (8)"), (.gaussianBlur, "drop.circle", "高斯毛玻璃模糊 (9)")]
+                    return [(.mosaic, "checkerboard.rectangle", "像素马赛克 (M)"), (.gaussianBlur, "drop.circle", "高斯毛玻璃 (⇧M)")]
                 default:
                     return []
                 }
@@ -114,8 +173,8 @@ final class ToolbarSubbarView: NSView {
 
             if tool == .text {
                 let capOn = textCapsule
-                let r = CGRect(x: x, y: y, width: 64, height: h)
-                x += 66
+                let r = CGRect(x: x, y: y, width: 62, height: h)
+                x += 64
                 list.append(Slot(rect: r, tip: "切换圆角胶囊底色标签 (K / ⌘B)", action: .toggleTextCapsule) { ctx, rect, hov in
                     ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: capOn, hovered: hov)
                     let str = "胶囊底" as NSString
@@ -124,7 +183,7 @@ final class ToolbarSubbarView: NSView {
                         .foregroundColor: capOn ? ToolbarView.accentBlue : ToolbarView.inkDark
                     ]
                     let sz = str.size(withAttributes: attrs)
-                    str.draw(at: CGPoint(x: rect.midX - sz.width * 0.5, y: rect.midY - sz.height * 0.5), withAttributes: attrs)
+                    str.draw(at: CGPoint(x: round(rect.midX - sz.width * 0.5), y: round(rect.midY - sz.height * 0.5)), withAttributes: attrs)
                 })
             }
 
@@ -133,20 +192,13 @@ final class ToolbarSubbarView: NSView {
             }
         }
 
-        // 2) 3 档线宽 / 模糊强度圆点
-        for stroke in AnnotationStyle.strokePresets {
-            let sel = abs(lineWidth - stroke) < 1.0
-            let r = CGRect(x: x, y: y, width: 20, height: h)
-            x += 21
-            let dotR = max(2.2, min(5.5, stroke * 0.85))
-            list.append(Slot(rect: r, tip: "粗细 / 强度（可滚轮微调）", action: .selectStroke(stroke)) { ctx, rect, hov in
-                ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: sel, hovered: hov)
-                let dot = CGRect(x: rect.midX - dotR, y: rect.midY - dotR, width: dotR * 2, height: dotR * 2)
-                let col = sel ? ToolbarView.accentBlue : ToolbarView.inkDark.withAlphaComponent(0.62)
-                ctx.setFillColor(col.cgColor)
-                ctx.fillEllipse(in: dot)
-            })
-        }
+        // 2) 连续大小进度条区域（预览圆点 + 82px 滑轨 + 等宽数值读数，支持点击/拖拽/方向键/滚轮）
+        let sliderW: CGFloat = 134
+        sliderHitRect = CGRect(x: x, y: 2, width: sliderW, height: Self.subHeight - 4)
+        sliderTrackMinX = x + 18
+        sliderTrackMaxX = x + 96
+        sliderLabelX = x + 104
+        x += sliderW
 
         // 马赛克/毛玻璃无需选颜色，隐藏右侧色板令子栏更精简
         let usesColor = (activeTool != .mosaic && activeTool != .gaussianBlur)
@@ -188,10 +240,20 @@ final class ToolbarSubbarView: NSView {
         needsDisplay = true
     }
 
-    private var sepXs: [CGFloat] = []
     private func addSeparator(at x: CGFloat) -> CGFloat {
         sepXs.append(x + 3)
         return x + 8
+    }
+
+    private func formattedSizeReadout() -> String {
+        switch activeTool {
+        case .text:
+            return "\(Int(min(64.0, max(12.0, round(10.0 + lineWidth * 3.0)))))"
+        case .mosaic, .gaussianBlur:
+            return "\(Int(min(36.0, max(5.0, round(4.0 + lineWidth * 1.8)))))"
+        default:
+            return "\(Int(lineWidth.rounded()))"
+        }
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -207,5 +269,28 @@ final class ToolbarSubbarView: NSView {
         for (i, s) in slots.enumerated() {
             s.draw(ctx, s.rect, hoveredIndex == i)
         }
+        drawSizeSlider(in: ctx)
+    }
+
+    private func drawSizeSlider(in ctx: CGContext) {
+        let ratio = min(1.0, max(0.0, (lineWidth - Self.minStroke) / (Self.maxStroke - Self.minStroke)))
+        let dotColor: NSColor = {
+            if activeTool == .mosaic || activeTool == .gaussianBlur { return MSnipUITheme.accent }
+            if let c = customColor { return NSColor(cgColor: c.cgColor) ?? MSnipUITheme.accent }
+            let presets = RGBAColor.presets
+            return NSColor(cgColor: presets[min(max(0, colorIndex), presets.count - 1)].cgColor) ?? MSnipUITheme.accent
+        }()
+        ToolbarView.drawSubbarSizeSlider(
+            ctx: ctx,
+            boundsH: bounds.height,
+            hitMinX: sliderHitRect.minX,
+            trackMinX: sliderTrackMinX,
+            trackMaxX: sliderTrackMaxX,
+            labelX: sliderLabelX,
+            ratio: ratio,
+            dotColor: dotColor,
+            readout: formattedSizeReadout(),
+            highlighted: isDraggingSlider || hoveredSlider
+        )
     }
 }

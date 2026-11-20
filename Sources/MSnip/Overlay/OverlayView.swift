@@ -166,8 +166,11 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
         self.colorIndex = initialColorIndex
         self.style.color = RGBAColor.presets[min(max(0, initialColorIndex), RGBAColor.presets.count - 1)]
-        self.style.lineWidth = initialLineWidth
-        setupFloatingControls(initialColorIndex: initialColorIndex, initialLineWidth: initialLineWidth, pinHint: pinHint)
+        let initW = min(ToolbarSubbarView.maxStroke, max(ToolbarSubbarView.minStroke, initialLineWidth.rounded()))
+        self.style.lineWidth = initW
+        self.style.fontSize = min(64.0, max(12.0, round(10.0 + initW * 3.0)))
+        self.style.mosaicBlockSize = min(36.0, max(5.0, round(4.0 + initW * 1.8)))
+        setupFloatingControls(initialColorIndex: initialColorIndex, initialLineWidth: initW, pinHint: pinHint)
     }
 
     @available(*, unavailable)

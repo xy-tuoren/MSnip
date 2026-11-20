@@ -78,12 +78,15 @@ extension PinAnnotationCanvasView {
     }
 
     func applyStrokeWidth(_ w: CGFloat) {
-        style.lineWidth = w
-        style.fontSize = max(14, w * 4.5)
+        let clamped = min(ToolbarSubbarView.maxStroke, max(ToolbarSubbarView.minStroke, w.rounded()))
+        style.lineWidth = clamped
+        style.fontSize = min(64.0, max(12.0, round(10.0 + clamped * 3.0)))
+        style.mosaicBlockSize = min(36.0, max(5.0, round(4.0 + clamped * 1.8)))
         if let sel = selectedIndex {
             doc.modifyWithHistory(at: sel) {
-                $0.style.lineWidth = w
-                $0.style.fontSize = max(14, w * 4.5)
+                $0.style.lineWidth = style.lineWidth
+                $0.style.fontSize = style.fontSize
+                $0.style.mosaicBlockSize = style.mosaicBlockSize
             }
             onDocStateChanged?()
             needsDisplay = true
@@ -118,6 +121,15 @@ extension PinAnnotationCanvasView {
             onDocStateChanged?()
             needsDisplay = true
             return
+        }
+        if activeTool != nil, selectedIndex == nil {
+            let step: CGFloat = shift ? 3.0 : 1.0
+            if event.keyCode == 126 || event.keyCode == 124 { // ↑ / → 调大
+                applyStrokeWidth(style.lineWidth + step); onDocStateChanged?(); return
+            }
+            if event.keyCode == 125 || event.keyCode == 123 { // ↓ / ← 缩小
+                applyStrokeWidth(style.lineWidth - step); onDocStateChanged?(); return
+            }
         }
         if !cmd, chars == "k" || (cmd && chars == "b") {
             togglePinTextCapsule()

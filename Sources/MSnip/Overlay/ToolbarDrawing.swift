@@ -112,4 +112,63 @@ extension ToolbarView {
             ctx.strokeEllipse(in: dot)
         }
     }
+
+    /// 绘制二级样式栏内的连续大小进度条（左侧动态预览圆点 + 蓝轨滑块 + 右侧等宽数值读数）
+    static func drawSubbarSizeSlider(
+        ctx: CGContext,
+        boundsH: CGFloat,
+        hitMinX: CGFloat,
+        trackMinX: CGFloat,
+        trackMaxX: CGFloat,
+        labelX: CGFloat,
+        ratio: CGFloat,
+        dotColor: NSColor,
+        readout: String,
+        highlighted: Bool
+    ) {
+        let cy = boundsH * 0.5
+        let dotR = 2.4 + ratio * 3.8
+        let dotCx = hitMinX + 7.5
+        ctx.saveGState()
+        ctx.setFillColor(dotColor.cgColor)
+        ctx.fillEllipse(in: CGRect(x: dotCx - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
+
+        let trackH: CGFloat = 4.5
+        let trackW = trackMaxX - trackMinX
+        let trackRect = CGRect(x: trackMinX, y: round(cy - trackH * 0.5), width: trackW, height: trackH)
+        let bgPath = CGPath(roundedRect: trackRect, cornerWidth: 2.25, cornerHeight: 2.25, transform: nil)
+        ctx.setFillColor(MSnipUITheme.sidebarBg.cgColor)
+        ctx.addPath(bgPath); ctx.fillPath()
+        ctx.setStrokeColor(MSnipUITheme.borderHairline.cgColor)
+        ctx.setLineWidth(1.0); ctx.addPath(bgPath); ctx.strokePath()
+
+        let fillW = max(0, min(trackW, trackW * ratio))
+        if fillW > 1.0 {
+            let fillRect = CGRect(x: trackMinX, y: trackRect.minY, width: fillW, height: trackH)
+            ctx.setFillColor(MSnipUITheme.accent.cgColor)
+            ctx.addPath(CGPath(roundedRect: fillRect, cornerWidth: 2.25, cornerHeight: 2.25, transform: nil))
+            ctx.fillPath()
+        }
+
+        let thumbR: CGFloat = highlighted ? 7.0 : 6.0
+        let thumbX = trackMinX + fillW
+        let thumbRect = CGRect(x: thumbX - thumbR, y: cy - thumbR, width: thumbR * 2, height: thumbR * 2)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: 1.5), blur: 3.0, color: NSColor.black.withAlphaComponent(0.20).cgColor)
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.fillEllipse(in: thumbRect)
+        ctx.restoreGState()
+        ctx.setStrokeColor(MSnipUITheme.accent.cgColor)
+        ctx.setLineWidth(1.8)
+        ctx.strokeEllipse(in: thumbRect.insetBy(dx: 0.5, dy: 0.5))
+
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold),
+            .foregroundColor: MSnipUITheme.inkPrimary
+        ]
+        let ns = readout as NSString
+        let sz = ns.size(withAttributes: attrs)
+        ns.draw(at: CGPoint(x: round(labelX), y: round(cy - sz.height * 0.5)), withAttributes: attrs)
+        ctx.restoreGState()
+    }
 }

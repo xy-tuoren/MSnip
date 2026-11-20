@@ -165,11 +165,11 @@ final class PinWindow: NSPanel {
         let delta = event.scrollingDeltaY
         guard abs(delta) > 0.01 else { return }
         if let canvas = editorCanvas {
-            let d: CGFloat = delta > 0 ? 0.5 : -0.5
-            let nextW = min(18.0, max(1.0, canvas.style.lineWidth + d))
-            canvas.style.mosaicBlockSize = min(32.0, max(5.0, canvas.style.mosaicBlockSize + d * 1.5))
+            let d: CGFloat = delta > 0 ? 1.0 : -1.0
+            let nextW = min(ToolbarSubbarView.maxStroke, max(ToolbarSubbarView.minStroke, (canvas.style.lineWidth + d).rounded()))
             canvas.applyStrokeWidth(nextW)
             toolbarPanel?.barView.lineWidth = nextW
+            toolbarPanel?.subbarView.lineWidth = nextW
             return
         }
         let step: CGFloat = event.hasPreciseScrollingDeltas ? delta * 0.004 : (delta > 0 ? 0.08 : -0.08)
