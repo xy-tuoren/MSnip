@@ -257,4 +257,35 @@ extension OverlayView {
     override func keyUp(with event: NSEvent) {
         if event.keyCode == 49 { spacePressed = false }
     }
+
+    /// 鼠标右键快捷取消：已有选框时一键取消当前选框回到自动吸附重新框选；无选框时直接退出截图
+    override func rightMouseDown(with event: NSEvent) {
+        shiftTapCandidate = false
+        if isEditingText {
+            cancelTextEditing()
+            return
+        }
+        if eyedropperActive {
+            eyedropperActive = false
+            return
+        }
+        if selection != nil || dragOp != nil {
+            dragOp = nil
+            draftAnnotation = nil
+            activeTool = nil
+            selectedObjectIndex = nil
+            deactivateInPlaceOCR()
+            deactivateInPlaceTranslate()
+            isCornerSliderVisible = false
+            cornerRadiusRatio = 0
+            backdropStyle = .none
+            doc = AnnotationDocument()
+            selection = nil
+            lastMousePoint = convert(event.locationInWindow, from: nil)
+            refreshAutoSnapAtCurrentMouse()
+            syncMagnifierView()
+            return
+        }
+        onCancel?()
+    }
 }
