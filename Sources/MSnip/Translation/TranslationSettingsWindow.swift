@@ -195,7 +195,8 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         brand.frame = NSRect(x: 42, y: 18, width: 58, height: 20)
         bar.addSubview(brand)
 
-        let ver = NSTextField(labelWithString: "v1.4.5")
+        let appVer = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.2.1"
+        let ver = NSTextField(labelWithString: "v\(appVer)")
         ver.font = .monospacedSystemFont(ofSize: 12.0, weight: .medium)
         ver.textColor = GeekTheme.inkMuted
         ver.frame = NSRect(x: 100, y: 20, width: 54, height: 16)

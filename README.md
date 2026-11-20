@@ -3,7 +3,7 @@
 **超轻量纯原生 macOS 全能截图、截图原位/流式翻译、独立窗口阴影抓图、动图录制、滚动长截图、实况识字与桌面贴图工具。**
 纯 `Swift + AppKit + CoreGraphics + Accelerate + ScreenCaptureKit + VisionKit + Translation + CryptoKit + AVFoundation + ImageIO` 构建，**100% 零第三方依赖**、全系 **清爽浅色白底（Daylight Porcelain）** 统一设计语言、待机 **0% CPU**，双架构分发包仅 **~2.1 MB**。
 
-![MSnip v1.1 功能总览](docs/msnip-showcase.jpg)
+![MSnip 功能总览](docs/msnip-showcase.jpg)
 
 ---
 
