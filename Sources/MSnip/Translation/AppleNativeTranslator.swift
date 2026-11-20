@@ -182,7 +182,11 @@ enum AppleNativeTranslator {
                 let responses = try await session.translations(from: requests)
                 box.finish(.success(mapOrderedResponses(responses, original: original)))
             } catch {
-                box.finish(.failure(error))
+                if needsDownload {
+                    box.finish(.failure(NativeError.timedOutOrCancelled))
+                } else {
+                    box.finish(.failure(error))
+                }
             }
         })
         hosting.frame = NSRect(x: 0, y: 0, width: 1, height: 1)

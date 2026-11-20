@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 极客单色分段切换控件（支持普通标题与等宽字号）
+/// 极客单色分段切换控件（支持普通 13.5pt / 等宽 12.5pt，selectedIndex = -1 表示未选中任何预设）
 final class GeekSegmentControl: NSView {
     var items: [String] { didSet { needsDisplay = true } }
     var selectedIndex: Int = 0 { didSet { needsDisplay = true } }
@@ -38,29 +38,27 @@ final class GeekSegmentControl: NSView {
         guard !items.isEmpty else { return }
         let x = convert(event.locationInWindow, from: nil).x
         let idx = min(items.count - 1, max(0, Int(x / (bounds.width / CGFloat(items.count)))))
-        if idx != selectedIndex {
-            selectedIndex = idx
-            onSelect?(idx)
-        }
+        selectedIndex = idx
+        onSelect?(idx)
     }
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext, !items.isEmpty else { return }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let bg = CGPath(roundedRect: r, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil)
+        let bg = CGPath(roundedRect: r, cornerWidth: 8.0, cornerHeight: 8.0, transform: nil)
         ctx.saveGState()
         ctx.setFillColor(GeekTheme.inputBg.cgColor)
         ctx.addPath(bg); ctx.fillPath()
         ctx.setStrokeColor(GeekTheme.border.cgColor)
         ctx.setLineWidth(1.0); ctx.addPath(bg); ctx.strokePath()
 
-        let segW = (bounds.width - 4) / CGFloat(items.count)
+        let segW = (bounds.width - 6) / CGFloat(items.count)
         for (i, label) in items.enumerated() {
-            let sr = CGRect(x: 2 + CGFloat(i) * segW, y: 2, width: segW, height: bounds.height - 4)
+            let sr = CGRect(x: 3 + CGFloat(i) * segW, y: 3, width: segW, height: bounds.height - 6)
             let active = (i == selectedIndex)
             if active || hoveredIdx == i {
-                let p = CGPath(roundedRect: sr, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
-                ctx.setFillColor((active ? GeekTheme.controlHover : NSColor(white: 1.0, alpha: 0.04)).cgColor)
+                let p = CGPath(roundedRect: sr, cornerWidth: 6.0, cornerHeight: 6.0, transform: nil)
+                ctx.setFillColor((active ? GeekTheme.controlHover : NSColor(white: 1.0, alpha: 0.045)).cgColor)
                 ctx.addPath(p); ctx.fillPath()
                 if active {
                     ctx.setStrokeColor(GeekTheme.borderStrong.cgColor)
@@ -68,8 +66,8 @@ final class GeekSegmentControl: NSView {
                 }
             }
             let font: NSFont = monoFont
-                ? .monospacedSystemFont(ofSize: 10.5, weight: active ? .semibold : .medium)
-                : .systemFont(ofSize: 12.0, weight: active ? .semibold : .medium)
+                ? .monospacedSystemFont(ofSize: 12.0, weight: active ? .semibold : .medium)
+                : .systemFont(ofSize: 13.5, weight: active ? .semibold : .medium)
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: font,
                 .foregroundColor: active ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
@@ -82,9 +80,9 @@ final class GeekSegmentControl: NSView {
     }
 }
 
-/// 极客微按钮（支持 ghost / subtle / accent / primaryLight 四种克制态）
+/// 极客微按钮（13pt 清晰字号，图标与文字严格留足 6px 间距）
 final class GeekButton: NSView {
-    enum Style { case ghost, subtle, accent, primaryLight }
+    enum Style { case ghost, subtle, accent, emeraldSoft }
     var title: String { didSet { needsDisplay = true } }
     var symbolName: String? { didSet { needsDisplay = true } }
     var style: Style { didSet { needsDisplay = true } }
@@ -112,17 +110,19 @@ final class GeekButton: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let p = CGPath(roundedRect: r, cornerWidth: 6.0, cornerHeight: 6.0, transform: nil)
-        let alpha: CGFloat = isEnabled ? 1.0 : 0.40
+        let p = CGPath(roundedRect: r, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil)
+        let alpha: CGFloat = isEnabled ? 1.0 : 0.45
         ctx.saveGState()
         let fg: NSColor
         switch style {
-        case .primaryLight:
-            ctx.setFillColor((hovered ? NSColor.white : GeekTheme.inkPrimary).withAlphaComponent(alpha).cgColor)
+        case .emeraldSoft:
+            ctx.setFillColor(GeekTheme.emeraldSoft.cgColor)
             ctx.addPath(p); ctx.fillPath()
-            fg = GeekTheme.windowBg
+            ctx.setStrokeColor(GeekTheme.emerald.withAlphaComponent(0.35).cgColor)
+            ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
+            fg = GeekTheme.emerald
         case .accent:
-            ctx.setFillColor((hovered ? GeekTheme.accent.withAlphaComponent(0.24) : GeekTheme.accentSoft).cgColor)
+            ctx.setFillColor((hovered ? GeekTheme.accent.withAlphaComponent(0.26) : GeekTheme.accentSoft).cgColor)
             ctx.addPath(p); ctx.fillPath()
             ctx.setStrokeColor(GeekTheme.accent.withAlphaComponent(0.55).cgColor)
             ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
@@ -134,23 +134,24 @@ final class GeekButton: NSView {
             ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
             fg = GeekTheme.inkPrimary
         case .ghost:
-            if hovered {
+            if hovered && isEnabled {
                 ctx.setFillColor(NSColor(white: 1.0, alpha: 0.06).cgColor)
                 ctx.addPath(p); ctx.fillPath()
             }
-            fg = hovered ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
+            fg = (hovered && isEnabled) ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
         }
 
         let font: NSFont = mono
-            ? .monospacedSystemFont(ofSize: 11.0, weight: .medium)
-            : .systemFont(ofSize: 11.5, weight: style == .primaryLight ? .semibold : .medium)
+            ? .monospacedSystemFont(ofSize: 12.0, weight: .medium)
+            : .systemFont(ofSize: 13.0, weight: (style == .accent || style == .emeraldSoft) ? .semibold : .medium)
         let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: fg.withAlphaComponent(alpha)]
         let tSz = title.isEmpty ? .zero : (title as NSString).size(withAttributes: attrs)
-        let iconSpan: CGFloat = symbolName != nil ? (title.isEmpty ? 14 : 16) : 0
-        var sx = (bounds.width - tSz.width - iconSpan) * 0.5
+        let iconW: CGFloat = symbolName != nil ? 15 : 0
+        let gap: CGFloat = (symbolName != nil && !title.isEmpty) ? 6 : 0
+        var sx = (bounds.width - tSz.width - iconW - gap) * 0.5
         if let sym = symbolName {
-            ToolbarView.drawSymbol(sym, in: CGRect(x: round(sx), y: 0, width: 14, height: bounds.height), alpha: alpha * 0.95, tint: fg)
-            sx += iconSpan
+            ToolbarView.drawSymbol(sym, in: CGRect(x: round(sx), y: 0, width: iconW, height: bounds.height), alpha: alpha * 0.95, tint: fg)
+            sx += iconW + gap
         }
         if !title.isEmpty {
             (title as NSString).draw(at: CGPoint(x: round(sx), y: round((bounds.height - tSz.height) * 0.5)), withAttributes: attrs)
@@ -159,7 +160,7 @@ final class GeekButton: NSView {
     }
 }
 
-/// 极客暗色下拉选择器（替代系统默认弹框）
+/// 极客暗色下拉选择器（13pt 清晰字号 + 中性灰前缀图标，克制不花哨）
 final class GeekDropdownPill: NSView {
     var items: [String] = [] { didSet { needsDisplay = true } }
     var selectedIndex: Int = 0 { didSet { needsDisplay = true } }
@@ -204,37 +205,37 @@ final class GeekDropdownPill: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
-        let path = CGPath(roundedRect: r, cornerWidth: 6.0, cornerHeight: 6.0, transform: nil)
+        let path = CGPath(roundedRect: r, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil)
         ctx.saveGState()
         ctx.setFillColor((hovered ? GeekTheme.controlHover : GeekTheme.controlBg).cgColor)
         ctx.addPath(path); ctx.fillPath()
-        ctx.setStrokeColor((hovered ? GeekTheme.accent.withAlphaComponent(0.50) : GeekTheme.border).cgColor)
+        ctx.setStrokeColor((hovered ? GeekTheme.borderStrong : GeekTheme.border).cgColor)
         ctx.setLineWidth(1.0); ctx.addPath(path); ctx.strokePath()
 
-        var leftX: CGFloat = 8
+        var leftX: CGFloat = 10
         if let sym = symbolName {
-            ToolbarView.drawSymbol(sym, in: CGRect(x: leftX, y: 0, width: 13, height: bounds.height), alpha: 0.90, tint: GeekTheme.accent)
-            leftX += 17
+            ToolbarView.drawSymbol(sym, in: CGRect(x: leftX, y: 0, width: 14, height: bounds.height), alpha: 0.85, tint: GeekTheme.inkSecondary)
+            leftX += 20
         }
         let text = items.indices.contains(selectedIndex) ? items[selectedIndex] : "—"
         let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),
+            .font: NSFont.systemFont(ofSize: 13.0, weight: .medium),
             .foregroundColor: GeekTheme.inkPrimary,
             .paragraphStyle: para
         ]
         let sz = (text as NSString).size(withAttributes: attrs)
         (text as NSString).draw(
-            in: CGRect(x: round(leftX), y: round((bounds.height - sz.height) * 0.5), width: max(20, bounds.width - leftX - 18), height: sz.height + 2),
+            in: CGRect(x: round(leftX), y: round((bounds.height - sz.height) * 0.5), width: max(20, bounds.width - leftX - 22), height: sz.height + 2),
             withAttributes: attrs
         )
         let chevronTint = hovered ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
         ctx.setStrokeColor(chevronTint.cgColor)
-        ctx.setLineWidth(1.2); ctx.setLineCap(.round); ctx.setLineJoin(.round)
-        let cx = bounds.width - 9.5, cy = bounds.midY + 0.5
-        ctx.move(to: CGPoint(x: cx - 2.5, y: cy - 1.2))
-        ctx.addLine(to: CGPoint(x: cx, y: cy + 1.5))
-        ctx.addLine(to: CGPoint(x: cx + 2.5, y: cy - 1.2))
+        ctx.setLineWidth(1.3); ctx.setLineCap(.round); ctx.setLineJoin(.round)
+        let cx = bounds.width - 11.5, cy = bounds.midY + 0.5
+        ctx.move(to: CGPoint(x: cx - 3.0, y: cy - 1.4))
+        ctx.addLine(to: CGPoint(x: cx, y: cy + 1.8))
+        ctx.addLine(to: CGPoint(x: cx + 3.0, y: cy - 1.4))
         ctx.strokePath()
         ctx.restoreGState()
     }

@@ -2,52 +2,28 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 翻译 API 设置页状态绑定、零空隙动态行排布与连通性测速扩展
+/// 翻译页状态绑定、零空隙动态排布（含可折叠高级选项）与连通性测速扩展
 extension TranslationSettingsWindow {
     func refreshTopBarPopups() {
         if let idx = TranslationTargetLang.allCases.firstIndex(of: draft.targetLang) {
             targetLangPill.selectedIndex = idx
         }
         autoCopySwitch.isOn = draft.autoCopyTranslation
-        let enabled = draft.profiles.filter(\.isEnabled)
-        primaryEnginePill.items = enabled.map(\.name)
-        primaryEnginePill.selectedIndex = enabled.firstIndex(where: { $0.id == draft.activeProfileID }) ?? 0
-
-        fallbackEnginePill.items = ["不启用回退"] + enabled.map(\.name)
-        if let fbID = draft.fallbackProfileID, let fIdx = enabled.firstIndex(where: { $0.id == fbID }) {
-            fallbackEnginePill.selectedIndex = fIdx + 1
-        } else {
-            fallbackEnginePill.selectedIndex = 0
-        }
         removeBtn.isEnabled = draft.profiles.count > 1
-    }
-
-    func onSelectPrimaryIndex(_ idx: Int) {
-        commitCurrentFormEdits()
-        let enabled = draft.profiles.filter(\.isEnabled)
-        guard enabled.indices.contains(idx) else { return }
-        draft.activeProfileID = enabled[idx].id
-        persistDraft()
-        tableView.reloadData()
-        tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
-        loadSelectedProfileIntoForm()
-    }
-
-    func onSelectFallbackIndex(_ idx: Int) {
-        commitCurrentFormEdits()
-        let enabled = draft.profiles.filter(\.isEnabled)
-        draft.fallbackProfileID = (idx > 0 && enabled.indices.contains(idx - 1)) ? enabled[idx - 1].id : nil
-        persistDraft()
     }
 
     func loadSelectedProfileIntoForm() {
         guard draft.profiles.indices.contains(selectedIndex) else { return }
         let p = draft.profiles[selectedIndex]
+        detailHeaderTitle.stringValue = p.name
         nameField.stringValue = p.name
-        enabledSwitch.isOn = p.isEnabled
+
         let isMain = (p.id == draft.activeProfileID)
-        setDefaultBtn.title = isMain ? "当前主力" : "设为主力"
-        setDefaultBtn.style = isMain ? .accent : .subtle
+        setDefaultBtn.title = isMain ? "当前使用中" : "设为当前引擎"
+        setDefaultBtn.symbolName = isMain ? "checkmark" : nil
+        setDefaultBtn.style = isMain ? .emeraldSoft : .accent
+        setDefaultBtn.isEnabled = !isMain
+
         if let kIdx = TranslationProviderKind.allCases.firstIndex(of: p.kind) {
             kindPill.selectedIndex = kIdx
         }
@@ -89,50 +65,58 @@ extension TranslationSettingsWindow {
         let needsModel = (kind == .openAICompatible || kind == .anthropicCompatible || kind == .geminiNative || kind == .tencent)
         modelRow.isHidden = isNative || !needsModel
 
-        let showExtras = (kind == .openAICompatible || kind == .anthropicCompatible || kind == .geminiNative || kind == .customWebhook)
-        extra1Row.isHidden = isNative || !showExtras
-        extra2Row.isHidden = isNative || !showExtras
+        let hasAdvanced = (kind == .openAICompatible || kind == .anthropicCompatible || kind == .geminiNative || kind == .customWebhook)
+        advancedToggleBtn.isHidden = isNative || !hasAdvanced
+        advancedToggleBtn.symbolName = isAdvancedExpanded ? "chevron.down" : "chevron.right"
+        advancedToggleBtn.title = (kind == .customWebhook) ? "高级选项（Body / JSON 路径）" : "高级选项（提示词 / 请求头）"
+        extra1Row.isHidden = isNative || !hasAdvanced || !isAdvancedExpanded
+        extra2Row.isHidden = isNative || !hasAdvanced || !isAdvancedExpanded
 
         switch kind {
         case .appleNative:
-            nativeInfoLabel.stringValue = "macOS 原生离线神经网络翻译\n免费 · 无需 API Key · 断网可用 · 隐私零上传\n\n状态：正在检测系统语言包…"
+            nativeInfoLabel.stringValue = "macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n正在检测本机离线语言包状态…"
             Task { @MainActor [weak self] in
                 let status = await AppleNativeTranslator.queryAvailabilitySummary()
-                self?.nativeInfoLabel.stringValue = """
-                macOS 原生离线神经网络翻译
-                免费 · 无需 API Key · 断网可用 · 隐私零上传
-
-                当前状态：\(status)
-                点击下方「测试连通」可立即验证或拉起系统语言包下载。
-                """
+                self?.nativeInfoLabel.stringValue = "macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n\(status)"
             }
         case .openAICompatible, .anthropicCompatible, .geminiNative:
-            endpointLabel.stringValue = "Base URL"; apiKeyLabel.stringValue = "API Key"; modelLabel.stringValue = "Model"
+            endpointLabel.stringValue = "接口地址"; apiKeyLabel.stringValue = "API 密钥"; modelLabel.stringValue = "模型名称"
             extraLabel1.stringValue = "提示词"; extraField1.setGeekPlaceholder("留空使用内置精准截图翻译提示词")
             extraField1.stringValue = p.systemPrompt
             extraLabel2.stringValue = "请求头"; extraField2.setGeekPlaceholder("可选 JSON，如 {\"X-Key\":\"val\"}")
             extraField2.stringValue = p.customHeadersJSON
         case .tencent:
             appIdLabel.stringValue = "SecretId"; apiKeyLabel.stringValue = "SecretKey"
-            endpointLabel.stringValue = "域名"; modelLabel.stringValue = "Region"
+            endpointLabel.stringValue = "请求域名"; modelLabel.stringValue = "地域"
         case .baidu:
-            appIdLabel.stringValue = "AppID"; apiKeyLabel.stringValue = "密钥"; endpointLabel.stringValue = "接口 URL"
+            appIdLabel.stringValue = "AppID"; apiKeyLabel.stringValue = "密钥"; endpointLabel.stringValue = "接口地址"
         case .youdao:
-            appIdLabel.stringValue = "应用 ID"; apiKeyLabel.stringValue = "应用密钥"; endpointLabel.stringValue = "接口 URL"
+            appIdLabel.stringValue = "应用 ID"; apiKeyLabel.stringValue = "应用密钥"; endpointLabel.stringValue = "接口地址"
         case .deepl:
-            endpointLabel.stringValue = "URL"; apiKeyLabel.stringValue = "Auth Key"
+            endpointLabel.stringValue = "接口地址"; apiKeyLabel.stringValue = "Auth Key"
         case .customWebhook:
-            endpointLabel.stringValue = "URL"; apiKeyLabel.stringValue = "Bearer"
+            endpointLabel.stringValue = "请求 URL"; apiKeyLabel.stringValue = "Bearer"
             extraLabel1.stringValue = "Body"; extraField1.stringValue = p.customBodyTemplate
             extraLabel2.stringValue = "JSON 路径"; extraField2.stringValue = p.customResponsePath
         }
 
-        // 零空隙紧凑排布所有可见表单行
-        var cursorY: CGFloat = 78
-        for row in [presetRowView!, appIdRow!, endpointRow!, apiKeyRow!, modelRow!, extra1Row!, extra2Row!] where !row.isHidden {
+        // 动态零空隙堆叠所有可见行，并按需扩展滚动高度
+        var cursorY: CGFloat = 88
+        for row in [presetRowView!, appIdRow!, endpointRow!, apiKeyRow!, modelRow!] where !row.isHidden {
             row.frame.origin.y = cursorY
-            cursorY += 33
+            cursorY += 38
         }
+        if !advancedToggleBtn.isHidden {
+            advancedToggleBtn.frame.origin.y = cursorY + 2
+            cursorY += 32
+        }
+        for row in [extra1Row!, extra2Row!] where !row.isHidden {
+            row.frame.origin.y = cursorY
+            cursorY += 38
+        }
+        let minH = formScrollView.bounds.height
+        let contentH = isNative ? minH : max(minH, cursorY + 12)
+        formContentView.frame = NSRect(x: 0, y: 0, width: formScrollView.bounds.width, height: contentH)
     }
 
     func commitCurrentFormEdits() {
@@ -140,7 +124,7 @@ extension TranslationSettingsWindow {
         var p = draft.profiles[selectedIndex]
         let trimmedName = nameField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedName.isEmpty { p.name = trimmedName }
-        p.isEnabled = enabledSwitch.isOn
+        p.isEnabled = true
         p.appIdOrSecretId = appIdField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         p.endpoint = endpointField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let activeKey = isAPIKeyRevealed ? apiKeyPlainField.stringValue : apiKeySecureField.stringValue
@@ -154,6 +138,7 @@ extension TranslationSettingsWindow {
             p.customHeadersJSON = extraField2.stringValue
         }
         draft.profiles[selectedIndex] = p
+        detailHeaderTitle.stringValue = p.name
     }
 
     func onSelectKindIndex(_ kIdx: Int) {
@@ -168,6 +153,7 @@ extension TranslationSettingsWindow {
         if p.customBodyTemplate.isEmpty { p.customBodyTemplate = tpl.customBodyTemplate }
         if p.customResponsePath.isEmpty { p.customResponsePath = tpl.customResponsePath }
         draft.profiles[selectedIndex] = p
+        isAdvancedExpanded = false
         loadSelectedProfileIntoForm()
     }
 
@@ -184,12 +170,6 @@ extension TranslationSettingsWindow {
         tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
     }
 
-    func onFormStructuralChanged() {
-        commitCurrentFormEdits(); persistDraft(); refreshTopBarPopups()
-        tableView.reloadData()
-        tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
-    }
-
     func onSetAsPrimaryClicked() {
         commitCurrentFormEdits()
         guard draft.profiles.indices.contains(selectedIndex) else { return }
@@ -200,7 +180,7 @@ extension TranslationSettingsWindow {
         tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
         loadSelectedProfileIntoForm()
         testStatusLabel.textColor = GeekTheme.emerald
-        testStatusLabel.stringValue = "✓ 已设为主力引擎"
+        testStatusLabel.stringValue = "✓ 已切换为当前翻译引擎"
     }
 
     func onTestClicked() {
@@ -217,10 +197,5 @@ extension TranslationSettingsWindow {
             self.tableView.reloadData()
             self.tableView.selectRowIndexes(IndexSet(integer: self.selectedIndex), byExtendingSelection: false)
         }
-    }
-
-    func onSaveAndClose() {
-        commitCurrentFormEdits(); persistDraft()
-        window?.close()
     }
 }

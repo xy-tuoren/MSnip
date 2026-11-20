@@ -2,41 +2,31 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 极客简约单页设置窗口（Carbon Dark HUD 风格，合并常规/热键/权限与翻译 API 于 640×488 紧凑双页）
+/// 极客简约 3 标签设置窗口（720×560 Carbon Dark HUD，高可读字阶、宽敞留白、实时自动保存）
 @MainActor
 final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
     enum SettingsTab: Int, CaseIterable {
-        case general = 0
-        case translation = 1
-
+        case general = 0, shortcuts = 1, translation = 2
         var title: String {
             switch self {
-            case .general:     return "常规"
-            case .translation: return "翻译 API"
+            case .general: return "通用"
+            case .shortcuts: return "快捷键"
+            case .translation: return "翻译"
             }
         }
     }
 
     enum HotKeySlot: Int, CaseIterable {
-        case capture = 0
-        case pin = 1
-        case ocr = 2
-
-        var title: String {
-            switch self {
-            case .capture: return "区域截图"
-            case .pin:     return "桌面贴图"
-            case .ocr:     return "快捷识字"
-            }
-        }
-
+        case capture = 0, pin = 1, ocr = 2
+        var title: String { self == .capture ? "区域截图" : (self == .pin ? "桌面贴图" : "快捷识字") }
         var subtitle: String {
             switch self {
-            case .capture: return "截图、标注、长截图与录屏"
-            case .pin:     return "将剪贴板图像钉在屏幕最前"
-            case .ocr:     return "框选区域直接识别并提取文字"
+            case .capture: return "截屏、标注、滚动长截图与录屏"
+            case .pin:     return "将剪贴板图片钉在屏幕最前方"
+            case .ocr:     return "框选任意区域直接提取文字"
             }
         }
+        var symbol: String { self == .capture ? "viewfinder" : (self == .pin ? "pin" : "text.viewfinder") }
     }
 
     var onAppConfigMutated: (((inout AppConfig) -> Void) -> Void)?
@@ -50,14 +40,10 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var activeTab: SettingsTab = .general
     var tabSegment: GeekSegmentControl!
     var generalPage: GeekFlippedView!
+    var shortcutsPage: GeekFlippedView!
     var translationPage: GeekFlippedView!
 
-    // 常规页控件引用（含行内快捷键录制、偏好与权限状态）
-    var activeRecordingSlot: HotKeySlot?
-    var hotKeyEnableSwitch: GeekToggleSwitch!
-    var presetDropdown: GeekDropdownPill!
-    var hotKeyHintLabel: NSTextField!
-    var hotKeyPills: [HotKeySlot: GeekHotKeyPill] = [:]
+    // 通用页控件
     var loginSwitch: GeekToggleSwitch!
     var tipsSwitch: GeekToggleSwitch!
     var colorFmtSegment: GeekSegmentControl!
@@ -68,13 +54,19 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var screenPermBtn: GeekButton!
     var axPermBtn: GeekButton!
 
-    // 翻译页状态与控件引用
+    // 快捷键页控件
+    var activeRecordingSlot: HotKeySlot?
+    var hotKeyEnableSwitch: GeekToggleSwitch!
+    var presetSegment: GeekSegmentControl!
+    var hotKeyHintLabel: NSTextField!
+    var hotKeyPills: [HotKeySlot: GeekHotKeyPill] = [:]
+
+    // 翻译页状态与控件
     var draft: TranslationSettingsConfig = TranslationSettingsConfig.load()
     var selectedIndex: Int = 0
     var isAPIKeyRevealed = false
+    var isAdvancedExpanded = false
     var targetLangPill: GeekDropdownPill!
-    var primaryEnginePill: GeekDropdownPill!
-    var fallbackEnginePill: GeekDropdownPill!
     var autoCopySwitch: GeekToggleSwitch!
 
     var tableView: NSTableView!
@@ -82,9 +74,11 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var removeBtn: GeekButton!
 
     var detailContainer: GeekCardView!
-    var nameField: NSTextField!
-    var enabledSwitch: GeekToggleSwitch!
+    var detailHeaderTitle: NSTextField!
     var setDefaultBtn: GeekButton!
+    var formScrollView: NSScrollView!
+    var formContentView: GeekFlippedView!
+    var nameField: NSTextField!
     var kindPill: GeekDropdownPill!
     var presetRowView: GeekFlippedView!
     var llmPresetPill: GeekDropdownPill!
@@ -107,6 +101,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var modelRow: GeekFlippedView!
     var modelLabel: NSTextField!
     var modelField: NSTextField!
+    var advancedToggleBtn: GeekButton!
     var extra1Row: GeekFlippedView!
     var extraLabel1: NSTextField!
     var extraField1: NSTextField!
@@ -144,7 +139,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
 
     private func ensureWindowBuilt() {
         if window != nil { return }
-        let W: CGFloat = 640, H: CGFloat = 488
+        let W: CGFloat = 720, H: CGFloat = 560
         let win = GeekSettingsWindowPanel(
             contentRect: NSRect(x: 0, y: 0, width: W, height: H),
             styleMask: [.titled, .closable, .fullSizeContentView],
@@ -173,52 +168,55 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         win.contentView = root
 
         buildTopBar(in: root, width: W)
-        let bodyFrame = NSRect(x: 0, y: 52, width: W, height: H - 90)
+        let bodyFrame = NSRect(x: 0, y: 56, width: W, height: H - 96)
         generalPage = GeekFlippedView(frame: bodyFrame)
+        shortcutsPage = GeekFlippedView(frame: bodyFrame)
         translationPage = GeekFlippedView(frame: bodyFrame)
         root.addSubview(generalPage)
+        root.addSubview(shortcutsPage)
         root.addSubview(translationPage)
 
         buildGeneralPage(in: generalPage)
+        buildShortcutsPage(in: shortcutsPage)
         buildTranslationPage(in: translationPage)
-        buildFooterBar(in: root, width: W, y: H - 38)
+        buildFooterBar(in: root, width: W, y: H - 40)
         self.window = win
     }
 
     private func buildTopBar(in root: GeekFlippedView, width W: CGFloat) {
-        let bar = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: W, height: 52))
+        let bar = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: W, height: 56))
         bar.wantsLayer = true
         bar.layer?.backgroundColor = GeekTheme.barBg.cgColor
         root.addSubview(bar)
 
         let brand = NSTextField(labelWithString: "MSnip")
-        brand.font = .systemFont(ofSize: 13.5, weight: .bold)
+        brand.font = .systemFont(ofSize: 15.0, weight: .bold)
         brand.textColor = GeekTheme.inkPrimary
-        brand.frame = NSRect(x: 42, y: 17, width: 52, height: 18)
+        brand.frame = NSRect(x: 42, y: 18, width: 58, height: 20)
         bar.addSubview(brand)
 
-        let ver = NSTextField(labelWithString: "v1.4.3")
-        ver.font = .monospacedSystemFont(ofSize: 10.5, weight: .medium)
+        let ver = NSTextField(labelWithString: "v1.4.4")
+        ver.font = .monospacedSystemFont(ofSize: 12.0, weight: .medium)
         ver.textColor = GeekTheme.inkMuted
-        ver.frame = NSRect(x: 94, y: 19, width: 48, height: 15)
+        ver.frame = NSRect(x: 100, y: 20, width: 54, height: 16)
         bar.addSubview(ver)
 
         tabSegment = GeekSegmentControl(items: SettingsTab.allCases.map(\.title), selectedIndex: 0)
-        tabSegment.frame = NSRect(x: round((W - 208) * 0.5), y: 11, width: 208, height: 30)
+        tabSegment.frame = NSRect(x: round((W - 312) * 0.5), y: 11, width: 312, height: 34)
         tabSegment.onSelect = { [weak self] idx in
             guard let tab = SettingsTab(rawValue: idx) else { return }
             self?.switchTab(tab)
         }
         bar.addSubview(tabSegment)
 
-        let sep = NSView(frame: NSRect(x: 0, y: 51, width: W, height: 1))
+        let sep = NSView(frame: NSRect(x: 0, y: 55, width: W, height: 1))
         sep.wantsLayer = true
         sep.layer?.backgroundColor = GeekTheme.border.cgColor
         bar.addSubview(sep)
     }
 
     private func buildFooterBar(in root: GeekFlippedView, width W: CGFloat, y: CGFloat) {
-        let foot = GeekFlippedView(frame: NSRect(x: 0, y: y, width: W, height: 38))
+        let foot = GeekFlippedView(frame: NSRect(x: 0, y: y, width: W, height: 40))
         foot.wantsLayer = true
         foot.layer?.backgroundColor = GeekTheme.barBg.cgColor
         root.addSubview(foot)
@@ -228,29 +226,18 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         sep.layer?.backgroundColor = GeekTheme.border.cgColor
         foot.addSubview(sep)
 
-        let cfgBtn = GeekButton(title: "config.json", symbol: "doc.text", style: .ghost, mono: true)
-        cfgBtn.toolTip = "在 Finder 中显示通用配置文件"
-        cfgBtn.frame = NSRect(x: 16, y: 7, width: 98, height: 24)
-        cfgBtn.onClick = { [weak self] in self?.revealAppConfigJSON() }
-        foot.addSubview(cfgBtn)
-
-        let provBtn = GeekButton(title: "providers.json", symbol: "key", style: .ghost, mono: true)
-        provBtn.toolTip = "在 Finder 中显示翻译 API 配置文件（0600 权限）"
-        provBtn.frame = NSRect(x: 118, y: 7, width: 116, height: 24)
-        provBtn.onClick = { [weak self] in self?.revealJSONConfig() }
-        foot.addSubview(provBtn)
+        let dirBtn = GeekButton(title: "打开配置目录", symbol: "folder", style: .ghost)
+        dirBtn.toolTip = "在 Finder 中打开 MSnip 配置文件夹（含 config.json 与 translation_providers.json）"
+        dirBtn.frame = NSRect(x: 20, y: 7, width: 122, height: 26)
+        dirBtn.onClick = { [weak self] in self?.revealConfigDirectory() }
+        foot.addSubview(dirBtn)
 
         let tip = NSTextField(labelWithString: "自动保存 · ⌘W 关闭")
-        tip.font = .monospacedSystemFont(ofSize: 10.5, weight: .regular)
+        tip.font = .monospacedSystemFont(ofSize: 12.0, weight: .regular)
         tip.textColor = GeekTheme.inkMuted
         tip.alignment = .right
-        tip.frame = NSRect(x: W - 234, y: 12, width: 146, height: 15)
+        tip.frame = NSRect(x: W - 196, y: 12, width: 170, height: 16)
         foot.addSubview(tip)
-
-        let doneBtn = GeekButton(title: "完成", style: .primaryLight)
-        doneBtn.frame = NSRect(x: W - 78, y: 7, width: 62, height: 24)
-        doneBtn.onClick = { [weak self] in self?.onSaveAndClose() }
-        foot.addSubview(doneBtn)
     }
 
     func switchTab(_ tab: SettingsTab) {
@@ -260,8 +247,9 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         activeTab = tab
         tabSegment.selectedIndex = tab.rawValue
         generalPage.isHidden = (tab != .general)
+        shortcutsPage.isHidden = (tab != .shortcuts)
         translationPage.isHidden = (tab != .translation)
-        if tab == .general { refreshGeneralAndPermissionsUI() }
+        if tab != .translation { refreshGeneralAndPermissionsUI() }
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { draft.profiles.count }
@@ -281,6 +269,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         guard row >= 0, row != selectedIndex, draft.profiles.indices.contains(row) else { return }
         commitCurrentFormEdits()
         selectedIndex = row
+        isAdvancedExpanded = false
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
         loadSelectedProfileIntoForm()
