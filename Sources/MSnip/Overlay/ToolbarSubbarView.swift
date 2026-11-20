@@ -192,12 +192,26 @@ final class ToolbarSubbarView: NSView {
             }
         }
 
-        // 2) 连续大小进度条区域（预览圆点 + 82px 滑轨 + 等宽数值读数，支持点击/拖拽/方向键/滚轮）
-        let sliderW: CGFloat = 134
+        // 2) 小 / 中 / 大 3 档快选圆点 + 紧邻连续大小进度条（点击/拖拽/方向键/滚轮全联动）
+        let quickSizes: [(CGFloat, CGFloat, String)] = [(2.0, 2.3, "小号 (2)"), (5.0, 3.8, "中号 (5)"), (10.0, 5.4, "大号 (10)")]
+        for (presetW, dotR, tip) in quickSizes {
+            let r = CGRect(x: x, y: y, width: 20, height: h)
+            x += 20
+            list.append(Slot(rect: r, tip: tip, action: .selectStroke(presetW)) { [weak self] ctx, rect, hov in
+                let curW = self?.lineWidth ?? 3.0
+                let sel = abs(curW - presetW) < 0.6
+                ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: sel, hovered: hov)
+                let col = sel ? ToolbarView.accentBlue : ToolbarView.inkDark.withAlphaComponent(0.65)
+                ctx.setFillColor(col.cgColor)
+                ctx.fillEllipse(in: CGRect(x: rect.midX - dotR, y: rect.midY - dotR, width: dotR * 2, height: dotR * 2))
+            })
+        }
+        x += 4
+        let sliderW: CGFloat = 108
         sliderHitRect = CGRect(x: x, y: 2, width: sliderW, height: Self.subHeight - 4)
-        sliderTrackMinX = x + 18
-        sliderTrackMaxX = x + 96
-        sliderLabelX = x + 104
+        sliderTrackMinX = x + 6
+        sliderTrackMaxX = x + 76
+        sliderLabelX = x + 84
         x += sliderW
 
         // 马赛克/毛玻璃无需选颜色，隐藏右侧色板令子栏更精简
@@ -274,23 +288,10 @@ final class ToolbarSubbarView: NSView {
 
     private func drawSizeSlider(in ctx: CGContext) {
         let ratio = min(1.0, max(0.0, (lineWidth - Self.minStroke) / (Self.maxStroke - Self.minStroke)))
-        let dotColor: NSColor = {
-            if activeTool == .mosaic || activeTool == .gaussianBlur { return MSnipUITheme.accent }
-            if let c = customColor { return NSColor(cgColor: c.cgColor) ?? MSnipUITheme.accent }
-            let presets = RGBAColor.presets
-            return NSColor(cgColor: presets[min(max(0, colorIndex), presets.count - 1)].cgColor) ?? MSnipUITheme.accent
-        }()
         ToolbarView.drawSubbarSizeSlider(
-            ctx: ctx,
-            boundsH: bounds.height,
-            hitMinX: sliderHitRect.minX,
-            trackMinX: sliderTrackMinX,
-            trackMaxX: sliderTrackMaxX,
-            labelX: sliderLabelX,
-            ratio: ratio,
-            dotColor: dotColor,
-            readout: formattedSizeReadout(),
-            highlighted: isDraggingSlider || hoveredSlider
+            ctx: ctx, boundsH: bounds.height,
+            trackMinX: sliderTrackMinX, trackMaxX: sliderTrackMaxX, labelX: sliderLabelX,
+            ratio: ratio, readout: formattedSizeReadout(), highlighted: isDraggingSlider || hoveredSlider
         )
     }
 }

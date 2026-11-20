@@ -113,25 +113,19 @@ extension ToolbarView {
         }
     }
 
-    /// 绘制二级样式栏内的连续大小进度条（左侧动态预览圆点 + 蓝轨滑块 + 右侧等宽数值读数）
+    /// 绘制二级样式栏内的连续大小进度条（紧随大中小快选圆点之后：蓝轨滑块 + 右侧等宽数值读数）
     static func drawSubbarSizeSlider(
         ctx: CGContext,
         boundsH: CGFloat,
-        hitMinX: CGFloat,
         trackMinX: CGFloat,
         trackMaxX: CGFloat,
         labelX: CGFloat,
         ratio: CGFloat,
-        dotColor: NSColor,
         readout: String,
         highlighted: Bool
     ) {
         let cy = boundsH * 0.5
-        let dotR = 2.4 + ratio * 3.8
-        let dotCx = hitMinX + 7.5
         ctx.saveGState()
-        ctx.setFillColor(dotColor.cgColor)
-        ctx.fillEllipse(in: CGRect(x: dotCx - dotR, y: cy - dotR, width: dotR * 2, height: dotR * 2))
 
         let trackH: CGFloat = 4.5
         let trackW = trackMaxX - trackMinX
@@ -150,7 +144,7 @@ extension ToolbarView {
             ctx.fillPath()
         }
 
-        let thumbR: CGFloat = highlighted ? 7.0 : 6.0
+        let thumbR: CGFloat = highlighted ? 6.8 : 5.8
         let thumbX = trackMinX + fillW
         let thumbRect = CGRect(x: thumbX - thumbR, y: cy - thumbR, width: thumbR * 2, height: thumbR * 2)
         ctx.saveGState()
