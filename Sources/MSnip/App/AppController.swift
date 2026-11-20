@@ -8,6 +8,8 @@ import MSnipCore
 final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
     var axMenuItem: NSMenuItem?
+    var permWarnSepItem: NSMenuItem?
+    var loginMenuItem: NSMenuItem?
     var config = AppConfig.load()
     let hotKeyManager = HotKeyManager()
     let hotKeyRecorder = HotKeyRecorderController()
@@ -110,6 +112,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.config.save()
             self.hotKeyManager.apply(config: self.config)
             self.rebuildMenu()
+        }
+        translationSettings.onBeginHotKeyRecording = { [weak self] in
+            self?.hotKeyManager.unregisterAll()
+        }
+        translationSettings.onEndHotKeyRecording = { [weak self] in
+            guard let self else { return }
+            self.hotKeyManager.apply(config: self.config)
         }
         translationSettings.onOpenHotKeyRecorder = { [weak self] in
             guard let self else { return }
@@ -222,7 +231,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .translateText(let img, let scale, let scr):
             ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: true)
         case .openTranslationSettings:
-            translationSettings.show()
+            translationSettings.show(tab: .translation)
         case .startLongShot(let screen, let rect, let initialImg):
             startLongShotSession(screen: screen, rect: rect, initialFrame: initialImg)
         case .startRecording(let screen, let rect, let initialImg):

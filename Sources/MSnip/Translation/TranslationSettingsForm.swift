@@ -2,70 +2,19 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 服务列表行矢量圆点视图（替代 Emoji 状态球）
-final class ProviderRowCellView: NSTableCellView {
-    private let titleText: String
-    private let isPrimary: Bool
-    private let dotColor: NSColor
-
-    init(title: String, isPrimary: Bool, dotColor: NSColor) {
-        self.titleText = title
-        self.isPrimary = isPrimary
-        self.dotColor = dotColor
-        super.init(frame: .zero)
-    }
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 12, y: bounds.midY), color: dotColor, halo: isPrimary)
-
-        var rightReserve: CGFloat = 6
-        if isPrimary {
-            let badgeRect = CGRect(x: bounds.width - 38, y: round((bounds.height - 18) * 0.5), width: 32, height: 18)
-            ctx.setFillColor(MSnipUITheme.activeSoftFill.cgColor)
-            ctx.addPath(CGPath(roundedRect: badgeRect, cornerWidth: 4.5, cornerHeight: 4.5, transform: nil))
-            ctx.fillPath()
-            let bAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 10, weight: .bold),
-                .foregroundColor: MSnipUITheme.accent
-            ]
-            let bStr = "默认" as NSString
-            let bSz = bStr.size(withAttributes: bAttrs)
-            bStr.draw(at: CGPoint(x: round(badgeRect.midX - bSz.width * 0.5), y: round(badgeRect.midY - bSz.height * 0.5)), withAttributes: bAttrs)
-            rightReserve = 44
-        }
-
-        let para = NSMutableParagraphStyle()
-        para.lineBreakMode = .byTruncatingTail
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12.5, weight: isPrimary ? .semibold : .medium),
-            .foregroundColor: MSnipUITheme.inkPrimary,
-            .paragraphStyle: para
-        ]
-        let sz = (titleText as NSString).size(withAttributes: attrs)
-        let r = CGRect(x: 24, y: round((bounds.height - sz.height) * 0.5), width: max(30, bounds.width - 24 - rightReserve), height: sz.height + 2)
-        (titleText as NSString).draw(in: r, withAttributes: attrs)
-    }
-}
-
-/// 翻译与大模型设置页：清爽白底卡片布局、密码显隐眼标、自定义胶囊选择器扩展
+/// 翻译 API 设置页布局与服务列表管理（紧凑顶部路由条 + 左侧服务列表 + 右侧动态无空隙表单）
 extension TranslationSettingsWindow {
-    func buildTranslationPage(in page: NSView) {
-        let W = page.bounds.width, H = page.bounds.height
-        let hdr = NSTextField(labelWithString: "截图翻译与 API 接口")
-        hdr.font = .systemFont(ofSize: 16, weight: .bold)
-        hdr.textColor = MSnipUITheme.inkPrimary
-        hdr.frame = NSRect(x: 20, y: H - 42, width: 260, height: 22)
-        page.addSubview(hdr)
+    func buildTranslationPage(in page: GeekFlippedView) {
+        let W = page.bounds.width
+        let cardW = W - 40
 
-        // 1) 顶部全局路由白底卡片
-        let topCard = makeWhiteCard(frame: NSRect(x: 18, y: H - 98, width: W - 36, height: 46))
+        // 1) 顶部全局路由条
+        let topCard = GeekCardView(frame: NSRect(x: 20, y: 10, width: cardW, height: 40))
         page.addSubview(topCard)
 
-        addFormCaption("目标语种", x: 12, y: 14, width: 54, in: topCard)
-        targetLangPill = LightDropdownPill(symbol: "globe", items: TranslationTargetLang.allCases.map(\.displayName))
-        targetLangPill.frame = NSRect(x: 68, y: 9, width: 156, height: 28)
+        addTopCaption("目标", x: 10, in: topCard)
+        targetLangPill = GeekDropdownPill(symbol: "globe", items: TranslationTargetLang.allCases.map(\.displayName))
+        targetLangPill.frame = NSRect(x: 40, y: 7, width: 128, height: 26)
         targetLangPill.onSelect = { [weak self] idx in
             guard let self, TranslationTargetLang.allCases.indices.contains(idx) else { return }
             self.commitCurrentFormEdits()
@@ -74,207 +23,229 @@ extension TranslationSettingsWindow {
         }
         topCard.addSubview(targetLangPill)
 
-        addFormCaption("默认引擎", x: 232, y: 14, width: 54, in: topCard)
-        primaryEnginePill = LightDropdownPill(symbol: "cpu")
-        primaryEnginePill.frame = NSRect(x: 288, y: 9, width: 146, height: 28)
+        addTopCaption("主力", x: 176, in: topCard)
+        primaryEnginePill = GeekDropdownPill(symbol: "cpu")
+        primaryEnginePill.frame = NSRect(x: 206, y: 7, width: 132, height: 26)
         primaryEnginePill.onSelect = { [weak self] idx in self?.onSelectPrimaryIndex(idx) }
         topCard.addSubview(primaryEnginePill)
 
-        addFormCaption("失败回退", x: 442, y: 14, width: 54, in: topCard)
-        fallbackEnginePill = LightDropdownPill(symbol: "arrow.triangle.2.circlepath")
-        fallbackEnginePill.frame = NSRect(x: 498, y: 9, width: 130, height: 28)
+        addTopCaption("回退", x: 346, in: topCard)
+        fallbackEnginePill = GeekDropdownPill(symbol: "arrow.triangle.2.circlepath")
+        fallbackEnginePill.frame = NSRect(x: 376, y: 7, width: 112, height: 26)
         fallbackEnginePill.onSelect = { [weak self] idx in self?.onSelectFallbackIndex(idx) }
         topCard.addSubview(fallbackEnginePill)
 
-        // 2) 左侧服务列表白底圆角卡片（告别生硬 bezelBorder）
-        let listCard = makeWhiteCard(frame: NSRect(x: 18, y: 54, width: 200, height: H - 164))
+        let autoLbl = NSTextField(labelWithString: "自动复制")
+        autoLbl.font = .systemFont(ofSize: 11, weight: .medium)
+        autoLbl.textColor = GeekTheme.inkSecondary
+        autoLbl.alignment = .right
+        autoLbl.frame = NSRect(x: cardW - 96, y: 13, width: 48, height: 15)
+        topCard.addSubview(autoLbl)
+
+        autoCopySwitch = GeekToggleSwitch(isOn: draft.autoCopyTranslation)
+        autoCopySwitch.toolTip = "翻译完成后自动将译文复制到剪贴板"
+        autoCopySwitch.frame = NSRect(x: cardW - 42, y: 11, width: 32, height: 18)
+        autoCopySwitch.onToggle = { [weak self] on in
+            self?.draft.autoCopyTranslation = on
+            self?.persistDraft()
+        }
+        topCard.addSubview(autoCopySwitch)
+
+        // 2) 左侧服务列表卡片（174px）
+        let listCard = GeekCardView(frame: NSRect(x: 20, y: 60, width: 174, height: 294))
         page.addSubview(listCard)
 
-        let scroll = NSScrollView(frame: listCard.bounds.insetBy(dx: 4, dy: 4))
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
+        let scroll = NSScrollView(frame: listCard.bounds.insetBy(dx: 3, dy: 4))
+        scroll.drawsBackground = false; scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
         let tv = NSTableView(frame: scroll.bounds)
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("PCol"))
-        col.width = 186
-        tv.addTableColumn(col)
-        tv.headerView = nil
-        tv.rowHeight = 34
-        tv.backgroundColor = .clear
-        tv.selectionHighlightStyle = .regular
-        tv.dataSource = self
-        tv.delegate = self
-        scroll.documentView = tv
-        self.tableView = tv
+        col.width = 164
+        tv.addTableColumn(col); tv.headerView = nil; tv.rowHeight = 32
+        tv.backgroundColor = .clear; tv.selectionHighlightStyle = .none
+        tv.dataSource = self; tv.delegate = self
+        scroll.documentView = tv; self.tableView = tv
         listCard.addSubview(scroll)
 
-        addBtn = OCRPillButton(title: "新增服务", symbol: "plus")
-        addBtn.frame = NSRect(x: 18, y: 16, width: 92, height: 28)
+        addBtn = GeekButton(title: "新增服务", symbol: "plus", style: .subtle)
+        addBtn.frame = NSRect(x: 20, y: 362, width: 110, height: 26)
         addBtn.onClick = { [weak self] in self?.popAddProviderMenu() }
         page.addSubview(addBtn)
 
-        removeBtn = OCRPillButton(title: "删除")
-        removeBtn.frame = NSRect(x: 114, y: 16, width: 50, height: 28)
+        removeBtn = GeekButton(title: "删除", style: .subtle)
+        removeBtn.frame = NSRect(x: 136, y: 362, width: 58, height: 26)
         removeBtn.onClick = { [weak self] in self?.removeSelectedProvider() }
         page.addSubview(removeBtn)
 
-        let jsonBtn = OCRPillButton(title: "JSON")
-        jsonBtn.toolTip = "在 Finder 中显示 translation_providers.json（0600 权限）"
-        jsonBtn.frame = NSRect(x: 168, y: 16, width: 50, height: 28)
-        jsonBtn.onClick = { [weak self] in self?.revealJSONConfig() }
-        page.addSubview(jsonBtn)
-
-        // 3) 右侧服务参数配置白底卡片
-        let formCard = makeWhiteCard(frame: NSRect(x: 228, y: 54, width: W - 246, height: H - 164))
+        // 3) 右侧动态表单卡片（416 × 328）
+        let formCard = GeekCardView(frame: NSRect(x: 204, y: 60, width: cardW - 184, height: 328))
         page.addSubview(formCard)
         self.detailContainer = formCard
         buildDetailFields(in: formCard)
-
-        let saveBtn = OCRPillButton(title: "保存并生效", symbol: "checkmark", primary: true)
-        saveBtn.frame = NSRect(x: W - 134, y: 16, width: 116, height: 28)
-        saveBtn.onClick = { [weak self] in self?.onSaveAndClose() }
-        page.addSubview(saveBtn)
     }
 
-    private func buildDetailFields(in cv: NSView) {
+    private func buildDetailFields(in cv: GeekCardView) {
         let fw = cv.bounds.width
-        addRowLabel("显示名称", y: 350, in: cv)
-        nameField = makeInput(frame: NSRect(x: 102, y: 346, width: 204, height: 26), placeholder: "如：DeepSeek 主力翻译")
-        cv.addSubview(nameField)
+        addRowCaption("名称", y: 12, in: cv)
+        nameField = NSTextField()
+        cv.addSubview(GeekInputBox(frame: NSRect(x: 78, y: 10, width: fw - 210, height: 26), field: nameField, placeholder: "如：DeepSeek 翻译", mono: false))
 
-        enabledCheck = NSButton(checkboxWithTitle: "启用", target: self, action: #selector(onFormStructuralChanged))
-        enabledCheck.frame = NSRect(x: 314, y: 349, width: 54, height: 20)
-        cv.addSubview(enabledCheck)
+        enabledSwitch = GeekToggleSwitch(isOn: true)
+        enabledSwitch.toolTip = "启用或停用该服务"
+        enabledSwitch.frame = NSRect(x: fw - 124, y: 14, width: 32, height: 18)
+        enabledSwitch.onToggle = { [weak self] _ in self?.onFormStructuralChanged() }
+        cv.addSubview(enabledSwitch)
 
-        let defBtn = OCRPillButton(title: "设为默认")
-        defBtn.frame = NSRect(x: fw - 82, y: 345, width: 70, height: 27)
-        defBtn.onClick = { [weak self] in self?.onSetAsPrimaryClicked() }
-        cv.addSubview(defBtn)
+        setDefaultBtn = GeekButton(title: "设为主力", style: .subtle)
+        setDefaultBtn.frame = NSRect(x: fw - 84, y: 10, width: 72, height: 26)
+        setDefaultBtn.onClick = { [weak self] in self?.onSetAsPrimaryClicked() }
+        cv.addSubview(setDefaultBtn)
 
-        addRowLabel("协议类型", y: 311, in: cv)
-        kindPill = LightDropdownPill(symbol: "network", items: TranslationProviderKind.allCases.map(\.displayName))
-        kindPill.frame = NSRect(x: 102, y: 306, width: fw - 116, height: 28)
+        addRowCaption("协议", y: 46, in: cv)
+        kindPill = GeekDropdownPill(symbol: "network", items: TranslationProviderKind.allCases.map(\.displayName))
+        kindPill.frame = NSRect(x: 78, y: 44, width: fw - 90, height: 26)
         kindPill.onSelect = { [weak self] idx in self?.onSelectKindIndex(idx) }
         cv.addSubview(kindPill)
 
-        presetRowView = NSView(frame: NSRect(x: 0, y: 268, width: fw, height: 30))
-        addRowLabel("厂商模版", y: 6, in: presetRowView)
-        llmPresetPill = LightDropdownPill(
-            symbol: "sparkles",
-            items: ["一键套用常见大模型地址与模型…"] + LLMQuickPreset.allCases.map(\.title)
-        )
-        llmPresetPill.frame = NSRect(x: 102, y: 1, width: fw - 116, height: 28)
+        presetRowView = GeekFlippedView(frame: NSRect(x: 0, y: 78, width: fw, height: 32))
+        addRowCaption("模版", y: 4, in: presetRowView)
+        llmPresetPill = GeekDropdownPill(symbol: "sparkles", items: ["一键套用常见大模型预设…"] + LLMQuickPreset.allCases.map(\.title))
+        llmPresetPill.frame = NSRect(x: 78, y: 2, width: fw - 90, height: 26)
         llmPresetPill.onSelect = { [weak self] idx in self?.onSelectLLMPresetIndex(idx) }
         presetRowView.addSubview(llmPresetPill)
         cv.addSubview(presetRowView)
 
-        nativeCardBox = NSView(frame: NSRect(x: 16, y: 132, width: fw - 32, height: 154))
+        nativeCardBox = GeekFlippedView(frame: NSRect(x: 14, y: 84, width: fw - 28, height: 186))
         nativeCardBox.wantsLayer = true
-        nativeCardBox.layer?.backgroundColor = MSnipUITheme.transWellFill.cgColor
-        nativeCardBox.layer?.cornerRadius = 9
+        nativeCardBox.layer?.backgroundColor = GeekTheme.inputBg.cgColor
+        nativeCardBox.layer?.cornerRadius = 8.0
         nativeCardBox.layer?.borderWidth = 1.0
-        nativeCardBox.layer?.borderColor = MSnipUITheme.accent.withAlphaComponent(0.22).cgColor
+        nativeCardBox.layer?.borderColor = GeekTheme.accent.withAlphaComponent(0.28).cgColor
         nativeInfoLabel = NSTextField(wrappingLabelWithString: "")
-        nativeInfoLabel.font = .systemFont(ofSize: 12.5)
-        nativeInfoLabel.textColor = MSnipUITheme.inkPrimary
-        nativeInfoLabel.frame = NSRect(x: 14, y: 12, width: fw - 60, height: 130)
+        nativeInfoLabel.font = .systemFont(ofSize: 12.0)
+        nativeInfoLabel.textColor = GeekTheme.inkSecondary
+        nativeInfoLabel.frame = NSRect(x: 14, y: 14, width: fw - 56, height: 158)
         nativeCardBox.addSubview(nativeInfoLabel)
         cv.addSubview(nativeCardBox)
 
-        appIdLabel = addRowLabel("AppID / ID", y: 232, in: cv)
-        appIdField = makeInput(frame: NSRect(x: 102, y: 228, width: fw - 116, height: 26), placeholder: "")
-        cv.addSubview(appIdField)
+        (appIdRow, appIdLabel, appIdField) = makeDynamicRow(label: "AppID", placeholder: "", mono: true, width: fw)
+        (endpointRow, endpointLabel, endpointField) = makeDynamicRow(label: "URL", placeholder: "https://api.deepseek.com/v1", mono: true, width: fw)
+        (modelRow, modelLabel, modelField) = makeDynamicRow(label: "Model", placeholder: "deepseek-chat", mono: true, width: fw)
+        (extra1Row, extraLabel1, extraField1) = makeDynamicRow(label: "提示词", placeholder: "", mono: false, width: fw)
+        (extra2Row, extraLabel2, extraField2) = makeDynamicRow(label: "请求头", placeholder: "", mono: true, width: fw)
 
-        endpointLabel = addRowLabel("接口 URL", y: 194, in: cv)
-        endpointField = makeInput(frame: NSRect(x: 102, y: 190, width: fw - 116, height: 26), placeholder: "https://api.deepseek.com/v1")
-        cv.addSubview(endpointField)
-
-        apiKeyLabel = addRowLabel("API 密钥", y: 156, in: cv)
-        let keyW = fw - 116 - 38
-        apiKeySecureField = NSSecureTextField(frame: NSRect(x: 102, y: 152, width: keyW, height: 26))
-        styleTextField(apiKeySecureField, placeholder: "粘贴 API Key / SecretKey（本地离线可留空）")
-        cv.addSubview(apiKeySecureField)
-
-        apiKeyPlainField = makeInput(frame: NSRect(x: 102, y: 152, width: keyW, height: 26), placeholder: "粘贴 API Key / SecretKey")
-        apiKeyPlainField.isHidden = true
-        cv.addSubview(apiKeyPlainField)
-
-        eyeToggleBtn = OCRPillButton(title: "", symbol: "eye")
+        apiKeyRow = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 32))
+        apiKeyLabel = addRowCaption("API Key", y: 4, in: apiKeyRow)
+        let keyW = fw - 90 - 34
+        apiKeySecureField = NSSecureTextField()
+        apiKeySecureBox = GeekInputBox(frame: NSRect(x: 78, y: 2, width: keyW, height: 26), field: apiKeySecureField, placeholder: "粘贴密钥（本地模型可留空）", mono: true)
+        apiKeyRow.addSubview(apiKeySecureBox)
+        apiKeyPlainField = NSTextField()
+        apiKeyPlainBox = GeekInputBox(frame: NSRect(x: 78, y: 2, width: keyW, height: 26), field: apiKeyPlainField, placeholder: "粘贴密钥（本地模型可留空）", mono: true)
+        apiKeyPlainBox.isHidden = true
+        apiKeyRow.addSubview(apiKeyPlainBox)
+        eyeToggleBtn = GeekButton(title: "", symbol: "eye", style: .subtle)
         eyeToggleBtn.toolTip = "显示 / 隐藏明文密钥"
-        eyeToggleBtn.frame = NSRect(x: 102 + keyW + 4, y: 151, width: 34, height: 28)
+        eyeToggleBtn.frame = NSRect(x: 78 + keyW + 4, y: 2, width: 30, height: 26)
         eyeToggleBtn.onClick = { [weak self] in self?.toggleAPIKeyVisibility() }
-        cv.addSubview(eyeToggleBtn)
+        apiKeyRow.addSubview(eyeToggleBtn)
 
-        modelLabel = addRowLabel("模型 / 地域", y: 118, in: cv)
-        modelField = makeInput(frame: NSRect(x: 102, y: 114, width: fw - 116, height: 26), placeholder: "如 deepseek-chat / glm-4-flash")
-        cv.addSubview(modelField)
+        for r in [appIdRow!, endpointRow!, apiKeyRow!, modelRow!, extra1Row!, extra2Row!] { cv.addSubview(r) }
 
-        extraLabel1 = addRowLabel("附加配置 1", y: 80, in: cv)
-        extraField1 = makeInput(frame: NSRect(x: 102, y: 76, width: fw - 116, height: 26), placeholder: "")
-        cv.addSubview(extraField1)
-
-        extraLabel2 = addRowLabel("附加配置 2", y: 44, in: cv)
-        extraField2 = makeInput(frame: NSRect(x: 102, y: 40, width: fw - 116, height: 26), placeholder: "")
-        cv.addSubview(extraField2)
-
-        testBtn = OCRPillButton(title: "测试连接与延迟", symbol: "bolt.horizontal")
-        testBtn.frame = NSRect(x: 14, y: 8, width: 126, height: 27)
+        cv.addHairline(atY: 286)
+        testBtn = GeekButton(title: "测试连通", symbol: "bolt.horizontal", style: .accent)
+        testBtn.frame = NSRect(x: 12, y: 294, width: 92, height: 25)
         testBtn.onClick = { [weak self] in self?.onTestClicked() }
         cv.addSubview(testBtn)
 
         testStatusLabel = NSTextField(labelWithString: "")
-        testStatusLabel.font = .systemFont(ofSize: 11.5, weight: .semibold)
+        testStatusLabel.font = .monospacedSystemFont(ofSize: 11.0, weight: .medium)
+        testStatusLabel.textColor = GeekTheme.inkSecondary
         testStatusLabel.lineBreakMode = .byTruncatingTail
-        testStatusLabel.frame = NSRect(x: 148, y: 12, width: fw - 162, height: 18)
+        testStatusLabel.frame = NSRect(x: 112, y: 299, width: fw - 124, height: 16)
         cv.addSubview(testStatusLabel)
     }
 
-    func makeWhiteCard(frame: NSRect) -> NSView {
-        let v = NSView(frame: frame)
-        v.wantsLayer = true
-        v.layer?.backgroundColor = MSnipUITheme.cardSolid.cgColor
-        v.layer?.cornerRadius = 10
-        v.layer?.borderWidth = 1.0
-        v.layer?.borderColor = MSnipUITheme.borderHairline.cgColor
-        return v
+    private func makeDynamicRow(label: String, placeholder: String, mono: Bool, width fw: CGFloat) -> (GeekFlippedView, NSTextField, NSTextField) {
+        let row = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 32))
+        let lbl = addRowCaption(label, y: 4, in: row)
+        let tf = NSTextField()
+        row.addSubview(GeekInputBox(frame: NSRect(x: 78, y: 2, width: fw - 90, height: 26), field: tf, placeholder: placeholder, mono: mono))
+        return (row, lbl, tf)
     }
 
-    private func addFormCaption(_ text: String, x: CGFloat, y: CGFloat, width: CGFloat, in parent: NSView) {
+    private func addTopCaption(_ text: String, x: CGFloat, in parent: NSView) {
         let l = NSTextField(labelWithString: text)
-        l.font = .systemFont(ofSize: 11.5, weight: .medium)
-        l.textColor = MSnipUITheme.inkSecondary
-        l.frame = NSRect(x: x, y: y, width: width, height: 18)
+        l.font = .systemFont(ofSize: 11.0, weight: .medium); l.textColor = GeekTheme.inkMuted
+        l.frame = NSRect(x: x, y: 13, width: 28, height: 15)
         parent.addSubview(l)
     }
 
     @discardableResult
-    func addRowLabel(_ text: String, y: CGFloat, in parent: NSView) -> NSTextField {
+    private func addRowCaption(_ text: String, y: CGFloat, in parent: NSView) -> NSTextField {
         let lbl = NSTextField(labelWithString: text)
-        lbl.font = .systemFont(ofSize: 12, weight: .medium)
-        lbl.textColor = MSnipUITheme.inkSecondary
-        lbl.alignment = .right
-        lbl.frame = NSRect(x: 8, y: y, width: 86, height: 18)
+        lbl.font = .systemFont(ofSize: 11.5, weight: .medium); lbl.textColor = GeekTheme.inkSecondary; lbl.alignment = .right
+        lbl.frame = NSRect(x: 8, y: y + 4, width: 62, height: 16)
         parent.addSubview(lbl)
         return lbl
     }
 
-    func makeInput(frame: NSRect, placeholder: String) -> NSTextField {
-        let tf = NSTextField(frame: frame)
-        styleTextField(tf, placeholder: placeholder)
-        return tf
+    func popAddProviderMenu() {
+        commitCurrentFormEdits()
+        let m = NSMenu()
+        let nativeItem = NSMenuItem(title: "macOS 原生离线翻译（免费）", action: #selector(onAddMenuSelected(_:)), keyEquivalent: "")
+        nativeItem.image = MSnipUITheme.menuSymbol("apple.logo")
+        nativeItem.representedObject = ("kind", TranslationProviderKind.appleNative.rawValue)
+        nativeItem.target = self
+        m.addItem(nativeItem); m.addItem(.separator())
+
+        for preset in LLMQuickPreset.allCases {
+            let it = NSMenuItem(title: preset.title, action: #selector(onAddMenuSelected(_:)), keyEquivalent: "")
+            it.image = MSnipUITheme.menuSymbol("sparkles")
+            it.representedObject = ("llm", preset.rawValue); it.target = self
+            m.addItem(it)
+        }
+        m.addItem(.separator())
+        for kind in [TranslationProviderKind.anthropicCompatible, .geminiNative, .tencent, .baidu, .youdao, .deepl, .customWebhook] {
+            let it = NSMenuItem(title: kind.displayName, action: #selector(onAddMenuSelected(_:)), keyEquivalent: "")
+            it.image = MSnipUITheme.menuSymbol("cloud")
+            it.representedObject = ("kind", kind.rawValue); it.target = self
+            m.addItem(it)
+        }
+        m.popUp(positioning: nil, at: NSPoint(x: 0, y: addBtn.bounds.height + 2), in: addBtn)
     }
 
-    private func styleTextField(_ tf: NSTextField, placeholder: String) {
-        tf.font = .systemFont(ofSize: 12.5)
-        tf.textColor = MSnipUITheme.inkPrimary
-        tf.backgroundColor = MSnipUITheme.subtleFill
-        tf.drawsBackground = true
-        tf.isBezeled = true
-        tf.bezelStyle = .roundedBezel
-        tf.placeholderString = placeholder
-        tf.lineBreakMode = .byTruncatingTail
-        tf.cell?.isScrollable = true
-        tf.cell?.wraps = false
+    @objc private func onAddMenuSelected(_ sender: NSMenuItem) {
+        guard let pair = sender.representedObject as? (String, String) else { return }
+        let created: TranslationProviderProfile
+        if pair.0 == "llm", let preset = LLMQuickPreset(rawValue: pair.1) {
+            created = .makePreset(.openAICompatible, llmPreset: preset)
+        } else if let kind = TranslationProviderKind(rawValue: pair.1) {
+            created = .makePreset(kind)
+        } else { return }
+        draft.profiles.append(created)
+        selectedIndex = draft.profiles.count - 1
+        persistDraft(); refreshTopBarPopups()
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
+        loadSelectedProfileIntoForm()
+    }
+
+    func removeSelectedProvider() {
+        guard draft.profiles.count > 1, draft.profiles.indices.contains(selectedIndex) else { NSSound.beep(); return }
+        draft.profiles.remove(at: selectedIndex)
+        selectedIndex = max(0, min(selectedIndex, draft.profiles.count - 1))
+        if !draft.profiles.contains(where: { $0.id == draft.activeProfileID }) {
+            draft.activeProfileID = draft.profiles.first?.id
+        }
+        persistDraft(); refreshTopBarPopups()
+        tableView.reloadData()
+        tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
+        loadSelectedProfileIntoForm()
+    }
+
+    func revealJSONConfig() {
+        commitCurrentFormEdits(); persistDraft()
+        NSWorkspace.shared.activateFileViewerSelecting([TranslationSettingsConfig.storageURL])
     }
 }

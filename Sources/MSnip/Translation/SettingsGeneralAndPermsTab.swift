@@ -2,237 +2,260 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 设置中心「热键与偏好」及「权限与签名」分页构建扩展
+/// 极客设置窗口「常规」页：行内快捷键直接录制、偏好开关、路径选择与权限状态灯
 extension TranslationSettingsWindow {
-    func buildGeneralAndPermissionsPages() {
-        buildGeneralPage(in: generalPage)
-        buildPermissionsPage(in: permissionsPage)
-    }
+    func buildGeneralPage(in page: GeekFlippedView) {
+        let W = page.bounds.width, cardW = W - 40
 
-    private func buildGeneralPage(in page: NSView) {
-        let W = page.bounds.width, H = page.bounds.height
-        let hdr = NSTextField(labelWithString: "全局快捷键与通用偏好")
-        hdr.font = .systemFont(ofSize: 16, weight: .bold)
-        hdr.textColor = MSnipUITheme.inkPrimary
-        hdr.frame = NSRect(x: 20, y: H - 42, width: 280, height: 22)
-        page.addSubview(hdr)
+        // 1) 快捷键区块
+        addSectionHeader("快捷键", x: 22, y: 10, in: page)
+        hotKeyHintLabel = NSTextField(labelWithString: "点击键帽直接录制")
+        hotKeyHintLabel.font = .monospacedSystemFont(ofSize: 10.5, weight: .regular)
+        hotKeyHintLabel.textColor = GeekTheme.inkMuted
+        hotKeyHintLabel.frame = NSRect(x: 72, y: 11, width: 342, height: 15)
+        page.addSubview(hotKeyHintLabel)
 
-        // 1) 快捷键预设与录制卡片
-        let hkCard = makeWhiteCard(frame: NSRect(x: 18, y: H - 222, width: W - 36, height: 166))
-        page.addSubview(hkCard)
-
-        let hkTitle = NSTextField(labelWithString: "全局热键方案")
-        hkTitle.font = .systemFont(ofSize: 13.5, weight: .bold)
-        hkTitle.textColor = MSnipUITheme.inkPrimary
-        hkTitle.frame = NSRect(x: 16, y: 130, width: 160, height: 20)
-        hkCard.addSubview(hkTitle)
-
-        addRowLabel("预设组合", y: 92, in: hkCard)
-        presetDropdown = LightDropdownPill(symbol: "command", items: HotKeyPreset.allCases.map(\.menuTitle))
-        presetDropdown.frame = NSRect(x: 102, y: 87, width: 360, height: 28)
+        presetDropdown = GeekDropdownPill(symbol: "command", items: ["⌘1 / ⌘2 / ⌘3", "⌘⇧A / ⌘⇧P / ⌘⇧O", "⌥A / ⌥P / ⌥O", "F1 / F3 / F2"])
+        presetDropdown.toolTip = "一键切换常用快捷键预设"
+        presetDropdown.frame = NSRect(x: W - 218, y: 6, width: 134, height: 22)
         presetDropdown.onSelect = { [weak self] idx in
             guard let self, HotKeyPreset.allCases.indices.contains(idx) else { return }
+            self.cancelInlineHotKeyRecording(restoreHotKeys: false)
             let preset = HotKeyPreset.allCases[idx]
-            self.onAppConfigMutated? { cfg in
-                cfg.hotKeyPreset = preset
-                cfg.clearCustomHotKeys()
-                cfg.hotKeysEnabled = true
-            }
+            self.onAppConfigMutated? { $0.hotKeyPreset = preset; $0.clearCustomHotKeys(); $0.hotKeysEnabled = true }
             self.refreshGeneralAndPermissionsUI()
         }
-        hkCard.addSubview(presetDropdown)
+        page.addSubview(presetDropdown)
 
-        hotKeySummaryLabel = NSTextField(labelWithString: "")
-        hotKeySummaryLabel.font = .monospacedSystemFont(ofSize: 12, weight: .semibold)
-        hotKeySummaryLabel.textColor = MSnipUITheme.accent
-        hotKeySummaryLabel.frame = NSRect(x: 18, y: 48, width: 420, height: 20)
-        hkCard.addSubview(hotKeySummaryLabel)
+        let hkStateLbl = NSTextField(labelWithString: "启用")
+        hkStateLbl.font = .systemFont(ofSize: 11, weight: .medium); hkStateLbl.textColor = GeekTheme.inkSecondary; hkStateLbl.alignment = .right
+        hkStateLbl.frame = NSRect(x: W - 80, y: 10, width: 24, height: 15)
+        page.addSubview(hkStateLbl)
 
-        let recBtn = OCRPillButton(title: "自由录制自定义组合键…", symbol: "keyboard")
-        recBtn.frame = NSRect(x: 16, y: 12, width: 182, height: 28)
-        recBtn.onClick = { [weak self] in self?.onOpenHotKeyRecorder?() }
-        hkCard.addSubview(recBtn)
+        hotKeyEnableSwitch = GeekToggleSwitch(isOn: true)
+        hotKeyEnableSwitch.frame = NSRect(x: W - 52, y: 8, width: 32, height: 18)
+        hotKeyEnableSwitch.onToggle = { [weak self] on in
+            self?.onAppConfigMutated? { $0.hotKeysEnabled = on }
+            self?.refreshGeneralAndPermissionsUI()
+        }
+        page.addSubview(hotKeyEnableSwitch)
 
-        // 2) 截图与交互体验卡片
-        let prefCard = makeWhiteCard(frame: NSRect(x: 18, y: 66, width: W - 36, height: 234))
+        let hkCard = GeekCardView(frame: NSRect(x: 20, y: 32, width: cardW, height: 96))
+        page.addSubview(hkCard)
+        for (i, slot) in HotKeySlot.allCases.enumerated() {
+            let ry = CGFloat(i) * 32
+            if i > 0 { hkCard.addHairline(atY: ry) }
+            addRowTitle(slot.title, subtitle: slot.subtitle, y: ry, in: hkCard)
+            let pill = GeekHotKeyPill(frame: NSRect(x: cardW - 114, y: ry + 4, width: 102, height: 24))
+            pill.onClick = { [weak self] in self?.toggleInlineHotKey(slot) }
+            hotKeyPills[slot] = pill; hkCard.addSubview(pill)
+        }
+
+        // 2) 偏好区块
+        addSectionHeader("偏好与保存", x: 22, y: 140, in: page)
+        let prefCard = GeekCardView(frame: NSRect(x: 20, y: 162, width: cardW, height: 128))
         page.addSubview(prefCard)
 
-        let pfTitle = NSTextField(labelWithString: "截图与翻译行为")
-        pfTitle.font = .systemFont(ofSize: 13.5, weight: .bold)
-        pfTitle.textColor = MSnipUITheme.inkPrimary
-        pfTitle.frame = NSRect(x: 16, y: 198, width: 180, height: 20)
-        prefCard.addSubview(pfTitle)
+        addRowTitle("开机自动启动", subtitle: "登录 macOS 后静默驻留菜单栏", y: 0, in: prefCard)
+        loginSwitch = GeekToggleSwitch()
+        loginSwitch.frame = NSRect(x: cardW - 44, y: 7, width: 32, height: 18)
+        loginSwitch.onToggle = { on in _ = LaunchAtLoginManager.setEnabled(on) }
+        prefCard.addSubview(loginSwitch)
 
-        loginToggle = NSButton(checkboxWithTitle: "开机登录 macOS 时自动启动 MSnip", target: self, action: #selector(onGeneralCheckboxChanged))
-        loginToggle.frame = NSRect(x: 18, y: 162, width: 320, height: 20)
-        prefCard.addSubview(loginToggle)
+        prefCard.addHairline(atY: 32)
+        addRowTitle("截图快捷键提示卡", subtitle: "截图时在左下角显示操作提示（可按 H 随时开关）", y: 32, in: prefCard)
+        tipsSwitch = GeekToggleSwitch()
+        tipsSwitch.frame = NSRect(x: cardW - 44, y: 39, width: 32, height: 18)
+        tipsSwitch.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.showShortcutTips = on } }
+        prefCard.addSubview(tipsSwitch)
 
-        tipsToggle = NSButton(checkboxWithTitle: "在截图界面左下角显示高对比快捷键提示卡片（可按 H 随时开关）", target: self, action: #selector(onGeneralCheckboxChanged))
-        tipsToggle.frame = NSRect(x: 18, y: 130, width: 460, height: 20)
-        prefCard.addSubview(tipsToggle)
-
-        autoCopyToggle = NSButton(checkboxWithTitle: "原位翻译或双栏翻译完成后自动复制译文到剪贴板", target: self, action: #selector(onGeneralCheckboxChanged))
-        autoCopyToggle.frame = NSRect(x: 18, y: 98, width: 420, height: 20)
-        prefCard.addSubview(autoCopyToggle)
-
-        addRowLabel("默认取色格式", y: 58, in: prefCard)
-        colorFmtDropdown = LightDropdownPill(symbol: "eyedropper", items: ColorCopyFormat.allCases.map(\.rawValue))
-        colorFmtDropdown.frame = NSRect(x: 102, y: 53, width: 140, height: 28)
-        colorFmtDropdown.onSelect = { [weak self] idx in
-            guard let self, ColorCopyFormat.allCases.indices.contains(idx) else { return }
-            let fmt = ColorCopyFormat.allCases[idx]
-            self.onAppConfigMutated? { $0.colorCopyFormat = fmt }
+        prefCard.addHairline(atY: 64)
+        addRowTitle("取色 / 录屏默认格式", subtitle: nil, y: 64, in: prefCard)
+        colorFmtSegment = GeekSegmentControl(items: ColorCopyFormat.allCases.map(\.rawValue), selectedIndex: 0, mono: true)
+        colorFmtSegment.frame = NSRect(x: cardW - 280, y: 68, width: 176, height: 24)
+        colorFmtSegment.onSelect = { [weak self] idx in
+            guard ColorCopyFormat.allCases.indices.contains(idx) else { return }
+            self?.onAppConfigMutated? { $0.colorCopyFormat = ColorCopyFormat.allCases[idx] }
         }
-        prefCard.addSubview(colorFmtDropdown)
+        prefCard.addSubview(colorFmtSegment)
 
-        let openDirBtn = OCRPillButton(title: "打开一键快存目录 (⌘⇧S)", symbol: "folder")
-        openDirBtn.frame = NSRect(x: 16, y: 14, width: 186, height: 28)
+        recFmtSegment = GeekSegmentControl(items: ["GIF", "MP4"], selectedIndex: 0, mono: true)
+        recFmtSegment.frame = NSRect(x: cardW - 96, y: 68, width: 84, height: 24)
+        recFmtSegment.onSelect = { [weak self] idx in
+            self?.onAppConfigMutated? { $0.preferredRecordingFormat = (idx == 1) ? .mp4 : .gif }
+        }
+        prefCard.addSubview(recFmtSegment)
+
+        prefCard.addHairline(atY: 96)
+        addRowTitle("快存图片目录", subtitle: nil, y: 96, in: prefCard)
+        saveDirPathLabel = NSTextField(labelWithString: "~/Desktop")
+        saveDirPathLabel.font = .monospacedSystemFont(ofSize: 11.0, weight: .regular)
+        saveDirPathLabel.textColor = GeekTheme.inkSecondary; saveDirPathLabel.lineBreakMode = .byTruncatingMiddle; saveDirPathLabel.alignment = .right
+        saveDirPathLabel.frame = NSRect(x: 118, y: 105, width: cardW - 234, height: 15)
+        prefCard.addSubview(saveDirPathLabel)
+
+        let chooseBtn = GeekButton(title: "更改", style: .subtle)
+        chooseBtn.frame = NSRect(x: cardW - 108, y: 100, width: 46, height: 24)
+        chooseBtn.onClick = { [weak self] in self?.chooseQuickSaveDirectory() }
+        prefCard.addSubview(chooseBtn)
+
+        let openDirBtn = GeekButton(title: "打开", style: .subtle)
+        openDirBtn.frame = NSRect(x: cardW - 58, y: 100, width: 46, height: 24)
         openDirBtn.onClick = { [weak self] in
-            let dir = ClipboardAndSave.resolveQuickSaveDirectory(preferred: self?.appConfigProvider?().lastSaveDirectory)
-            NSWorkspace.shared.open(dir)
+            NSWorkspace.shared.open(ClipboardAndSave.resolveQuickSaveDirectory(preferred: self?.appConfigProvider?().lastSaveDirectory))
         }
         prefCard.addSubview(openDirBtn)
-    }
 
-    private func buildPermissionsPage(in page: NSView) {
-        let W = page.bounds.width, H = page.bounds.height
-        let hdr = NSTextField(labelWithString: "系统权限与免重授签名")
-        hdr.font = .systemFont(ofSize: 16, weight: .bold)
-        hdr.textColor = MSnipUITheme.inkPrimary
-        hdr.frame = NSRect(x: 20, y: H - 42, width: 280, height: 22)
-        page.addSubview(hdr)
-
-        let card1 = makeWhiteCard(frame: NSRect(x: 18, y: H - 208, width: W - 36, height: 150))
-        page.addSubview(card1)
-
-        permStatusLabel = NSTextField(wrappingLabelWithString: "")
-        permStatusLabel.font = .systemFont(ofSize: 13, weight: .medium)
-        permStatusLabel.textColor = MSnipUITheme.inkPrimary
-        permStatusLabel.frame = NSRect(x: 18, y: 56, width: W - 72, height: 80)
-        card1.addSubview(permStatusLabel)
-
-        let guideBtn = OCRPillButton(title: "打开拖拽式权限开启向导", symbol: "checkmark.shield", primary: true)
-        guideBtn.frame = NSRect(x: 18, y: 14, width: 190, height: 28)
-        guideBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?() }
-        card1.addSubview(guideBtn)
-
-        let card2 = makeWhiteCard(frame: NSRect(x: 18, y: 88, width: W - 36, height: 168))
-        page.addSubview(card2)
-
-        let certDesc = NSTextField(wrappingLabelWithString: """
-        本地固定签名证书（永久告别编译升级后重复授权）
-
-        • 日常正常使用或重启电脑绝不会丢失权限；仅当重新编译更新二进制且未配置固定证书时，macOS 才会校验新二进制指纹。
-        • 点击下方按钮复制一键命令并在终端执行一次，即可在本机生成 10 年期「MSnip Local Signer」签名证书，此后任何升级均永久免重授权限。
-        """)
-        certDesc.font = .systemFont(ofSize: 12.5)
-        certDesc.textColor = MSnipUITheme.inkSecondary
-        certDesc.frame = NSRect(x: 18, y: 52, width: W - 72, height: 102)
-        card2.addSubview(certDesc)
-
-        let copyCmdBtn = OCRPillButton(title: "复制本机固定证书生成命令", symbol: "terminal")
-        copyCmdBtn.frame = NSRect(x: 18, y: 14, width: 198, height: 28)
-        copyCmdBtn.onClick = {
+        // 3) 权限与免重授签名区块
+        addSectionHeader("系统权限", x: 22, y: 302, in: page)
+        let certBtn = GeekButton(title: "复制免重授签名命令", symbol: "terminal", style: .ghost, mono: true)
+        certBtn.toolTip = "运行一次生成本机固定证书，此后重编升级永久免重授权限"
+        certBtn.frame = NSRect(x: W - 180, y: 298, width: 160, height: 22)
+        certBtn.onClick = {
             ClipboardAndSave.copyText("bash /Users/xy/code/MSnip/scripts/setup-cert.sh")
-            ToastHUD.show(message: "命令已复制，粘贴到终端运行一次即可永久锁定权限")
+            ToastHUD.show(message: "签名命令已复制，在终端运行一次即可永久锁定权限")
         }
-        card2.addSubview(copyCmdBtn)
+        page.addSubview(certBtn)
+
+        let permCard = GeekCardView(frame: NSRect(x: 20, y: 324, width: cardW, height: 64))
+        page.addSubview(permCard)
+
+        screenPermRow = GeekDotLabel(frame: NSRect(x: 12, y: 0, width: cardW - 110, height: 32))
+        permCard.addSubview(screenPermRow)
+        screenPermBtn = GeekButton(title: "权限向导", style: .subtle)
+        screenPermBtn.frame = NSRect(x: cardW - 86, y: 4, width: 74, height: 24)
+        screenPermBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?() }
+        permCard.addSubview(screenPermBtn)
+
+        permCard.addHairline(atY: 32)
+        axPermRow = GeekDotLabel(frame: NSRect(x: 12, y: 32, width: cardW - 110, height: 32))
+        permCard.addSubview(axPermRow)
+        axPermBtn = GeekButton(title: "前往开启", style: .subtle)
+        axPermBtn.frame = NSRect(x: cardW - 86, y: 36, width: 74, height: 24)
+        axPermBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?() }
+        permCard.addSubview(axPermBtn)
     }
 
     func refreshGeneralAndPermissionsUI() {
-        guard presetDropdown != nil else { return }
-        if let cfg = appConfigProvider?() {
-            if let idx = HotKeyPreset.allCases.firstIndex(of: cfg.hotKeyPreset) {
-                presetDropdown.selectedIndex = idx
-            }
-            if let cIdx = ColorCopyFormat.allCases.firstIndex(of: cfg.colorCopyFormat) {
-                colorFmtDropdown.selectedIndex = cIdx
-            }
-            tipsToggle.state = cfg.showShortcutTips ? .on : .off
-            hotKeySummaryLabel.stringValue = "当前生效热键：截图 \(cfg.activeCaptureCombo.displayString)   ·   贴图 \(cfg.activePinCombo.displayString)   ·   识字 \(cfg.activeOCRCombo.displayString)"
+        guard loginSwitch != nil else { return }
+        let cfg = appConfigProvider?() ?? AppConfig()
+        hotKeyEnableSwitch.isOn = cfg.hotKeysEnabled
+        if let pIdx = HotKeyPreset.allCases.firstIndex(of: cfg.hotKeyPreset) { presetDropdown.selectedIndex = pIdx }
+        for slot in HotKeySlot.allCases {
+            hotKeyPills[slot]?.configure(label: comboForSlot(slot, in: cfg).displayString, recording: activeRecordingSlot == slot)
         }
-        loginToggle.state = LaunchAtLoginManager.isEnabled ? .on : .off
-        autoCopyToggle.state = draft.autoCopyTranslation ? .on : .off
+        loginSwitch.isOn = LaunchAtLoginManager.isEnabled
+        tipsSwitch.isOn = cfg.showShortcutTips
+        if let cIdx = ColorCopyFormat.allCases.firstIndex(of: cfg.colorCopyFormat) { colorFmtSegment.selectedIndex = cIdx }
+        recFmtSegment.selectedIndex = (cfg.preferredRecordingFormat == .mp4) ? 1 : 0
+        saveDirPathLabel.stringValue = ClipboardAndSave.resolveQuickSaveDirectory(preferred: cfg.lastSaveDirectory)
+            .path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
 
         let scrOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
+        screenPermRow.dotColor = scrOK ? GeekTheme.emerald : GeekTheme.amber
+        screenPermRow.text = "屏幕录制"; screenPermRow.detail = scrOK ? "已授权" : "未授权 · 截图必需"
+        screenPermBtn.title = scrOK ? "向导" : "前往授权"; screenPermBtn.style = scrOK ? .ghost : .accent
+
         let axOK = RegionDetector.checkAccessibilityPermission(prompt: false)
-        permStatusLabel.stringValue = """
-        • 屏幕录制权限：\(scrOK ? "✓ 已授权生效（支持高清截图、取色放大镜、长截图与录屏）" : "待开启（点击下方按钮一键拖拽授权）")
-        • 辅助功能权限：\(axOK ? "✓ 已授权生效（支持深层控件智能矩阵对齐与长截图自动滚动）" : "可选开启（开启后支持窗口内子控件识别与自动滚轮）")
-        """
+        axPermRow.dotColor = axOK ? GeekTheme.emerald : GeekTheme.inkMuted
+        axPermRow.text = "辅助功能"; axPermRow.detail = axOK ? "已授权" : "可选 · 控件对齐与自动滚动"
+        axPermBtn.title = axOK ? "已开启" : "前往开启"; axPermBtn.style = axOK ? .ghost : .subtle
     }
 
-    @objc private func onGeneralCheckboxChanged() {
-        _ = LaunchAtLoginManager.setEnabled(loginToggle.state == .on)
-        let showTips = (tipsToggle.state == .on)
-        onAppConfigMutated? { $0.showShortcutTips = showTips }
-        draft.autoCopyTranslation = (autoCopyToggle.state == .on)
-        persistDraft()
-    }
-
-    func popAddProviderMenu() {
-        commitCurrentFormEdits()
-        let m = NSMenu()
-        let nativeItem = NSMenuItem(title: "macOS 原生离线翻译（免费）", action: #selector(onAddMenuSelected(_:)), keyEquivalent: "")
-        nativeItem.image = MSnipUITheme.menuSymbol("apple.logo")
-        nativeItem.representedObject = ("kind", TranslationProviderKind.appleNative.rawValue)
-        nativeItem.target = self
-        m.addItem(nativeItem)
-        m.addItem(.separator())
-
-        for preset in LLMQuickPreset.allCases {
-            let it = NSMenuItem(title: preset.title, action: #selector(onAddMenuSelected(_:)), keyEquivalent: "")
-            it.image = MSnipUITheme.menuSymbol("sparkles")
-            it.representedObject = ("llm", preset.rawValue)
-            it.target = self
-            m.addItem(it)
+    private func comboForSlot(_ slot: HotKeySlot, in cfg: AppConfig) -> KeyCombo {
+        switch slot {
+        case .capture: return cfg.activeCaptureCombo
+        case .pin:     return cfg.activePinCombo
+        case .ocr:     return cfg.activeOCRCombo
         }
-        m.addItem(.separator())
-        for kind in [TranslationProviderKind.anthropicCompatible, .geminiNative, .tencent, .baidu, .youdao, .deepl, .customWebhook] {
-            let it = NSMenuItem(title: kind.displayName, action: #selector(onAddMenuSelected(_:)), keyEquivalent: "")
-            it.image = MSnipUITheme.menuSymbol("cloud")
-            it.representedObject = ("kind", kind.rawValue)
-            it.target = self
-            m.addItem(it)
-        }
-        m.popUp(positioning: nil, at: NSPoint(x: 0, y: addBtn.bounds.height + 2), in: addBtn)
     }
 
-    @objc private func onAddMenuSelected(_ sender: NSMenuItem) {
-        guard let pair = sender.representedObject as? (String, String) else { return }
-        let created: TranslationProviderProfile
-        if pair.0 == "llm", let preset = LLMQuickPreset(rawValue: pair.1) {
-            created = .makePreset(.openAICompatible, llmPreset: preset)
-        } else if let kind = TranslationProviderKind(rawValue: pair.1) {
-            created = .makePreset(kind)
-        } else { return }
-        draft.profiles.append(created)
-        selectedIndex = draft.profiles.count - 1
-        persistDraft()
-        refreshTopBarPopups()
-        tableView.reloadData()
-        tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
-        loadSelectedProfileIntoForm()
+    private func toggleInlineHotKey(_ slot: HotKeySlot) {
+        if activeRecordingSlot == slot { cancelInlineHotKeyRecording(restoreHotKeys: true); return }
+        activeRecordingSlot = slot
+        onBeginHotKeyRecording?()
+        hotKeyHintLabel.textColor = GeekTheme.accent
+        hotKeyHintLabel.stringValue = "录制「\(slot.title)」· Esc 取消 · ⌫ 恢复默认"
+        refreshGeneralAndPermissionsUI()
     }
 
-    func removeSelectedProvider() {
-        guard draft.profiles.count > 1, draft.profiles.indices.contains(selectedIndex) else {
-            NSSound.beep(); return
-        }
-        draft.profiles.remove(at: selectedIndex)
-        selectedIndex = max(0, min(selectedIndex, draft.profiles.count - 1))
-        if !draft.profiles.contains(where: { $0.id == draft.activeProfileID }) {
-            draft.activeProfileID = draft.profiles.first?.id
-        }
-        persistDraft()
-        refreshTopBarPopups()
-        tableView.reloadData()
-        tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
-        loadSelectedProfileIntoForm()
+    func cancelInlineHotKeyRecording(restoreHotKeys: Bool) {
+        guard activeRecordingSlot != nil else { return }
+        activeRecordingSlot = nil
+        if restoreHotKeys { onEndHotKeyRecording?() }
+        hotKeyHintLabel?.textColor = GeekTheme.inkMuted
+        hotKeyHintLabel?.stringValue = "点击键帽直接录制"
+        refreshGeneralAndPermissionsUI()
     }
 
-    func revealJSONConfig() {
-        commitCurrentFormEdits(); persistDraft()
-        NSWorkspace.shared.activateFileViewerSelecting([TranslationSettingsConfig.storageURL])
+    func handleInlineHotKeyEvent(_ event: NSEvent) -> Bool {
+        guard let slot = activeRecordingSlot else { return false }
+        if event.keyCode == 53 { cancelInlineHotKeyRecording(restoreHotKeys: true); return true }
+        if event.keyCode == 51 || event.keyCode == 117 {
+            applyCustomCombo(nil, for: slot)
+            hotKeyHintLabel.textColor = GeekTheme.emerald; hotKeyHintLabel.stringValue = "已恢复「\(slot.title)」为默认"
+            return true
+        }
+        guard let combo = KeyCombo.from(event: event) else {
+            NSSound.beep(); hotKeyHintLabel.textColor = GeekTheme.amber; hotKeyHintLabel.stringValue = "需含 ⌘ / ⌥ / ⌃ 修饰键，或按 F1–F19"
+            return true
+        }
+        let cfg = appConfigProvider?() ?? AppConfig()
+        for other in HotKeySlot.allCases where other != slot && comboForSlot(other, in: cfg) == combo {
+            NSSound.beep(); hotKeyHintLabel.textColor = GeekTheme.danger; hotKeyHintLabel.stringValue = "\(combo.displayString) 已被「\(other.title)」占用"
+            return true
+        }
+        applyCustomCombo(combo, for: slot)
+        hotKeyHintLabel.textColor = GeekTheme.emerald; hotKeyHintLabel.stringValue = "已设为 \(combo.displayString)"
+        return true
+    }
+
+    private func applyCustomCombo(_ combo: KeyCombo?, for slot: HotKeySlot) {
+        onAppConfigMutated? { c in
+            if combo != nil { c.hotKeysEnabled = true }
+            switch slot {
+            case .capture: c.customCaptureCombo = combo
+            case .pin:     c.customPinCombo = combo
+            case .ocr:     c.customOCRCombo = combo
+            }
+        }
+        activeRecordingSlot = nil
+        refreshGeneralAndPermissionsUI()
+    }
+
+    private func chooseQuickSaveDirectory() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false; panel.prompt = "设为快存目录"
+        panel.directoryURL = ClipboardAndSave.resolveQuickSaveDirectory(preferred: appConfigProvider?().lastSaveDirectory)
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        onAppConfigMutated? { $0.lastSaveDirectory = url.path }
+        refreshGeneralAndPermissionsUI()
+    }
+
+    private func addSectionHeader(_ text: String, x: CGFloat, y: CGFloat, in parent: NSView) {
+        let lbl = NSTextField(labelWithString: text)
+        lbl.font = .systemFont(ofSize: 11.5, weight: .semibold); lbl.textColor = GeekTheme.inkSecondary
+        lbl.frame = NSRect(x: x, y: y, width: 120, height: 16)
+        parent.addSubview(lbl)
+    }
+
+    private func addRowTitle(_ title: String, subtitle: String?, y: CGFloat, in card: GeekCardView) {
+        let lbl = NSTextField(labelWithString: title)
+        lbl.font = .systemFont(ofSize: 12.5, weight: .medium); lbl.textColor = GeekTheme.inkPrimary; lbl.sizeToFit()
+        lbl.frame = NSRect(x: 12, y: round(y + (32 - lbl.frame.height) * 0.5), width: lbl.frame.width + 2, height: lbl.frame.height)
+        card.addSubview(lbl)
+        if let sub = subtitle {
+            let s = NSTextField(labelWithString: sub)
+            s.font = .systemFont(ofSize: 11.0); s.textColor = GeekTheme.inkMuted; s.lineBreakMode = .byTruncatingTail
+            let sx = lbl.frame.maxX + 8
+            s.frame = NSRect(x: sx, y: round(y + 9), width: max(40, card.bounds.width - sx - 124), height: 15)
+            card.addSubview(s)
+        }
+    }
+
+    func revealAppConfigJSON() {
+        if !FileManager.default.fileExists(atPath: AppConfig.configURL.path) { appConfigProvider?().save() }
+        NSWorkspace.shared.activateFileViewerSelecting([AppConfig.configURL])
     }
 }

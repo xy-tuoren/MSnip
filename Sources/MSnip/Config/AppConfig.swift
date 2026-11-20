@@ -93,7 +93,7 @@ struct AppConfig: Codable {
         customOCRCombo = nil
     }
 
-    private static var configURL: URL {
+    static var configURL: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
         let dir = base.appendingPathComponent("MSnip", isDirectory: true)
