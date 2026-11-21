@@ -208,7 +208,8 @@ extension OverlayView {
     }
 
     private func handleEscapeStepBack() {
-        if caliperActive { caliperActive = false }
+        if isSaveMenuVisible { isSaveMenuVisible = false; updateToolbarLayout() }
+        else if caliperActive { caliperActive = false }
         else if eyedropperActive { eyedropperActive = false }
         else if isCornerSliderVisible { isCornerSliderVisible = false; updateToolbarLayout() }
         else if toolbar.inPlaceTranslateActive { deactivateInPlaceTranslate() }
@@ -249,6 +250,7 @@ extension OverlayView {
     override func rightMouseDown(with event: NSEvent) {
         shiftTapCandidate = false
         if isEditingText { cancelTextEditing(); return }
+        if isSaveMenuVisible { isSaveMenuVisible = false; updateToolbarLayout(); return }
         if caliperActive { caliperActive = false; return }
         if eyedropperActive { eyedropperActive = false; return }
         if selection != nil || dragOp != nil {

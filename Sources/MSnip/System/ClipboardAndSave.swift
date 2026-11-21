@@ -4,6 +4,14 @@ import Foundation
 import MSnipCore
 import UniformTypeIdentifiers
 
+/// 常用快捷保存目录描述符
+struct QuickSaveFolder: Equatable {
+    let title: String
+    let path: String
+    let symbol: String
+    let isDefault: Bool
+}
+
 /// 剪贴板读写、临时拖拽文件生成与 PNG / 动图导出工具
 enum ClipboardAndSave {
     /// 将纯文本（如色值、坐标、OCR 识别结果）写入系统剪贴板
@@ -91,14 +99,60 @@ enum ClipboardAndSave {
         return target
     }
 
-    /// 免弹窗一键快存高清 PNG 至本地归档目录（`⌘⇧S`），成功返回文件 `URL`
+    /// 组装去重后的常用快捷保存目录（默认目录 + 桌面/下载/图片/文稿 + 最近选过的自定义目录）
+    static func quickSaveFolders(preferred: String?, recent: [String]) -> [QuickSaveFolder] {
+        let fm = FileManager.default
+        var seen = Set<String>()
+        var result: [QuickSaveFolder] = []
+
+        func appendIfValid(title: String, url: URL, symbol: String, isDefault: Bool = false) {
+            let std = url.standardizedFileURL.path
+            guard !seen.contains(std) else { return }
+            if !isDefault && !fm.fileExists(atPath: std) { return }
+            seen.insert(std)
+            result.append(QuickSaveFolder(title: title, path: std, symbol: symbol, isDefault: isDefault))
+        }
+
+        let defURL = resolveQuickSaveDirectory(preferred: preferred)
+        appendIfValid(title: "默认 · \(defURL.lastPathComponent)", url: defURL, symbol: "star.fill", isDefault: true)
+
+        let stdSpecs: [(FileManager.SearchPathDirectory, String, String)] = [
+            (.desktopDirectory, "桌面", "menubar.dock.rectangle"),
+            (.downloadsDirectory, "下载", "arrow.down.circle"),
+            (.picturesDirectory, "图片", "photo"),
+            (.documentDirectory, "文稿", "doc")
+        ]
+        for (dir, label, sym) in stdSpecs {
+            if let u = fm.urls(for: dir, in: .userDomainMask).first {
+                appendIfValid(title: label, url: u, symbol: sym)
+            }
+        }
+        var extraAdded = 0
+        for p in recent where extraAdded < 3 {
+            let u = URL(fileURLWithPath: p, isDirectory: true)
+            let before = result.count
+            appendIfValid(title: u.lastPathComponent, url: u, symbol: "folder")
+            if result.count > before { extraAdded += 1 }
+        }
+        return result
+    }
+
+    /// 免弹窗一键快存高清 PNG 至指定目录（`S` 或点击目录菜单），成功返回文件 `URL`
     static func quickSavePNG(
         cgImage: CGImage,
         scaleFactor: CGFloat,
         preferredDirectory: String?
     ) -> URL? {
-        guard let pngData = encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) else { return nil }
         let dirURL = resolveQuickSaveDirectory(preferred: preferredDirectory)
+        return quickSavePNG(cgImage: cgImage, scaleFactor: scaleFactor, intoDirectory: dirURL)
+    }
+
+    static func quickSavePNG(
+        cgImage: CGImage,
+        scaleFactor: CGFloat,
+        intoDirectory dirURL: URL
+    ) -> URL? {
+        guard let pngData = encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) else { return nil }
         try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
 
         let formatter = DateFormatter()
@@ -110,6 +164,34 @@ enum ClipboardAndSave {
         } catch {
             return nil
         }
+    }
+
+    /// 弹出轻量目录选择器，选中文件夹后直接自动命名保存 PNG，返回文件 URL 与所选目录路径
+    @MainActor
+    static func pickDirectoryAndQuickSave(
+        cgImage: CGImage,
+        scaleFactor: CGFloat,
+        initialDirectory: String?
+    ) -> (url: URL, dir: String)? {
+        let panel = NSOpenPanel()
+        panel.title = "选择下载保存目录"
+        panel.prompt = "保存到此目录"
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.level = .modalPanel
+        if let dir = initialDirectory, FileManager.default.fileExists(atPath: dir) {
+            panel.directoryURL = URL(fileURLWithPath: dir, isDirectory: true)
+        } else if let dl = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
+            panel.directoryURL = dl
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        guard panel.runModal() == .OK, let folderURL = panel.url,
+              let fileURL = quickSavePNG(cgImage: cgImage, scaleFactor: scaleFactor, intoDirectory: folderURL) else {
+            return nil
+        }
+        return (fileURL, folderURL.standardizedFileURL.path)
     }
 
     /// 弹出原生保存对话框导出 PNG，返回用户选定的新目录以便配置记忆

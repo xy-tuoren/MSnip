@@ -18,19 +18,56 @@ extension AppController {
     }
 
     func performQuickSave(img: CGImage, scale: CGFloat) {
-        guard let url = ClipboardAndSave.quickSavePNG(
-            cgImage: img,
-            scaleFactor: scale,
-            preferredDirectory: config.lastSaveDirectory
-        ) else {
-            ToastHUD.show(message: "快速保存图片失败")
+        let dir = ClipboardAndSave.resolveQuickSaveDirectory(preferred: config.lastSaveDirectory)
+        performSaveToDirectory(img: img, scale: scale, directoryPath: dir.path, rememberDirectory: false)
+    }
+
+    func performSaveToDirectory(img: CGImage, scale: CGFloat, directoryPath: String, rememberDirectory: Bool = true) {
+        let dirURL = URL(fileURLWithPath: directoryPath, isDirectory: true)
+        guard let url = ClipboardAndSave.quickSavePNG(cgImage: img, scaleFactor: scale, intoDirectory: dirURL) else {
+            ToastHUD.show(message: "保存图片失败")
             return
         }
+        if rememberDirectory {
+            config.recordSaveDirectory(directoryPath)
+            config.save()
+            rebuildMenu()
+        }
+        let folderName = dirURL.lastPathComponent
         ToastHUD.show(
-            message: "已快存 \(url.lastPathComponent)",
+            message: "已保存到 \(folderName)/\(url.lastPathComponent)",
             actionTitle: "在 Finder 显示 ›",
             onAction: { NSWorkspace.shared.activateFileViewerSelecting([url]) }
         )
+    }
+
+    func performPickDirectorySave(img: CGImage, scale: CGFloat) {
+        guard let res = ClipboardAndSave.pickDirectoryAndQuickSave(
+            cgImage: img,
+            scaleFactor: scale,
+            initialDirectory: config.lastSaveDirectory
+        ) else { return }
+        config.recordSaveDirectory(res.dir)
+        config.save()
+        rebuildMenu()
+        let folderName = URL(fileURLWithPath: res.dir).lastPathComponent
+        ToastHUD.show(
+            message: "已保存到 \(folderName)/\(res.url.lastPathComponent)",
+            actionTitle: "在 Finder 显示 ›",
+            onAction: { NSWorkspace.shared.activateFileViewerSelecting([res.url]) }
+        )
+    }
+
+    func performInteractiveSave(img: CGImage, scale: CGFloat) {
+        if let newDir = ClipboardAndSave.savePNGInteractive(
+            cgImage: img,
+            scaleFactor: scale,
+            initialDirectory: config.lastSaveDirectory
+        ) {
+            config.recordSaveDirectory(newDir)
+            config.save()
+            rebuildMenu()
+        }
     }
 
     func captureAndExportIsolatedWindow(

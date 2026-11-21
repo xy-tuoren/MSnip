@@ -122,7 +122,19 @@ extension ToolbarView {
 
             // 4) 终态输出组：贴图 / 保存 / 关闭 / 醒目蓝色复制主胶囊
             list.append(iconAction(x: &x, y: y, h: h, symbol: "pin", tip: "贴到桌面 (P / \(pinHint))", enabled: true, action: .pin))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "square.and.arrow.down", tip: "保存图片 (S 一键快存 · ⇧S / ⌘S 另存为)", enabled: true, action: .save))
+            let saveRect = CGRect(x: x, y: y, width: 34, height: h)
+            x += 36
+            list.append(HitItem(
+                rect: saveRect,
+                tooltip: "下载保存：点击快速选择目录（S 一键快存 · ⌘S 另存为）",
+                enabled: true,
+                draw: { ctx, r, hov in
+                    Self.drawButtonBg(ctx: ctx, rect: r, active: false, hovered: hov)
+                    Self.drawSymbol("square.and.arrow.down", in: CGRect(x: r.minX + 1, y: r.minY, width: 23, height: r.height), alpha: 0.94, tint: Self.inkDark)
+                    Self.drawSmallChevron(ctx: ctx, x: r.maxX - 6.0, centerY: r.midY + 0.5, active: hov)
+                },
+                action: .save
+            ))
             list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出截图 (Q / Esc / 右键)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
             list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "复制", tip: "复制到剪贴板 (C / ↩ / 双击选区)"))
         }

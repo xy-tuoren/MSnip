@@ -7,6 +7,9 @@ import MSnipCore
 extension OverlayView {
     func handleToolbarAction(_ action: ToolbarView.Action) {
         commitTextEditing()
+        if case .save = action {} else if isSaveMenuVisible {
+            isSaveMenuVisible = false
+        }
         switch action {
         case .selectTool(let tool):
             eyedropperActive = false
@@ -66,7 +69,7 @@ extension OverlayView {
         case .pin:
             exportAndFinish(mode: .pin)
         case .save:
-            exportAndFinish(mode: .save)
+            toggleSaveDirectoryMenu()
         case .quickSave:
             quickSaveInPlace()
         case .cancel:
@@ -107,6 +110,17 @@ extension OverlayView {
             height: CGFloat(max(32, Int((rect.height * s).rounded())))
         )
         onStartLongShot?(snapshot.screen, rect, snapshot.cgImage.cropping(to: pxRect))
+    }
+
+    func toggleSaveDirectoryMenu() {
+        if selection == nil, let snap = hoveredAutoRect { selection = snap }
+        if !isSaveMenuVisible {
+            saveMenu.reload(folders: saveFolderOptions)
+            isSaveMenuVisible = true
+        } else {
+            isSaveMenuVisible = false
+        }
+        updateToolbarLayout()
     }
 
     func toggleCornerRadiusSlider(resetOnly: Bool = false) {

@@ -64,6 +64,7 @@ extension OverlayView {
         if !subbar.isHidden && subbar.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if !sidePills.isHidden && sidePills.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if !cornerSlider.isHidden && cornerSlider.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
+        if !saveMenu.isHidden && saveMenu.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if (toolbar.inPlaceOCRActive || toolbar.inPlaceTranslateActive), let sel = selection, sel.contains(pt) { return false }
         if eyedropperActive || caliperActive { return true }
         if selection == nil { return true }

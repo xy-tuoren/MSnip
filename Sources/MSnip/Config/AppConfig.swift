@@ -57,6 +57,7 @@ struct AppConfig: Codable {
     var defaultColorIndex: Int = 0
     var defaultLineWidth: CGFloat = 3.0
     var lastSaveDirectory: String?
+    var recentSaveDirectories: [String] = []
     var colorCopyFormat: ColorCopyFormat = .hex
     var showShortcutTips: Bool = true
     var preferredRecordingFormat: RecordingFormat = .gif
@@ -75,6 +76,7 @@ struct AppConfig: Codable {
         defaultColorIndex = try c.decodeIfPresent(Int.self, forKey: .defaultColorIndex) ?? 0
         defaultLineWidth = try c.decodeIfPresent(CGFloat.self, forKey: .defaultLineWidth) ?? 3.0
         lastSaveDirectory = try c.decodeIfPresent(String.self, forKey: .lastSaveDirectory)
+        recentSaveDirectories = try c.decodeIfPresent([String].self, forKey: .recentSaveDirectories) ?? []
         colorCopyFormat = try c.decodeIfPresent(ColorCopyFormat.self, forKey: .colorCopyFormat) ?? .hex
         showShortcutTips = try c.decodeIfPresent(Bool.self, forKey: .showShortcutTips) ?? true
         preferredRecordingFormat = try c.decodeIfPresent(RecordingFormat.self, forKey: .preferredRecordingFormat) ?? .gif
@@ -91,6 +93,16 @@ struct AppConfig: Codable {
         customCaptureCombo = nil
         customPinCombo = nil
         customOCRCombo = nil
+    }
+
+    mutating func recordSaveDirectory(_ path: String) {
+        let std = URL(fileURLWithPath: path).standardizedFileURL.path
+        lastSaveDirectory = std
+        recentSaveDirectories.removeAll { URL(fileURLWithPath: $0).standardizedFileURL.path == std }
+        recentSaveDirectories.insert(std, at: 0)
+        if recentSaveDirectories.count > 4 {
+            recentSaveDirectories = Array(recentSaveDirectories.prefix(4))
+        }
     }
 
     static var configURL: URL {

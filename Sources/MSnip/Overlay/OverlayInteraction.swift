@@ -15,6 +15,7 @@ extension OverlayView {
             || (!subbar.isHidden && subbar.frame.contains(p))
             || (!sidePills.isHidden && sidePills.frame.contains(p))
             || (!cornerSlider.isHidden && cornerSlider.frame.contains(p))
+            || (!saveMenu.isHidden && saveMenu.frame.contains(p))
         if onChrome {
             NSCursor.arrow.set()
             invalidateMagnifierMove(from: prevPt, to: p)
@@ -52,6 +53,11 @@ extension OverlayView {
         let p = convert(event.locationInWindow, from: nil)
         lastMousePoint = p
 
+        if isSaveMenuVisible {
+            isSaveMenuVisible = false
+            updateToolbarLayout()
+            return
+        }
         if isEditingText {
             commitTextEditing()
             return

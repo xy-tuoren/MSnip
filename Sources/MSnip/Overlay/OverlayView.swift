@@ -21,6 +21,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     let subbar = ToolbarSubbarView()
     let sidePills = OverlaySidePillsView()
     let cornerSlider = OverlayCornerSliderView()
+    let saveMenu = OverlaySaveMenuView()
     let caliperView = OverlayCaliperLayerView()
     let magnifierView = OverlayMagnifierLayerView()
     var inPlaceOCRView: LiveTextImageView?
@@ -31,6 +32,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onSelectionActivated: ((OverlayView) -> Void)?
     var onFinishCopy: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishSave: ((CGImage, CGFloat, CGRect) -> Void)?
+    var onFinishSaveToFolder: ((CGImage, CGFloat, String, CGRect) -> Void)?
+    var onFinishPickDirectorySave: ((CGImage, CGFloat, CGRect) -> Void)?
     var onQuickSaveInPlace: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishPin: ((CGImage, CGFloat, CGPoint, NSScreen, CGRect) -> Void)?
     var onFinishIsolatedWindow: ((CGWindowID, CGFloat, BackdropStyle, Bool, CGPoint, NSScreen) -> Void)?
@@ -69,6 +72,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var showShortcutTips: Bool { didSet { needsDisplay = true } }
     var lastHistorySelection: CGRect?
     var isCornerSliderVisible = false
+    var isSaveMenuVisible = false
+    var saveFolderOptions: [QuickSaveFolder] = []
     var cornerRadiusRatio: CGFloat = 0 {
         didSet {
             toolbar.cornerRadiusPt = cornerRadiusPt

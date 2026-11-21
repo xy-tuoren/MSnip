@@ -81,15 +81,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.rebuildMenu()
         }
         pinManager.onSaveImage = { [weak self] img, scale in
-            guard let self else { return }
-            if let dir = ClipboardAndSave.savePNGInteractive(
-                cgImage: img,
-                scaleFactor: scale,
-                initialDirectory: self.config.lastSaveDirectory
-            ) {
-                self.config.lastSaveDirectory = dir
-                self.config.save()
-            }
+            self?.performInteractiveSave(img: img, scale: scale)
         }
         pinManager.onQuickSaveImage = { [weak self] img, scale in
             self?.performQuickSave(img: img, scale: scale)
@@ -187,6 +179,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 showShortcutTips: self.config.showShortcutTips,
                 textCapsule: self.config.defaultTextCapsule,
                 pinHint: self.config.activePinCombo.displayString,
+                saveFolderOptions: ClipboardAndSave.quickSaveFolders(
+                    preferred: self.config.lastSaveDirectory,
+                    recent: self.config.recentSaveDirectories
+                ),
                 quickOCRMode: quickOCR,
                 quickTranslateMode: quickTranslate
             )
@@ -201,17 +197,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             recordHistoryAndRefresh(img: img, scale: scale)
         case .saved(let img, let scale):
             recordHistoryAndRefresh(img: img, scale: scale)
-            if let newDir = ClipboardAndSave.savePNGInteractive(
-                cgImage: img,
-                scaleFactor: scale,
-                initialDirectory: config.lastSaveDirectory
-            ) {
-                config.lastSaveDirectory = newDir
-                config.save()
-            }
+            performInteractiveSave(img: img, scale: scale)
         case .quickSaved(let img, let scale):
             recordHistoryAndRefresh(img: img, scale: scale)
             performQuickSave(img: img, scale: scale)
+        case .savedToFolder(let img, let scale, let dir):
+            recordHistoryAndRefresh(img: img, scale: scale)
+            performSaveToDirectory(img: img, scale: scale, directoryPath: dir)
+        case .pickDirectorySave(let img, let scale):
+            recordHistoryAndRefresh(img: img, scale: scale)
+            performPickDirectorySave(img: img, scale: scale)
         case .pinned(let img, let scale, let origin, let screen):
             recordHistoryAndRefresh(img: img, scale: scale)
             pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
@@ -254,14 +249,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 ToastHUD.show(message: "长截图已复制 · \(img.width) × \(img.height) px")
             case .saved(let img, let scale):
                 self.recordHistoryAndRefresh(img: img, scale: scale)
-                if let newDir = ClipboardAndSave.savePNGInteractive(
-                    cgImage: img,
-                    scaleFactor: scale,
-                    initialDirectory: self.config.lastSaveDirectory
-                ) {
-                    self.config.lastSaveDirectory = newDir
-                    self.config.save()
-                }
+                self.performInteractiveSave(img: img, scale: scale)
             case .pinned(let img, let scale, let origin, let targetScreen):
                 self.recordHistoryAndRefresh(img: img, scale: scale)
                 self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: targetScreen)

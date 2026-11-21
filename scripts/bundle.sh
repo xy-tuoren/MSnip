@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 APP_NAME="MSnip"
-VERSION="0.2.6"
+VERSION="0.2.7"
 BUNDLE_ID="top.xy.msnip"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -180,7 +180,7 @@ EOF
 
 SIGN_ID="${MSNIP_SIGN_IDENTITY:-}"
 if [ -z "$SIGN_ID" ]; then
-    DETECTED_CERT="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/MSnip Local Signer|Apple Development/ {print $2; exit}')"
+    DETECTED_CERT="$(security find-identity -v -p codesigning 2>/dev/null | awk -F'"' '/MSnip Local Signer|Apple Development/ && !s {print $2; s=1}')"
     SIGN_ID="${DETECTED_CERT:--}"
 fi
 

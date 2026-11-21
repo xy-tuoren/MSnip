@@ -82,6 +82,7 @@ extension OverlayView {
             subbar.isHidden = true
             sidePills.isHidden = true
             cornerSlider.isHidden = true
+            saveMenu.isHidden = true
             caliperView.isHidden = true
             if let ocrV = inPlaceOCRView, let sel = selection { ocrV.frame = sel }
             if let trV = inPlaceTranslateView, let sel = selection { trV.frame = sel }
@@ -110,6 +111,8 @@ extension OverlayView {
             sidePills.isHidden = true
             isCornerSliderVisible = false
             cornerSlider.isHidden = true
+            isSaveMenuVisible = false
+            saveMenu.isHidden = true
             return
         }
         toolbar.isHidden = false
@@ -153,6 +156,19 @@ extension OverlayView {
             cornerSlider.isHidden = true
         }
 
+        if isSaveMenuVisible {
+            saveMenu.isHidden = false
+            let mSz = saveMenu.frame.size
+            let tf = toolbar.frame
+            let mx = min(max(8, tf.maxX - mSz.width - 54), bounds.width - mSz.width - 8)
+            let belowY = tf.maxY + 6
+            let aboveY = tf.minY - mSz.height - 6
+            let my = (belowY + mSz.height + 8 <= bounds.height) ? belowY : max(8, aboveY)
+            saveMenu.setFrameOrigin(NSPoint(x: round(mx), y: round(my)))
+        } else {
+            saveMenu.isHidden = true
+        }
+
         if let ocrV = inPlaceOCRView { ocrV.frame = sel }
         if let trV = inPlaceTranslateView { trV.frame = sel }
     }
@@ -165,6 +181,8 @@ extension OverlayView {
         isCornerSliderVisible = false
         cornerRadiusRatio = 0
         cornerSlider.isHidden = true
+        isSaveMenuVisible = false
+        saveMenu.isHidden = true
         caliperActive = false
         selection = nil
         lastMousePoint = nil

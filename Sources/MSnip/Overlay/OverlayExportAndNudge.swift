@@ -5,7 +5,7 @@ import MSnipCore
 
 /// 覆盖层的标注草稿构建、取色/坐标复制、1px 边缘微调与导出烘焙扩展
 extension OverlayView {
-    enum FinishMode { case copy, save, quickSave, pin, extractText, translateWindow }
+    enum FinishMode: Equatable { case copy, save, quickSave, saveToFolder(String), pickDirectorySave, pin, extractText, translateWindow }
 
     func currentExportableImage(for targetRect: CGRect, plainForOCR: Bool) -> CGImage? {
         if !plainForOCR, let translated = inPlaceTranslateView?.translatedImage {
@@ -70,8 +70,10 @@ extension OverlayView {
 
         switch mode {
         case .copy:            onFinishCopy?(baked, snapshot.scaleFactor, targetRect)
-        case .save:            onFinishSave?(baked, snapshot.scaleFactor, targetRect)
-        case .quickSave:       onQuickSaveInPlace?(baked, snapshot.scaleFactor, targetRect)
+        case .save:              onFinishSave?(baked, snapshot.scaleFactor, targetRect)
+        case .quickSave:         onQuickSaveInPlace?(baked, snapshot.scaleFactor, targetRect)
+        case .saveToFolder(let d): onFinishSaveToFolder?(baked, snapshot.scaleFactor, d, targetRect)
+        case .pickDirectorySave: onFinishPickDirectorySave?(baked, snapshot.scaleFactor, targetRect)
         case .pin:             onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen, targetRect)
         case .extractText:     onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         case .translateWindow: onFinishTranslateWindow?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)

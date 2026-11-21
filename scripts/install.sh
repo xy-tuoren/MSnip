@@ -17,10 +17,10 @@ fi
 
 OLD_CDHASH=""
 if [ -d "$DEST_APP" ]; then
-    OLD_CDHASH="$(codesign -dvvv "$DEST_APP" 2>&1 | awk -F= '/^CDHash=/ {print $2; exit}')"
+    OLD_CDHASH="$(codesign -dvvv "$DEST_APP" 2>&1 | awk -F= '/^CDHash=/ && !s {print $2; s=1}')"
 fi
 NEW_SIG_INFO="$(codesign -dvvv "$SRC_APP" 2>&1 || true)"
-NEW_CDHASH="$(echo "$NEW_SIG_INFO" | awk -F= '/^CDHash=/ {print $2; exit}')"
+NEW_CDHASH="$(echo "$NEW_SIG_INFO" | awk -F= '/^CDHash=/ && !s {print $2; s=1}')"
 IS_ADHOC="$(echo "$NEW_SIG_INFO" | grep -c '^Signature=adhoc' || true)"
 
 echo "==> 停止正在运行的旧 $APP_NAME 实例..."

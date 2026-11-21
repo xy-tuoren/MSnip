@@ -212,6 +212,18 @@ extension OverlayView {
             self?.cornerRadiusRatio = r
         }
 
+        saveMenu.isHidden = true
+        saveMenu.onChoice = { [weak self] choice in
+            guard let self else { return }
+            self.isSaveMenuVisible = false
+            self.updateToolbarLayout()
+            switch choice {
+            case .folder(let dir): self.exportAndFinish(mode: .saveToFolder(dir))
+            case .chooseFolder:    self.exportAndFinish(mode: .pickDirectorySave)
+            case .saveAsPanel:     self.exportAndFinish(mode: .save)
+            }
+        }
+
         caliperView.ownerOverlay = self
         caliperView.frame = bounds
         magnifierView.ownerOverlay = self
@@ -220,6 +232,7 @@ extension OverlayView {
         addSubview(cornerSlider)
         addSubview(toolbar)
         addSubview(subbar)
+        addSubview(saveMenu)
         addSubview(caliperView)
         addSubview(magnifierView)
     }

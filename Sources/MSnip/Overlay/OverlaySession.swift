@@ -36,6 +36,8 @@ final class OverlaySession {
         case copied(CGImage, CGFloat)
         case saved(CGImage, CGFloat)
         case quickSaved(CGImage, CGFloat)
+        case savedToFolder(CGImage, CGFloat, String)
+        case pickDirectorySave(CGImage, CGFloat)
         case pinned(CGImage, CGFloat, CGPoint, NSScreen)
         case isolatedWindow(CGWindowID, CGFloat, BackdropStyle, Bool, CGPoint, NSScreen)
         case copiedColor(String, RGBAColor, NSPoint)
@@ -70,6 +72,7 @@ final class OverlaySession {
         showShortcutTips: Bool,
         textCapsule: Bool = false,
         pinHint: String,
+        saveFolderOptions: [QuickSaveFolder] = [],
         quickOCRMode: Bool = false,
         quickTranslateMode: Bool = false
     ) {
@@ -89,6 +92,7 @@ final class OverlaySession {
             )
             view.style.textCapsule = textCapsule
             view.toolbar.textCapsule = textCapsule
+            view.saveFolderOptions = saveFolderOptions
             view.quickOCRMode = quickOCRMode
             view.quickTranslateMode = quickTranslateMode
             view.onSelectionActivated = { [weak self] sender in
@@ -114,6 +118,14 @@ final class OverlaySession {
             view.onFinishSave = { [weak self] img, scale, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.saved(img, scale))
+            }
+            view.onFinishSaveToFolder = { [weak self] img, scale, dir, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
+                self?.finish(.savedToFolder(img, scale, dir))
+            }
+            view.onFinishPickDirectorySave = { [weak self] img, scale, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
+                self?.finish(.pickDirectorySave(img, scale))
             }
             view.onQuickSaveInPlace = { [weak self] img, scale, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
