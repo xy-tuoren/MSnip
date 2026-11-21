@@ -116,7 +116,7 @@ extension AppController {
             return sub
         }
 
-        let tip = NSMenuItem(title: "单击复制 · ⌥ 打开 · ⌘ 贴图", action: nil, keyEquivalent: "")
+        let tip = NSMenuItem(title: "点击复制 · ⌥+点击打开 · ⌘+点击贴图", action: nil, keyEquivalent: "")
         tip.isEnabled = false
         sub.addItem(tip)
         sub.addItem(.separator())
