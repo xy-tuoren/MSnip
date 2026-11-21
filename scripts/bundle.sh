@@ -186,7 +186,7 @@ fi
 
 if [ "$SIGN_ID" != "-" ]; then
     echo "  ✓ 使用本机固定证书签名 ($SIGN_ID) — 升级免重授系统权限"
-    codesign --force --deep --identifier "$BUNDLE_ID" -r="designated => identifier \"$BUNDLE_ID\"" --sign "$SIGN_ID" "$APP_BUNDLE"
+    codesign --force --deep --identifier "$BUNDLE_ID" --sign "$SIGN_ID" "$APP_BUNDLE"
 else
     codesign --force --deep --identifier "$BUNDLE_ID" --sign - "$APP_BUNDLE"
 fi

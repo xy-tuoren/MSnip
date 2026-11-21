@@ -47,8 +47,8 @@ openssl pkcs12 -export \
     -out "$TMP_DIR/cert.p12" \
     -passout pass:msnip >/dev/null 2>&1
 
-echo "==> 导入登录钥匙串并设置代码签名信任（系统可能会弹出一次密码/指纹确认框）..."
+echo "==> 导入登录钥匙串并设置代码签名信任（仅这一次会弹出系统密码/指纹确认框）..."
 security import "$TMP_DIR/cert.p12" -k "$KEYCHAIN" -P msnip -T /usr/bin/codesign >/dev/null
-security add-trusted-cert -d -r trustRoot -p codeSign -k "$KEYCHAIN" "$TMP_DIR/cert.pem"
+security add-trusted-cert -r trustRoot -p codeSign -k "$KEYCHAIN" "$TMP_DIR/cert.pem"
 
 echo "✅ 固定证书 [$CERT_NAME] 配置完成！今后执行 'bash scripts/install.sh --rebuild' 升级将永久保留屏幕录制与辅助功能权限。"
