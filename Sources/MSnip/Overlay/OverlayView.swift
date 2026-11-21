@@ -103,7 +103,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         }
     }
     var optionPressed = false { didSet { if oldValue != optionPressed { syncMagnifierView() } } }
-    var magnifierPinned = false { didSet { syncMagnifierView() } }
+    var magnifierVisibilityOverride: Bool? = nil { didSet { syncMagnifierView() } }
     var caliperActive = false {
         didSet {
             if oldValue != caliperActive {

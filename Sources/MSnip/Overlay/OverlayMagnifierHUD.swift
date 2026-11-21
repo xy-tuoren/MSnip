@@ -74,8 +74,9 @@ extension OverlayView {
         if !cornerSlider.isHidden && cornerSlider.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if !saveMenu.isHidden && saveMenu.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if (toolbar.inPlaceOCRActive || toolbar.inPlaceTranslateActive), let sel = selection, sel.contains(pt) { return false }
-        if eyedropperActive || caliperActive { return true }
-        if selection == nil { return true }
+        if eyedropperActive { return true }
+        if let forced = magnifierVisibilityOverride { return forced || optionPressed }
+        if caliperActive || selection == nil { return true }
         if let op = dragOp {
             switch op {
             case .pendingSnapOrCreate, .creatingSelection, .resizingSelection:
@@ -84,7 +85,7 @@ extension OverlayView {
                 return optionPressed
             }
         }
-        return optionPressed || magnifierPinned
+        return optionPressed
     }
 
     func magnifierCardFrame(at pt: CGPoint) -> CGRect {
@@ -255,7 +256,7 @@ extension OverlayView {
         Self.drawMiniKeyHint(ctx: ctx, x: col1X, y: round(iy + 73), key: "Z", label: caliperActive ? "关闭测距" : "像素测距", activeTint: caliperActive ? coral : nil)
         Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 73), key: "X", label: "复制坐标")
         Self.drawMiniKeyHint(ctx: ctx, x: col1X, y: round(iy + 94), key: "G", label: useRelativeCoordinates ? "绝对坐标" : "相对坐标", activeTint: useRelativeCoordinates ? MSnipUITheme.accent : nil)
-        Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 94), key: "O", label: magnifierPinned ? "恢复隐藏" : "一直显示", activeTint: magnifierPinned ? MSnipUITheme.accent : nil)
+        Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 94), key: "O", label: "显示隐藏", activeTint: (selection != nil && magnifierVisibilityOverride == true) ? MSnipUITheme.accent : nil)
         ctx.restoreGState()
 
         ctx.saveGState()

@@ -180,7 +180,9 @@ extension OverlayView {
                 copyCoordinatesAtCursorAndFinish()
             }
         case "o", "`", "~":
-            if !shift && !opt && !isRepeat { magnifierPinned.toggle() }
+            if !shift && !opt && !isRepeat {
+                magnifierVisibilityOverride = magnifierView.isHidden
+            }
         case "[", "-":
             if selection != nil { adjustAnnotationSize(by: shift ? -3.0 : -1.0) }
         case "]", "=", "+":
