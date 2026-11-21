@@ -133,6 +133,13 @@ extension OverlayView {
         }
         repositionSubbar()
 
+        if isRecordingMode {
+            sidePills.isHidden = true
+            isCornerSliderVisible = false; cornerSlider.isHidden = true
+            isSaveMenuVisible = false; saveMenu.isHidden = true
+            return
+        }
+
         sidePills.isHidden = false
         let pillSz = OverlaySidePillsView.viewSize
         let rightX = sel.maxX + 10
@@ -198,7 +205,7 @@ extension OverlayView {
     }
 
     func repositionSubbar() {
-        let shouldShow = !toolbar.isHidden && !toolbar.inPlaceOCRActive && !toolbar.inPlaceTranslateActive && (activeTool != nil || selectedObjectIndex != nil)
+        let shouldShow = !isRecordingMode && !toolbar.isHidden && !toolbar.inPlaceOCRActive && !toolbar.inPlaceTranslateActive && (activeTool != nil || selectedObjectIndex != nil)
         guard shouldShow else {
             subbar.isHidden = true
             return

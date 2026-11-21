@@ -65,7 +65,20 @@ extension OverlayView {
         case .startLongShot:
             beginLongShot()
         case .startRecording:
-            beginRegionRecording()
+            setRecordingMode(true, notifySiblings: true)
+        case .selectRecordingFormat(let fmt):
+            toolbar.recordingFormat = fmt
+            onRecordingPrefsChanged?(fmt, toolbar.recordingHUDEnabled)
+            updateToolbarLayout()
+            needsDisplay = true
+        case .toggleRecordingHUD:
+            toolbar.recordingHUDEnabled.toggle()
+            onRecordingPrefsChanged?(toolbar.recordingFormat, toolbar.recordingHUDEnabled)
+            updateToolbarLayout()
+        case .confirmBeginRecording:
+            confirmBeginRegionRecording()
+        case .exitRecordingMode:
+            setRecordingMode(false, notifySiblings: true)
         case .pin:
             exportAndFinish(mode: .pin)
         case .save:
@@ -168,11 +181,35 @@ extension OverlayView {
         needsDisplay = true
     }
 
-    func beginRegionRecording() {
+    func toggleRecordingMode() {
+        setRecordingMode(!isRecordingMode, notifySiblings: true)
+    }
+
+    func setRecordingMode(_ enabled: Bool, notifySiblings: Bool) {
+        commitTextEditing()
+        if enabled {
+            deactivateInPlaceOCR()
+            deactivateInPlaceTranslate()
+            eyedropperActive = false
+            activeTool = nil
+            selectedObjectIndex = nil
+            isCornerSliderVisible = false
+            isSaveMenuVisible = false
+            cornerRadiusRatio = 0
+            backdropStyle = .none
+        }
+        toolbar.isRecordingMode = enabled
+        updateToolbarLayout()
+        needsDisplay = true
+        if notifySiblings { onRecordingModeChanged?(enabled) }
+    }
+
+    func confirmBeginRegionRecording() {
         commitTextEditing()
         deactivateInPlaceOCR()
+        deactivateInPlaceTranslate()
         guard let raw = selection ?? hoveredAutoRect else {
-            ToastHUD.show(message: "请先框选或悬停要录制 GIF / MP4 的区域")
+            ToastHUD.show(message: "请先点击窗口或拖拽框选要录制的区域")
             return
         }
         let rect = CGRect(

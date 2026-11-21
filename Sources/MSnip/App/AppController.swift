@@ -162,6 +162,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self.config.showShortcutTips = showTips
                 self.config.save()
             }
+            session.onRecordingPrefsUpdated = { [weak self] fmt, hud in
+                guard let self else { return }
+                self.config.preferredRecordingFormat = fmt
+                self.config.recordInteractionHUD = hud
+                self.config.save()
+            }
             session.onQuickSaveInPlace = { [weak self] img, scale in
                 guard let self else { return }
                 self.recordHistoryAndRefresh(img: img, scale: scale)
@@ -184,6 +190,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     preferred: self.config.lastSaveDirectory,
                     recent: self.config.recentSaveDirectories
                 ),
+                recordingFormat: self.config.preferredRecordingFormat,
+                recordingHUDEnabled: self.config.recordInteractionHUD,
                 quickOCRMode: quickOCR,
                 quickTranslateMode: quickTranslate
             )

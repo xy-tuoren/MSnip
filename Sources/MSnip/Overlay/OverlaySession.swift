@@ -55,6 +55,7 @@ final class OverlaySession {
     var onStyleUpdated: ((Int, CGFloat) -> Void)?
     var onCapsuleUpdated: ((Bool) -> Void)?
     var onPrefsUpdated: ((ColorCopyFormat, Bool) -> Void)?
+    var onRecordingPrefsUpdated: ((RecordingFormat, Bool) -> Void)?
     var onQuickSaveInPlace: ((CGImage, CGFloat) -> Void)?
     var onComplete: ((Outcome) -> Void)?
 
@@ -73,6 +74,8 @@ final class OverlaySession {
         textCapsule: Bool = false,
         pinHint: String,
         saveFolderOptions: [QuickSaveFolder] = [],
+        recordingFormat: RecordingFormat = .gif,
+        recordingHUDEnabled: Bool = true,
         quickOCRMode: Bool = false,
         quickTranslateMode: Bool = false
     ) {
@@ -92,6 +95,8 @@ final class OverlaySession {
             )
             view.style.textCapsule = textCapsule
             view.toolbar.textCapsule = textCapsule
+            view.toolbar.recordingFormat = recordingFormat
+            view.toolbar.recordingHUDEnabled = recordingHUDEnabled
             view.saveFolderOptions = saveFolderOptions
             view.quickOCRMode = quickOCRMode
             view.quickTranslateMode = quickTranslateMode
@@ -109,6 +114,18 @@ final class OverlaySession {
                 for sibling in self?.views ?? [] where sibling !== view {
                     sibling.colorCopyFormat = fmt
                     sibling.showShortcutTips = showTips
+                }
+            }
+            view.onRecordingPrefsChanged = { [weak self] fmt, hud in
+                self?.onRecordingPrefsUpdated?(fmt, hud)
+                for sibling in self?.views ?? [] where sibling !== view {
+                    sibling.toolbar.recordingFormat = fmt
+                    sibling.toolbar.recordingHUDEnabled = hud
+                }
+            }
+            view.onRecordingModeChanged = { [weak self] enabled in
+                for sibling in self?.views ?? [] where sibling !== view {
+                    sibling.setRecordingMode(enabled, notifySiblings: false)
                 }
             }
             view.onFinishCopy = { [weak self] img, scale, rect in

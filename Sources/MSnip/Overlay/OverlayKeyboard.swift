@@ -53,7 +53,8 @@ extension OverlayView {
         if event.keyCode == 53 { handleEscapeStepBack(); return } // Esc
         if event.keyCode == 48 { cycleColorFormat(); return } // Tab
         if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
-            if shift && !cmd && !ctrl { captureCurrentWindowAndFinish(pin: opt) }
+            if isRecordingMode { confirmBeginRegionRecording() }
+            else if shift && !cmd && !ctrl { captureCurrentWindowAndFinish(pin: opt) }
             else { exportAndFinish(mode: .copy) }
             return
         }
@@ -103,13 +104,29 @@ extension OverlayView {
         // 左手高频优先单字母快捷键（无 ⌘ / ⌃ 修饰，中英文输入法下均零延迟响应）
         if !cmd, !ctrl {
             if handleSingleKeyShortcut(letter, shift: shift, opt: opt, isRepeat: event.isARepeat) { return }
-            if let raw = event.charactersIgnoringModifiers, let n = Int(raw), let tool = ToolKind(rawValue: n) {
+            if !isRecordingMode, let raw = event.charactersIgnoringModifiers, let n = Int(raw), let tool = ToolKind(rawValue: n) {
                 toggleToolShortcut(tool)
             }
         }
     }
 
     private func handleSingleKeyShortcut(_ key: String, shift: Bool, opt: Bool, isRepeat: Bool) -> Bool {
+        if isRecordingMode {
+            switch key {
+            case "v": if !isRepeat { toggleRecordingMode() }
+            case "q": onCancel?()
+            case "f": snapSelectionToUnderlyingWindow()
+            case "e": if let prev = lastHistorySelection { selection = Geometry.clampRect(prev, within: bounds) }
+            case "z": if !shift && !opt && !isRepeat { caliperActive.toggle() }
+            case "o", "`", "~": if !shift && !opt && !isRepeat { magnifierVisibilityOverride = magnifierView.isHidden }
+            case "g": useRelativeCoordinates.toggle()
+            case "h", "/", "?":
+                showShortcutTips.toggle(); onPrefsChanged?(colorCopyFormat, showShortcutTips)
+            default: return false
+            }
+            return true
+        }
+
         switch key {
         // 1) 高频结束 / 输出动作
         case "c":
@@ -151,7 +168,7 @@ extension OverlayView {
         case "y":
             if opt { exportAndFinish(mode: .translateWindow) } else { toggleInPlaceTranslate() }
         case "l": beginLongShot()
-        case "v": beginRegionRecording()
+        case "v": if !isRepeat { toggleRecordingMode() }
 
         // 4) 外观、窗口对齐与坐标/取色辅助
         case "b": toggleCornerRadiusSlider(resetOnly: opt)
@@ -221,7 +238,7 @@ extension OverlayView {
         else if toolbar.inPlaceOCRActive { deactivateInPlaceOCR() }
         else if selectedObjectIndex != nil { selectedObjectIndex = nil }
         else if activeTool != nil { activeTool = nil; updateToolbarLayout() }
-        else if selection != nil && doc.isEmpty {
+        else if selection != nil && (doc.isEmpty || isRecordingMode) {
             selection = nil; cornerRadiusRatio = 0; backdropStyle = .none
             refreshAutoSnapAtCurrentMouse()
         } else {

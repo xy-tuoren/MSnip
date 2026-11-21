@@ -76,8 +76,12 @@ extension OverlayView {
             return
         }
 
-        // 双击正式选区内部：双击文字重编辑，否则（非识字/非文字/非连续打点序号模式时）一键复制并退出
+        // 双击正式选区内部：录屏模式下直接开始倒计时录屏；否则双击文字重编辑或一键复制退出
         if event.clickCount == 2, let sel = selection, sel.contains(p), !toolbar.inPlaceOCRActive {
+            if isRecordingMode {
+                confirmBeginRegionRecording()
+                return
+            }
             if let hitIdx = doc.hitIndex(at: p), case .text = doc.objects[hitIdx].payload {
                 beginTextEditing(at: p, existingIndex: hitIdx)
                 return
@@ -145,7 +149,7 @@ extension OverlayView {
             } else {
                 dragOp = .movingSelection(initialRect: sel, mouseStart: p)
             }
-        } else if activeTool == nil, doc.isEmpty {
+        } else if activeTool == nil, (doc.isEmpty || isRecordingMode) {
             selection = nil
             updateAutoSnap(at: p)
             dragOp = .pendingSnapOrCreate(anchor: p, snapRect: hoveredAutoRect)

@@ -51,7 +51,8 @@ final class RegionRecordingSession {
         initialCroppedFrame: CGImage?,
         defaultFormat: RecordingFormat,
         interactionHUD: Bool = true,
-        initialSaveDirectory: String?
+        initialSaveDirectory: String?,
+        autoStartCountdown: Bool = false
     ) {
         self.targetScreen = screen
         self.localCaptureRect = selectionLocalTopLeft
@@ -87,6 +88,9 @@ final class RegionRecordingSession {
 
         bWin.orderFrontRegardless()
         cWin.orderFrontRegardless()
+        if autoStartCountdown {
+            startCountdownThenRecord()
+        }
     }
 
     private func handleBarAction(_ action: RecordingControlBarView.Action) {

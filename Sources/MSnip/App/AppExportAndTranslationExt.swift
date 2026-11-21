@@ -133,7 +133,8 @@ extension AppController {
             initialCroppedFrame: initialFrame,
             defaultFormat: config.preferredRecordingFormat,
             interactionHUD: config.recordInteractionHUD,
-            initialSaveDirectory: config.lastSaveDirectory
+            initialSaveDirectory: config.lastSaveDirectory,
+            autoStartCountdown: true
         )
     }
 }

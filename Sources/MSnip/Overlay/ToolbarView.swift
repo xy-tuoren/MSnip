@@ -22,6 +22,10 @@ final class ToolbarView: NSView {
         case translateWindow
         case startLongShot
         case startRecording
+        case selectRecordingFormat(RecordingFormat)
+        case toggleRecordingHUD
+        case confirmBeginRecording
+        case exitRecordingMode
         case pin
         case save
         case quickSave
@@ -64,6 +68,9 @@ final class ToolbarView: NSView {
     var canRedo: Bool = false { didSet { if oldValue != canRedo { markItemsDirty() } } }
     var pinHint: String = "⌘2" { didSet { if oldValue != pinHint { markItemsDirty() } } }
     var isPinEditorMode: Bool = false { didSet { if oldValue != isPinEditorMode { markItemsDirty() } } }
+    var isRecordingMode: Bool = false { didSet { if oldValue != isRecordingMode { markItemsDirty() } } }
+    var recordingFormat: RecordingFormat = .gif { didSet { if oldValue != recordingFormat { markItemsDirty() } } }
+    var recordingHUDEnabled: Bool = true { didSet { if oldValue != recordingHUDEnabled { markItemsDirty() } } }
 
     var items: [HitItem] = []
     private var itemsDirty = true

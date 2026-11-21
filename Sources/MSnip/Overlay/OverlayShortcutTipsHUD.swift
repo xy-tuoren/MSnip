@@ -46,6 +46,11 @@ extension OverlayView {
     }
 
     private func currentShortcutTipRows() -> [(key: String, desc: String)] {
+        if isRecordingMode {
+            return selection == nil
+                ? [("单击 / 拖拽", "吸附窗口 / 框选录屏区"), ("滚轮 / 方向键", "切窗口层级 / 1px 微调"), ("V", "切换回截图模式"), ("右键 / Esc", "退出录屏")]
+                : [("↩ / 双击", "开始 3-2-1 倒计时录屏"), ("方向键", "1px 微调录屏选区"), ("F / E", "对齐窗口 / 上次选区"), ("V", "切换回截图模式"), ("右键 / Esc", "重选录屏区域")]
+        }
         if selection == nil {
             return [
                 ("C / Tab", "复制色值 / 切格式"),
@@ -256,8 +261,8 @@ extension OverlayView {
 
     func drawSelectionChrome(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
         ctx.saveGState()
-        let accentSky = NSColor(srgbRed: 0.16, green: 0.58, blue: 1.0, alpha: 1.0)
-        ctx.setStrokeColor(accentSky.cgColor)
+        let borderCol = isRecordingMode ? MSnipUITheme.danger : NSColor(srgbRed: 0.16, green: 0.58, blue: 1.0, alpha: 1.0)
+        ctx.setStrokeColor(borderCol.cgColor)
         ctx.setLineWidth(2.0)
         if cornerRadius > 0.5 {
             ctx.addPath(CGPath(roundedRect: sel, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil))
@@ -269,7 +274,7 @@ extension OverlayView {
         for handle in ResizeHandle.allCases {
             let p = handle.point(in: sel)
             let hr = CGRect(x: p.x - 4.75, y: p.y - 4.75, width: 9.5, height: 9.5)
-            ctx.setFillColor(accentSky.cgColor)
+            ctx.setFillColor(borderCol.cgColor)
             ctx.fillEllipse(in: hr)
             ctx.setStrokeColor(NSColor.white.cgColor)
             ctx.setLineWidth(2.0)
@@ -281,9 +286,13 @@ extension OverlayView {
         let pxY = Int((sel.minY * snapshot.scaleFactor).rounded())
         let pxW = Int((sel.width * snapshot.scaleFactor).rounded())
         let pxH = Int((sel.height * snapshot.scaleFactor).rounded())
-        var parts = ["\(pxX),\(pxY)  \(pxW) × \(pxH) px"]
-        if cornerRadius > 0.5 { parts.append("圆角 \(Int((cornerRadiusRatio * 100).rounded()))%") }
-        if backdropStyle != .none { parts.append(backdropStyle.title) }
+        var parts = [isRecordingMode ? "录屏 · \(pxX),\(pxY)  \(pxW) × \(pxH) px" : "\(pxX),\(pxY)  \(pxW) × \(pxH) px"]
+        if isRecordingMode {
+            parts.append(toolbar.recordingFormat.badgeTitle)
+        } else {
+            if cornerRadius > 0.5 { parts.append("圆角 \(Int((cornerRadiusRatio * 100).rounded()))%") }
+            if backdropStyle != .none { parts.append(backdropStyle.title) }
+        }
         drawHUDPill(ctx: ctx, anchorRect: sel, text: parts.joined(separator: "  ·  "))
     }
 }

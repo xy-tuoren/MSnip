@@ -11,6 +11,14 @@ extension ToolbarView {
         let h: CGFloat = 28
         let y: CGFloat = (Self.barHeight - h) * 0.5
 
+        if isRecordingMode && !isPinEditorMode {
+            buildRecordingSetupItems(x: &x, y: y, h: h, into: &list)
+            items = list
+            let totalW = x + 6
+            if abs(frame.width - totalW) > 0.5 { setFrameSize(NSSize(width: totalW, height: Self.barHeight)) }
+            return
+        }
+
         // 1) 6 组精简核心标注工具（形状▾ / 画笔▾ / 箭头 / 文字▾ / 序号① / 打码▾）
         let shapeActive = (activeTool == .rect || activeTool == .ellipse)
         let curShape = shapeActive ? activeTool! : lastShapeTool
@@ -144,6 +152,42 @@ extension ToolbarView {
         if abs(frame.width - totalW) > 0.5 {
             setFrameSize(NSSize(width: totalW, height: Self.barHeight))
         }
+    }
+
+    private func buildRecordingSetupItems(x: inout CGFloat, y: CGFloat, h: CGFloat, into list: inout [HitItem]) {
+        for fmt in RecordingFormat.allCases {
+            let active = (recordingFormat == fmt)
+            let rect = CGRect(x: x, y: y, width: 44, height: h)
+            x += 46
+            list.append(HitItem(rect: rect, tooltip: "录屏输出格式：\(fmt.badgeTitle)", enabled: true, draw: { ctx, r, hov in
+                Self.drawButtonBg(ctx: ctx, rect: r, active: active, hovered: hov)
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+                    .foregroundColor: active ? Self.accentBlue : MSnipUITheme.inkSecondary
+                ]
+                let ns = fmt.badgeTitle as NSString; let sz = ns.size(withAttributes: attrs)
+                ns.draw(at: CGPoint(x: round(r.midX - sz.width * 0.5), y: round(r.midY - sz.height * 0.5)), withAttributes: attrs)
+            }, action: .selectRecordingFormat(fmt)))
+        }
+        let hudTip = recordingHUDEnabled
+            ? "已开启：录屏显示点击波纹与按键提示（点击关闭）"
+            : "已关闭：点击开启录屏点击波纹与按键提示"
+        list.append(iconAction(
+            x: &x, y: y, h: h, symbol: "cursorarrow.click.2", tip: hudTip, enabled: true,
+            active: recordingHUDEnabled, tint: recordingHUDEnabled ? Self.accentBlue : Self.inkDark, action: .toggleRecordingHUD
+        ))
+        x = appendDivider(at: x, into: &list)
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "camera.viewfinder", tip: "切回截图工具栏 (V)", enabled: true, tint: Self.inkDark, action: .exitRecordingMode))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出录屏 (Q / Esc)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
+        let recRect = CGRect(x: x + 2, y: y, width: 92, height: h)
+        x += 96
+        list.append(HitItem(rect: recRect, tooltip: "开始录制当前选区 (↩ / 双击选区)", enabled: true, draw: { ctx, r, hov in
+            MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 6.5, color: MSnipUITheme.danger, hovered: hov)
+            MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: r.minX + 14, y: r.midY), color: .white, halo: false)
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.white]
+            let ns = "开始录制" as NSString; let sz = ns.size(withAttributes: attrs)
+            ns.draw(at: CGPoint(x: round(r.minX + 24), y: round(r.midY - sz.height * 0.5)), withAttributes: attrs)
+        }, action: .confirmBeginRecording))
     }
 
     private func groupedToolItem(

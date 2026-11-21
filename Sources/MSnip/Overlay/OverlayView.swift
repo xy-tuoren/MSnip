@@ -48,6 +48,9 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onStyleChanged: ((Int, CGFloat) -> Void)?
     var onCapsuleChanged: ((Bool) -> Void)?
     var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
+    var onRecordingPrefsChanged: ((RecordingFormat, Bool) -> Void)?
+    var onRecordingModeChanged: ((Bool) -> Void)?
+    var isRecordingMode: Bool { toolbar.isRecordingMode }
     var quickOCRMode = false
     var quickTranslateMode = false
 
@@ -261,9 +264,11 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             return
         }
 
-        drawLiveBackdropFrameIfNeeded(ctx: ctx, sel: sel, cornerRadius: activeRadius)
+        if !isRecordingMode {
+            drawLiveBackdropFrameIfNeeded(ctx: ctx, sel: sel, cornerRadius: activeRadius)
+        }
 
-        if sel.intersects(clip), inPlaceOCRView == nil, inPlaceTranslateView == nil {
+        if !isRecordingMode, sel.intersects(clip), inPlaceOCRView == nil, inPlaceTranslateView == nil {
             ctx.saveGState()
             if activeRadius > 0.5 {
                 ctx.addPath(CGPath(roundedRect: sel, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))

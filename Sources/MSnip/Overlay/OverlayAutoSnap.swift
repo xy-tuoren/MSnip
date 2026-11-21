@@ -90,7 +90,8 @@ extension OverlayView {
 
     func drawAutoSnapChrome(ctx: CGContext, displayRect: CGRect, targetRect: CGRect) {
         ctx.saveGState()
-        ctx.setStrokeColor(MSnipUITheme.accent.withAlphaComponent(0.95).cgColor)
+        let borderCol = isRecordingMode ? MSnipUITheme.danger : MSnipUITheme.accent
+        ctx.setStrokeColor(borderCol.withAlphaComponent(0.95).cgColor)
         ctx.setLineWidth(2.0)
         ctx.stroke(displayRect.insetBy(dx: 0.5, dy: 0.5))
         ctx.restoreGState()
@@ -99,7 +100,7 @@ extension OverlayView {
         let pxY = Int((targetRect.minY * snapshot.scaleFactor).rounded())
         let pxW = Int((targetRect.width * snapshot.scaleFactor).rounded())
         let pxH = Int((targetRect.height * snapshot.scaleFactor).rounded())
-        let prefix = quickTranslateMode ? "翻译 · " : (quickOCRMode ? "识字 · " : "")
+        let prefix = isRecordingMode ? "录屏 · " : (quickTranslateMode ? "翻译 · " : (quickOCRMode ? "识字 · " : ""))
         drawHUDPill(ctx: ctx, anchorRect: displayRect, text: "\(prefix)\(pxX),\(pxY)  \(pxW) × \(pxH) px")
     }
 
