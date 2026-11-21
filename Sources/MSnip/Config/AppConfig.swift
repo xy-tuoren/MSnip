@@ -95,9 +95,9 @@ struct AppConfig: Codable {
         customOCRCombo = nil
     }
 
-    mutating func recordSaveDirectory(_ path: String) {
+    mutating func recordSaveDirectory(_ path: String, updateDefault: Bool = false) {
         let std = URL(fileURLWithPath: path).standardizedFileURL.path
-        lastSaveDirectory = std
+        if updateDefault { lastSaveDirectory = std }
         recentSaveDirectories.removeAll { URL(fileURLWithPath: $0).standardizedFileURL.path == std }
         recentSaveDirectories.insert(std, at: 0)
         if recentSaveDirectories.count > 4 {

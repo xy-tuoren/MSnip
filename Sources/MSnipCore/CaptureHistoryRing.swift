@@ -161,6 +161,13 @@ public final class CaptureHistoryRing {
         return CGImageSourceCreateImageAtIndex(src, 0, opts as CFDictionary)
     }
 
+    /// 确保后台写盘完成后返回该条历史截图在缓存目录中的 PNG 文件路径
+    public func fileURL(for entry: CaptureHistoryEntry) -> URL? {
+        Self.ioQueue.sync {}
+        let url = directoryURL.appendingPathComponent(entry.fileName)
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }
+
     /// 返回顶部菜单栏轻量缩略图图标（`28 × 18 pt` 独立小位图，绝不捕获原尺寸 `CGImage`）
     public func menuThumbnail(for entry: CaptureHistoryEntry) -> NSImage? {
         stateLock.lock()

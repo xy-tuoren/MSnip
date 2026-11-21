@@ -108,17 +108,17 @@ extension AppController {
             let empty = NSMenuItem(title: "暂无截图记录", action: nil, keyEquivalent: "")
             empty.isEnabled = false
             sub.addItem(empty)
+            sub.addItem(.separator())
+            let openDir = NSMenuItem(title: "打开最近截图目录…", action: #selector(openHistoryDirectory), keyEquivalent: "")
+            openDir.image = MSnipUITheme.menuSymbol("folder")
+            openDir.target = self
+            sub.addItem(openDir)
             return sub
         }
 
-        let tip = NSMenuItem(title: "单击复制 · ⌥ 贴图 · ⌘ 选目录下载", action: nil, keyEquivalent: "")
+        let tip = NSMenuItem(title: "单击复制 · ⌥ 打开 · ⌘ 贴图", action: nil, keyEquivalent: "")
         tip.isEnabled = false
         sub.addItem(tip)
-
-        let dlLatest = NSMenuItem(title: "下载最新截图到…", action: nil, keyEquivalent: "")
-        dlLatest.image = MSnipUITheme.menuSymbol("square.and.arrow.down")
-        dlLatest.submenu = buildQuickDownloadSubmenu()
-        sub.addItem(dlLatest)
         sub.addItem(.separator())
 
         let fmt = DateFormatter()
@@ -133,6 +133,11 @@ extension AppController {
         }
 
         sub.addItem(.separator())
+        let openDir = NSMenuItem(title: "打开最近截图目录…", action: #selector(openHistoryDirectory), keyEquivalent: "")
+        openDir.image = MSnipUITheme.menuSymbol("folder")
+        openDir.target = self
+        sub.addItem(openDir)
+
         let clear = NSMenuItem(title: "清空记录", action: #selector(clearCaptureHistory), keyEquivalent: "")
         clear.image = MSnipUITheme.menuSymbol("trash")
         clear.target = self
@@ -147,48 +152,28 @@ extension AppController {
         loginMenuItem?.state = LaunchAtLoginManager.isEnabled ? .on : .off
     }
 
-    private func buildQuickDownloadSubmenu() -> NSMenu {
-        let m = NSMenu()
-        let folders = ClipboardAndSave.quickSaveFolders(preferred: config.lastSaveDirectory, recent: config.recentSaveDirectories)
-        for f in folders {
-            let it = NSMenuItem(title: f.title, action: #selector(downloadLatestHistoryToFolder(_:)), keyEquivalent: "")
-            it.representedObject = f.path
-            it.image = MSnipUITheme.menuSymbol(f.symbol)
-            it.target = self
-            m.addItem(it)
-        }
-        m.addItem(.separator())
-        let pick = NSMenuItem(title: "选择其他目录保存…", action: #selector(downloadLatestHistoryPickFolder), keyEquivalent: "")
-        pick.image = MSnipUITheme.menuSymbol("folder.badge.plus")
-        pick.target = self
-        m.addItem(pick)
-        return m
-    }
-
-    @objc func downloadLatestHistoryToFolder(_ sender: NSMenuItem) {
-        guard let dir = sender.representedObject as? String,
-              let entry = historyRing.entries.first,
-              let cg = historyRing.loadCGImage(for: entry) else { NSSound.beep(); return }
-        performSaveToDirectory(img: cg, scale: entry.scaleFactor, directoryPath: dir)
-    }
-
-    @objc func downloadLatestHistoryPickFolder() {
-        guard let entry = historyRing.entries.first,
-              let cg = historyRing.loadCGImage(for: entry) else { NSSound.beep(); return }
-        performPickDirectorySave(img: cg, scale: entry.scaleFactor)
+    @objc func openHistoryDirectory() {
+        try? FileManager.default.createDirectory(at: historyRing.directoryURL, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(historyRing.directoryURL)
     }
 
     @objc func restoreHistoryItem(_ sender: NSMenuItem) {
         let idx = sender.tag
         guard historyRing.entries.indices.contains(idx) else { return }
         let entry = historyRing.entries[idx]
+        let mods = NSEvent.modifierFlags
+        if mods.contains(.option) {
+            if let url = historyRing.fileURL(for: entry) {
+                NSWorkspace.shared.open(url)
+            } else {
+                NSSound.beep()
+            }
+            return
+        }
         guard let cg = historyRing.loadCGImage(for: entry) else {
             NSSound.beep(); return
         }
-        let mods = NSEvent.modifierFlags
-        if mods.contains(.command) {
-            performPickDirectorySave(img: cg, scale: entry.scaleFactor)
-        } else if mods.contains(.option), let scr = NSScreen.main ?? NSScreen.screens.first {
+        if mods.contains(.command), let scr = NSScreen.main ?? NSScreen.screens.first {
             pinManager.pin(cgImage: cg, scaleFactor: entry.scaleFactor, topLeftOnScreen: nil, screen: scr)
             ToastHUD.show(message: "已将历史截图贴到屏幕")
         } else {
