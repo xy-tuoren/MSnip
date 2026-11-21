@@ -255,7 +255,7 @@ extension OverlayView {
         Self.drawMiniKeyHint(ctx: ctx, x: col1X, y: round(iy + 73), key: "Z", label: caliperActive ? "关闭测距" : "像素测距", activeTint: caliperActive ? coral : nil)
         Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 73), key: "X", label: "复制坐标")
         Self.drawMiniKeyHint(ctx: ctx, x: col1X, y: round(iy + 94), key: "G", label: useRelativeCoordinates ? "绝对坐标" : "相对坐标", activeTint: useRelativeCoordinates ? MSnipUITheme.accent : nil)
-        Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 94), key: "O", label: magnifierPinned ? "常显已开" : "框选常显", activeTint: magnifierPinned ? MSnipUITheme.accent : nil)
+        Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 94), key: "O", label: magnifierPinned ? "恢复隐藏" : "一直显示", activeTint: magnifierPinned ? MSnipUITheme.accent : nil)
         ctx.restoreGState()
 
         ctx.saveGState()
