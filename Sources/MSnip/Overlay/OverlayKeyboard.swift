@@ -179,7 +179,8 @@ extension OverlayView {
             } else {
                 copyCoordinatesAtCursorAndFinish()
             }
-        case "`", "~": magnifierPinned.toggle()
+        case "o", "`", "~":
+            if !shift && !opt && !isRepeat { magnifierPinned.toggle() }
         case "[", "-":
             if selection != nil { adjustAnnotationSize(by: shift ? -3.0 : -1.0) }
         case "]", "=", "+":

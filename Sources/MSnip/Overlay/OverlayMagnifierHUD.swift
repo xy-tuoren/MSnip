@@ -36,26 +36,30 @@ final class OverlayMagnifierLayerView: NSView {
 extension OverlayView {
     static let loupeCols = 15
     static let loupeRows = 9
-    static let loupeCell: CGFloat = 11
-    static let loupeCardW: CGFloat = 165
-    static let loupeCardH: CGFloat = 205
+    static let loupeCell: CGFloat = 12
+    static let loupeCardW: CGFloat = 180
+    static let loupeCardH: CGFloat = 229
     private static let loupeSRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
     private static let coordTextAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold),
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .semibold),
         .foregroundColor: MSnipUITheme.inkSecondary
     ]
     private static let coordRelativeTextAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .bold),
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .bold),
         .foregroundColor: MSnipUITheme.accent
     ]
     private static let colorValueAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .bold),
         .foregroundColor: MSnipUITheme.inkPrimary
     ]
-    private static let hintLineAttrs: [NSAttributedString.Key: Any] = [
+    private static let miniKeyAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.systemFont(ofSize: 10.5, weight: .bold),
+        .foregroundColor: MSnipUITheme.inkPrimary
+    ]
+    private static let miniLabelAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 11.0, weight: .medium),
-        .foregroundColor: MSnipUITheme.inkMuted
+        .foregroundColor: MSnipUITheme.inkSecondary
     ]
 
     var shouldShowMagnifier: Bool {
@@ -238,19 +242,20 @@ extension OverlayView {
         ctx.stroke(swRect)
         colorNs.draw(at: CGPoint(x: round(swRect.maxX + 6), y: round(iy + 24.5)), withAttributes: Self.colorValueAttrs)
 
+        ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
+        ctx.fill(CGRect(x: x + 12, y: round(iy + 45), width: cardW - 24, height: 1))
+
         let pickMode = eyedropperActive || (selection != nil && optionPressed)
-        let row1 = pickMode ? "单击 吸色   ·   Tab 切格式" : "C 复制色值   ·   Tab 切格式"
-        Self.drawCenteredString(row1, centerX: x + cardW * 0.5, y: round(iy + 44), attrs: Self.hintLineAttrs)
-        let row2 = caliperActive ? "Z 关测距   ·   X 复制坐标" : "Z 像素测距   ·   X 复制坐标"
-        let row2Attrs: [NSAttributedString.Key: Any] = caliperActive
-            ? [.font: NSFont.systemFont(ofSize: 11.0, weight: .semibold), .foregroundColor: NSColor(srgbRed: 0.965, green: 0.255, blue: 0.376, alpha: 1.0)]
-            : Self.hintLineAttrs
-        Self.drawCenteredString(row2, centerX: x + cardW * 0.5, y: round(iy + 63), attrs: row2Attrs)
-        let row3 = useRelativeCoordinates ? "G 切绝对坐标   ·   ` 锁定" : "G 切相对坐标   ·   ` 锁定"
-        let row3Attrs: [NSAttributedString.Key: Any] = useRelativeCoordinates
-            ? [.font: NSFont.systemFont(ofSize: 11.0, weight: .semibold), .foregroundColor: MSnipUITheme.accent]
-            : Self.hintLineAttrs
-        Self.drawCenteredString(row3, centerX: x + cardW * 0.5, y: round(iy + 82), attrs: row3Attrs)
+        let col1X = round(x + 14)
+        let col2X = round(x + 98)
+        let coral = NSColor(srgbRed: 0.965, green: 0.255, blue: 0.376, alpha: 1.0)
+
+        Self.drawMiniKeyHint(ctx: ctx, x: col1X, y: round(iy + 52), key: pickMode ? "左键" : "C", label: pickMode ? "吸色" : "复制色值")
+        Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 52), key: "Tab", label: "切格式")
+        Self.drawMiniKeyHint(ctx: ctx, x: col1X, y: round(iy + 73), key: "Z", label: caliperActive ? "关闭测距" : "像素测距", activeTint: caliperActive ? coral : nil)
+        Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 73), key: "X", label: "复制坐标")
+        Self.drawMiniKeyHint(ctx: ctx, x: col1X, y: round(iy + 94), key: "G", label: useRelativeCoordinates ? "绝对坐标" : "相对坐标", activeTint: useRelativeCoordinates ? MSnipUITheme.accent : nil)
+        Self.drawMiniKeyHint(ctx: ctx, x: col2X, y: round(iy + 94), key: "O", label: magnifierPinned ? "常显已开" : "框选常显", activeTint: magnifierPinned ? MSnipUITheme.accent : nil)
         ctx.restoreGState()
 
         ctx.saveGState()
@@ -259,6 +264,30 @@ extension OverlayView {
         ctx.addPath(cardPath)
         ctx.strokePath()
         ctx.restoreGState()
+    }
+
+    private static func drawMiniKeyHint(ctx: CGContext, x: CGFloat, y: CGFloat, key: String, label: String, activeTint: NSColor? = nil) {
+        let keyAttrs: [NSAttributedString.Key: Any] = activeTint.map {
+            [.font: NSFont.systemFont(ofSize: 10.5, weight: .bold), .foregroundColor: $0]
+        } ?? miniKeyAttrs
+        let lblAttrs: [NSAttributedString.Key: Any] = activeTint.map {
+            [.font: NSFont.systemFont(ofSize: 11.0, weight: .semibold), .foregroundColor: $0]
+        } ?? miniLabelAttrs
+        let kNs = key as NSString
+        let kSz = kNs.size(withAttributes: keyAttrs)
+        let capW = max(18, ceil(kSz.width + 8))
+        let capH: CGFloat = 17
+        let capRect = CGRect(x: x, y: y, width: capW, height: capH)
+        let capPath = CGPath(roundedRect: capRect.insetBy(dx: 0.5, dy: 0.5), cornerWidth: 3.5, cornerHeight: 3.5, transform: nil)
+        ctx.setFillColor((activeTint?.withAlphaComponent(0.14) ?? MSnipUITheme.subtleFill).cgColor)
+        ctx.addPath(capPath); ctx.fillPath()
+        ctx.setStrokeColor((activeTint?.withAlphaComponent(0.75) ?? MSnipUITheme.borderStrong).cgColor)
+        ctx.setLineWidth(1.0)
+        ctx.addPath(capPath); ctx.strokePath()
+        kNs.draw(at: CGPoint(x: round(capRect.midX - kSz.width * 0.5), y: round(capRect.midY - kSz.height * 0.5)), withAttributes: keyAttrs)
+        let lNs = label as NSString
+        let lSz = lNs.size(withAttributes: lblAttrs)
+        lNs.draw(at: CGPoint(x: round(capRect.maxX + 4), y: round(capRect.midY - lSz.height * 0.5)), withAttributes: lblAttrs)
     }
 
     private static func drawCenteredString(_ text: String, centerX: CGFloat, y: CGFloat, attrs: [NSAttributedString.Key: Any]) {
