@@ -128,6 +128,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func beginCaptureSession(quickOCR: Bool, quickTranslate: Bool) {
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
+        ToastHUD.dismissImmediate()
 
         isCapturing = true
         let regionDetector = RegionDetector.captureBeforeOverlay()

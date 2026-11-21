@@ -55,7 +55,7 @@ final class RegionStreamSampler {
                 let ownApps = content.applications.filter { $0.processID == selfPID }
                 let filter: SCContentFilter
                 if !ownApps.isEmpty {
-                    // 按进程级排除自身全部现有与未来悬浮窗（配合各面板 sharingType = .none 双重隔离）
+                    // 按进程级排除 MSnip 自身全部现有与未来悬浮窗（刻意不设 sharingType = .none，保证远程桌面/投屏下自身取景框与提示正常可见）
                     filter = SCContentFilter(display: scDisplay, excludingApplications: ownApps, exceptingWindows: [])
                 } else {
                     let ownWindows = content.windows.filter { $0.owningApplication?.processID == selfPID }
@@ -92,6 +92,8 @@ final class RegionStreamSampler {
                     )
                     cfg.width = evenW
                     cfg.height = evenH
+                    cfg.pixelFormat = kCVPixelFormatType_32BGRA
+                    cfg.colorSpaceName = CGColorSpace.sRGB
                     cfg.queueDepth = 5
                 }
                 cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(5, fps)))
@@ -111,7 +113,7 @@ final class RegionStreamSampler {
                 self.activeStream = stream
             } catch {
                 if !self.stopped {
-                    onError("启动长截图画面流失败：\(error.localizedDescription)")
+                    onError("启动实时画面采集流失败：\(error.localizedDescription)")
                 }
             }
         }

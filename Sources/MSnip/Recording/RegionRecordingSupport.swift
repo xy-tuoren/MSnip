@@ -10,6 +10,7 @@ extension RegionRecordingSession {
     func finishSession(_ outcome: Outcome) {
         guard !closed else { return }
         closed = true
+        countdownTimer?.invalidate(); countdownTimer = nil
         tickTimer?.invalidate(); tickTimer = nil
         streamSampler.stop()
         if let m = localKeyMonitor { NSEvent.removeMonitor(m); localKeyMonitor = nil }
@@ -44,7 +45,8 @@ extension RegionRecordingSession {
             if ev.keyCode == 49, self.controlBar.isRecording { self.togglePause(); return nil }
             if ev.keyCode == 36 || ev.keyCode == 76 {
                 if self.controlBar.isRecording { self.finalizeRecording(saveInteractive: false) }
-                else { self.beginStreamRecording() }
+                else if self.countdownTimer != nil { self.skipCountdownAndRecord() }
+                else { self.startCountdownThenRecord() }
                 return nil
             }
             return ev
@@ -127,7 +129,6 @@ extension RegionRecordingSession {
     static func makePanel(frame: NSRect, ignoresMouse: Bool, contentView: NSView) -> NSPanel {
         let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.level = .screenSaver
-        p.sharingType = .none
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]

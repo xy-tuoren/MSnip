@@ -20,6 +20,7 @@ final class RecordingControlBarView: NSView {
     var onAction: ((Action) -> Void)?
     var format: RecordingFormat = .gif { didSet { refreshLayout() } }
     var interactionHUDEnabled: Bool = true { didSet { refreshLayout() } }
+    var countdownNumber: Int? { didSet { refreshLayout() } }
     var isRecording: Bool = false { didSet { refreshLayout() } }
     var isPaused: Bool = false { didSet { refreshLayout() } }
     var isEncoding: Bool = false { didSet { refreshLayout() } }
@@ -96,7 +97,16 @@ final class RecordingControlBarView: NSView {
             ? "已开启：录屏显示鼠标点击波纹与快捷键角标（点击关闭）"
             : "已关闭：点击开启录屏鼠标波纹与快捷键角标回显"
 
-        if !isRecording {
+        if countdownNumber != nil {
+            x = 122
+            let nowRect = CGRect(x: x, y: y, width: 76, height: h)
+            list.append(HitSlot(rect: nowRect, tip: "跳过倒计时立即开始录制 (↩)", action: .startRecording) { ctx, rect, hov in
+                MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: rect, radius: 6.5, color: MSnipUITheme.danger, hovered: hov)
+                Self.drawLabel("立即开始", in: rect, color: .white)
+            })
+            x += 80
+            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "取消录制 (Esc)", tint: MSnipUITheme.inkSecondary, action: .cancel))
+        } else if !isRecording {
             for fmt in RecordingFormat.allCases {
                 let active = (format == fmt)
                 let r = CGRect(x: x, y: y, width: 44, height: h)
@@ -155,7 +165,12 @@ final class RecordingControlBarView: NSView {
             return
         }
 
-        if isRecording {
+        if let cd = countdownNumber {
+            MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 16, y: Self.barHeight * 0.5), color: MSnipUITheme.warning, halo: true)
+            Self.drawLabel("准备录制 · \(cd)s", in: CGRect(x: 27, y: 0, width: 88, height: Self.barHeight), color: MSnipUITheme.inkPrimary, alignLeft: true)
+            ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
+            ctx.fill(CGRect(x: 116, y: 10, width: 1, height: Self.barHeight - 20))
+        } else if isRecording {
             MSnipUITheme.drawStatusDot(
                 ctx: ctx,
                 center: CGPoint(x: 16, y: Self.barHeight * 0.5),

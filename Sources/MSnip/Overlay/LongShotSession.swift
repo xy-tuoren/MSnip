@@ -178,7 +178,7 @@ final class LongShotSession {
 
     private func makePanel(frame: NSRect, ignoresMouse: Bool) -> NSPanel {
         let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        p.level = .statusBar; p.animationBehavior = .none; p.sharingType = .none
+        p.level = .statusBar; p.animationBehavior = .none
         p.isFloatingPanel = true; p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.isOpaque = false; p.backgroundColor = .clear

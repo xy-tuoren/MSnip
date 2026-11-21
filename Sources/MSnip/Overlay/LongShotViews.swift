@@ -35,6 +35,8 @@ final class LongShotBorderView: NSView {
 
     var statusText: String = "长截图 · 请在框内向下滚动滚轮" { didSet { needsDisplay = true } }
     var statusStyle: StatusStyle = .ready { didSet { needsDisplay = true } }
+    var countdownNumber: Int? { didSet { needsDisplay = true } }
+    var pinPillInsideTop: Bool = false { didSet { needsDisplay = true } }
 
     override var isFlipped: Bool { true }
 
@@ -93,7 +95,9 @@ final class LongShotBorderView: NSView {
         let tSz = nsText.size(withAttributes: attrs)
         let pillW = min(bounds.width - 8, ceil(tSz.width + 28))
         let pillH: CGFloat = 24
-        let pillRect = CGRect(x: frameRect.minX, y: max(2, frameRect.minY - pillH - 5), width: pillW, height: pillH)
+        let pillY = pinPillInsideTop ? round(frameRect.minY + 8) : max(2, frameRect.minY - pillH - 5)
+        let pillX = pinPillInsideTop ? round(frameRect.minX + 8) : frameRect.minX
+        let pillRect = CGRect(x: pillX, y: pillY, width: pillW, height: pillH)
 
         ctx.saveGState()
         let pillPath = CGPath(roundedRect: pillRect, cornerWidth: 6.5, cornerHeight: 6.5, transform: nil)
@@ -116,6 +120,38 @@ final class LongShotBorderView: NSView {
             withAttributes: attrs
         )
         ctx.restoreGState()
+
+        // 3) 录屏开始前 3-2-1 居中醒目圆形倒计时徽章
+        if let n = countdownNumber {
+            let side: CGFloat = min(76, max(44, min(captureRect.width, captureRect.height) * 0.45))
+            let badgeRect = CGRect(
+                x: round(captureRect.midX - side * 0.5),
+                y: round(captureRect.midY - side * 0.5),
+                width: side,
+                height: side
+            )
+            ctx.saveGState()
+            ctx.setShadow(offset: CGSize(width: 0, height: 4), blur: 14, color: NSColor.black.withAlphaComponent(0.35).cgColor)
+            ctx.setFillColor(NSColor(srgbRed: 0.09, green: 0.11, blue: 0.15, alpha: 0.88).cgColor)
+            ctx.fillEllipse(in: badgeRect)
+            ctx.restoreGState()
+
+            ctx.saveGState()
+            ctx.setStrokeColor(MSnipUITheme.danger.cgColor)
+            ctx.setLineWidth(2.5)
+            ctx.strokeEllipse(in: badgeRect.insetBy(dx: 1.5, dy: 1.5))
+            let numStr = "\(n)" as NSString
+            let numAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.monospacedDigitSystemFont(ofSize: round(side * 0.48), weight: .bold),
+                .foregroundColor: NSColor.white
+            ]
+            let nSz = numStr.size(withAttributes: numAttrs)
+            numStr.draw(
+                at: CGPoint(x: round(badgeRect.midX - nSz.width * 0.5), y: round(badgeRect.midY - nSz.height * 0.5)),
+                withAttributes: numAttrs
+            )
+            ctx.restoreGState()
+        }
     }
 }
 

@@ -30,6 +30,8 @@ final class RegionRecordingSession {
     var localCaptureRect: CGRect = .zero
     var saveDirHint: String?
 
+    var countdownTimer: Timer?
+    var countdownRemaining: Int = 0
     var tickTimer: Timer?
     var localKeyMonitor: Any?
     var globalKeyMonitor: Any?
@@ -63,6 +65,7 @@ final class RegionRecordingSession {
         borderView.statusText = "选区录屏就绪 · 选择 GIF/MP4 后点击开始录制"
 
         let screenRect = Self.toAppKitScreenRect(localTopLeft: selectionLocalTopLeft, on: screen)
+        borderView.pinPillInsideTop = (screenRect.maxY + LongShotBorderView.topBadgeSpace > screen.visibleFrame.maxY)
         let bFrame = NSRect(
             x: screenRect.minX - LongShotBorderView.sidePad,
             y: screenRect.minY - LongShotBorderView.sidePad,
@@ -104,7 +107,8 @@ final class RegionRecordingSession {
                 repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: scr), on: scr)
             }
         case .startRecording:
-            beginStreamRecording()
+            if countdownTimer != nil { skipCountdownAndRecord() }
+            else { startCountdownThenRecord() }
         case .togglePause:
             togglePause()
         case .finishCopy:
@@ -116,8 +120,46 @@ final class RegionRecordingSession {
         }
     }
 
+    func startCountdownThenRecord() {
+        guard !controlBar.isRecording, countdownTimer == nil, let screen = targetScreen else { return }
+        countdownRemaining = 3
+        applyCountdownDisplay(3, on: screen)
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.advanceCountdown() }
+        }
+    }
+
+    func skipCountdownAndRecord() {
+        countdownTimer?.invalidate(); countdownTimer = nil
+        countdownRemaining = 0
+        borderView.countdownNumber = nil
+        controlBar.countdownNumber = nil
+        beginStreamRecording()
+    }
+
+    private func advanceCountdown() {
+        guard !closed, let screen = targetScreen else { return }
+        countdownRemaining -= 1
+        if countdownRemaining <= 0 {
+            skipCountdownAndRecord()
+        } else {
+            applyCountdownDisplay(countdownRemaining, on: screen)
+        }
+    }
+
+    private func applyCountdownDisplay(_ n: Int, on screen: NSScreen) {
+        borderView.countdownNumber = n
+        borderView.statusStyle = .warning
+        borderView.statusText = "即将录制 \(controlBar.format.badgeTitle) · \(n) 秒后开始（↩ 跳过 · Esc 取消）"
+        controlBar.countdownNumber = n
+        repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: screen), on: screen)
+    }
+
     func beginStreamRecording() {
         guard !controlBar.isRecording, let screen = targetScreen else { return }
+        countdownTimer?.invalidate(); countdownTimer = nil
+        borderView.countdownNumber = nil
+        controlBar.countdownNumber = nil
         let fmt = controlBar.format
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("MSnipClips", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -130,10 +172,6 @@ final class RegionRecordingSession {
         self.paused = false
         let now = CACurrentMediaTime()
         self.segmentStartMediaTime = now
-
-        if let seed = initialFrame {
-            enc.appendFrame(seed, at: 0.0)
-        }
 
         controlBar.isRecording = true
         controlBar.isPaused = false
@@ -218,6 +256,9 @@ final class RegionRecordingSession {
         borderView.statusStyle = .stitching
         borderView.statusText = "正在封装 \(controlBar.format.badgeTitle)…"
 
+        if enc.capturedFrameCount == 0, let fallback = initialFrame {
+            enc.appendFrame(fallback, at: 0.0)
+        }
         let fmt = controlBar.format
         Task { @MainActor [weak self] in
             let url = await enc.finish(finalTimestamp: finalDur)
