@@ -38,12 +38,16 @@ extension OverlayView {
     static let loupeRows = 9
     static let loupeCell: CGFloat = 11
     static let loupeCardW: CGFloat = 165
-    static let loupeCardH: CGFloat = 187
+    static let loupeCardH: CGFloat = 205
     private static let loupeSRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
     private static let coordTextAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold),
         .foregroundColor: MSnipUITheme.inkSecondary
+    ]
+    private static let coordRelativeTextAttrs: [NSAttributedString.Key: Any] = [
+        .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .bold),
+        .foregroundColor: MSnipUITheme.accent
     ]
     private static let colorValueAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .bold),
@@ -117,12 +121,15 @@ extension OverlayView {
     }
 
     func formattedCoordinateAtCursor(px: Int, py: Int) -> (tag: String, text: String, copyValue: String) {
-        if useRelativeCoordinates, let ref = selection ?? hoveredAutoRect {
-            let rx = px - Int((ref.minX * snapshot.scaleFactor).rounded())
-            let ry = py - Int((ref.minY * snapshot.scaleFactor).rounded())
-            return ("REL", "REL (\(rx), \(ry))", "\(rx), \(ry)")
+        if useRelativeCoordinates {
+            if let ref = selection ?? hoveredAutoRect {
+                let rx = px - Int((ref.minX * snapshot.scaleFactor).rounded())
+                let ry = py - Int((ref.minY * snapshot.scaleFactor).rounded())
+                return ("REL", "相对 (\(rx), \(ry))", "\(rx), \(ry)")
+            }
+            return ("REL", "相对 (\(px), \(py))", "\(px), \(py)")
         }
-        return ("POS", "(\(px), \(py))", "\(px), \(py)")
+        return ("ABS", "绝对 (\(px), \(py))", "\(px), \(py)")
     }
 
     func renderMagnifierContent(in ctx: CGContext, cardRect: CGRect) {
@@ -214,7 +221,8 @@ extension OverlayView {
 
         let iy = y + loupeH
         let coord = formattedCoordinateAtCursor(px: sample.px, py: sample.py)
-        Self.drawCenteredString(coord.text, centerX: x + cardW * 0.5, y: iy + 6, attrs: Self.coordTextAttrs)
+        let coordAttrs = useRelativeCoordinates ? Self.coordRelativeTextAttrs : Self.coordTextAttrs
+        Self.drawCenteredString(coord.text, centerX: x + cardW * 0.5, y: iy + 6, attrs: coordAttrs)
 
         let colorText = sample.color.formatted(as: colorCopyFormat)
         let colorNs = colorText as NSString
@@ -232,12 +240,17 @@ extension OverlayView {
 
         let pickMode = eyedropperActive || (selection != nil && optionPressed)
         let row1 = pickMode ? "单击 吸色   ·   Tab 切格式" : "C 复制色值   ·   Tab 切格式"
-        Self.drawCenteredString(row1, centerX: x + cardW * 0.5, y: round(iy + 45), attrs: Self.hintLineAttrs)
-        let row2 = caliperActive ? "空格 关测距   ·   X 复制坐标" : "空格 测距   ·   X 复制坐标"
+        Self.drawCenteredString(row1, centerX: x + cardW * 0.5, y: round(iy + 44), attrs: Self.hintLineAttrs)
+        let row2 = caliperActive ? "Z 关测距   ·   X 复制坐标" : "Z 像素测距   ·   X 复制坐标"
         let row2Attrs: [NSAttributedString.Key: Any] = caliperActive
             ? [.font: NSFont.systemFont(ofSize: 11.0, weight: .semibold), .foregroundColor: NSColor(srgbRed: 0.965, green: 0.255, blue: 0.376, alpha: 1.0)]
             : Self.hintLineAttrs
-        Self.drawCenteredString(row2, centerX: x + cardW * 0.5, y: round(iy + 64), attrs: row2Attrs)
+        Self.drawCenteredString(row2, centerX: x + cardW * 0.5, y: round(iy + 63), attrs: row2Attrs)
+        let row3 = useRelativeCoordinates ? "G 切绝对坐标   ·   ` 锁定" : "G 切相对坐标   ·   ` 锁定"
+        let row3Attrs: [NSAttributedString.Key: Any] = useRelativeCoordinates
+            ? [.font: NSFont.systemFont(ofSize: 11.0, weight: .semibold), .foregroundColor: MSnipUITheme.accent]
+            : Self.hintLineAttrs
+        Self.drawCenteredString(row3, centerX: x + cardW * 0.5, y: round(iy + 82), attrs: row3Attrs)
         ctx.restoreGState()
 
         ctx.saveGState()

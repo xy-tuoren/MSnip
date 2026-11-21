@@ -46,12 +46,8 @@ extension OverlayView {
         let opt = flags.contains(.option)
         let letter = ansiLetter(for: event.keyCode) ?? (event.charactersIgnoringModifiers?.lowercased() ?? "")
 
-        if event.keyCode == 49 { // Space：拖拽中按住平移选框；静止时轻按开关四向像素卡尺测距
-            if dragOp != nil {
-                spacePressed = true
-            } else if !event.isARepeat {
-                caliperActive.toggle()
-            }
+        if event.keyCode == 49 { // Space：拖拽中按住平移选框
+            if dragOp != nil { spacePressed = true }
             return
         }
         if event.keyCode == 53 { handleEscapeStepBack(); return } // Esc
@@ -106,14 +102,14 @@ extension OverlayView {
 
         // 左手高频优先单字母快捷键（无 ⌘ / ⌃ 修饰，中英文输入法下均零延迟响应）
         if !cmd, !ctrl {
-            if handleSingleKeyShortcut(letter, shift: shift, opt: opt) { return }
+            if handleSingleKeyShortcut(letter, shift: shift, opt: opt, isRepeat: event.isARepeat) { return }
             if let raw = event.charactersIgnoringModifiers, let n = Int(raw), let tool = ToolKind(rawValue: n) {
                 toggleToolShortcut(tool)
             }
         }
     }
 
-    private func handleSingleKeyShortcut(_ key: String, shift: Bool, opt: Bool) -> Bool {
+    private func handleSingleKeyShortcut(_ key: String, shift: Bool, opt: Bool, isRepeat: Bool) -> Bool {
         switch key {
         // 1) 高频结束 / 输出动作
         case "c":
@@ -139,14 +135,15 @@ extension OverlayView {
         case "q":
             onCancel?()
 
-        // 2) 左手高频标注工具 + 单键撤销/重做
+        // 2) 左手高频标注工具 + Z 四向像素测距（撤销/重做走 ⌘Z / ⌘⇧Z）
         case "r": toggleToolShortcut(shift ? .ellipse : .rect)
         case "a": toggleToolShortcut(.arrow)
         case "d": toggleToolShortcut(shift ? .highlighter : .pen)
         case "w": toggleToolShortcut(.text)
         case "m": toggleToolShortcut(shift ? .gaussianBlur : .mosaic)
         case "n": toggleToolShortcut(.step)
-        case "z": performUndoRedo(isRedo: shift)
+        case "z":
+            if !shift && !opt && !isRepeat { caliperActive.toggle() }
 
         // 3) 多模态扩展：识字 / 翻译 / 长截图 / 录屏
         case "t":
@@ -156,13 +153,18 @@ extension OverlayView {
         case "l": beginLongShot()
         case "v": beginRegionRecording()
 
-        // 4) 外观、窗口对齐与辅助微调
+        // 4) 外观、窗口对齐与坐标/取色辅助
         case "b": toggleCornerRadiusSlider(resetOnly: opt)
         case "f":
             if opt { captureCurrentWindowAndFinish(pin: false) } else { snapSelectionToUnderlyingWindow() }
         case "e":
             if let prev = lastHistorySelection { selection = Geometry.clampRect(prev, within: bounds) }
-        case "g": cycleBackdropStyle()
+        case "g":
+            if selection == nil || shouldShowMagnifier {
+                useRelativeCoordinates.toggle()
+            } else {
+                cycleBackdropStyle()
+            }
         case "k": toggleTextCapsuleMode()
         case "i":
             if selection == nil, let snap = hoveredAutoRect { selection = snap }

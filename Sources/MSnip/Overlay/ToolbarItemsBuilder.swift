@@ -83,8 +83,8 @@ extension ToolbarView {
         x = appendDivider(at: x, into: &list)
 
         // 2) 撤销 / 重做
-        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.backward", tip: "撤销 (Z / ⌘Z)", enabled: canUndo, action: .undo))
-        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.forward", tip: "重做 (⇧Z / ⌘⇧Z)", enabled: canRedo, action: .redo))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.backward", tip: "撤销 (⌘Z)", enabled: canUndo, action: .undo))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.forward", tip: "重做 (⌘⇧Z)", enabled: canRedo, action: .redo))
 
         x = appendDivider(at: x, into: &list)
 
