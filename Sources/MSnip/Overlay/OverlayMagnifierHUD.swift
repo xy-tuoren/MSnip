@@ -65,7 +65,7 @@ extension OverlayView {
         if !sidePills.isHidden && sidePills.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if !cornerSlider.isHidden && cornerSlider.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if (toolbar.inPlaceOCRActive || toolbar.inPlaceTranslateActive), let sel = selection, sel.contains(pt) { return false }
-        if eyedropperActive { return true }
+        if eyedropperActive || caliperActive { return true }
         if selection == nil { return true }
         if let op = dragOp {
             switch op {
@@ -230,9 +230,13 @@ extension OverlayView {
         colorNs.draw(at: CGPoint(x: round(swRect.maxX + 6), y: round(iy + 24.5)), withAttributes: Self.colorValueAttrs)
 
         let pickMode = eyedropperActive || (selection != nil && optionPressed)
-        Self.drawCenteredString("⇧ 切格式   ·   ` 锁定放大镜", centerX: x + cardW * 0.5, y: round(iy + 45), attrs: Self.hintLineAttrs)
-        let copyHint = pickMode ? "单击吸取标注颜色" : "C 复制色值   ·   G 相对坐标"
-        Self.drawCenteredString(copyHint, centerX: x + cardW * 0.5, y: round(iy + 64), attrs: Self.hintLineAttrs)
+        let row1 = pickMode ? "单击 吸色   ·   Tab 切格式" : "C 复制色值   ·   Tab 切格式"
+        Self.drawCenteredString(row1, centerX: x + cardW * 0.5, y: round(iy + 45), attrs: Self.hintLineAttrs)
+        let row2 = caliperActive ? "空格 关测距   ·   X 复制坐标" : "空格 测距   ·   X 复制坐标"
+        let row2Attrs: [NSAttributedString.Key: Any] = caliperActive
+            ? [.font: NSFont.systemFont(ofSize: 11.0, weight: .semibold), .foregroundColor: NSColor(srgbRed: 0.965, green: 0.255, blue: 0.376, alpha: 1.0)]
+            : Self.hintLineAttrs
+        Self.drawCenteredString(row2, centerX: x + cardW * 0.5, y: round(iy + 64), attrs: row2Attrs)
         ctx.restoreGState()
 
         ctx.saveGState()

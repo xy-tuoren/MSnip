@@ -212,12 +212,15 @@ extension OverlayView {
             self?.cornerRadiusRatio = r
         }
 
+        caliperView.ownerOverlay = self
+        caliperView.frame = bounds
         magnifierView.ownerOverlay = self
 
         addSubview(sidePills)
         addSubview(cornerSlider)
         addSubview(toolbar)
         addSubview(subbar)
+        addSubview(caliperView)
         addSubview(magnifierView)
     }
 }

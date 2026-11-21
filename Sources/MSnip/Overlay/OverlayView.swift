@@ -21,6 +21,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     let subbar = ToolbarSubbarView()
     let sidePills = OverlaySidePillsView()
     let cornerSlider = OverlayCornerSliderView()
+    let caliperView = OverlayCaliperLayerView()
     let magnifierView = OverlayMagnifierLayerView()
     var inPlaceOCRView: LiveTextImageView?
     var inPlaceTranslateView: InPlaceTranslationOverlayView?
@@ -98,6 +99,15 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     }
     var optionPressed = false { didSet { if oldValue != optionPressed { syncMagnifierView() } } }
     var magnifierPinned = false { didSet { syncMagnifierView() } }
+    var caliperActive = false {
+        didSet {
+            if oldValue != caliperActive {
+                syncCaliperView()
+                syncMagnifierView()
+                needsDisplay = true
+            }
+        }
+    }
     var useRelativeCoordinates = false { didSet { syncMagnifierView() } }
     var shiftTapCandidate = false
 
@@ -203,6 +213,12 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         ctx.clip(to: clip)
 
         drawFrozenBackgroundSlice(in: ctx, dirtyRect: clip)
+
+        // 开启像素卡尺且未锁定选区时，保持全屏原色高亮（去掉暗化遮罩与蓝框），令珊瑚红四向测距线极致清晰
+        if selection == nil && caliperActive {
+            drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
+            return
+        }
 
         let highlightRect = selection ?? displayedAutoRect ?? hoveredAutoRect
         let activeRadius = (selection != nil && cornerRadiusPt > 0.5)

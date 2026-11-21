@@ -60,6 +60,7 @@ extension OverlayView {
 
     func invalidateMagnifierMove(from oldPt: CGPoint?, to newPt: CGPoint?) {
         syncMagnifierView()
+        syncCaliperView()
         if showShortcutTips {
             let zone = shortcutTipsBottomTriggerZone()
             let wasIn = oldPt.map { zone.contains($0) } ?? false
@@ -81,6 +82,7 @@ extension OverlayView {
             subbar.isHidden = true
             sidePills.isHidden = true
             cornerSlider.isHidden = true
+            caliperView.isHidden = true
             if let ocrV = inPlaceOCRView, let sel = selection { ocrV.frame = sel }
             if let trV = inPlaceTranslateView, let sel = selection { trV.frame = sel }
             return
@@ -163,9 +165,11 @@ extension OverlayView {
         isCornerSliderVisible = false
         cornerRadiusRatio = 0
         cornerSlider.isHidden = true
+        caliperActive = false
         selection = nil
         lastMousePoint = nil
         syncMagnifierView()
+        syncCaliperView()
         eyedropperActive = false
         autoSnapStack = []
         displayedAutoRect = nil

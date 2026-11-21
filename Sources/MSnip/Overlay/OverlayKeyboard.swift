@@ -46,7 +46,14 @@ extension OverlayView {
         let opt = flags.contains(.option)
         let letter = ansiLetter(for: event.keyCode) ?? (event.charactersIgnoringModifiers?.lowercased() ?? "")
 
-        if event.keyCode == 49 { spacePressed = true; return } // Space
+        if event.keyCode == 49 { // Space：拖拽中按住平移选框；静止时轻按开关四向像素卡尺测距
+            if dragOp != nil {
+                spacePressed = true
+            } else if !event.isARepeat {
+                caliperActive.toggle()
+            }
+            return
+        }
         if event.keyCode == 53 { handleEscapeStepBack(); return } // Esc
         if event.keyCode == 48 { cycleColorFormat(); return } // Tab
         if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
@@ -201,7 +208,8 @@ extension OverlayView {
     }
 
     private func handleEscapeStepBack() {
-        if eyedropperActive { eyedropperActive = false }
+        if caliperActive { caliperActive = false }
+        else if eyedropperActive { eyedropperActive = false }
         else if isCornerSliderVisible { isCornerSliderVisible = false; updateToolbarLayout() }
         else if toolbar.inPlaceTranslateActive { deactivateInPlaceTranslate() }
         else if toolbar.inPlaceOCRActive { deactivateInPlaceOCR() }
@@ -241,6 +249,7 @@ extension OverlayView {
     override func rightMouseDown(with event: NSEvent) {
         shiftTapCandidate = false
         if isEditingText { cancelTextEditing(); return }
+        if caliperActive { caliperActive = false; return }
         if eyedropperActive { eyedropperActive = false; return }
         if selection != nil || dragOp != nil {
             dragOp = nil; draftAnnotation = nil; activeTool = nil; selectedObjectIndex = nil

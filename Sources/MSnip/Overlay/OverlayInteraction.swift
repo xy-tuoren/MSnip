@@ -86,8 +86,14 @@ extension OverlayView {
 
         guard let sel = selection else {
             selectedObjectIndex = nil
-            if autoSnapStack.isEmpty { updateAutoSnap(at: p) }
-            dragOp = .pendingSnapOrCreate(anchor: p, snapRect: hoveredAutoRect)
+            var snapTarget = hoveredAutoRect
+            if caliperActive, let m = caliperView.measurement {
+                let s = max(1.0, snapshot.scaleFactor)
+                let r = CGRect(x: CGFloat(m.leftPx) / s, y: CGFloat(m.topPx) / s, width: CGFloat(m.widthPx) / s, height: CGFloat(m.heightPx) / s)
+                if r.width >= 8, r.height >= 8 { snapTarget = r }
+            }
+            if snapTarget == nil && autoSnapStack.isEmpty { updateAutoSnap(at: p) }
+            dragOp = .pendingSnapOrCreate(anchor: p, snapRect: snapTarget ?? hoveredAutoRect)
             return
         }
 
@@ -151,6 +157,7 @@ extension OverlayView {
         switch op {
         case .pendingSnapOrCreate(let anchor, _):
             if hypot(p.x - anchor.x, p.y - anchor.y) >= 4.0 {
+                if caliperActive { caliperActive = false }
                 dragOp = .creatingSelection(anchor: anchor)
                 let end = shift ? Geometry.squareConstrainedEnd(from: anchor, to: p) : p
                 selection = Geometry.normalizedRect(from: anchor, to: end).intersection(bounds)
@@ -223,6 +230,7 @@ extension OverlayView {
 
         switch op {
         case .pendingSnapOrCreate(_, let snapRect):
+            if caliperActive { caliperActive = false }
             if let snap = snapRect, snap.width >= 6, snap.height >= 6 {
                 selection = snap
                 if quickTranslateMode { activateInPlaceTranslate() }
