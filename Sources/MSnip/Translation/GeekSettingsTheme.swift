@@ -181,15 +181,17 @@ final class GeekDotLabel: NSView {
     }
 }
 
-/// 翻译服务列表行视图（38px 宽敞行高，零右侧裁切，清晰「使用中」绿标）
+/// 翻译服务列表行视图（38px 宽敞行高 + 清晰「使用中 / 已就绪 / 填 Key」状态胶囊，一眼看懂）
 final class ProviderRowCellView: NSTableCellView {
     private let titleText: String
     private let isPrimary: Bool
+    private let isReady: Bool
     private let isRowSelected: Bool
     private let dotColor: NSColor
 
-    init(title: String, isPrimary: Bool, isSelected: Bool, dotColor: NSColor) {
-        self.titleText = title; self.isPrimary = isPrimary; self.isRowSelected = isSelected; self.dotColor = dotColor
+    init(title: String, isPrimary: Bool, isReady: Bool, isSelected: Bool, dotColor: NSColor) {
+        self.titleText = title; self.isPrimary = isPrimary; self.isReady = isReady
+        self.isRowSelected = isSelected; self.dotColor = dotColor
         super.init(frame: .zero)
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -201,19 +203,19 @@ final class ProviderRowCellView: NSTableCellView {
             ctx.setFillColor(GeekTheme.controlHover.cgColor); ctx.addPath(bg); ctx.fillPath()
             ctx.setStrokeColor(GeekTheme.borderStrong.cgColor); ctx.setLineWidth(1.0); ctx.addPath(bg); ctx.strokePath()
         }
-        MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 16, y: bounds.midY), color: dotColor, halo: isPrimary)
+        MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 15, y: bounds.midY), color: dotColor, halo: isPrimary)
 
-        var rightReserve: CGFloat = 10
-        if isPrimary {
-            let bw: CGFloat = 42, bh: CGFloat = 18
-            let br = CGRect(x: bounds.width - bw - 10, y: round((bounds.height - bh) * 0.5), width: bw, height: bh)
-            ctx.setFillColor(GeekTheme.emeraldSoft.cgColor)
-            ctx.addPath(CGPath(roundedRect: br, cornerWidth: 4.5, cornerHeight: 4.5, transform: nil)); ctx.fillPath()
-            let bAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: GeekTheme.emerald]
-            let bSz = ("使用中" as NSString).size(withAttributes: bAttrs)
-            ("使用中" as NSString).draw(at: CGPoint(x: round(br.midX - bSz.width * 0.5), y: round(br.midY - bSz.height * 0.5)), withAttributes: bAttrs)
-            rightReserve = bw + 16
-        }
+        let badgeText: String = isPrimary ? "使用中" : (isReady ? "已就绪" : "填 Key")
+        let badgeBg: NSColor = isPrimary ? GeekTheme.emeraldSoft : (isReady ? GeekTheme.accentSoft : NSColor(white: 1.0, alpha: 0.05))
+        let badgeFg: NSColor = isPrimary ? GeekTheme.emerald : (isReady ? GeekTheme.accent : GeekTheme.inkMuted)
+        let bw: CGFloat = 44, bh: CGFloat = 18
+        let br = CGRect(x: bounds.width - bw - 8, y: round((bounds.height - bh) * 0.5), width: bw, height: bh)
+        ctx.setFillColor(badgeBg.cgColor)
+        ctx.addPath(CGPath(roundedRect: br, cornerWidth: 4.5, cornerHeight: 4.5, transform: nil)); ctx.fillPath()
+        let bAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 10.5, weight: .semibold), .foregroundColor: badgeFg]
+        let bSz = (badgeText as NSString).size(withAttributes: bAttrs)
+        (badgeText as NSString).draw(at: CGPoint(x: round(br.midX - bSz.width * 0.5), y: round(br.midY - bSz.height * 0.5)), withAttributes: bAttrs)
+        let rightReserve = bw + 14
 
         let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [
@@ -223,7 +225,7 @@ final class ProviderRowCellView: NSTableCellView {
         ]
         let sz = (titleText as NSString).size(withAttributes: attrs)
         (titleText as NSString).draw(
-            in: CGRect(x: 28, y: round((bounds.height - sz.height) * 0.5), width: max(30, bounds.width - 28 - rightReserve), height: sz.height + 2),
+            in: CGRect(x: 26, y: round((bounds.height - sz.height) * 0.5), width: max(30, bounds.width - 26 - rightReserve), height: sz.height + 2),
             withAttributes: attrs
         )
     }

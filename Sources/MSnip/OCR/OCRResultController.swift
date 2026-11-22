@@ -60,6 +60,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var transTextView: NSTextView!
 
     var statsLabel: NSTextField!
+    var exactModeButton: OCRPillButton!
     var pinButton: OCRPillButton!
     var copyButton: OCRPillButton!
 
@@ -68,6 +69,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var currentScreen: NSScreen?
     var currentOutput: OCRRecognitionOutput?
     var layoutMode: OCRLayoutMode = .preserveLines
+    var exactCodeMode: Bool = false
     var isTranslationActive: Bool = false
     var selectedEngineID: UUID?
     var selectedTargetLang: TranslationTargetLang?
@@ -118,7 +120,23 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         win.makeKeyAndOrderFront(nil)
 
         let targetImg = cgImage
-        VisionTextExtractor.recognizeAsync(from: targetImg) { [weak self] output in
+        runOCRPass(on: targetImg, token: token)
+    }
+
+    func toggleExactCodeMode() {
+        exactCodeMode.toggle()
+        exactModeButton?.isToggledOn = exactCodeMode
+        guard let img = currentCGImage else { return }
+        requestToken &+= 1
+        let token = requestToken
+        statusBadgeLabel.stringValue = exactCodeMode ? "正在按防纠错原样重识…" : "正在按高精度模式重识…"
+        statusBadgeLabel.textColor = MSnipUITheme.inkSecondary
+        relayoutContent()
+        runOCRPass(on: img, token: token)
+    }
+
+    private func runOCRPass(on image: CGImage, token: UInt64) {
+        VisionTextExtractor.recognizeAsync(from: image, exactCodeMode: exactCodeMode) { [weak self] output in
             guard let self, self.requestToken == token else { return }
             self.applyRecognitionOutput(output)
             self.liveImageView.applyPrecomputedAnalysis(output.liveAnalysisObject, highlightBlocks: self.highlightButton.isToggledOn)

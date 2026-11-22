@@ -74,11 +74,11 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
     public static func makePreset(_ kind: TranslationProviderKind, llmPreset: LLMQuickPreset? = nil) -> TranslationProviderProfile {
         switch kind {
         case .appleNative:
-            return TranslationProviderProfile(name: "macOS 原生离线翻译（免费）", kind: .appleNative, isEnabled: true)
+            return TranslationProviderProfile(name: "Apple 离线翻译", kind: .appleNative, isEnabled: true)
         case .openAICompatible:
             let p = llmPreset ?? .deepseek
             return TranslationProviderProfile(
-                name: p.title,
+                name: p.shortName,
                 kind: .openAICompatible,
                 isEnabled: true,
                 endpoint: p.baseURL,
@@ -86,34 +86,34 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
             )
         case .anthropicCompatible:
             return TranslationProviderProfile(
-                name: "Claude (Anthropic 协议)",
+                name: "Claude",
                 kind: .anthropicCompatible,
                 endpoint: "https://api.anthropic.com/v1/messages",
                 model: "claude-3-5-haiku-latest"
             )
         case .geminiNative:
             return TranslationProviderProfile(
-                name: "Google Gemini Flash",
+                name: "Google Gemini",
                 kind: .geminiNative,
                 endpoint: "https://generativelanguage.googleapis.com/v1beta",
                 model: "gemini-2.0-flash"
             )
         case .tencent:
             return TranslationProviderProfile(
-                name: "腾讯云机器翻译 TMT",
+                name: "腾讯云翻译",
                 kind: .tencent,
                 endpoint: "https://tmt.tencentcloudapi.com",
                 model: "ap-guangzhou"
             )
         case .baidu:
             return TranslationProviderProfile(
-                name: "百度翻译开放平台",
+                name: "百度翻译",
                 kind: .baidu,
                 endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
             )
         case .youdao:
             return TranslationProviderProfile(
-                name: "有道智云文本翻译",
+                name: "有道智云",
                 kind: .youdao,
                 endpoint: "https://openapi.youdao.com/api"
             )
@@ -125,7 +125,7 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
             )
         case .customWebhook:
             return TranslationProviderProfile(
-                name: "自定义 HTTP JSON 翻译",
+                name: "自定义接口",
                 kind: .customWebhook,
                 endpoint: "http://127.0.0.1:1188/translate",
                 customHeadersJSON: "{\"Content-Type\": \"application/json\"}",
@@ -160,15 +160,13 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
 
     public static func defaultStarterProfiles() -> [TranslationProviderProfile] {
         let apple = TranslationProviderProfile.makePreset(.appleNative)
-        var deepseek = TranslationProviderProfile.makePreset(.openAICompatible, llmPreset: .deepseek)
-        deepseek.isEnabled = true
+        let zhipu = TranslationProviderProfile.makePreset(.openAICompatible, llmPreset: .zhipuFree)
+        let deepseek = TranslationProviderProfile.makePreset(.openAICompatible, llmPreset: .deepseek)
+        let tencent = TranslationProviderProfile.makePreset(.tencent)
+        let baidu = TranslationProviderProfile.makePreset(.baidu)
         var ollama = TranslationProviderProfile.makePreset(.openAICompatible, llmPreset: .ollamaLocal)
         ollama.isEnabled = false
-        var tencent = TranslationProviderProfile.makePreset(.tencent)
-        tencent.isEnabled = true
-        var baidu = TranslationProviderProfile.makePreset(.baidu)
-        baidu.isEnabled = true
-        return [apple, deepseek, tencent, baidu, ollama]
+        return [apple, zhipu, deepseek, tencent, baidu, ollama]
     }
 
     public var resolvedActiveProfile: TranslationProviderProfile? {

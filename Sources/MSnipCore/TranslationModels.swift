@@ -174,6 +174,34 @@ public enum LLMQuickPreset: String, CaseIterable, Sendable {
         }
     }
 
+    public var shortName: String {
+        switch self {
+        case .deepseek:    return "DeepSeek"
+        case .zhipuFree:   return "智谱 GLM（免费）"
+        case .qwen:        return "通义千问"
+        case .doubao:      return "豆包 · 火山方舟"
+        case .siliconflow: return "硅基流动（免费）"
+        case .kimi:        return "Kimi · Moonshot"
+        case .openai:      return "OpenAI"
+        case .openrouter:  return "OpenRouter"
+        case .ollamaLocal: return "本地 Ollama"
+        }
+    }
+
+    public var consoleURL: String? {
+        switch self {
+        case .deepseek:    return "https://platform.deepseek.com/api_keys"
+        case .zhipuFree:   return "https://open.bigmodel.cn/usercenter/apikeys"
+        case .qwen:        return "https://bailian.console.aliyun.com/?apiKey=1"
+        case .doubao:      return "https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey"
+        case .siliconflow: return "https://cloud.siliconflow.cn/account/ak"
+        case .kimi:        return "https://platform.moonshot.cn/console/api-keys"
+        case .openai:      return "https://platform.openai.com/api-keys"
+        case .openrouter:  return "https://openrouter.ai/keys"
+        case .ollamaLocal: return nil
+        }
+    }
+
     public var defaultModel: String {
         switch self {
         case .deepseek:    return "deepseek-chat"
@@ -217,5 +245,54 @@ public enum TranslationProviderKind: String, CaseIterable, Codable, Sendable {
 
     public var supportsStreaming: Bool {
         self == .openAICompatible
+    }
+}
+
+public extension TranslationProviderProfile {
+    /// 是否为无需 API Key 的本机或自建免鉴权接口（Apple 离线 / 本地 Ollama / 自建 DeepLX）
+    var isLocalNoKeyEndpoint: Bool {
+        let lower = endpoint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if kind == .openAICompatible { return lower.contains("127.0.0.1") || lower.contains("localhost") || lower.contains(":11434") }
+        if kind == .deepl { return !lower.isEmpty && !lower.contains("deepl.com") }
+        return kind == .appleNative
+    }
+
+    /// 对应服务商官方 API Key 申请控制台地址（供设置页一键直达获取密钥）
+    var consoleURL: String? {
+        let ep = endpoint.lowercased()
+        switch kind {
+        case .appleNative, .customWebhook: return nil
+        case .anthropicCompatible: return "https://console.anthropic.com/settings/keys"
+        case .geminiNative:        return "https://aistudio.google.com/apikey"
+        case .tencent:             return "https://console.cloud.tencent.com/cam/capi"
+        case .baidu:               return "https://fanyi-api.baidu.com/manage/developer"
+        case .youdao:              return "https://ai.youdao.com/console/"
+        case .deepl:               return isLocalNoKeyEndpoint ? nil : "https://www.deepl.com/account/summary"
+        case .openAICompatible:
+            let map: [(String, LLMQuickPreset)] = [
+                ("deepseek", .deepseek), ("bigmodel", .zhipuFree), ("dashscope", .qwen), ("aliyun", .qwen),
+                ("volces", .doubao), ("siliconflow", .siliconflow), ("moonshot", .kimi), ("openai.com", .openai), ("openrouter", .openrouter)
+            ]
+            return map.first(where: { ep.contains($0.0) })?.1.consoleURL
+        }
+    }
+
+    /// 面向普通用户的一句话极简配置指引
+    var quickGuideText: String {
+        switch kind {
+        case .appleNative: return "系统内置免费离线模型 · 无需配置，开箱即用"
+        case .openAICompatible:
+            if isLocalNoKeyEndpoint { return "本机离线运行 · 无需密钥，确认已拉取模型名即可" }
+            if endpoint.lowercased().contains("bigmodel") { return "智谱含免费 glm-4-flash 模型 · 粘贴 1 个 Key 即用" }
+            if endpoint.lowercased().contains("siliconflow") { return "硅基流动含免费额度 · 粘贴 1 个 API Key 即用" }
+            return "只需粘贴 1 个 API 密钥，点「测试并启用」即可"
+        case .anthropicCompatible: return "粘贴 Claude API Key，点「测试并启用」即可"
+        case .geminiNative:        return "Google AI Studio 含免费额度 · 粘贴 Key 即用"
+        case .tencent:             return "每月 500 万字符免费额度 · 填入双密钥即用"
+        case .baidu:               return "每月含免费翻译额度 · 填入 AppID 与密钥即用"
+        case .youdao:              return "填入有道智云应用 ID 与密钥 · 测通即启用"
+        case .deepl:               return isLocalNoKeyEndpoint ? "自建 DeepLX 免密钥 · 确认地址即可使用" : "粘贴 DeepL Auth Key · 测通即可启用"
+        case .customWebhook:       return "开发者自定义 HTTP 接口 · 填写 URL 与模板"
+        }
     }
 }

@@ -75,10 +75,16 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
 
     var detailContainer: GeekCardView!
     var detailHeaderTitle: NSTextField!
+    var detailHeaderSubtitle: NSTextField!
     var setDefaultBtn: GeekButton!
     var formScrollView: NSScrollView!
     var formContentView: GeekFlippedView!
+    var guideCard: GeekFlippedView!
+    var guideLabel: NSTextField!
+    var getKeyBtn: GeekButton!
+    var nameRow: GeekFlippedView!
     var nameField: NSTextField!
+    var kindRow: GeekFlippedView!
     var kindPill: GeekDropdownPill!
     var presetRowView: GeekFlippedView!
     var llmPresetPill: GeekDropdownPill!
@@ -97,6 +103,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var apiKeyPlainBox: GeekInputBox!
     var apiKeySecureField: NSSecureTextField!
     var apiKeyPlainField: NSTextField!
+    var pasteKeyBtn: GeekButton!
     var eyeToggleBtn: GeekButton!
     var modelRow: GeekFlippedView!
     var modelLabel: NSTextField!
@@ -262,7 +269,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         let dotColor: NSColor = !p.isEnabled
             ? GeekTheme.inkMuted
             : (isPrimary ? GeekTheme.emerald : (p.isConfiguredReady ? GeekTheme.accent : GeekTheme.amber))
-        return ProviderRowCellView(title: p.name, isPrimary: isPrimary, isSelected: row == selectedIndex, dotColor: dotColor)
+        return ProviderRowCellView(title: p.name, isPrimary: isPrimary, isReady: p.isConfiguredReady, isSelected: row == selectedIndex, dotColor: dotColor)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {

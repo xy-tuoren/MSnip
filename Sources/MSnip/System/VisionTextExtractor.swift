@@ -36,119 +36,130 @@ enum SharedLiveAnalyzer {
     static let instance = ImageAnalyzer()
 }
 
-/// 原生离线文字与二维码提取引擎：
-/// macOS 13+ 优先走 `VisionKit.ImageAnalyzer`（~0.2s 极速单次推理同时产出右栏文本与左栏 Live Text 图层），
-/// macOS 12 自动平滑回退 `VNRecognizeTextRequest`。
+/// 高精度离线文字与二维码双管线并行提取引擎：
+/// 1. 文本主干：对 @1x / 小图执行自适应 1.5×~2.5× 超分放大、同色安全留白与 SIMD 温和锐化，再调用
+///    `VNRecognizeTextRequest`（macOS 13+ 锁定 `Revision3` + `.accurate` + 自动语种检测），配合空间重排与双栏/缩进还原；
+/// 2. 实况图层：在 macOS 13+ 并发运行 `VisionKit.ImageAnalyzer` 驱动左侧原图划词交互，同时作为特殊艺术字兜底。
 enum VisionTextExtractor {
+    private static let ocrLanguages = ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"]
+
     @MainActor
     static func recognizeAsync(
         from cgImage: CGImage,
+        exactCodeMode: Bool = false,
         completion: @escaping @MainActor (OCRRecognitionOutput) -> Void
     ) {
-        if #available(macOS 13.0, *), ImageAnalyzer.isSupported {
-            Task { @MainActor in
-                var cfg = ImageAnalyzer.Configuration([.text, .machineReadableCode])
-                cfg.locales = ["zh-Hans", "zh-Hant", "en-US", "ja-JP"]
-                let analysis = try? await SharedLiveAnalyzer.instance.analyze(cgImage, orientation: .up, configuration: cfg)
-                let transcript = analysis?.transcript.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                let qrList = await detectQRCodesOffMain(cgImage: cgImage)
-                let merged = OCRTextFormatter.mergeTranscriptLines(transcript)
-                completion(OCRRecognitionOutput(
-                    qrPayloads: qrList,
-                    preservedText: transcript,
-                    mergedText: merged,
-                    liveAnalysisObject: analysis as AnyObject?
-                ))
-            }
-            return
-        }
+        Task { @MainActor in
+            async let visionResult = performAccurateVisionOCR(cgImage: cgImage, exactCodeMode: exactCodeMode)
+            async let liveResult: AnyObject? = analyzeLiveTextOverlay(cgImage: cgImage)
 
-        DispatchQueue.global(qos: .userInitiated).async {
-            let fallback = recognizeFallbackVision(cgImage: cgImage)
-            DispatchQueue.main.async {
-                MainActor.assumeIsolated { completion(fallback) }
-            }
-        }
-    }
+            let (observations, qrList) = await visionResult
+            let liveObj = await liveResult
 
-    private static func detectQRCodesOffMain(cgImage: CGImage) async -> [String] {
-        await withCheckedContinuation { cont in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let req = VNDetectBarcodesRequest()
-                req.symbologies = [.qr]
-                try? VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([req])
-                var codes: [String] = []
-                for item in req.results ?? [] {
-                    if let s = item.payloadStringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
-                       !s.isEmpty, !codes.contains(s) {
-                        codes.append(s)
-                    }
+            var preserved = OCRTextFormatter.format(observations, mode: .preserveLines)
+            var merged = OCRTextFormatter.format(observations, mode: .mergeParagraphs)
+
+            // 若精确 Vision 未检出（如极度艺术字/竖排海报），回退使用 VisionKit transcript 兜底
+            if preserved.isEmpty, #available(macOS 13.0, *), let analysis = liveObj as? ImageAnalysis {
+                let fallback = OCRTextFormatter.sanitizeLine(analysis.transcript)
+                if !fallback.isEmpty {
+                    preserved = fallback
+                    merged = OCRTextFormatter.mergeTranscriptLines(fallback)
                 }
-                cont.resume(returning: codes)
             }
+
+            completion(OCRRecognitionOutput(
+                qrPayloads: qrList,
+                preservedText: preserved,
+                mergedText: merged,
+                liveAnalysisObject: liveObj
+            ))
         }
     }
 
     /// 提取带精确归一化边界框 (`0..1` 左下角原点) 的视觉合并行，供页内原位覆盖翻译渲染
     static func recognizeVisualLinesOffMain(cgImage: CGImage) async -> [OCRLineObservation] {
+        let (observations, _) = await performAccurateVisionOCR(cgImage: cgImage, exactCodeMode: false, detectBarcodes: false)
+        let grouped = OCRTextFormatter.groupIntoVisualRows(observations)
+        return grouped.map { segs in
+            var txt = ""
+            for (i, seg) in segs.enumerated() {
+                txt += (i == 0) ? seg.text : (OCRTextFormatter.smartInlineJoiner(left: txt, right: seg.text) + seg.text)
+            }
+            let minX = segs.map(\.box.minX).min() ?? 0
+            let maxX = segs.map(\.box.maxX).max() ?? 1
+            let minY = segs.map(\.box.minY).min() ?? 0
+            let maxY = segs.map(\.box.maxY).max() ?? 0
+            return OCRLineObservation(
+                box: CGRect(x: minX, y: minY, width: max(0.01, maxX - minX), height: max(0.01, maxY - minY)),
+                text: txt
+            )
+        }
+    }
+
+    // MARK: - Private Dual Pipelines
+
+    @MainActor
+    private static func analyzeLiveTextOverlay(cgImage: CGImage) async -> AnyObject? {
+        guard #available(macOS 13.0, *), ImageAnalyzer.isSupported else { return nil }
+        var cfg = ImageAnalyzer.Configuration([.text, .machineReadableCode])
+        cfg.locales = ["zh-Hans", "zh-Hant", "en-US", "ja-JP"]
+        return (try? await SharedLiveAnalyzer.instance.analyze(cgImage, orientation: .up, configuration: cfg)) as AnyObject?
+    }
+
+    private static func performAccurateVisionOCR(
+        cgImage: CGImage,
+        exactCodeMode: Bool,
+        detectBarcodes: Bool = true
+    ) async -> ([OCRLineObservation], [String]) {
         await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
-                let textReq = VNRecognizeTextRequest()
-                textReq.recognitionLevel = .accurate
-                textReq.usesLanguageCorrection = true
-                textReq.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US", "ja-JP", "ko-KR"]
-                try? VNImageRequestHandler(cgImage: cgImage, options: [:]).perform([textReq])
+                let prepared = OCRImagePreprocessor.prepare(cgImage)
+                let textReq = makeAccurateTextRequest(exactCodeMode: exactCodeMode)
+                var requests: [VNRequest] = [textReq]
+                var barcodeReq: VNDetectBarcodesRequest?
+                if detectBarcodes {
+                    let bReq = VNDetectBarcodesRequest()
+                    bReq.symbologies = [.qr]
+                    barcodeReq = bReq
+                    requests.append(bReq)
+                }
 
-                let rawObs: [OCRLineObservation] = (textReq.results ?? []).compactMap { item in
-                    guard let s = item.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines),
-                          !s.isEmpty else { return nil }
-                    return OCRLineObservation(box: item.boundingBox, text: s)
+                let handler = VNImageRequestHandler(cgImage: prepared.cgImage, options: [:])
+                try? handler.perform(requests)
+
+                var observations: [OCRLineObservation] = []
+                for item in textReq.results ?? [] {
+                    guard let best = item.topCandidates(1).first else { continue }
+                    let text = OCRTextFormatter.sanitizeLine(best.string)
+                    guard !text.isEmpty else { continue }
+                    // 过滤极低置信度单字符随机噪点（防止图片纹理/图标被误识为孤立杂符）
+                    if text.count == 1 && best.confidence < 0.28 { continue }
+                    observations.append(OCRLineObservation(box: prepared.mapBoxBack(item.boundingBox), text: text))
                 }
-                let grouped = OCRTextFormatter.groupIntoVisualRows(rawObs)
-                let mergedLines: [OCRLineObservation] = grouped.map { segs in
-                    var txt = ""
-                    for (i, seg) in segs.enumerated() {
-                        txt += (i == 0) ? seg.text : (OCRTextFormatter.smartInlineJoiner(left: txt, right: seg.text) + seg.text)
+
+                var qrPayloads: [String] = []
+                for item in barcodeReq?.results ?? [] {
+                    if let s = item.payloadStringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !s.isEmpty, !qrPayloads.contains(s) {
+                        qrPayloads.append(s)
                     }
-                    let minX = segs.map(\.box.minX).min() ?? 0
-                    let maxX = segs.map(\.box.maxX).max() ?? 1
-                    let minY = segs.map(\.box.minY).min() ?? 0
-                    let maxY = segs.map(\.box.maxY).max() ?? 0
-                    return OCRLineObservation(
-                        box: CGRect(x: minX, y: minY, width: max(0.01, maxX - minX), height: max(0.01, maxY - minY)),
-                        text: txt
-                    )
                 }
-                cont.resume(returning: mergedLines)
+                cont.resume(returning: (observations, qrPayloads))
             }
         }
     }
 
-    private static func recognizeFallbackVision(cgImage: CGImage) -> OCRRecognitionOutput {
-        let barcodeReq = VNDetectBarcodesRequest()
-        barcodeReq.symbologies = [.qr]
-        let textReq = VNRecognizeTextRequest()
-        textReq.recognitionLevel = .accurate
-        textReq.usesLanguageCorrection = true
-        textReq.recognitionLanguages = ["zh-Hans", "zh-Hant", "en-US"]
-
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try? handler.perform([textReq])
-        try? handler.perform([barcodeReq])
-
-        let qrPayloads = (barcodeReq.results ?? []).compactMap {
-            $0.payloadStringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
-        }.filter { !$0.isEmpty }
-        let observations = (textReq.results ?? []).compactMap { item -> OCRLineObservation? in
-            guard let best = item.topCandidates(1).first?.string.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !best.isEmpty else { return nil }
-            return OCRLineObservation(box: item.boundingBox, text: best)
+    private static func makeAccurateTextRequest(exactCodeMode: Bool) -> VNRecognizeTextRequest {
+        let req = VNRecognizeTextRequest()
+        if #available(macOS 13.0, *) {
+            req.revision = VNRecognizeTextRequestRevision3
+            req.automaticallyDetectsLanguage = true
         }
-        return OCRRecognitionOutput(
-            qrPayloads: qrPayloads,
-            preservedText: OCRTextFormatter.format(observations, mode: .preserveLines),
-            mergedText: OCRTextFormatter.format(observations, mode: .mergeParagraphs),
-            liveAnalysisObject: nil
-        )
+        req.recognitionLevel = .accurate
+        req.usesLanguageCorrection = !exactCodeMode
+        req.recognitionLanguages = ocrLanguages
+        req.minimumTextHeight = 0.0
+        return req
     }
 }

@@ -165,6 +165,11 @@ extension OCRResultController {
         statsLabel = makeLabel("0 行 · 0 字", size: 11.5, weight: .medium, color: MSnipUITheme.inkSecondary)
         root.addSubview(statsLabel)
 
+        exactModeButton = OCRPillButton(title: "代码防纠错", symbol: "curlybraces")
+        exactModeButton.isToggledOn = exactCodeMode
+        exactModeButton.onClick = { [weak self] in self?.toggleExactCodeMode() }
+        root.addSubview(exactModeButton)
+
         pinButton = OCRPillButton(title: "贴原图到桌面", symbol: "pin")
         pinButton.onClick = { [weak self] in
             guard let self, let img = self.currentCGImage else { return }
@@ -267,8 +272,10 @@ extension OCRResultController {
 
         statsLabel.sizeToFit()
         statsLabel.frame.origin = NSPoint(x: pad + 2, y: round((botH - statsLabel.frame.height) * 0.5))
+        let exSz = exactModeButton.intrinsicContentSize
+        exactModeButton.frame = NSRect(x: statsLabel.frame.maxX + 10, y: round((botH - exSz.height) * 0.5), width: exSz.width, height: exSz.height)
         let psz = pinButton.intrinsicContentSize
-        pinButton.frame = NSRect(x: statsLabel.frame.maxX + 12, y: round((botH - psz.height) * 0.5), width: psz.width, height: psz.height)
+        pinButton.frame = NSRect(x: exactModeButton.frame.maxX + 8, y: round((botH - psz.height) * 0.5), width: psz.width, height: psz.height)
         let cpSz = copyButton.intrinsicContentSize
         copyButton.frame = NSRect(x: W - pad - cpSz.width, y: round((botH - cpSz.height) * 0.5), width: cpSz.width, height: cpSz.height)
     }

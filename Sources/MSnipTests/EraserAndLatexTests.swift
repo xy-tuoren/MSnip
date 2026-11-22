@@ -49,4 +49,50 @@ func testAnnotationEraserAndLatexModels() {
         converted.contains("\\sum") && converted.contains("x^2") && converted.contains("\\alpha") && converted.contains("\\leq") && converted.contains("\\infty"),
         "离线转换应正确映射希腊字母、上下标与关系符，实际: \(converted)"
     )
+
+    // 5) OCRImagePreprocessor 小图超分放大 + 留白坐标精确反算
+    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+    if let ctx = CGContext(data: nil, width: 120, height: 40, bitsPerComponent: 8, bytesPerRow: 480, space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+        ctx.setFillColor(CGColor(srgbRed: 0.12, green: 0.14, blue: 0.18, alpha: 1.0))
+        ctx.fill(CGRect(x: 0, y: 0, width: 120, height: 40))
+        if let smallImg = ctx.makeImage() {
+            let prep = OCRImagePreprocessor.prepare(smallImg)
+            check(prep.upscaleFactor >= 2.0, "小选区应自动触发 >=2× 超分放大")
+            check(prep.cgImage.width > smallImg.width * 2, "增强图应包含放大像素与四周留白")
+            let mapped = prep.mapBoxBack(prep.contentNormalizedRect)
+            check(abs(mapped.minX) < 0.002 && abs(mapped.minY) < 0.002 && abs(mapped.width - 1.0) < 0.002 && abs(mapped.height - 1.0) < 0.002,
+                  "留白归一化框应 1:1 精确映射回原始 [0,1] 坐标，实际: \(mapped)")
+        }
+    }
+
+    // 6) OCRTextFormatter 双栏先左后右重排、代码缩进还原与智能标点拼接
+    let twoCol: [OCRLineObservation] = [
+        OCRLineObservation(box: CGRect(x: 0.04, y: 0.80, width: 0.36, height: 0.05), text: "Left line one"),
+        OCRLineObservation(box: CGRect(x: 0.56, y: 0.80, width: 0.36, height: 0.05), text: "Right line one"),
+        OCRLineObservation(box: CGRect(x: 0.04, y: 0.73, width: 0.36, height: 0.05), text: "Left line two"),
+        OCRLineObservation(box: CGRect(x: 0.56, y: 0.73, width: 0.36, height: 0.05), text: "Right line two"),
+        OCRLineObservation(box: CGRect(x: 0.04, y: 0.66, width: 0.36, height: 0.05), text: "Left line three."),
+        OCRLineObservation(box: CGRect(x: 0.56, y: 0.66, width: 0.36, height: 0.05), text: "Right line three.")
+    ]
+    let mergedCols = OCRTextFormatter.format(twoCol, mode: .mergeParagraphs)
+    check(mergedCols.hasPrefix("Left line one Left line two Left line three.") && mergedCols.contains("Right line one Right line two Right line three."),
+          "双栏文档应先读完整左栏再读右栏，实际: \(mergedCols)")
+
+    let codeLines: [OCRLineObservation] = [
+        OCRLineObservation(box: CGRect(x: 0.05, y: 0.80, width: 0.40, height: 0.06), text: "func demo() {"),
+        OCRLineObservation(box: CGRect(x: 0.18, y: 0.70, width: 0.35, height: 0.06), text: "return 42"),
+        OCRLineObservation(box: CGRect(x: 0.05, y: 0.60, width: 0.05, height: 0.06), text: "}")
+    ]
+    let preservedCode = OCRTextFormatter.format(codeLines, mode: .preserveLines)
+    check(preservedCode.contains("\n  return 42\n") || preservedCode.contains("\n    return 42\n"),
+          "保持原行模式应还原代码层级缩进，实际: \(preservedCode)")
+    check(OCRTextFormatter.smartInlineJoiner(left: "foo(", right: "bar") == "" && OCRTextFormatter.smartInlineJoiner(left: "bar", right: ");") == "",
+          "括号与尾标点处不应插入多余空格")
+    check(OCRTextFormatter.sanitizeLine("\u{200B}Hello\u{FEFF} ") == "Hello", "应清理零宽不可见字符")
+
+    // 7) 翻译极简预设与控制台直达链接校验
+    let ds = TranslationProviderProfile.makePreset(.openAICompatible, llmPreset: .deepseek)
+    let ol = TranslationProviderProfile.makePreset(.openAICompatible, llmPreset: .ollamaLocal)
+    check(ds.consoleURL?.contains("deepseek") == true, "DeepSeek 应内置官方 API Key 直达地址")
+    check(ol.isLocalNoKeyEndpoint && ol.consoleURL == nil, "本地 Ollama 应识别为免密钥模式")
 }
