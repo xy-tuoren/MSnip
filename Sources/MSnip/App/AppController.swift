@@ -28,7 +28,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupStatusBar()
         setupCallbacks()
         hotKeyManager.apply(config: config)
-        ScreenCapturer.prewarmDisplayCache()
+        // 启动期仅做轻量权限探测，不在空载时提前拉起 ScreenCaptureKit / Metal 图形池以压低常驻内存
         Task { @MainActor [weak self] in
             let ok = await ScreenCapturer.hasScreenCapturePermission()
             guard let self else { return }

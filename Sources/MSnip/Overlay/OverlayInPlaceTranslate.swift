@@ -8,7 +8,12 @@ final class InPlaceTranslationOverlayView: NSView {
     var baseImage: CGImage? { didSet { needsDisplay = true } }
     var translatedImage: CGImage? { didSet { needsDisplay = true } }
     var statusBanner: String? { didSet { needsDisplay = true } }
+    var activeTask: Task<Void, Never>?
     private var comparingOriginal = false { didSet { needsDisplay = true } }
+
+    deinit {
+        activeTask?.cancel()
+    }
 
     override var isFlipped: Bool { true }
 
@@ -108,10 +113,11 @@ extension OverlayView {
         needsDisplay = true
 
         let hostWin = self.window
-        Task { @MainActor [weak self, weak overlay] in
-            guard let self, let overlay, self.toolbar.inPlaceTranslateActive else { return }
+        overlay.activeTask?.cancel()
+        overlay.activeTask = Task { @MainActor [weak self, weak overlay] in
+            guard let self, let overlay, !Task.isCancelled, self.toolbar.inPlaceTranslateActive else { return }
             let lines = await VisionTextExtractor.recognizeVisualLinesOffMain(cgImage: baked)
-            guard self.toolbar.inPlaceTranslateActive else { return }
+            guard !Task.isCancelled, self.toolbar.inPlaceTranslateActive else { return }
             guard !lines.isEmpty else {
                 overlay.statusBanner = nil
                 self.deactivateInPlaceTranslate()
@@ -125,7 +131,7 @@ extension OverlayView {
                     lines: srcTexts,
                     hostWindow: hostWin
                 )
-                guard self.toolbar.inPlaceTranslateActive else { return }
+                guard !Task.isCancelled, self.toolbar.inPlaceTranslateActive else { return }
                 let rendered = Self.bakeTranslatedBlocks(
                     onto: baked,
                     observations: lines,
@@ -145,6 +151,7 @@ extension OverlayView {
                     }
                 )
             } catch {
+                guard !Task.isCancelled else { return }
                 overlay.statusBanner = nil
                 self.deactivateInPlaceTranslate()
                 ToastHUD.show(
@@ -161,6 +168,10 @@ extension OverlayView {
     func deactivateInPlaceTranslate() {
         guard toolbar.inPlaceTranslateActive || inPlaceTranslateView != nil else { return }
         toolbar.inPlaceTranslateActive = false
+        inPlaceTranslateView?.activeTask?.cancel()
+        inPlaceTranslateView?.activeTask = nil
+        inPlaceTranslateView?.baseImage = nil
+        inPlaceTranslateView?.translatedImage = nil
         inPlaceTranslateView?.removeFromSuperview()
         inPlaceTranslateView = nil
         updateToolbarLayout()

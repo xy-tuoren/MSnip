@@ -126,4 +126,16 @@ final class LiveTextImageView: NSView {
             ov.resetSelection()
         }
     }
+
+    /// 取消后台实况分析并彻底释放已持有的高清图像与 VisionKit 分析缓存
+    func clearAll() {
+        analysisTask?.cancel()
+        analysisTask = nil
+        highlightBlocks = false
+        imageView.image = nil
+        if #available(macOS 13.0, *), let ov = overlayRef as? ImageAnalysisOverlayView {
+            ov.resetSelection()
+            ov.analysis = nil
+        }
+    }
 }

@@ -293,6 +293,7 @@ final class LongShotSession {
         previewPanel?.orderOut(nil)
         controlPanel?.orderOut(nil)
         borderPanel = nil; previewPanel = nil; controlPanel = nil
+        borderView = nil; previewView = nil; controlView = nil; fallbackInitialFrame = nil
 
         onComplete?(outcome)
     }

@@ -62,6 +62,7 @@ extension RegionRecordingSession {
         if let gm = globalMouseMonitor { NSEvent.removeMonitor(gm); globalMouseMonitor = nil }
         borderWindow?.orderOut(nil); borderWindow = nil
         controlWindow?.orderOut(nil); controlWindow = nil
+        initialFrame = nil
         onComplete?(outcome)
     }
 

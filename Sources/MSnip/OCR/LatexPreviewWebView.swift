@@ -5,14 +5,15 @@ import WebKit
 
 /// 基于 Apple 原生 `WKWebView` 的实时 LaTeX 数学公式渲染预览视图（在线自动启用 KaTeX 精排，离线优雅降级等宽展示）
 final class LatexPreviewWebView: NSView, WKNavigationDelegate {
-    private let webView: WKWebView
+    private var webView: WKWebView?
     private var isPageLoaded = false
     private var pendingLatex: String = ""
 
     override init(frame frameRect: NSRect) {
         let cfg = WKWebViewConfiguration()
         cfg.websiteDataStore = .nonPersistent()
-        self.webView = WKWebView(frame: .zero, configuration: cfg)
+        let wv = WKWebView(frame: .zero, configuration: cfg)
+        self.webView = wv
         super.init(frame: frameRect)
         wantsLayer = true
         layer?.backgroundColor = MSnipUITheme.cardSolid.cgColor
@@ -21,12 +22,12 @@ final class LatexPreviewWebView: NSView, WKNavigationDelegate {
         layer?.borderColor = MSnipUITheme.borderHairline.cgColor
         layer?.masksToBounds = true
 
-        webView.setValue(false, forKey: "drawsBackground")
-        webView.navigationDelegate = self
-        webView.autoresizingMask = [.width, .height]
-        webView.frame = bounds
-        addSubview(webView)
-        webView.loadHTMLString(Self.shellHTML, baseURL: nil)
+        wv.setValue(false, forKey: "drawsBackground")
+        wv.navigationDelegate = self
+        wv.autoresizingMask = [.width, .height]
+        wv.frame = bounds
+        addSubview(wv)
+        wv.loadHTMLString(Self.shellHTML, baseURL: nil)
     }
 
     @available(*, unavailable)
@@ -37,9 +38,20 @@ final class LatexPreviewWebView: NSView, WKNavigationDelegate {
         render(latex: pendingLatex)
     }
 
+    /// 彻底销毁 WKWebView 渲染内容并断开代理，触发系统立即回收 WebKit XPC 子进程
+    func teardown() {
+        isPageLoaded = false
+        pendingLatex = ""
+        webView?.stopLoading()
+        webView?.navigationDelegate = nil
+        webView?.loadHTMLString("", baseURL: nil)
+        webView?.removeFromSuperview()
+        webView = nil
+    }
+
     func render(latex: String) {
         pendingLatex = latex
-        guard isPageLoaded else { return }
+        guard isPageLoaded, let webView else { return }
         let clean = LatexPostProcessor.stripFencesAndDelimiters(latex)
         guard let jsonData = try? JSONSerialization.data(withJSONObject: [clean]),
               let arrStr = String(data: jsonData, encoding: .utf8),
@@ -116,6 +128,10 @@ final class LatexConfigPanelController: NSObject {
         }
         NSApp.activate(ignoringOtherApps: true)
         p.makeKeyAndOrderFront(nil)
+    }
+
+    func closePanel() {
+        panel?.close()
     }
 
     private func ensurePanel() {

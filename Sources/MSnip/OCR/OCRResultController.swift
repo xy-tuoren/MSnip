@@ -212,5 +212,18 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     }
 
     func windowDidResize(_ notification: Notification) { relayoutContent() }
+
+    func windowWillClose(_ notification: Notification) {
+        requestToken &+= 1
+        translationTask?.cancel()
+        translationTask = nil
+        currentCGImage = nil
+        currentScreen = nil
+        currentOutput = nil
+        liveImageView?.clearAll()
+        textView?.string = ""
+        transTextView?.string = ""
+    }
+
     func textDidChange(_ notification: Notification) { userEditedManually = true; updateStatsLabel() }
 }

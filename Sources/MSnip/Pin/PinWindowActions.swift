@@ -93,7 +93,8 @@ extension PinWindow {
         canvas.onDocStateChanged?()
     }
 
-    func endAnnotationEditing(commit: Bool) {
+    func endAnnotationEditing(commit: Bool, reanalyzeLiveText: Bool = true) {
+        guard editorCanvas != nil || toolbarPanel != nil else { return }
         editorCanvas?.commitTextField()
         if commit, let baked = AnnotationRenderer.bakeExportImage(
             sampler: baseSampler,
@@ -109,7 +110,9 @@ extension PinWindow {
         toolbarPanel?.orderOut(nil)
         toolbarPanel = nil
         pinContentView.isAnnotating = false
-        pinContentView.liveTextView.configure(cgImage: currentCGImage, logicalSize: frame.size)
+        if reanalyzeLiveText {
+            pinContentView.liveTextView.configure(cgImage: currentCGImage, logicalSize: frame.size)
+        }
         AnnotationRenderer.purgeCaches()
     }
 
@@ -123,7 +126,14 @@ extension PinWindow {
     @objc func quickSaveImage() { onQuickSavePNG?(currentCGImage, imageScale) }
     @objc func resetZoom() { applyZoom(newZoom: 1.0); alphaValue = 1.0 }
     @objc func toggleHalfOpacity() { alphaValue = alphaValue < 0.95 ? 1.0 : 0.55 }
-    @objc func closePin() { endAnnotationEditing(commit: false); orderOut(nil); onClose?(self) }
+    @objc func closePin() {
+        endAnnotationEditing(commit: false, reanalyzeLiveText: false)
+        pinContentView.liveTextView.clearAll()
+        pinContentView.menu = nil
+        pinContentView.liveTextView.menu = nil
+        orderOut(nil)
+        onClose?(self)
+    }
     @objc func closeAllPins() { onCloseAll?() }
 
     func applyZoom(newZoom: CGFloat) {

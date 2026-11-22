@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 APP_NAME="MSnip"
-VERSION="0.2.19"
+VERSION="0.2.20"
 BUNDLE_ID="top.xy.msnip"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -27,18 +27,19 @@ if [ "$OVER_LIMIT" -ne 0 ]; then
 fi
 echo "  ✓ 所有 Swift 源文件均符合 ≤ 300 行约束"
 
-echo "==> [2/5] 构建 Release 二进制..."
+echo "==> [2/5] 构建 Release 二进制 (-Osize + dead_strip)..."
 rm -rf "$DIST_DIR"
 mkdir -p "$MACOS_DIR" "$RES_DIR"
 
-swift build -c release --product "$APP_NAME"
-ARM_SRC="$(swift build -c release --show-bin-path)/$APP_NAME"
+BUILD_FLAGS=(-c release --product "$APP_NAME" -Xswiftc -Osize -Xlinker -dead_strip)
+swift build "${BUILD_FLAGS[@]}"
+ARM_SRC="$(swift build "${BUILD_FLAGS[@]}" --show-bin-path)/$APP_NAME"
 ARM_TMP="$DIST_DIR/${APP_NAME}_arm"
 cp "$ARM_SRC" "$ARM_TMP"
 
 FINAL_BIN="$DIST_DIR/${APP_NAME}_bin"
-if [ "$(uname -m)" = "arm64" ] && swift build -c release --product "$APP_NAME" --triple x86_64-apple-macosx14.0 >/dev/null 2>&1; then
-    X86_SRC="$(swift build -c release --triple x86_64-apple-macosx14.0 --show-bin-path)/$APP_NAME"
+if [ "$(uname -m)" = "arm64" ] && swift build "${BUILD_FLAGS[@]}" --triple x86_64-apple-macosx14.0 >/dev/null 2>&1; then
+    X86_SRC="$(swift build "${BUILD_FLAGS[@]}" --triple x86_64-apple-macosx14.0 --show-bin-path)/$APP_NAME"
     if [ -f "$X86_SRC" ] && [ "$(lipo -archs "$X86_SRC")" != "$(lipo -archs "$ARM_TMP")" ]; then
         lipo -create "$ARM_TMP" "$X86_SRC" -output "$FINAL_BIN"
         echo "  ✓ 已合成双架构 Universal Binary ($(lipo -archs "$FINAL_BIN"))"
@@ -56,13 +57,8 @@ cp "$FINAL_BIN" "$MACOS_DIR/$APP_NAME"
 rm -f "$FINAL_BIN"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
-echo "==> [3/5] 生成商业级光学矢量应用图标 AppIcon.icns..."
-ICONSET_DIR="$DIST_DIR/AppIcon.iconset"
-rm -rf "$ICONSET_DIR"
-mkdir -p "$ICONSET_DIR"
-swift "$ROOT_DIR/scripts/generate-icon.swift" "$ICONSET_DIR"
-iconutil -c icns "$ICONSET_DIR" -o "$RES_DIR/AppIcon.icns"
-rm -rf "$ICONSET_DIR"
+echo "==> [3/5] 生成商业级无损压缩光学矢量应用图标 AppIcon.icns..."
+swift "$ROOT_DIR/scripts/generate-icon.swift" "$RES_DIR/AppIcon.icns"
 
 echo "==> [4/5] 写入 Info.plist 并执行本地代码签名..."
 cat > "$CONTENTS/Info.plist" << EOF

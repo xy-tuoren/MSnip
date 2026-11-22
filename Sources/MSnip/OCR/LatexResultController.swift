@@ -146,6 +146,24 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
 
     func windowDidResize(_ notification: Notification) { relayout() }
 
+    func windowWillClose(_ notification: Notification) {
+        recognitionTask?.cancel()
+        recognitionTask = nil
+        renderDebounceWork?.cancel()
+        renderDebounceWork = nil
+        configPanel.closePanel()
+        previewView?.teardown()
+        previewView = nil
+        imageView?.image = nil
+        imageView = nil
+        currentImage = nil
+        currentScreen = nil
+        formatButtons.removeAll()
+        window?.delegate = nil
+        window?.contentView = nil
+        window = nil
+    }
+
     func textDidChange(_ notification: Notification) {
         updateStatsLabel()
         renderDebounceWork?.cancel()

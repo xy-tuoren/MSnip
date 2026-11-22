@@ -196,8 +196,14 @@ enum AppleNativeTranslator {
             tempHelperPanel?.orderOut(nil)
         }
 
-        return try await withCheckedThrowingContinuation { cont in
-            box.bind(cont)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { cont in
+                box.bind(cont)
+            }
+        } onCancel: {
+            Task { @MainActor in
+                box.finish(.failure(CancellationError()))
+            }
         }
     }
     #endif
@@ -221,10 +227,11 @@ private struct SystemTranslationTaskView: View {
 @MainActor
 private final class BridgeCompletionBox {
     private var continuation: CheckedContinuation<[String], Error>?
-    private var EarlyResult: Result<[String], Error>?
+    private var earlyResult: Result<[String], Error>?
 
     func bind(_ cont: CheckedContinuation<[String], Error>) {
-        if let res = EarlyResult {
+        if let res = earlyResult {
+            earlyResult = nil
             cont.resume(with: res)
         } else {
             continuation = cont
@@ -235,8 +242,8 @@ private final class BridgeCompletionBox {
         if let cont = continuation {
             continuation = nil
             cont.resume(with: res)
-        } else if EarlyResult == nil {
-            EarlyResult = res
+        } else if earlyResult == nil {
+            earlyResult = res
         }
     }
 }

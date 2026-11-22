@@ -255,6 +255,11 @@ final class OverlaySession {
         finished = true
         NSCursor.pop()
 
+        for v in views {
+            v.stopSnapGlide()
+            v.deactivateInPlaceOCR()
+            v.deactivateInPlaceTranslate()
+        }
         for win in windows {
             win.contentView = nil
             win.orderOut(nil)

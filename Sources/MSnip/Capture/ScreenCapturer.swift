@@ -32,14 +32,6 @@ enum ScreenCapturer {
     @MainActor private static var screenObserverRegistered = false
 
     @MainActor
-    static func prewarmDisplayCache() {
-        registerScreenObserverIfNeeded()
-        if #available(macOS 14.0, *) {
-            Task { @MainActor in _ = await ensureDisplayFilters(for: NSScreen.screens) }
-        }
-    }
-
-    @MainActor
     private static func registerScreenObserverIfNeeded() {
         guard !screenObserverRegistered else { return }
         screenObserverRegistered = true

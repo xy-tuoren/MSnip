@@ -13,7 +13,7 @@ final class PinWindow: NSPanel {
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
 
     let baseCGImage: CGImage
-    let baseSampler: PixelSampler
+    lazy var baseSampler: PixelSampler = PixelSampler(cgImage: baseCGImage)
     var currentCGImage: CGImage
     let imageScale: CGFloat
     let baseSize: NSSize
@@ -33,7 +33,6 @@ final class PinWindow: NSPanel {
 
     init(cgImage: CGImage, scaleFactor: CGFloat, screenOriginTopLeft: CGPoint?, on screen: NSScreen) {
         self.baseCGImage = cgImage
-        self.baseSampler = PixelSampler(cgImage: cgImage)
         self.currentCGImage = cgImage
         self.imageScale = max(1.0, scaleFactor)
         self.baseSize = NSSize(
