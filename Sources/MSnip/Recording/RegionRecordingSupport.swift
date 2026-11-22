@@ -159,11 +159,14 @@ extension RegionRecordingSession {
     func repositionControlWindow(around screenRect: NSRect, on screen: NSScreen) {
         guard let cWin = controlWindow else { return }
         let sz = controlBar.frame.size
+        let pad = RecordingControlBarView.shadowPad
+        let barW = sz.width - pad * 2
+        let barH = sz.height - pad * 2
         let vis = screen.visibleFrame
-        let x = min(max(vis.minX + 8, screenRect.maxX - sz.width), vis.maxX - sz.width - 8)
-        let belowY = screenRect.minY - sz.height - 10
-        let y = belowY >= vis.minY + 6 ? belowY : min(screenRect.maxY + 36, vis.maxY - sz.height - 6)
-        cWin.setFrame(NSRect(origin: NSPoint(x: round(x), y: round(y)), size: sz), display: true)
+        let barX = min(max(vis.minX + 8, screenRect.maxX - barW), vis.maxX - barW - 8)
+        let belowY = screenRect.minY - barH - 10
+        let barY = belowY >= vis.minY + 6 ? belowY : min(screenRect.maxY + 36, vis.maxY - barH - 6)
+        cWin.setFrame(NSRect(origin: NSPoint(x: round(barX - pad), y: round(barY - pad)), size: sz), display: true)
     }
 
     static func toAppKitScreenRect(localTopLeft r: CGRect, on screen: NSScreen) -> NSRect {
@@ -173,11 +176,13 @@ extension RegionRecordingSession {
     static func makePanel(frame: NSRect, ignoresMouse: Bool, contentView: NSView) -> NSPanel {
         let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.level = .screenSaver
+        p.animationBehavior = .none
         p.isFloatingPanel = true
         p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.isOpaque = false
         p.backgroundColor = .clear
+        p.hasShadow = false
         p.ignoresMouseEvents = ignoresMouse
         p.acceptsMouseMovedEvents = !ignoresMouse
         p.contentView = contentView

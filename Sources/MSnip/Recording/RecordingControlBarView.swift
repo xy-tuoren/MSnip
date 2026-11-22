@@ -16,6 +16,7 @@ final class RecordingControlBarView: NSView {
     }
 
     static let barHeight: CGFloat = 44
+    static let shadowPad: CGFloat = 12
     private static let outerPad: CGFloat = 7
     private static let btnH: CGFloat = 30
     private static let btnRadius: CGFloat = 7.5
@@ -43,7 +44,7 @@ final class RecordingControlBarView: NSView {
     override var isFlipped: Bool { true }
 
     init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: 300, height: Self.barHeight))
+        super.init(frame: NSRect(x: 0, y: 0, width: 320, height: Self.barHeight + Self.shadowPad * 2))
         refreshLayout()
     }
 
@@ -86,12 +87,13 @@ final class RecordingControlBarView: NSView {
 
     func refreshLayout() {
         var list: [HitSlot] = []
-        let y = Self.outerPad
+        let pad = Self.shadowPad
+        let y = pad + Self.outerPad
         let h = Self.btnH
         dividerX = nil
 
         if isEncoding {
-            setFrameSize(NSSize(width: 224, height: Self.barHeight))
+            setFrameSize(NSSize(width: 224 + pad * 2, height: Self.barHeight + pad * 2))
             slots = []
             needsDisplay = true
             return
@@ -101,11 +103,11 @@ final class RecordingControlBarView: NSView {
             ? "已开启：录屏显示鼠标点击波纹与快捷键角标（点击关闭）"
             : "已关闭：点击开启录屏鼠标波纹与快捷键角标回显"
         let tagW = Self.formatTagWidth(for: format.badgeTitle)
-        var x: CGFloat = Self.outerPad
+        var x: CGFloat = pad + Self.outerPad
 
         if countdownNumber != nil {
             let lblW = ceil(("即将录屏" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)]).width)
-            let divX = round(12 + 22 + 8 + lblW + 7 + tagW + 10)
+            let divX = round(pad + 12 + 22 + 8 + lblW + 7 + tagW + 10)
             dividerX = divX
             x = divX + 11
             let nowRect = CGRect(x: x, y: y, width: 94, height: h)
@@ -136,7 +138,7 @@ final class RecordingControlBarView: NSView {
             list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "取消 (Esc)", tint: MSnipUITheme.inkSecondary, filledBg: true, action: .cancel))
         } else {
             let timerW = ceil(("00:00" as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold)]).width)
-            let divX = round(12 + 12 + 7 + timerW + 7 + tagW + 10)
+            let divX = round(pad + 12 + 12 + 7 + timerW + 7 + tagW + 10)
             dividerX = divX
             x = divX + 10
             list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? MSnipUITheme.accent : MSnipUITheme.inkPrimary, active: interactionHUDEnabled, action: .toggleInteractionHUD))
@@ -156,7 +158,7 @@ final class RecordingControlBarView: NSView {
 
         slots = list
         let rightEdge = list.last?.rect.maxX ?? x
-        setFrameSize(NSSize(width: round(rightEdge + Self.outerPad), height: Self.barHeight))
+        setFrameSize(NSSize(width: round(rightEdge + Self.outerPad + pad), height: Self.barHeight + pad * 2))
         needsDisplay = true
     }
 
@@ -177,16 +179,24 @@ final class RecordingControlBarView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 12.0)
+        let pad = Self.shadowPad
+        let barRect = bounds.insetBy(dx: pad, dy: pad)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -4), blur: 10, color: NSColor.black.withAlphaComponent(0.20).cgColor)
+        ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
+        ctx.addPath(CGPath(roundedRect: barRect, cornerWidth: 12.0, cornerHeight: 12.0, transform: nil))
+        ctx.fillPath()
+        ctx.restoreGState()
+        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: barRect, radius: 12.0)
 
         if isEncoding {
-            Self.drawOpticalLabel("正在封装 \(format.badgeTitle)…", in: bounds, font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), color: MSnipUITheme.accent)
+            Self.drawOpticalLabel("正在封装 \(format.badgeTitle)…", in: barRect, font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), color: MSnipUITheme.accent)
             return
         }
 
         if let cd = countdownNumber {
             let chipSize: CGFloat = 22
-            let chipRect = CGRect(x: 12, y: round(bounds.midY - chipSize * 0.5), width: chipSize, height: chipSize)
+            let chipRect = CGRect(x: pad + 12, y: round(barRect.midY - chipSize * 0.5), width: chipSize, height: chipSize)
             ctx.setFillColor(Self.coral.withAlphaComponent(0.14).cgColor)
             ctx.fillEllipse(in: chipRect)
             ctx.setStrokeColor(Self.coral.withAlphaComponent(0.55).cgColor)
@@ -196,22 +206,22 @@ final class RecordingControlBarView: NSView {
 
             let lblFont = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
             let lblW = ceil(("即将录屏" as NSString).size(withAttributes: [.font: lblFont]).width)
-            let lblRect = CGRect(x: chipRect.maxX + 8, y: 0, width: lblW, height: Self.barHeight)
+            let lblRect = CGRect(x: chipRect.maxX + 8, y: barRect.minY, width: lblW, height: barRect.height)
             Self.drawOpticalLabel("即将录屏", in: lblRect, font: lblFont, color: MSnipUITheme.inkPrimary)
-            Self.drawFormatTag(format.badgeTitle, atX: lblRect.maxX + 7, midY: bounds.midY, in: ctx)
+            Self.drawFormatTag(format.badgeTitle, atX: lblRect.maxX + 7, midY: barRect.midY, in: ctx)
         } else if isRecording {
-            MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 18, y: bounds.midY), color: isPaused ? MSnipUITheme.warning : MSnipUITheme.danger, halo: true)
+            MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: pad + 18, y: barRect.midY), color: isPaused ? MSnipUITheme.warning : MSnipUITheme.danger, halo: true)
             let txt = String(format: "%02d:%02d", Int(elapsedSeconds) / 60, Int(elapsedSeconds) % 60)
             let tFont = NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold)
             let tW = ceil((txt as NSString).size(withAttributes: [.font: tFont]).width)
-            let tRect = CGRect(x: 31, y: 0, width: tW, height: Self.barHeight)
+            let tRect = CGRect(x: pad + 31, y: barRect.minY, width: tW, height: barRect.height)
             Self.drawOpticalLabel(txt, in: tRect, font: tFont, color: MSnipUITheme.inkPrimary, yBias: 0)
-            Self.drawFormatTag(format.badgeTitle, atX: tRect.maxX + 7, midY: bounds.midY, in: ctx)
+            Self.drawFormatTag(format.badgeTitle, atX: tRect.maxX + 7, midY: barRect.midY, in: ctx)
         }
 
         if let dx = dividerX {
             ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
-            ctx.fill(CGRect(x: dx, y: round(bounds.midY - 10), width: 1, height: 20))
+            ctx.fill(CGRect(x: dx, y: round(barRect.midY - 10), width: 1, height: 20))
         }
 
         for (i, s) in slots.enumerated() {

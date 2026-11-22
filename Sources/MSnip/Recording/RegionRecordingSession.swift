@@ -76,7 +76,6 @@ final class RegionRecordingSession {
         )
         let bWin = Self.makePanel(frame: bFrame, ignoresMouse: true, contentView: borderView)
         let cWin = Self.makePanel(frame: controlBar.frame, ignoresMouse: false, contentView: controlBar)
-        cWin.hasShadow = true
 
         self.borderWindow = bWin
         self.controlWindow = cWin
@@ -87,11 +86,11 @@ final class RegionRecordingSession {
         }
         installKeyMonitors()
 
-        bWin.orderFrontRegardless()
-        cWin.orderFrontRegardless()
         if autoStartCountdown {
             startCountdownThenRecord()
         }
+        bWin.orderFrontRegardless()
+        cWin.orderFrontRegardless()
     }
 
     private func handleBarAction(_ action: RecordingControlBarView.Action) {

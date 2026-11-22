@@ -125,7 +125,8 @@ final class LongShotBorderView: NSView {
 
         // 3) 录屏开始前 3-2-1 居中商业级毛玻璃进度圆环倒计时徽章
         if let n = countdownNumber {
-            let side: CGFloat = min(94, max(54, min(captureRect.width, captureRect.height) * 0.45))
+            let rawSide = min(94, max(54, min(captureRect.width, captureRect.height) * 0.45))
+            let side = floor(rawSide / 2.0) * 2.0
             let badgeRect = CGRect(
                 x: round(captureRect.midX - side * 0.5),
                 y: round(captureRect.midY - side * 0.5),
@@ -134,7 +135,7 @@ final class LongShotBorderView: NSView {
             )
             let coral = NSColor(srgbRed: 0.96, green: 0.25, blue: 0.37, alpha: 1.0)
             ctx.saveGState()
-            ctx.setShadow(offset: CGSize(width: 0, height: 6), blur: 18, color: NSColor.black.withAlphaComponent(0.36).cgColor)
+            ctx.setShadow(offset: CGSize(width: 0, height: -5), blur: 16, color: NSColor.black.withAlphaComponent(0.32).cgColor)
             ctx.setFillColor(NSColor(srgbRed: 0.08, green: 0.10, blue: 0.15, alpha: 0.90).cgColor)
             ctx.fillEllipse(in: badgeRect)
             ctx.restoreGState()
