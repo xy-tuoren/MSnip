@@ -45,6 +45,14 @@ extension OCRResultController {
         statusBadgeLabel.lineBreakMode = .byTruncatingTail
         root.addSubview(statusBadgeLabel)
 
+        latexButton = OCRPillButton(title: "LaTeX", symbol: "function")
+        latexButton.onClick = { [weak self] in
+            guard let self, let img = self.currentCGImage else { return }
+            let scr = self.currentScreen ?? NSScreen.main ?? NSScreen.screens.first
+            if let scr { self.onRecognizeLatex?(img, self.currentScale, scr) }
+        }
+        root.addSubview(latexButton)
+
         translateButton = OCRPillButton(title: "翻译对照", symbol: "character.bubble")
         translateButton.onClick = { [weak self] in self?.toggleTranslationPane() }
         root.addSubview(translateButton)
@@ -182,12 +190,14 @@ extension OCRResultController {
         highlightButton.frame = NSRect(x: modeSwitch.frame.minX - hlSz.width - 8, y: modeSwitch.frame.minY, width: hlSz.width, height: hlSz.height)
         let trSz = translateButton.intrinsicContentSize
         translateButton.frame = NSRect(x: highlightButton.frame.minX - trSz.width - 8, y: modeSwitch.frame.minY, width: trSz.width, height: trSz.height)
+        let lxSz = latexButton.intrinsicContentSize
+        latexButton.frame = NSRect(x: translateButton.frame.minX - lxSz.width - 8, y: modeSwitch.frame.minY, width: lxSz.width, height: lxSz.height)
 
         titleLabel.sizeToFit()
         titleLabel.frame.origin = NSPoint(x: 78, y: round(H - topH + (topH - titleLabel.frame.height) * 0.5))
         statusBadgeLabel.sizeToFit()
         let badgeX = titleLabel.frame.maxX + 10
-        let maxBadgeW = max(0, translateButton.frame.minX - badgeX - 10)
+        let maxBadgeW = max(0, latexButton.frame.minX - badgeX - 10)
         statusBadgeLabel.frame = NSRect(
             x: badgeX,
             y: round(H - topH + (topH - statusBadgeLabel.frame.height) * 0.5),

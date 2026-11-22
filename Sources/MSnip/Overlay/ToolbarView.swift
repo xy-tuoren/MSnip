@@ -13,11 +13,13 @@ final class ToolbarView: NSView {
         case selectStroke(CGFloat)
         case undo
         case redo
+        case clearAnnotations
         case cycleCornerRadius
         case cycleBackdrop
         case captureWindow
         case toggleInPlaceOCR
         case extractTextWindow
+        case recognizeLatex
         case toggleInPlaceTranslate
         case translateWindow
         case startLongShot

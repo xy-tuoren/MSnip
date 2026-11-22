@@ -1,7 +1,7 @@
 import CoreGraphics
 import Foundation
 
-/// 10 种高频圈记、荧光高亮、步骤序号与隐私打码工具
+/// 11 种高频圈记、荧光高亮、步骤序号、隐私打码与橡皮擦工具
 public enum ToolKind: Int, CaseIterable, Codable, Sendable {
     case rect = 1
     case ellipse = 2
@@ -13,6 +13,7 @@ public enum ToolKind: Int, CaseIterable, Codable, Sendable {
     case mosaic = 8
     case gaussianBlur = 9
     case text = 0
+    case eraser = 10
 
     public var title: String {
         switch self {
@@ -26,6 +27,7 @@ public enum ToolKind: Int, CaseIterable, Codable, Sendable {
         case .mosaic:       return "像素马赛克 (8)"
         case .gaussianBlur: return "毛玻璃模糊 (9)"
         case .text:         return "文字标注 (0)"
+        case .eraser:       return "橡皮擦 (E)"
         }
     }
 
@@ -41,6 +43,7 @@ public enum ToolKind: Int, CaseIterable, Codable, Sendable {
         case .mosaic:       return "checkerboard.rectangle"
         case .gaussianBlur: return "drop.circle"
         case .text:         return "textformat"
+        case .eraser:       return "eraser"
         }
     }
 }
@@ -109,6 +112,7 @@ public struct AnnotationStyle: Equatable, Codable, Sendable {
 
     public var highlighterWidth: CGFloat { max(14.0, lineWidth * 4.2) }
     public var stepBadgeRadius: CGFloat { max(12.0, 9.0 + lineWidth * 1.4) }
+    public var eraserRadius: CGFloat { max(6.0, 4.0 + lineWidth * 1.8) }
 
     public static let strokePresets: [CGFloat] = [2.0, 4.0, 7.0]
 }

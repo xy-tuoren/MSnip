@@ -48,7 +48,8 @@ let package = Package(
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedFramework("VideoToolbox"),
                 .linkedFramework("Vision"),
-                .linkedFramework("VisionKit")
+                .linkedFramework("VisionKit"),
+                .linkedFramework("WebKit")
             ]
         ),
         .executableTarget(

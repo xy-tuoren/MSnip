@@ -54,6 +54,11 @@ public struct AnnotationDocument: Sendable {
         body(&objects[index])
     }
 
+    /// 供事务内批量替换对象列表使用（如橡皮擦拖拽分割笔迹，由外层 `beginTransaction` / `commitTransaction` 统一记入撤销栈）
+    public mutating func replaceObjectsWithoutHistory(_ updated: [Annotation]) {
+        objects = updated
+    }
+
     /// 一步修改指定对象并记入历史（如单击色块改色）
     public mutating func modifyWithHistory(at index: Int, _ body: (inout Annotation) -> Void) {
         guard objects.indices.contains(index) else { return }

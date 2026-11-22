@@ -44,6 +44,11 @@ extension OverlayView {
         case .redo:
             selectedObjectIndex = nil
             if doc.redo() { updateToolbarLayout(); needsDisplay = true }
+        case .clearAnnotations:
+            selectedObjectIndex = nil
+            doc.clearAll()
+            updateToolbarLayout()
+            needsDisplay = true
         case .cycleCornerRadius:
             toggleCornerRadiusSlider()
         case .cycleBackdrop:
@@ -58,6 +63,8 @@ extension OverlayView {
             toggleInPlaceOCR()
         case .extractTextWindow:
             exportAndFinish(mode: .extractText)
+        case .recognizeLatex:
+            exportAndFinish(mode: .recognizeLatex)
         case .toggleInPlaceTranslate:
             toggleInPlaceTranslate()
         case .translateWindow:

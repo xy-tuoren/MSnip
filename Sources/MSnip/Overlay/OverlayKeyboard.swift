@@ -162,20 +162,26 @@ extension OverlayView {
         case "z":
             if !shift && !opt && !isRepeat { caliperActive.toggle() }
 
-        // 3) 多模态扩展：识字 / 翻译 / 长截图 / 录屏
+        // 3) 多模态扩展：识字 / LaTeX 公式 / 翻译 / 长截图 / 录屏
         case "t":
-            if opt { exportAndFinish(mode: .extractText) } else { toggleInPlaceOCR() }
+            if shift { exportAndFinish(mode: .recognizeLatex) }
+            else if opt { exportAndFinish(mode: .extractText) }
+            else { toggleInPlaceOCR() }
         case "y":
             if opt { exportAndFinish(mode: .translateWindow) } else { toggleInPlaceTranslate() }
         case "l": beginLongShot()
         case "v": if !isRepeat { toggleRecordingMode() }
 
-        // 4) 外观、窗口对齐与坐标/取色辅助
+        // 4) 外观、窗口对齐与坐标/取色/橡皮擦辅助
         case "b": toggleCornerRadiusSlider(resetOnly: opt)
         case "f":
             if opt { captureCurrentWindowAndFinish(pin: false) } else { snapSelectionToUnderlyingWindow() }
         case "e":
-            if let prev = lastHistorySelection { selection = Geometry.clampRect(prev, within: bounds) }
+            if selection != nil {
+                toggleToolShortcut(.eraser)
+            } else if let prev = lastHistorySelection {
+                selection = Geometry.clampRect(prev, within: bounds)
+            }
         case "g":
             if selection == nil || shouldShowMagnifier {
                 useRelativeCoordinates.toggle()

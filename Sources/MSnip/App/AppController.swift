@@ -16,6 +16,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let historyRing = CaptureHistoryRing(maxCount: 15)
     let pinManager = PinManager()
     let ocrController = OCRResultController()
+    let latexController = LatexResultController()
     let translationSettings = TranslationSettingsWindow()
     let permissionGuide = PermissionGuideController()
     var activeSession: OverlaySession?
@@ -92,7 +93,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ocrController.onPinImage = { [weak self] img, scale, scr in
             self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
         }
+        ocrController.onRecognizeLatex = { [weak self] img, scale, scr in
+            self?.latexController.present(cgImage: img, scaleFactor: scale, screen: scr)
+        }
         ocrController.onOpenSettings = { [weak self] in
+            self?.translationSettings.show(tab: .translation)
+        }
+        latexController.onPinImage = { [weak self] img, scale, scr in
+            self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
+        }
+        latexController.onOpenMainAISettings = { [weak self] in
             self?.translationSettings.show(tab: .translation)
         }
         translationSettings.appConfigProvider = { [weak self] in
@@ -232,6 +242,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
         case .extractText(let img, let scale, let scr):
             ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: false)
+        case .recognizeLatex(let img, let scale, let scr):
+            latexController.present(cgImage: img, scaleFactor: scale, screen: scr)
         case .translateText(let img, let scale, let scr):
             ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: true)
         case .openTranslationSettings:

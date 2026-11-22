@@ -74,6 +74,7 @@ extension PinWindow {
                 panel.subbarView.lineWidth = w
             case .undo: _ = canvas.doc.undo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .redo: _ = canvas.doc.redo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
+            case .clearAnnotations: canvas.doc.clearAll(); canvas.selectedIndex = nil; canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .cancel: self.endAnnotationEditing(commit: false)
             case .confirmCopy: self.annotationDoc = canvas.doc; self.endAnnotationEditing(commit: true)
             default: break

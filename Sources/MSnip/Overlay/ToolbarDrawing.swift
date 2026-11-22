@@ -165,4 +165,43 @@ extension ToolbarView {
         ns.draw(at: CGPoint(x: round(labelX), y: round(cy - sz.height * 0.5)), withAttributes: attrs)
         ctx.restoreGState()
     }
+
+    /// 录屏模式下的悬浮工具栏配置项（GIF/MP4、点击波纹回显、切回截图、退出、数学居中「● 开始录制」主按钮）
+    func buildRecordingSetupItems(x: inout CGFloat, y: CGFloat, h: CGFloat, into list: inout [HitItem]) {
+        for fmt in RecordingFormat.allCases {
+            let active = (recordingFormat == fmt)
+            let rect = CGRect(x: x, y: y, width: 44, height: h)
+            x += 46
+            list.append(HitItem(rect: rect, tooltip: "录屏输出格式：\(fmt.badgeTitle)", enabled: true, draw: { ctx, r, hov in
+                Self.drawButtonBg(ctx: ctx, rect: r, active: active, hovered: hov)
+                let attrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold),
+                    .foregroundColor: active ? Self.accentBlue : MSnipUITheme.inkSecondary
+                ]
+                let ns = fmt.badgeTitle as NSString; let sz = ns.size(withAttributes: attrs)
+                ns.draw(at: CGPoint(x: round(r.midX - sz.width * 0.5), y: round(r.midY - sz.height * 0.5)), withAttributes: attrs)
+            }, action: .selectRecordingFormat(fmt)))
+        }
+        let hudTip = recordingHUDEnabled
+            ? "已开启：录屏显示点击波纹与按键提示（点击关闭）"
+            : "已关闭：点击开启录屏点击波纹与按键提示"
+        list.append(iconAction(
+            x: &x, y: y, h: h, symbol: "cursorarrow.click.2", tip: hudTip, enabled: true,
+            active: recordingHUDEnabled, tint: recordingHUDEnabled ? Self.accentBlue : Self.inkDark, action: .toggleRecordingHUD
+        ))
+        x = appendDivider(at: x, into: &list)
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "camera.viewfinder", tip: "切回截图工具栏 (V)", enabled: true, tint: Self.inkDark, action: .exitRecordingMode))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出录屏 (Q / Esc)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
+        let recRect = CGRect(x: x + 2, y: y, width: 94, height: h)
+        x += 98
+        list.append(HitItem(rect: recRect, tooltip: "开始录制当前选区 (↩ / 双击选区)", enabled: true, draw: { ctx, r, hov in
+            MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 7.0, color: MSnipUITheme.danger, hovered: hov)
+            let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.white]
+            let ns = "开始录制" as NSString; let sz = ns.size(withAttributes: attrs)
+            let pairW = 7.0 + 6.0 + ceil(sz.width)
+            let sx = round(r.midX - pairW * 0.5)
+            MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: sx + 3.5, y: r.midY), color: .white, halo: false)
+            ns.draw(at: CGPoint(x: sx + 13, y: round(r.midY - sz.height * 0.5 - 0.5)), withAttributes: attrs)
+        }, action: .confirmBeginRecording))
+    }
 }

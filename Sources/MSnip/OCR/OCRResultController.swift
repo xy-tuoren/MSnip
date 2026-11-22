@@ -29,6 +29,7 @@ final class OCRFloatingWindow: NSPanel {
 @MainActor
 final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate {
     var onPinImage: ((CGImage, CGFloat, NSScreen) -> Void)?
+    var onRecognizeLatex: ((CGImage, CGFloat, NSScreen) -> Void)?
     var onOpenSettings: (() -> Void)?
 
     var window: OCRFloatingWindow?
@@ -37,6 +38,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var leftTipLabel: NSTextField!
     var liveImageView: LiveTextImageView!
     var statusBadgeLabel: NSTextField!
+    var latexButton: OCRPillButton!
     var translateButton: OCRPillButton!
     var highlightButton: OCRPillButton!
     var modeSwitch: OCRModeSegmentView!

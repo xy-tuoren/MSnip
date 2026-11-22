@@ -81,7 +81,7 @@ extension OverlayView {
             switch op {
             case .pendingSnapOrCreate, .creatingSelection, .resizingSelection:
                 return true
-            case .movingSelection, .drawingAnnotation, .movingAnnotation:
+            case .movingSelection, .drawingAnnotation, .erasing, .movingAnnotation:
                 return optionPressed
             }
         }

@@ -11,7 +11,7 @@ extension OverlayView {
         switch op {
         case .creatingSelection, .movingSelection, .resizingSelection:
             return true
-        case .pendingSnapOrCreate, .drawingAnnotation, .movingAnnotation:
+        case .pendingSnapOrCreate, .drawingAnnotation, .erasing, .movingAnnotation:
             return false
         }
     }
@@ -61,6 +61,11 @@ extension OverlayView {
     func invalidateMagnifierMove(from oldPt: CGPoint?, to newPt: CGPoint?) {
         syncMagnifierView()
         syncCaliperView()
+        if activeTool == .eraser, selection != nil {
+            let pad = style.eraserRadius + 6
+            if let o = oldPt { setNeedsDisplay(CGRect(x: o.x - pad, y: o.y - pad, width: pad * 2, height: pad * 2)) }
+            if let n = newPt { setNeedsDisplay(CGRect(x: n.x - pad, y: n.y - pad, width: pad * 2, height: pad * 2)) }
+        }
         if showShortcutTips {
             let zone = shortcutTipsBottomTriggerZone()
             let wasIn = oldPt.map { zone.contains($0) } ?? false

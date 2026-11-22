@@ -10,6 +10,7 @@ enum DragOperation {
     case movingSelection(initialRect: CGRect, mouseStart: CGPoint)
     case resizingSelection(handle: ResizeHandle, initialRect: CGRect, mouseStart: CGPoint)
     case drawingAnnotation(tool: ToolKind, start: CGPoint)
+    case erasing(lastPoint: CGPoint, erased: Bool)
     case movingAnnotation(index: Int, lastPoint: CGPoint, moved: Bool)
 }
 
@@ -40,6 +41,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
     var onFinishCopyText: ((String, NSPoint) -> Void)?
     var onFinishExtractText: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
+    var onFinishRecognizeLatex: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
     var onFinishTranslateWindow: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
     var onOpenTranslationSettings: (() -> Void)?
     var onStartLongShot: ((NSScreen, CGRect, CGImage?) -> Void)?
@@ -292,6 +294,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         }
 
         drawSelectionChrome(ctx: ctx, sel: sel, cornerRadius: activeRadius)
+        drawEraserCursorRingIfNeeded(in: ctx, sel: sel)
         drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
     }
 }

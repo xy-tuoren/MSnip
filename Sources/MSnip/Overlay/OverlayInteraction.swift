@@ -86,7 +86,7 @@ extension OverlayView {
                 beginTextEditing(at: p, existingIndex: hitIdx)
                 return
             }
-            if activeTool != .text && activeTool != .step {
+            if activeTool != .text && activeTool != .step && activeTool != .eraser {
                 exportAndFinish(mode: .copy)
                 return
             }
@@ -124,7 +124,7 @@ extension OverlayView {
             return
         }
 
-        if sel.contains(p), let hitIdx = doc.hitIndex(at: p) {
+        if sel.contains(p), activeTool != .eraser, let hitIdx = doc.hitIndex(at: p) {
             let directStepHit: Bool = {
                 guard case .step(let c, _, _) = doc.objects[hitIdx].payload else { return false }
                 return hypot(p.x - c.x, p.y - c.y) <= doc.objects[hitIdx].style.stepBadgeRadius
@@ -140,9 +140,9 @@ extension OverlayView {
         if sel.contains(p) {
             selectedObjectIndex = nil
             if let tool = activeTool {
-                if tool == .text {
-                    beginTextEditing(at: p)
-                } else {
+                if tool == .text { beginTextEditing(at: p) }
+                else if tool == .eraser { beginEraserDrag(at: p) }
+                else {
                     dragOp = .drawingAnnotation(tool: tool, start: p)
                     draftAnnotation = makeDraft(tool: tool, from: p, to: p, shift: false)
                 }
@@ -221,6 +221,9 @@ extension OverlayView {
             }
             invalidateMagnifierMove(from: prevPt, to: p)
 
+        case .erasing(let lastPt, let erased):
+            continueEraserDrag(from: lastPt, to: p, erased: erased)
+
         case .movingAnnotation(let index, let lastPoint, let moved):
             let dx = p.x - lastPoint.x
             let dy = p.y - lastPoint.y
@@ -267,9 +270,10 @@ extension OverlayView {
                 selectedObjectIndex = hitIdx
             }
             draftAnnotation = nil
+        case .erasing(_, let erased):
+            doc.commitTransaction(changed: erased); updateToolbarLayout(); if erased { needsDisplay = true }
         case .movingAnnotation(_, _, let moved):
-            doc.commitTransaction(changed: moved)
-            updateToolbarLayout()
+            doc.commitTransaction(changed: moved); updateToolbarLayout()
         }
     }
 

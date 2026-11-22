@@ -139,6 +139,11 @@ extension PinAnnotationCanvasView {
             togglePinTextCapsule()
             return
         }
+        if !cmd, chars == "e" {
+            activeTool = (activeTool == .eraser) ? nil : .eraser
+            onDocStateChanged?()
+            return
+        }
         if !cmd, let n = Int(chars), let tool = ToolKind(rawValue: n) {
             activeTool = (activeTool == tool) ? nil : tool
             onDocStateChanged?()
@@ -177,7 +182,7 @@ extension PinAnnotationCanvasView {
             let num = (draft.flatMap { if case .step(_, _, let n) = $0.payload { return n } else { return nil } }) ?? doc.nextStepNumber()
             let tail = hypot(lineEnd.x - a.x, lineEnd.y - a.y) >= (style.stepBadgeRadius + 6.0) ? lineEnd : nil
             payload = .step(center: a, tail: tail, number: num)
-        case .text:         payload = .text(origin: a, content: "", measuredSize: .zero)
+        case .text, .eraser: payload = .text(origin: a, content: "", measuredSize: .zero)
         }
         return Annotation(payload: payload, style: style)
     }

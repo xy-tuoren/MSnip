@@ -22,10 +22,12 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
 
     private enum CanvasDrag {
         case drawing(tool: ToolKind, start: CGPoint)
+        case erasing(lastPt: CGPoint, erased: Bool)
         case moving(index: Int, lastPt: CGPoint, moved: Bool)
     }
 
     private var dragState: CanvasDrag?
+    private var lastHoverPoint: CGPoint?
     var draft: Annotation? { didSet { needsDisplay = true } }
     var selectedIndex: Int? { didSet { needsDisplay = true } }
     var textField: NSTextField?
@@ -81,7 +83,30 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
             ctx.setLineDash(phase: 0, lengths: [4 / z, 3 / z])
             ctx.stroke(doc.objects[idx].bounds)
         }
+        if activeTool == .eraser, let pt = lastHoverPoint {
+            let r = style.eraserRadius
+            let circle = CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)
+            ctx.setFillColor(NSColor.white.withAlphaComponent(0.16).cgColor); ctx.fillEllipse(in: circle)
+            ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.55).cgColor); ctx.setLineWidth(2.0 / z); ctx.strokeEllipse(in: circle)
+            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.95).cgColor); ctx.setLineWidth(1.2 / z); ctx.setLineDash(phase: 0, lengths: [3 / z, 2.5 / z]); ctx.strokeEllipse(in: circle)
+        }
         ctx.restoreGState()
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach { removeTrackingArea($0) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseMoved, .mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        lastHoverPoint = logicalPoint(for: event)
+        if activeTool == .eraser { needsDisplay = true }
+    }
+
+    override func mouseExited(with event: NSEvent) {
+        lastHoverPoint = nil
+        if activeTool == .eraser { needsDisplay = true }
     }
 
     // MARK: - Mouse Drawing & Hit-Testing
@@ -98,7 +123,7 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
             return
         }
 
-        if let hit = doc.hitIndex(at: p) {
+        if activeTool != .eraser, let hit = doc.hitIndex(at: p) {
             let directStep: Bool = {
                 guard case .step(let c, _, _) = doc.objects[hit].payload else { return false }
                 return hypot(p.x - c.x, p.y - c.y) <= doc.objects[hit].style.stepBadgeRadius
@@ -115,6 +140,12 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
         guard let tool = activeTool else { return }
         if tool == .text {
             startTextField(at: p, existing: nil)
+        } else if tool == .eraser {
+            lastHoverPoint = p
+            doc.beginTransaction()
+            let hit = doc.eraseAlongSegment(from: p, to: p, radius: style.eraserRadius)
+            dragState = .erasing(lastPt: p, erased: hit)
+            if hit { needsDisplay = true }
         } else {
             dragState = .drawing(tool: tool, start: p)
             draft = buildDraft(tool: tool, from: p, to: p, shift: false)
@@ -141,6 +172,11 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
             } else {
                 draft = buildDraft(tool: tool, from: start, to: p, shift: shift)
             }
+        case .erasing(let lastPt, let erased):
+            lastHoverPoint = p
+            let hit = doc.eraseAlongSegment(from: lastPt, to: p, radius: style.eraserRadius)
+            dragState = .erasing(lastPt: p, erased: erased || hit)
+            needsDisplay = true
         case .moving(let index, let lastPt, let moved):
             let dx = p.x - lastPt.x, dy = p.y - lastPt.y
             doc.updateWithoutHistory(at: index) { $0.translate(dx: dx, dy: dy) }
@@ -162,6 +198,10 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
                 selectedIndex = hit
             }
             draft = nil
+        case .erasing(_, let erased):
+            doc.commitTransaction(changed: erased)
+            onDocStateChanged?()
+            if erased { needsDisplay = true }
         case .moving(_, _, let moved):
             doc.commitTransaction(changed: moved)
             onDocStateChanged?()

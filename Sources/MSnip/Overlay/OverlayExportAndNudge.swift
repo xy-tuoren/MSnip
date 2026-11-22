@@ -5,7 +5,7 @@ import MSnipCore
 
 /// 覆盖层的标注草稿构建、取色/坐标复制、1px 边缘微调与导出烘焙扩展
 extension OverlayView {
-    enum FinishMode: Equatable { case copy, save, quickSave, saveToFolder(String), pickDirectorySave, pin, extractText, translateWindow }
+    enum FinishMode: Equatable { case copy, save, quickSave, saveToFolder(String), pickDirectorySave, pin, extractText, recognizeLatex, translateWindow }
 
     func currentExportableImage(for targetRect: CGRect, plainForOCR: Bool) -> CGImage? {
         if !plainForOCR, let translated = inPlaceTranslateView?.translatedImage {
@@ -63,7 +63,7 @@ extension OverlayView {
 
     func exportAndFinish(mode: FinishMode) {
         commitTextEditing()
-        let isPlainOCR = (mode == .extractText || mode == .translateWindow)
+        let isPlainOCR = (mode == .extractText || mode == .recognizeLatex || mode == .translateWindow)
         guard let targetRect = selection ?? hoveredAutoRect,
               targetRect.width >= 2, targetRect.height >= 2,
               let baked = currentExportableImage(for: targetRect, plainForOCR: isPlainOCR) else { return }
@@ -76,6 +76,7 @@ extension OverlayView {
         case .pickDirectorySave: onFinishPickDirectorySave?(baked, snapshot.scaleFactor, targetRect)
         case .pin:             onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen, targetRect)
         case .extractText:     onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
+        case .recognizeLatex:  onFinishRecognizeLatex?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         case .translateWindow: onFinishTranslateWindow?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         }
     }
@@ -131,7 +132,7 @@ extension OverlayView {
             let dist = hypot(endForLine.x - a.x, endForLine.y - a.y)
             let tail = dist >= (style.stepBadgeRadius + 6.0) ? endForLine : nil
             payload = .step(center: a, tail: tail, number: stepNum)
-        case .text:
+        case .text, .eraser:
             payload = .text(origin: a, content: "", measuredSize: .zero)
         }
         return Annotation(payload: payload, style: style)
@@ -230,5 +231,35 @@ extension OverlayView {
             }
             selection = clamped
         }
+    }
+
+    func drawEraserCursorRingIfNeeded(in ctx: CGContext, sel: CGRect) {
+        guard activeTool == .eraser, !isRecordingMode, let pt = lastMousePoint, sel.contains(pt) else { return }
+        if (!toolbar.isHidden && toolbar.frame.contains(pt)) || (!subbar.isHidden && subbar.frame.contains(pt)) { return }
+        let r = style.eraserRadius
+        let circle = CGRect(x: pt.x - r, y: pt.y - r, width: r * 2, height: r * 2)
+        ctx.saveGState()
+        ctx.setFillColor(NSColor.white.withAlphaComponent(0.16).cgColor)
+        ctx.fillEllipse(in: circle)
+        ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.55).cgColor)
+        ctx.setLineWidth(2.0); ctx.strokeEllipse(in: circle)
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.95).cgColor)
+        ctx.setLineWidth(1.2); ctx.setLineDash(phase: 0, lengths: [3, 2.5]); ctx.strokeEllipse(in: circle)
+        ctx.restoreGState()
+    }
+
+    func beginEraserDrag(at p: CGPoint) {
+        selectedObjectIndex = nil
+        doc.beginTransaction()
+        let hit = doc.eraseAlongSegment(from: p, to: p, radius: style.eraserRadius)
+        dragOp = .erasing(lastPoint: p, erased: hit)
+        if hit { needsDisplay = true }
+    }
+
+    func continueEraserDrag(from last: CGPoint, to p: CGPoint, erased: Bool) {
+        let hit = doc.eraseAlongSegment(from: last, to: p, radius: style.eraserRadius)
+        dragOp = .erasing(lastPoint: p, erased: erased || hit)
+        if hit { needsDisplay = true }
+        invalidateMagnifierMove(from: last, to: p)
     }
 }

@@ -43,6 +43,7 @@ final class OverlaySession {
         case copiedColor(String, RGBAColor, NSPoint)
         case copiedCoordinate(String, NSPoint)
         case extractText(CGImage, CGFloat, NSScreen)
+        case recognizeLatex(CGImage, CGFloat, NSScreen)
         case translateText(CGImage, CGFloat, NSScreen)
         case openTranslationSettings
         case startLongShot(NSScreen, CGRect, CGImage?)
@@ -164,6 +165,10 @@ final class OverlaySession {
             view.onFinishExtractText = { [weak self] img, scale, scr, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.extractText(img, scale, scr))
+            }
+            view.onFinishRecognizeLatex = { [weak self] img, scale, scr, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
+                self?.finish(.recognizeLatex(img, scale, scr))
             }
             view.onFinishTranslateWindow = { [weak self] img, scale, scr, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect

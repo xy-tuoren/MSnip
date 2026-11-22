@@ -214,59 +214,51 @@ final class ToolbarSubbarView: NSView {
         sliderLabelX = x + 84
         x += sliderW
 
-        // 马赛克/毛玻璃无需选颜色，隐藏右侧色板令子栏更精简
-        let usesColor = (activeTool != .mosaic && activeTool != .gaussianBlur)
-        if usesColor {
+        // 马赛克/毛玻璃/橡皮擦无需选颜色；橡皮擦右侧提供一键清空全部标注
+        let usesColor = (activeTool != .mosaic && activeTool != .gaussianBlur && activeTool != .eraser)
+        if activeTool == .eraser {
+            x = addSeparator(at: x)
+            let clrRect = CGRect(x: x, y: y, width: 66, height: h)
+            x += 68
+            list.append(Slot(rect: clrRect, tip: "清空当前全部标注（可用 ⌘Z 撤销）", action: .clearAnnotations) { ctx, rect, hov in
+                ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: false, hovered: hov)
+                ToolbarView.drawSymbol("trash", in: CGRect(x: rect.minX + 4, y: rect.minY, width: 16, height: rect.height), alpha: 0.9, tint: MSnipUITheme.danger)
+                let s = "清空" as NSString
+                let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: MSnipUITheme.danger]
+                let sz = s.size(withAttributes: a)
+                s.draw(at: CGPoint(x: round(rect.minX + 24), y: round(rect.midY - sz.height * 0.5 - 0.5)), withAttributes: a)
+            })
+        } else if usesColor {
             x = addSeparator(at: x)
             for (idx, color) in RGBAColor.presets.enumerated() {
                 let sel = (customColor == nil && colorIndex == idx)
-                let r = CGRect(x: x, y: y, width: 20, height: h)
-                x += 20
+                let r = CGRect(x: x, y: y, width: 20, height: h); x += 20
                 list.append(Slot(rect: r, tip: "切换标注颜色", action: .selectColor(idx)) { ctx, rect, hov in
                     let side: CGFloat = sel ? 14 : (hov ? 13 : 11.5)
                     let sw = CGRect(x: rect.midX - side * 0.5, y: rect.midY - side * 0.5, width: side, height: side)
-                    ctx.setFillColor(color.cgColor)
-                    ctx.fillEllipse(in: sw)
-                    ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.22).cgColor)
-                    ctx.setLineWidth(1.0)
-                    ctx.strokeEllipse(in: sw)
-                    if sel {
-                        ctx.setStrokeColor(ToolbarView.accentBlue.cgColor)
-                        ctx.setLineWidth(1.8)
-                        ctx.strokeEllipse(in: sw.insetBy(dx: -2.2, dy: -2.2))
-                    }
+                    ctx.setFillColor(color.cgColor); ctx.fillEllipse(in: sw)
+                    ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.22).cgColor); ctx.setLineWidth(1.0); ctx.strokeEllipse(in: sw)
+                    if sel { ctx.setStrokeColor(ToolbarView.accentBlue.cgColor); ctx.setLineWidth(1.8); ctx.strokeEllipse(in: sw.insetBy(dx: -2.2, dy: -2.2)) }
                 })
             }
-
             if !isPinEditorMode {
-                let pr = CGRect(x: x + 2, y: y, width: 26, height: h)
-                x += 29
-                let pickerOn = eyedropperActive
-                let picked = customColor
+                let pr = CGRect(x: x + 2, y: y, width: 26, height: h); x += 29
+                let pickerOn = eyedropperActive; let picked = customColor
                 list.append(Slot(rect: pr, tip: "屏幕取色吸管 (I / ⌥+点击)", action: .toggleEyedropper) { ctx, rect, hov in
                     ToolbarView.drawEyedropperItem(ctx: ctx, rect: rect, active: pickerOn, customColor: picked, hovered: hov)
                 })
             }
         }
-
-        slots = list
-        setFrameSize(NSSize(width: x + 6, height: Self.subHeight))
-        needsDisplay = true
+        slots = list; setFrameSize(NSSize(width: x + 6, height: Self.subHeight)); needsDisplay = true
     }
 
-    private func addSeparator(at x: CGFloat) -> CGFloat {
-        sepXs.append(x + 3)
-        return x + 8
-    }
+    private func addSeparator(at x: CGFloat) -> CGFloat { sepXs.append(x + 3); return x + 8 }
 
     private func formattedSizeReadout() -> String {
         switch activeTool {
-        case .text:
-            return "\(Int(min(64.0, max(12.0, round(10.0 + lineWidth * 3.0)))))"
-        case .mosaic, .gaussianBlur:
-            return "\(Int(min(36.0, max(5.0, round(4.0 + lineWidth * 1.8)))))"
-        default:
-            return "\(Int(lineWidth.rounded()))"
+        case .text: return "\(Int(min(64.0, max(12.0, round(10.0 + lineWidth * 3.0)))))"
+        case .mosaic, .gaussianBlur, .eraser: return "\(Int(min(36.0, max(6.0, round(4.0 + lineWidth * 1.8)))))"
+        default: return "\(Int(lineWidth.rounded()))"
         }
     }
 
