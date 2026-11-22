@@ -74,41 +74,41 @@ enum MSnipUITheme {
         ctx.restoreGState()
     }
 
-    /// 商业级定制菜单栏矢量图标（与 AppIcon 保持一致的「四角取景框 + 光学圆孔快门」轮廓，原生自适应 @1x/@2x 与浅色/深色菜单栏）
+    /// 商业级定制菜单栏矢量图标（「非对称双层取景快门 + 右上快门星点」，自带立体层叠辨识度，原生自适应 @1x/@2x 与浅/深色菜单栏）
     static func menuBarIcon(recording: Bool = false) -> NSImage {
         let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
             guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
-            let box = CGRect(x: 2.25, y: 2.25, width: 13.5, height: 13.5)
-            let arm: CGFloat = 3.6, arcR: CGFloat = 2.3
-            let path = CGMutablePath()
-            path.move(to: CGPoint(x: box.minX, y: box.maxY - arm))
-            path.addArc(tangent1End: CGPoint(x: box.minX, y: box.maxY), tangent2End: CGPoint(x: box.minX + arm, y: box.maxY), radius: arcR)
-            path.addLine(to: CGPoint(x: box.minX + arm, y: box.maxY))
-            path.move(to: CGPoint(x: box.maxX - arm, y: box.maxY))
-            path.addArc(tangent1End: CGPoint(x: box.maxX, y: box.maxY), tangent2End: CGPoint(x: box.maxX, y: box.maxY - arm), radius: arcR)
-            path.addLine(to: CGPoint(x: box.maxX, y: box.maxY - arm))
-            path.move(to: CGPoint(x: box.maxX, y: box.minY + arm))
-            path.addArc(tangent1End: CGPoint(x: box.maxX, y: box.minY), tangent2End: CGPoint(x: box.maxX - arm, y: box.minY), radius: arcR)
-            path.addLine(to: CGPoint(x: box.maxX - arm, y: box.minY))
-            path.move(to: CGPoint(x: box.minX + arm, y: box.minY))
-            path.addArc(tangent1End: CGPoint(x: box.minX, y: box.minY), tangent2End: CGPoint(x: box.minX, y: box.minY + arm), radius: arcR)
-            path.addLine(to: CGPoint(x: box.minX, y: box.minY + arm))
-
             let ink = recording ? NSColor.labelColor : NSColor.black
-            ctx.setStrokeColor(ink.cgColor)
-            ctx.setLineWidth(1.6)
-            ctx.setLineCap(.round); ctx.setLineJoin(.round)
-            ctx.addPath(path); ctx.strokePath()
 
+            // 1) 后层左上同心圆弧取景 L 框（象征裁切与选区）
+            let back = CGMutablePath()
+            back.move(to: CGPoint(x: 2.2, y: 6.2))
+            back.addLine(to: CGPoint(x: 2.2, y: 13.1))
+            back.addArc(tangent1End: CGPoint(x: 2.2, y: 15.8), tangent2End: CGPoint(x: 4.9, y: 15.8), radius: 2.7)
+            back.addLine(to: CGPoint(x: 11.6, y: 15.8))
+            ctx.setStrokeColor(ink.cgColor)
+            ctx.setLineWidth(1.65)
+            ctx.setLineCap(.round); ctx.setLineJoin(.round)
+            ctx.addPath(back); ctx.strokePath()
+
+            // 2) 前层悬浮实心光学镜头卡片（象征截图贴图与镜头，中空圆孔在 @1x 下依旧锐利）
+            let cardRect = CGRect(x: 5.4, y: 2.2, width: 10.6, height: 10.6)
+            let card = CGPath(roundedRect: cardRect, cornerWidth: 3.0, cornerHeight: 3.0, transform: nil)
+            let holeR: CGFloat = 2.45
+            let hole = CGPath(ellipseIn: CGRect(x: cardRect.midX - holeR, y: cardRect.midY - holeR, width: holeR * 2, height: holeR * 2), transform: nil)
+            ctx.setFillColor(ink.cgColor)
+            ctx.addPath(card); ctx.addPath(hole)
+            ctx.fillPath(using: .evenOdd)
+
+            // 3) 右上角标志性快门星点（呼应 AppIcon 珊瑚指示灯；录屏中与镜头中心同步点亮珊瑚红）
             if recording {
-                ctx.setFillColor(NSColor(srgbRed: 0.96, green: 0.23, blue: 0.34, alpha: 1.0).cgColor)
-                ctx.fillEllipse(in: CGRect(x: 5.5, y: 5.5, width: 7.0, height: 7.0))
+                let coral = NSColor(srgbRed: 0.98, green: 0.24, blue: 0.35, alpha: 1.0)
+                ctx.setFillColor(coral.cgColor)
+                ctx.fillEllipse(in: CGRect(x: cardRect.midX - 1.9, y: cardRect.midY - 1.9, width: 3.8, height: 3.8))
+                ctx.fillEllipse(in: CGRect(x: 13.1, y: 13.4, width: 3.1, height: 3.1))
             } else {
-                let tile = CGPath(roundedRect: CGRect(x: 5.2, y: 5.2, width: 7.6, height: 7.6), cornerWidth: 2.1, cornerHeight: 2.1, transform: nil)
-                let hole = CGPath(ellipseIn: CGRect(x: 7.1, y: 7.1, width: 3.8, height: 3.8), transform: nil)
                 ctx.setFillColor(ink.cgColor)
-                ctx.addPath(tile); ctx.addPath(hole)
-                ctx.fillPath(using: .evenOdd)
+                ctx.fillEllipse(in: CGRect(x: 13.3, y: 13.5, width: 2.7, height: 2.7))
             }
             return true
         }
