@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 APP_NAME="MSnip"
-VERSION="0.2.15"
+VERSION="0.2.16"
 BUNDLE_ID="top.xy.msnip"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
@@ -56,87 +56,11 @@ cp "$FINAL_BIN" "$MACOS_DIR/$APP_NAME"
 rm -f "$FINAL_BIN"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
-echo "==> [3/5] 生成矢量应用图标 AppIcon.icns..."
+echo "==> [3/5] 生成商业级光学矢量应用图标 AppIcon.icns..."
 ICONSET_DIR="$DIST_DIR/AppIcon.iconset"
+rm -rf "$ICONSET_DIR"
 mkdir -p "$ICONSET_DIR"
-swift - "$ICONSET_DIR" << 'SWIFT_ICON'
-import AppKit
-import CoreGraphics
-import Foundation
-
-let outDir = CommandLine.arguments[1]
-let sizes = [16, 32, 64, 128, 256, 512, 1024]
-
-func renderIcon(px: Int) -> Data? {
-    let s = CGFloat(px)
-    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
-    guard let ctx = CGContext(
-        data: nil, width: px, height: px, bitsPerComponent: 8, bytesPerRow: 0,
-        space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else { return nil }
-
-    let pad = s * 0.09
-    let card = CGRect(x: pad, y: pad, width: s - pad * 2, height: s - pad * 2)
-    let corner = card.width * 0.225
-    let bgPath = CGPath(roundedRect: card, cornerWidth: corner, cornerHeight: corner, transform: nil)
-
-    ctx.saveGState()
-    ctx.addPath(bgPath)
-    ctx.clip()
-    let colors = [
-        CGColor(srgbRed: 0.08, green: 0.48, blue: 0.98, alpha: 1.0),
-        CGColor(srgbRed: 0.05, green: 0.22, blue: 0.58, alpha: 1.0)
-    ] as CFArray
-    if let grad = CGGradient(colorsSpace: cs, colors: colors, locations: [0.0, 1.0]) {
-        ctx.drawLinearGradient(grad, start: CGPoint(x: 0, y: s), end: CGPoint(x: s, y: 0), options: [])
-    }
-    ctx.restoreGState()
-
-    // 绘制白色取景框角标与中心圆点
-    ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.96))
-    ctx.setLineWidth(max(1.5, s * 0.065))
-    ctx.setLineCap(.round)
-    ctx.setLineJoin(.round)
-
-    let inset = s * 0.27
-    let box = CGRect(x: inset, y: inset, width: s - inset * 2, height: s - inset * 2)
-    let arm = box.width * 0.30
-
-    let corners: [(CGPoint, CGPoint, CGPoint)] = [
-        (CGPoint(x: box.minX, y: box.maxY - arm), CGPoint(x: box.minX, y: box.maxY), CGPoint(x: box.minX + arm, y: box.maxY)),
-        (CGPoint(x: box.maxX - arm, y: box.maxY), CGPoint(x: box.maxX, y: box.maxY), CGPoint(x: box.maxX, y: box.maxY - arm)),
-        (CGPoint(x: box.maxX, y: box.minY + arm), CGPoint(x: box.maxX, y: box.minY), CGPoint(x: box.maxX - arm, y: box.minY)),
-        (CGPoint(x: box.minX + arm, y: box.minY), CGPoint(x: box.minX, y: box.minY), CGPoint(x: box.minX, y: box.minY + arm))
-    ]
-    for (p1, p2, p3) in corners {
-        ctx.beginPath()
-        ctx.move(to: p1); ctx.addLine(to: p2); ctx.addLine(to: p3)
-        ctx.strokePath()
-    }
-
-    let dotR = s * 0.065
-    ctx.setFillColor(CGColor(srgbRed: 1.0, green: 0.78, blue: 0.18, alpha: 1.0))
-    ctx.fillEllipse(in: CGRect(x: s * 0.5 - dotR, y: s * 0.5 - dotR, width: dotR * 2, height: dotR * 2))
-
-    guard let cgImg = ctx.makeImage() else { return nil }
-    let rep = NSBitmapImageRep(cgImage: cgImg)
-    return rep.representation(using: .png, properties: [:])
-}
-
-let mapping: [(String, Int)] = [
-    ("icon_16x16.png", 16), ("icon_16x16@2x.png", 32),
-    ("icon_32x32.png", 32), ("icon_32x32@2x.png", 64),
-    ("icon_128x128.png", 128), ("icon_128x128@2x.png", 256),
-    ("icon_256x256.png", 256), ("icon_256x256@2x.png", 512),
-    ("icon_512x512.png", 512), ("icon_512x512@2x.png", 1024)
-]
-for (name, px) in mapping {
-    if let data = renderIcon(px: px) {
-        try data.write(to: URL(fileURLWithPath: "\(outDir)/\(name)"))
-    }
-}
-SWIFT_ICON
-
+swift "$ROOT_DIR/scripts/generate-icon.swift" "$ICONSET_DIR"
 iconutil -c icns "$ICONSET_DIR" -o "$RES_DIR/AppIcon.icns"
 rm -rf "$ICONSET_DIR"
 

@@ -45,15 +45,75 @@ enum MSnipUITheme {
     }
 
     static func drawPrimaryCTA(ctx: CGContext, rect: CGRect, radius: CGFloat = 6.5, color: NSColor = accent, hovered: Bool) {
-        let path = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        let top = (color == danger)
+            ? NSColor(srgbRed: 0.96, green: 0.27, blue: 0.36, alpha: 1.0)
+            : (color == accent ? NSColor(srgbRed: 0.14, green: 0.53, blue: 1.0, alpha: 1.0) : color)
+        let bot = (color == danger)
+            ? NSColor(srgbRed: 0.84, green: 0.14, blue: 0.24, alpha: 1.0)
+            : (color == accent ? NSColor(srgbRed: 0.04, green: 0.39, blue: 0.92, alpha: 1.0) : color)
+        drawGradientCTA(ctx: ctx, rect: rect, radius: radius, topColor: top, bottomColor: bot, hovered: hovered)
+    }
+
+    static func drawGradientCTA(ctx: CGContext, rect: CGRect, radius: CGFloat, topColor: NSColor, bottomColor: NSColor, hovered: Bool) {
+        let t = hovered ? (topColor.blended(withFraction: 0.10, of: .black) ?? topColor) : topColor
+        let b = hovered ? (bottomColor.blended(withFraction: 0.10, of: .black) ?? bottomColor) : bottomColor
+        let p = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         ctx.saveGState()
-        let fill = hovered
-            ? (color == accent ? accentHover : color.blended(withFraction: 0.12, of: .black) ?? color)
-            : color
-        ctx.setFillColor(fill.cgColor)
-        ctx.addPath(path)
-        ctx.fillPath()
+        ctx.addPath(p)
+        ctx.clip()
+        if let g = CGGradient(colorsSpace: cs, colors: [t.cgColor, b.cgColor] as CFArray, locations: [0, 1]) {
+            ctx.drawLinearGradient(g, start: CGPoint(x: rect.midX, y: rect.minY), end: CGPoint(x: rect.midX, y: rect.maxY), options: [])
+        }
         ctx.restoreGState()
+        ctx.saveGState()
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.22).cgColor)
+        ctx.setLineWidth(1.0)
+        ctx.addPath(CGPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), cornerWidth: max(1, radius - 0.5), cornerHeight: max(1, radius - 0.5), transform: nil))
+        ctx.strokePath()
+        ctx.restoreGState()
+    }
+
+    /// 商业级定制菜单栏矢量图标（与 AppIcon 保持一致的「四角取景框 + 光学圆孔快门」轮廓，原生自适应 @1x/@2x 与浅色/深色菜单栏）
+    static func menuBarIcon(recording: Bool = false) -> NSImage {
+        let img = NSImage(size: NSSize(width: 18, height: 18), flipped: false) { _ in
+            guard let ctx = NSGraphicsContext.current?.cgContext else { return false }
+            let box = CGRect(x: 2.25, y: 2.25, width: 13.5, height: 13.5)
+            let arm: CGFloat = 3.6, arcR: CGFloat = 2.3
+            let path = CGMutablePath()
+            path.move(to: CGPoint(x: box.minX, y: box.maxY - arm))
+            path.addArc(tangent1End: CGPoint(x: box.minX, y: box.maxY), tangent2End: CGPoint(x: box.minX + arm, y: box.maxY), radius: arcR)
+            path.addLine(to: CGPoint(x: box.minX + arm, y: box.maxY))
+            path.move(to: CGPoint(x: box.maxX - arm, y: box.maxY))
+            path.addArc(tangent1End: CGPoint(x: box.maxX, y: box.maxY), tangent2End: CGPoint(x: box.maxX, y: box.maxY - arm), radius: arcR)
+            path.addLine(to: CGPoint(x: box.maxX, y: box.maxY - arm))
+            path.move(to: CGPoint(x: box.maxX, y: box.minY + arm))
+            path.addArc(tangent1End: CGPoint(x: box.maxX, y: box.minY), tangent2End: CGPoint(x: box.maxX - arm, y: box.minY), radius: arcR)
+            path.addLine(to: CGPoint(x: box.maxX - arm, y: box.minY))
+            path.move(to: CGPoint(x: box.minX + arm, y: box.minY))
+            path.addArc(tangent1End: CGPoint(x: box.minX, y: box.minY), tangent2End: CGPoint(x: box.minX, y: box.minY + arm), radius: arcR)
+            path.addLine(to: CGPoint(x: box.minX, y: box.minY + arm))
+
+            let ink = recording ? NSColor.labelColor : NSColor.black
+            ctx.setStrokeColor(ink.cgColor)
+            ctx.setLineWidth(1.6)
+            ctx.setLineCap(.round); ctx.setLineJoin(.round)
+            ctx.addPath(path); ctx.strokePath()
+
+            if recording {
+                ctx.setFillColor(NSColor(srgbRed: 0.96, green: 0.23, blue: 0.34, alpha: 1.0).cgColor)
+                ctx.fillEllipse(in: CGRect(x: 5.5, y: 5.5, width: 7.0, height: 7.0))
+            } else {
+                let tile = CGPath(roundedRect: CGRect(x: 5.2, y: 5.2, width: 7.6, height: 7.6), cornerWidth: 2.1, cornerHeight: 2.1, transform: nil)
+                let hole = CGPath(ellipseIn: CGRect(x: 7.1, y: 7.1, width: 3.8, height: 3.8), transform: nil)
+                ctx.setFillColor(ink.cgColor)
+                ctx.addPath(tile); ctx.addPath(hole)
+                ctx.fillPath(using: .evenOdd)
+            }
+            return true
+        }
+        img.isTemplate = !recording
+        return img
     }
 
     static func drawStatusDot(ctx: CGContext, center: CGPoint, color: NSColor, halo: Bool = false) {

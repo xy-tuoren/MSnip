@@ -32,6 +32,7 @@ final class RegionRecordingSession {
 
     var countdownTimer: Timer?
     var countdownRemaining: Int = 0
+    var countdownStartedAt: TimeInterval = 0
     var tickTimer: Timer?
     var localKeyMonitor: Any?
     var globalKeyMonitor: Any?
@@ -122,41 +123,6 @@ final class RegionRecordingSession {
         case .cancel:
             cancel()
         }
-    }
-
-    func startCountdownThenRecord() {
-        guard !controlBar.isRecording, countdownTimer == nil, let screen = targetScreen else { return }
-        countdownRemaining = 3
-        applyCountdownDisplay(3, on: screen)
-        countdownTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.advanceCountdown() }
-        }
-    }
-
-    func skipCountdownAndRecord() {
-        countdownTimer?.invalidate(); countdownTimer = nil
-        countdownRemaining = 0
-        borderView.countdownNumber = nil
-        controlBar.countdownNumber = nil
-        beginStreamRecording()
-    }
-
-    private func advanceCountdown() {
-        guard !closed, let screen = targetScreen else { return }
-        countdownRemaining -= 1
-        if countdownRemaining <= 0 {
-            skipCountdownAndRecord()
-        } else {
-            applyCountdownDisplay(countdownRemaining, on: screen)
-        }
-    }
-
-    private func applyCountdownDisplay(_ n: Int, on screen: NSScreen) {
-        borderView.countdownNumber = n
-        borderView.statusStyle = .warning
-        borderView.statusText = "即将录制 \(controlBar.format.badgeTitle) · \(n) 秒后开始（↩ 跳过 · Esc 取消）"
-        controlBar.countdownNumber = n
-        repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: screen), on: screen)
     }
 
     func beginStreamRecording() {

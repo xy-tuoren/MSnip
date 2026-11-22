@@ -179,14 +179,16 @@ extension ToolbarView {
         x = appendDivider(at: x, into: &list)
         list.append(iconAction(x: &x, y: y, h: h, symbol: "camera.viewfinder", tip: "切回截图工具栏 (V)", enabled: true, tint: Self.inkDark, action: .exitRecordingMode))
         list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出录屏 (Q / Esc)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
-        let recRect = CGRect(x: x + 2, y: y, width: 92, height: h)
-        x += 96
+        let recRect = CGRect(x: x + 2, y: y, width: 94, height: h)
+        x += 98
         list.append(HitItem(rect: recRect, tooltip: "开始录制当前选区 (↩ / 双击选区)", enabled: true, draw: { ctx, r, hov in
-            MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 6.5, color: MSnipUITheme.danger, hovered: hov)
-            MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: r.minX + 14, y: r.midY), color: .white, halo: false)
+            MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 7.0, color: MSnipUITheme.danger, hovered: hov)
             let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .semibold), .foregroundColor: NSColor.white]
             let ns = "开始录制" as NSString; let sz = ns.size(withAttributes: attrs)
-            ns.draw(at: CGPoint(x: round(r.minX + 24), y: round(r.midY - sz.height * 0.5)), withAttributes: attrs)
+            let pairW = 7.0 + 6.0 + ceil(sz.width)
+            let sx = round(r.midX - pairW * 0.5)
+            MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: sx + 3.5, y: r.midY), color: .white, halo: false)
+            ns.draw(at: CGPoint(x: sx + 13, y: round(r.midY - sz.height * 0.5 - 0.5)), withAttributes: attrs)
         }, action: .confirmBeginRecording))
     }
 

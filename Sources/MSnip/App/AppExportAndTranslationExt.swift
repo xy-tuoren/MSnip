@@ -102,6 +102,7 @@ extension AppController {
     func startRecordingSession(screen: NSScreen, rect: CGRect, initialFrame: CGImage?) {
         let rec = RegionRecordingSession()
         self.activeRecording = rec
+        updateMenuBarRecordingState(true)
         rec.onFormatChanged = { [weak self] fmt in
             guard let self else { return }
             self.config.preferredRecordingFormat = fmt
@@ -115,6 +116,7 @@ extension AppController {
         rec.onComplete = { [weak self] outcome in
             guard let self else { return }
             self.activeRecording = nil
+            self.updateMenuBarRecordingState(false)
             switch outcome {
             case .copiedFile(let url, let fmt):
                 let kb = ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) / 1024

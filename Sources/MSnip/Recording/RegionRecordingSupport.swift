@@ -3,10 +3,54 @@ import Carbon
 import CoreGraphics
 import Foundation
 import MSnipCore
+import QuartzCore
 import UniformTypeIdentifiers
 
-/// 选区录制会话的窗口布局、全局点击/快捷键回显监听、保存面板与跨线程状态原子盒扩展
+/// 选区录制会话的倒计时驱动、窗口布局、全局点击/快捷键回显监听、保存面板与跨线程状态原子盒扩展
 extension RegionRecordingSession {
+    func startCountdownThenRecord() {
+        guard !controlBar.isRecording, countdownTimer == nil, let screen = targetScreen else { return }
+        countdownRemaining = 3
+        countdownStartedAt = CACurrentMediaTime()
+        borderView.countdownFormatBadge = controlBar.format.badgeTitle
+        borderView.countdownProgress = 1.0
+        applyCountdownDisplay(3, on: screen)
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.advanceCountdown() }
+        }
+    }
+
+    func skipCountdownAndRecord() {
+        countdownTimer?.invalidate(); countdownTimer = nil
+        countdownRemaining = 0
+        borderView.countdownNumber = nil
+        borderView.countdownProgress = 1.0
+        controlBar.countdownNumber = nil
+        beginStreamRecording()
+    }
+
+    private func advanceCountdown() {
+        guard !closed, let screen = targetScreen else { return }
+        let totalDur: TimeInterval = 2.55
+        let elapsed = max(0, CACurrentMediaTime() - countdownStartedAt)
+        let remain = totalDur - elapsed
+        if remain <= 0 { skipCountdownAndRecord(); return }
+        borderView.countdownProgress = CGFloat(remain / totalDur)
+        let sec = min(3, max(1, Int(ceil(remain / 0.85))))
+        if sec != countdownRemaining {
+            countdownRemaining = sec
+            applyCountdownDisplay(sec, on: screen)
+        }
+    }
+
+    private func applyCountdownDisplay(_ n: Int, on screen: NSScreen) {
+        borderView.countdownNumber = n
+        borderView.statusStyle = .warning
+        borderView.statusText = "即将录制 \(controlBar.format.badgeTitle) · \(n) 秒后开始（↩ 立即开始 · Esc 取消）"
+        controlBar.countdownNumber = n
+        repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: screen), on: screen)
+    }
+
     func finishSession(_ outcome: Outcome) {
         guard !closed else { return }
         closed = true

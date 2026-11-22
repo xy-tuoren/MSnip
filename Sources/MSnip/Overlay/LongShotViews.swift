@@ -36,6 +36,8 @@ final class LongShotBorderView: NSView {
     var statusText: String = "长截图 · 请在框内向下滚动滚轮" { didSet { needsDisplay = true } }
     var statusStyle: StatusStyle = .ready { didSet { needsDisplay = true } }
     var countdownNumber: Int? { didSet { needsDisplay = true } }
+    var countdownProgress: CGFloat = 1.0 { didSet { needsDisplay = true } }
+    var countdownFormatBadge: String = "GIF"
     var pinPillInsideTop: Bool = false { didSet { needsDisplay = true } }
 
     override var isFlipped: Bool { true }
@@ -121,35 +123,65 @@ final class LongShotBorderView: NSView {
         )
         ctx.restoreGState()
 
-        // 3) 录屏开始前 3-2-1 居中醒目圆形倒计时徽章
+        // 3) 录屏开始前 3-2-1 居中商业级毛玻璃进度圆环倒计时徽章
         if let n = countdownNumber {
-            let side: CGFloat = min(76, max(44, min(captureRect.width, captureRect.height) * 0.45))
+            let side: CGFloat = min(94, max(54, min(captureRect.width, captureRect.height) * 0.45))
             let badgeRect = CGRect(
                 x: round(captureRect.midX - side * 0.5),
                 y: round(captureRect.midY - side * 0.5),
                 width: side,
                 height: side
             )
+            let coral = NSColor(srgbRed: 0.96, green: 0.25, blue: 0.37, alpha: 1.0)
             ctx.saveGState()
-            ctx.setShadow(offset: CGSize(width: 0, height: 4), blur: 14, color: NSColor.black.withAlphaComponent(0.35).cgColor)
-            ctx.setFillColor(NSColor(srgbRed: 0.09, green: 0.11, blue: 0.15, alpha: 0.88).cgColor)
+            ctx.setShadow(offset: CGSize(width: 0, height: 6), blur: 18, color: NSColor.black.withAlphaComponent(0.36).cgColor)
+            ctx.setFillColor(NSColor(srgbRed: 0.08, green: 0.10, blue: 0.15, alpha: 0.90).cgColor)
             ctx.fillEllipse(in: badgeRect)
             ctx.restoreGState()
 
             ctx.saveGState()
-            ctx.setStrokeColor(MSnipUITheme.danger.cgColor)
-            ctx.setLineWidth(2.5)
-            ctx.strokeEllipse(in: badgeRect.insetBy(dx: 1.5, dy: 1.5))
+            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.14).cgColor)
+            ctx.setLineWidth(1.0)
+            ctx.strokeEllipse(in: badgeRect.insetBy(dx: 0.5, dy: 0.5))
+
+            let ringInset: CGFloat = max(4.5, round(side * 0.068))
+            let ringW: CGFloat = side >= 76 ? 3.5 : 2.8
+            let ringR = (side - ringInset * 2) * 0.5
+            ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.14).cgColor)
+            ctx.setLineWidth(ringW)
+            ctx.strokeEllipse(in: badgeRect.insetBy(dx: ringInset, dy: ringInset))
+
+            let startA: CGFloat = -.pi * 0.5
+            let endA = startA + (.pi * 2.0) * max(0.02, min(1.0, countdownProgress))
+            ctx.setStrokeColor(coral.cgColor)
+            ctx.setLineWidth(ringW)
+            ctx.setLineCap(.round)
+            ctx.addArc(center: CGPoint(x: badgeRect.midX, y: badgeRect.midY), radius: ringR, startAngle: startA, endAngle: endA, clockwise: false)
+            ctx.strokePath()
+
+            let numSize = round(side * 0.44)
+            let baseFont = NSFont.systemFont(ofSize: numSize, weight: .bold)
+            let roundedFont = baseFont.fontDescriptor.withDesign(.rounded).flatMap { NSFont(descriptor: $0, size: numSize) } ?? baseFont
             let numStr = "\(n)" as NSString
-            let numAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.monospacedDigitSystemFont(ofSize: round(side * 0.48), weight: .bold),
-                .foregroundColor: NSColor.white
-            ]
+            let numAttrs: [NSAttributedString.Key: Any] = [.font: roundedFont, .foregroundColor: NSColor.white]
             let nSz = numStr.size(withAttributes: numAttrs)
+            let yOffset: CGFloat = side >= 78 ? -5.0 : 0.0
             numStr.draw(
-                at: CGPoint(x: round(badgeRect.midX - nSz.width * 0.5), y: round(badgeRect.midY - nSz.height * 0.5)),
+                at: CGPoint(x: round(badgeRect.midX - nSz.width * 0.5), y: round(badgeRect.midY - nSz.height * 0.5 + yOffset)),
                 withAttributes: numAttrs
             )
+            if side >= 78 {
+                let capAttrs: [NSAttributedString.Key: Any] = [
+                    .font: NSFont.monospacedSystemFont(ofSize: 9.5, weight: .bold),
+                    .foregroundColor: NSColor.white.withAlphaComponent(0.62)
+                ]
+                let cNs = countdownFormatBadge as NSString
+                let cSz = cNs.size(withAttributes: capAttrs)
+                cNs.draw(
+                    at: CGPoint(x: round(badgeRect.midX - cSz.width * 0.5), y: round(badgeRect.maxY - 26)),
+                    withAttributes: capAttrs
+                )
+            }
             ctx.restoreGState()
         }
     }

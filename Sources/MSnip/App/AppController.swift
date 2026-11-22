@@ -43,15 +43,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem.button {
-            if let img = NSImage(systemSymbolName: "viewfinder", accessibilityDescription: "MSnip") {
-                img.isTemplate = true
-                button.image = img
-            } else {
-                button.title = "✂︎"
-            }
+            button.image = MSnipUITheme.menuBarIcon(recording: false)
+            button.imagePosition = .imageOnly
             button.toolTip = "MSnip（麦截）— 轻量截图、长截图、动图录制、识字与贴图"
         }
         rebuildMenu()
+    }
+
+    func updateMenuBarRecordingState(_ recording: Bool) {
+        statusItem?.button?.image = MSnipUITheme.menuBarIcon(recording: recording)
     }
 
     private func setupCallbacks() {
