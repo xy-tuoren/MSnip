@@ -201,9 +201,7 @@ extension OverlayView {
         syncMagnifierView()
         syncCaliperView()
         eyedropperActive = false
-        autoSnapStack = []
-        displayedAutoRect = nil
-        preferredSnapArea = nil
+        autoSnap.clearTargets()
         selectedObjectIndex = nil
         draftAnnotation = nil
         doc = AnnotationDocument()

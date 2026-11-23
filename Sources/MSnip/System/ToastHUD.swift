@@ -1,204 +1,158 @@
 import AppKit
+import CoreGraphics
 import Foundation
 import MSnipCore
+import QuartzCore
 
-/// 清爽浅色白底非抢焦悬浮胶囊提示（自动匹配语义 SF Symbol 矢量徽标，支持可点击快捷动作）
+/// 高优先级非激活悬浮通知面板（四周预留真实投影边距，首击直达不吞事件）
+final class ToastPanel: NSPanel {
+    let interactive: Bool
+
+    init(frame: NSRect, interactive: Bool) {
+        self.interactive = interactive
+        super.init(
+            contentRect: frame,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        self.level = NSWindow.Level(rawValue: max(
+            NSWindow.Level.screenSaver.rawValue + 10,
+            Int(CGShieldingWindowLevel()) + 10
+        ))
+        self.animationBehavior = .none
+        self.isFloatingPanel = true
+        self.becomesKeyOnlyIfNeeded = true
+        self.hidesOnDeactivate = false
+        self.acceptsMouseMovedEvents = interactive
+        self.ignoresMouseEvents = !interactive
+        self.isOpaque = false
+        self.backgroundColor = .clear
+        self.hasShadow = false
+        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+    }
+
+    override var canBecomeKey: Bool { interactive }
+    override var canBecomeMain: Bool { false }
+}
+
+/// 陶瓷白立体悬浮通知卡片 HUD：
+/// - 位于屏幕底部居中黄金视线区（Dock 上方），上滑回弹入场，不遮挡顶部标签栏与标题栏；
+/// - 快存通知内置真实截图缩略图预览、底部倒计时细进度条（悬停自动暂停）与首击直达访达按钮。
 @MainActor
 enum ToastHUD {
-    private static var activePanel: NSPanel?
+    private static var activePanel: ToastPanel?
     private static var dismissWorkItem: DispatchWorkItem?
+    private static var progressTimer: Timer?
 
     static func show(
         message: String,
+        subtitle: String? = nil,
+        preview: CGImage? = nil,
         swatch: RGBAColor? = nil,
         near screenPoint: NSPoint? = nil,
         actionTitle: String? = nil,
         onAction: (() -> Void)? = nil
     ) {
-        dismissWorkItem?.cancel()
-        activePanel?.orderOut(nil)
-
+        dismissImmediate()
         let isInteractive = (actionTitle != nil && onAction != nil)
-        let contentView = ToastPillView(
+        let holdSeconds: TimeInterval = isInteractive ? 6.0 : 2.3
+        let contentView = ToastCardView(
             rawMessage: message,
+            subtitle: subtitle,
+            preview: preview,
             swatch: swatch,
             actionTitle: actionTitle,
-            onTrigger: {
-                dismissImmediate()
-                onAction?()
-            }
+            onTrigger: { dismissImmediate(); onAction?() },
+            onClose: { dismissImmediate() },
+            onHoverChanged: { handleHoverChanged($0, holdSeconds: holdSeconds) }
         )
-        let size = contentView.intrinsicSize
+        let size = contentView.panelSize
         contentView.frame = NSRect(origin: .zero, size: size)
 
-        let anchor = screenPoint ?? NSEvent.mouseLocation
-        let screen = NSScreen.screens.first(where: { $0.frame.contains(anchor) })
-            ?? NSScreen.main
-            ?? NSScreen.screens.first
+        let probe = screenPoint ?? NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(probe) })
+            ?? NSScreen.main ?? NSScreen.screens.first
         let vf = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
 
-        let x = min(max(vf.minX + 14, round(anchor.x - size.width * 0.5)), vf.maxX - size.width - 14)
-        let preferredY = round(anchor.y + 22)
-        let y = (preferredY + size.height + 14 <= vf.maxY) ? preferredY : max(vf.minY + 14, round(anchor.y - size.height - 26))
+        let targetFrame: NSRect
+        if let anchor = screenPoint {
+            let x = min(max(vf.minX + 6, round(anchor.x - size.width * 0.5)), vf.maxX - size.width - 6)
+            let prefY = round(anchor.y + 14)
+            let y = (prefY + size.height <= vf.maxY) ? prefY : max(vf.minY + 6, round(anchor.y - size.height - 18))
+            targetFrame = NSRect(x: x, y: y, width: size.width, height: size.height)
+        } else {
+            let x = round(vf.midX - size.width * 0.5)
+            let y = round(vf.minY + max(40, min(68, vf.height * 0.055)))
+            targetFrame = NSRect(x: x, y: y, width: size.width, height: size.height)
+        }
 
-        let panel = NSPanel(
-            contentRect: NSRect(x: x, y: y, width: size.width, height: size.height),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        panel.level = NSWindow.Level(rawValue: NSWindow.Level.screenSaver.rawValue + 2)
-        panel.animationBehavior = .none
-        panel.isFloatingPanel = true
-        panel.hidesOnDeactivate = false
-        panel.ignoresMouseEvents = !isInteractive
-        panel.isOpaque = false
-        panel.backgroundColor = .clear
-        panel.hasShadow = true
-        panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        let startFrame = (screenPoint == nil) ? targetFrame.offsetBy(dx: 0, dy: -18) : targetFrame
+        let panel = ToastPanel(frame: startFrame, interactive: isInteractive)
         panel.contentView = contentView
-        panel.alphaValue = 0.0
+        panel.alphaValue = (screenPoint == nil) ? 0.85 : 1.0
         panel.orderFrontRegardless()
-        panel.animator().alphaValue = 1.0
+        if screenPoint == nil {
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.22
+                ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.30, 1.0)
+                panel.animator().setFrame(targetFrame, display: true)
+                panel.animator().alphaValue = 1.0
+            }
+        }
         activePanel = panel
+        startCountdown(duration: holdSeconds, for: panel, view: contentView)
+    }
 
-        let holdDuration: TimeInterval = isInteractive ? 3.5 : 1.35
+    static func dismissImmediate() {
+        dismissWorkItem?.cancel(); dismissWorkItem = nil
+        progressTimer?.invalidate(); progressTimer = nil
+        activePanel?.orderOut(nil); activePanel = nil
+    }
+
+    private static func handleHoverChanged(_ hovering: Bool, holdSeconds: TimeInterval) {
+        guard let panel = activePanel, let view = panel.contentView as? ToastCardView else { return }
+        if hovering {
+            dismissWorkItem?.cancel(); dismissWorkItem = nil
+            progressTimer?.invalidate(); progressTimer = nil
+            panel.alphaValue = 1.0
+            view.remainingProgress = 1.0
+        } else {
+            startCountdown(duration: min(holdSeconds, 3.0), for: panel, view: view)
+        }
+    }
+
+    private static func startCountdown(duration: TimeInterval, for panel: ToastPanel, view: ToastCardView) {
+        dismissWorkItem?.cancel()
+        progressTimer?.invalidate()
+        let startAt = CACurrentMediaTime()
+        if view.hasAction {
+            let t = Timer(timeInterval: 1.0 / 30.0, repeats: true) { _ in
+                MainActor.assumeIsolated {
+                    guard activePanel === panel else { return }
+                    let ratio = max(0.0, 1.0 - (CACurrentMediaTime() - startAt) / duration)
+                    view.remainingProgress = CGFloat(ratio)
+                }
+            }
+            RunLoop.main.add(t, forMode: .common)
+            progressTimer = t
+        }
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
                 guard let current = activePanel, current === panel else { return }
+                progressTimer?.invalidate(); progressTimer = nil
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = 0.20
                     current.animator().alphaValue = 0.0
+                    current.animator().setFrame(current.frame.offsetBy(dx: 0, dy: -10), display: true)
                 } completionHandler: {
                     MainActor.assumeIsolated {
-                        if activePanel === panel {
-                            panel.orderOut(nil)
-                            activePanel = nil
-                        }
+                        if activePanel === panel { panel.orderOut(nil); activePanel = nil }
                     }
                 }
             }
         }
         dismissWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + holdDuration, execute: work)
-    }
-
-    static func dismissImmediate() {
-        dismissWorkItem?.cancel()
-        dismissWorkItem = nil
-        activePanel?.orderOut(nil)
-        activePanel = nil
-    }
-}
-
-private final class ToastPillView: NSView {
-    private let cleanMessage: String
-    private let statusSymbol: String
-    private let statusTint: NSColor
-    private let swatch: RGBAColor?
-    private let actionTitle: String?
-    private let onTrigger: (() -> Void)?
-    private var isHovered = false
-    let intrinsicSize: NSSize
-    override var isFlipped: Bool { true }
-
-    init(rawMessage: String, swatch: RGBAColor?, actionTitle: String?, onTrigger: (() -> Void)?) {
-        var trimmed = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isWarn = trimmed.hasPrefix("⚠") || trimmed.contains("失败") || trimmed.contains("未") || trimmed.contains("请先")
-        let isOK = trimmed.hasPrefix("✓") || trimmed.contains("已")
-        if trimmed.hasPrefix("✓") || trimmed.hasPrefix("⚠") {
-            trimmed = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
-        }
-        self.cleanMessage = trimmed
-        self.statusSymbol = isWarn ? "exclamationmark.triangle.fill" : (isOK ? "checkmark.circle.fill" : "info.circle.fill")
-        self.statusTint = isWarn ? MSnipUITheme.warning : (isOK ? MSnipUITheme.success : MSnipUITheme.accent)
-        self.swatch = swatch
-        self.actionTitle = actionTitle
-        self.onTrigger = onTrigger
-
-        let msgAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)]
-        let textSz = (trimmed as NSString).size(withAttributes: msgAttrs)
-        var actionW: CGFloat = 0
-        if let act = actionTitle {
-            let actSz = (act as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12.0, weight: .semibold)])
-            actionW = ceil(actSz.width + 26)
-        }
-        self.intrinsicSize = NSSize(width: ceil(textSz.width + 46 + actionW), height: 36)
-        super.init(frame: .zero)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
-
-    override func updateTrackingAreas() {
-        super.updateTrackingAreas()
-        trackingAreas.forEach { removeTrackingArea($0) }
-        guard actionTitle != nil else { return }
-        addTrackingArea(NSTrackingArea(
-            rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
-            owner: self,
-            userInfo: nil
-        ))
-    }
-
-    override func resetCursorRects() {
-        if actionTitle != nil { addCursorRect(bounds, cursor: .pointingHand) }
-    }
-
-    override func mouseEntered(with event: NSEvent) { isHovered = true; needsDisplay = true }
-    override func mouseExited(with event: NSEvent) { isHovered = false; needsDisplay = true }
-    override func mouseDown(with event: NSEvent) { if actionTitle != nil { onTrigger?() } }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 10)
-        if isHovered {
-            ctx.saveGState()
-            ctx.setStrokeColor(MSnipUITheme.accent.withAlphaComponent(0.55).cgColor)
-            ctx.setLineWidth(1.2)
-            ctx.addPath(CGPath(roundedRect: bounds.insetBy(dx: 0.6, dy: 0.6), cornerWidth: 10, cornerHeight: 10, transform: nil))
-            ctx.strokePath()
-            ctx.restoreGState()
-        }
-
-        if let sw = swatch {
-            let swRect = CGRect(x: 12, y: round((bounds.height - 14) * 0.5), width: 14, height: 14)
-            ctx.saveGState()
-            ctx.setFillColor(sw.cgColor)
-            ctx.addPath(CGPath(roundedRect: swRect, cornerWidth: 3.5, cornerHeight: 3.5, transform: nil))
-            ctx.fillPath()
-            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
-            ctx.setLineWidth(1.0)
-            ctx.addPath(CGPath(roundedRect: swRect, cornerWidth: 3.5, cornerHeight: 3.5, transform: nil))
-            ctx.strokePath()
-            ctx.restoreGState()
-        } else {
-            let iconRect = CGRect(x: 11, y: 0, width: 16, height: bounds.height)
-            ToolbarView.drawSymbol(statusSymbol, in: iconRect, alpha: 1.0, tint: statusTint)
-        }
-
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 12.5, weight: .semibold),
-            .foregroundColor: MSnipUITheme.inkPrimary
-        ]
-        let ns = cleanMessage as NSString
-        let sz = ns.size(withAttributes: attrs)
-        ns.draw(at: CGPoint(x: 33, y: round((bounds.height - sz.height) * 0.5)), withAttributes: attrs)
-
-        if let act = actionTitle {
-            let actAttrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 12.0, weight: .semibold),
-                .foregroundColor: MSnipUITheme.accent
-            ]
-            let actNs = act as NSString
-            let actSz = actNs.size(withAttributes: actAttrs)
-            let sepX = round(bounds.width - actSz.width - 20)
-            ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
-            ctx.fill(CGRect(x: sepX, y: 8, width: 1, height: bounds.height - 16))
-            actNs.draw(at: CGPoint(x: sepX + 9, y: round((bounds.height - actSz.height) * 0.5)), withAttributes: actAttrs)
-        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
     }
 }

@@ -12,7 +12,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var loginMenuItem: NSMenuItem?
     var config = AppConfig.load()
     let hotKeyManager = HotKeyManager()
-    let hotKeyRecorder = HotKeyRecorderController()
     let historyRing = CaptureHistoryRing(maxCount: 15)
     let pinManager = PinManager()
     let ocrController = OCRResultController()
@@ -56,30 +55,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func setupCallbacks() {
-        hotKeyManager.onCapture = { [weak self] in
-            Task { @MainActor in self?.startCapture() }
-        }
-        hotKeyManager.onPin = { [weak self] in
-            Task { @MainActor in self?.handlePinHotKey() }
-        }
-        hotKeyManager.onOCR = { [weak self] in
-            Task { @MainActor in self?.startQuickOCR() }
-        }
-        hotKeyRecorder.onBeginRecording = { [weak self] in
-            self?.hotKeyManager.unregisterAll()
-        }
-        hotKeyRecorder.onConfigUpdated = { [weak self] updated in
-            guard let self else { return }
-            self.config = updated
-            self.config.save()
-            self.hotKeyManager.apply(config: updated)
-            self.rebuildMenu()
+        hotKeyManager.onTrigger = { [weak self] action in
+            Task { @MainActor in self?.handleGlobalHotKey(action) }
         }
         pinManager.onCountChanged = { [weak self] _ in
             self?.rebuildMenu()
         }
         permissionGuide.onPermissionChanged = { [weak self] in
-            self?.rebuildMenu()
+            guard let self else { return }
+            self.hotKeyManager.apply(config: self.config)
+            self.rebuildMenu()
         }
         pinManager.onSaveImage = { [weak self] img, scale in
             self?.performInteractiveSave(img: img, scale: scale)
@@ -108,6 +93,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         translationSettings.appConfigProvider = { [weak self] in
             self?.config ?? AppConfig()
         }
+        translationSettings.isPriorityTapActiveProvider = { [weak self] in
+            self?.hotKeyManager.isPriorityTapActive ?? false
+        }
+        translationSettings.onReapplyHotKeys = { [weak self] in
+            guard let self else { return }
+            self.hotKeyManager.apply(config: self.config)
+        }
         translationSettings.onAppConfigMutated = { [weak self] mutate in
             guard let self else { return }
             mutate(&self.config)
@@ -122,10 +114,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             self.hotKeyManager.apply(config: self.config)
         }
-        translationSettings.onOpenHotKeyRecorder = { [weak self] in
-            guard let self else { return }
-            self.hotKeyRecorder.show(with: self.config)
-        }
         translationSettings.onOpenPermissionGuide = { [weak self] in
             self?.openPermissionGuide()
         }
@@ -133,10 +121,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Core Capture & LongShot Actions
 
-    @objc func startCapture() { beginCaptureSession(quickOCR: false, quickTranslate: false) }
-    @objc func startQuickOCR() { beginCaptureSession(quickOCR: true, quickTranslate: false) }
+    @objc func startCapture() { beginCaptureSession(mode: .standard) }
+    @objc func startQuickOCR() { beginCaptureSession(mode: .quickOCR) }
 
-    func beginCaptureSession(quickOCR: Bool, quickTranslate: Bool) {
+    func beginCaptureSession(mode: OverlayQuickLaunchMode = .standard) {
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
         ToastHUD.dismissImmediate()
 
@@ -187,6 +175,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.handleOverlayOutcome(outcome)
             }
 
+            let pinCombo = self.config.activeCombo(for: .pin)
             session.start(
                 snapshots: snapshots,
                 regionDetector: regionDetector,
@@ -195,15 +184,18 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 colorCopyFormat: self.config.colorCopyFormat,
                 showShortcutTips: self.config.showShortcutTips,
                 textCapsule: self.config.defaultTextCapsule,
-                pinHint: self.config.activePinCombo.displayString,
+                pinHint: pinCombo?.displayString ?? "",
                 saveFolderOptions: ClipboardAndSave.quickSaveFolders(
                     preferred: self.config.lastSaveDirectory,
                     recent: self.config.recentSaveDirectories
                 ),
                 recordingFormat: self.config.preferredRecordingFormat,
                 recordingHUDEnabled: self.config.recordInteractionHUD,
-                quickOCRMode: quickOCR,
-                quickTranslateMode: quickTranslate
+                launchMode: mode,
+                canvasKeyMap: self.config.resolvedCanvasKeyMap,
+                activePinCombo: pinCombo,
+                ocrAutoOpenDualPane: self.config.ocrAutoOpenDualPane,
+                translateAutoOpenDualPane: self.config.translateAutoOpenDualPane
             )
         }
     }
@@ -223,9 +215,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .savedToFolder(let img, let scale, let dir):
             recordHistoryAndRefresh(img: img, scale: scale)
             performSaveToDirectory(img: img, scale: scale, directoryPath: dir)
-        case .pickDirectorySave(let img, let scale):
-            recordHistoryAndRefresh(img: img, scale: scale)
-            performPickDirectorySave(img: img, scale: scale)
         case .pinned(let img, let scale, let origin, let screen):
             recordHistoryAndRefresh(img: img, scale: scale)
             pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
@@ -236,7 +225,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             )
         case .copiedColor(let value, let swatch, let pt):
             ClipboardAndSave.copyText(value)
-            ToastHUD.show(message: "\(value) 已复制  ·  \(config.activePinCombo.displayString) 贴色卡", swatch: swatch, near: pt)
+            let pLabel = config.activeCombo(for: .pin)?.displayString
+            let msg = pLabel.map { "\(value) 已复制  ·  \($0) 贴色卡" } ?? "\(value) 已复制"
+            ToastHUD.show(message: msg, swatch: swatch, near: pt)
         case .copiedCoordinate(let value, let pt):
             ClipboardAndSave.copyText(value)
             ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
@@ -257,44 +248,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func startLongShotSession(screen: NSScreen, rect: CGRect, initialFrame: CGImage?) {
-        let longShot = LongShotSession()
-        self.activeLongShot = longShot
-        longShot.onComplete = { [weak self] outcome in
-            guard let self else { return }
-            self.activeLongShot = nil
-            switch outcome {
-            case .copied(let img, let scale):
-                ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
-                self.recordHistoryAndRefresh(img: img, scale: scale)
-                ToastHUD.show(message: "长截图已复制 · \(img.width) × \(img.height) px")
-            case .saved(let img, let scale):
-                self.recordHistoryAndRefresh(img: img, scale: scale)
-                self.performInteractiveSave(img: img, scale: scale)
-            case .pinned(let img, let scale, let origin, let targetScreen):
-                self.recordHistoryAndRefresh(img: img, scale: scale)
-                self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: targetScreen)
-            case .cancelled:
-                break
-            }
-        }
-        longShot.start(
-            screen: screen,
-            selectionLocalTopLeft: rect,
-            initialCroppedFrame: initialFrame,
-            pinHint: config.activePinCombo.displayString
-        )
-    }
-
     func recordHistoryAndRefresh(img: CGImage, scale: CGFloat) {
         historyRing.record(cgImage: img, scaleFactor: scale)
         rebuildMenu()
-    }
-
-    @objc func handlePinHotKey() {
-        if let ls = activeLongShot, ls.pinCurrentIfPossible() { return }
-        if let session = activeSession, session.pinCurrentSelectionIfPossible() { return }
-        guard activeSession == nil, activeLongShot == nil, activeRecording == nil else { return }
-        pinManager.pinFromClipboard()
     }
 }

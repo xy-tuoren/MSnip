@@ -37,6 +37,20 @@ enum ClipboardAndSave {
         ClipboardImagePromise.write(cgImage: cgImage, scaleFactor: scaleFactor)
     }
 
+    /// 在访达中打开并高亮定位目标文件（先在点击事件上下文内激活应用，再显式置顶 Finder 突破 macOS 14+ 后台焦点拦截）
+    @MainActor
+    static func revealInFinder(_ fileURL: URL) {
+        NSApp.activate(ignoringOtherApps: true)
+        NSWorkspace.shared.activateFileViewerSelecting([fileURL])
+        let bringFinderFront: @MainActor @Sendable () -> Void = {
+            for app in NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.finder") {
+                _ = app.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            }
+        }
+        bringFinderFront()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.08, execute: bringFinderFront)
+    }
+
     /// 将本地媒体文件（如录制的 `.gif` / `.mp4`）写入剪贴板，支持直接粘贴到微信/飞书/Slack/Finder
     static func copyMediaFileToClipboard(fileURL: URL) {
         let pb = NSPasteboard.general
@@ -166,41 +180,13 @@ enum ClipboardAndSave {
         }
     }
 
-    /// 弹出轻量目录选择器，选中文件夹后直接自动命名保存 PNG，返回文件 URL 与所选目录路径
-    @MainActor
-    static func pickDirectoryAndQuickSave(
-        cgImage: CGImage,
-        scaleFactor: CGFloat,
-        initialDirectory: String?
-    ) -> (url: URL, dir: String)? {
-        let panel = NSOpenPanel()
-        panel.title = "选择下载保存目录"
-        panel.prompt = "保存到此目录"
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.canCreateDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.level = .modalPanel
-        if let dir = initialDirectory, FileManager.default.fileExists(atPath: dir) {
-            panel.directoryURL = URL(fileURLWithPath: dir, isDirectory: true)
-        } else if let dl = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first {
-            panel.directoryURL = dl
-        }
-        NSApp.activate(ignoringOtherApps: true)
-        guard panel.runModal() == .OK, let folderURL = panel.url,
-              let fileURL = quickSavePNG(cgImage: cgImage, scaleFactor: scaleFactor, intoDirectory: folderURL) else {
-            return nil
-        }
-        return (fileURL, folderURL.standardizedFileURL.path)
-    }
-
-    /// 弹出原生保存对话框导出 PNG，返回用户选定的新目录以便配置记忆
+    /// 弹出原生保存对话框（支持切换任意目录、新建文件夹或修改文件名），成功返回保存后的文件 `URL` 与所在目录路径
     @MainActor
     static func savePNGInteractive(
         cgImage: CGImage,
         scaleFactor: CGFloat,
         initialDirectory: String?
-    ) -> String? {
+    ) -> (url: URL, dir: String)? {
         guard let pngData = encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) else {
             return nil
         }
@@ -215,12 +201,7 @@ enum ClipboardAndSave {
         panel.allowedContentTypes = [.png]
         panel.canCreateDirectories = true
         panel.level = .modalPanel
-
-        if let dir = initialDirectory, FileManager.default.fileExists(atPath: dir) {
-            panel.directoryURL = URL(fileURLWithPath: dir, isDirectory: true)
-        } else if let pictures = FileManager.default.urls(for: .picturesDirectory, in: .userDomainMask).first {
-            panel.directoryURL = pictures
-        }
+        panel.directoryURL = resolveQuickSaveDirectory(preferred: initialDirectory)
 
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else {
@@ -228,7 +209,7 @@ enum ClipboardAndSave {
         }
         do {
             try pngData.write(to: url, options: .atomic)
-            return url.deletingLastPathComponent().path
+            return (url, url.deletingLastPathComponent().standardizedFileURL.path)
         } catch {
             let alert = NSAlert()
             alert.messageText = "保存图片失败"

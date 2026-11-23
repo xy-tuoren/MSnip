@@ -102,7 +102,7 @@ extension OverlayView {
                 let r = CGRect(x: CGFloat(m.leftPx) / s, y: CGFloat(m.topPx) / s, width: CGFloat(m.widthPx) / s, height: CGFloat(m.heightPx) / s)
                 if r.width >= 8, r.height >= 8 { snapTarget = r }
             }
-            if snapTarget == nil && autoSnapStack.isEmpty { updateAutoSnap(at: p) }
+            if snapTarget == nil && autoSnap.stack.isEmpty { updateAutoSnap(at: p) }
             dragOp = .pendingSnapOrCreate(anchor: p, snapRect: snapTarget ?? hoveredAutoRect)
             return
         }
@@ -246,8 +246,7 @@ extension OverlayView {
             if caliperActive { caliperActive = false }
             if let snap = snapRect, snap.width >= 6, snap.height >= 6 {
                 selection = snap
-                if quickTranslateMode { activateInPlaceTranslate() }
-                else if quickOCRMode { activateInPlaceOCR() }
+                triggerQuickLaunchIfNeeded()
             }
         case .creatingSelection:
             if let sel = selection, (sel.width < 6 || sel.height < 6) {
@@ -255,8 +254,7 @@ extension OverlayView {
                 updateAutoSnap(at: convert(event.locationInWindow, from: nil), immediate: true)
             } else if selection != nil {
                 updateToolbarLayout()
-                if quickTranslateMode { activateInPlaceTranslate() }
-                else if quickOCRMode { activateInPlaceOCR() }
+                triggerQuickLaunchIfNeeded()
             }
         case .movingSelection, .resizingSelection:
             updateToolbarLayout()
@@ -279,12 +277,12 @@ extension OverlayView {
 
     override func scrollWheel(with event: NSEvent) {
         if selection == nil {
-            guard autoSnapStack.count > 1 else { return }
+            guard autoSnap.stack.count > 1 else { return }
             if event.hasPreciseScrollingDeltas {
-                scrollSnapAccumulator += event.scrollingDeltaY
-                if abs(scrollSnapAccumulator) >= 16.0 {
-                    let step = scrollSnapAccumulator > 0 ? 1 : -1
-                    scrollSnapAccumulator = 0
+                autoSnap.scrollAccumulator += event.scrollingDeltaY
+                if abs(autoSnap.scrollAccumulator) >= 16.0 {
+                    let step = autoSnap.scrollAccumulator > 0 ? 1 : -1
+                    autoSnap.scrollAccumulator = 0
                     stepAutoSnapTier(by: step)
                 }
             } else if abs(event.scrollingDeltaY) > 0.01 {

@@ -46,6 +46,20 @@ func testColorSamplingAndRoundedBake() {
         check(cornerAlpha == 0, "圆角裁切后的极角像素 (0,0) 必须完全透明 (alpha=0)，实际: \(cornerAlpha)")
         check(centerAlpha == 255, "圆角截图中心像素必须保持完全不透明 (alpha=255)，实际: \(centerAlpha)")
     }
+
+    // 4) 验证原色域（如 Display P3）直出与带标注导出均 100% 保留原始色彩空间不降级 sRGB
+    if let p3 = CGColorSpace(name: CGColorSpace.displayP3),
+       let p3Ctx = CGContext(data: nil, width: 40, height: 40, bitsPerComponent: 8, bytesPerRow: 0, space: p3, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+        p3Ctx.setFillColor(CGColor(colorSpace: p3, components: [0.95, 0.15, 0.2, 1.0])!)
+        p3Ctx.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+        if let p3Img = p3Ctx.makeImage() {
+            let p3Sampler = PixelSampler(cgImage: p3Img)
+            let cleanOut = AnnotationRenderer.bakeExportImage(sampler: p3Sampler, selection: CGRect(x: 0, y: 0, width: 20, height: 20), imageScale: 1.0, annotations: [])
+            check(cleanOut?.colorSpace?.name == CGColorSpace.displayP3, "无标注直出必须 100% 保留原生 Display P3 色彩空间")
+            let roundedOut = AnnotationRenderer.bakeExportImage(sampler: p3Sampler, selection: CGRect(x: 0, y: 0, width: 20, height: 20), imageScale: 1.0, annotations: [], cornerRadiusPt: 4)
+            check(roundedOut?.colorSpace?.name == CGColorSpace.displayP3, "带圆角/标注导出也必须保留原生 Display P3 色彩空间")
+        }
+    }
 }
 
 func testPixelCaliperMeasurement() {
@@ -78,4 +92,86 @@ func testPixelCaliperMeasurement() {
     let gap = PixelCaliper.measure(atX: 15, y: 35, in: sampler)
     check(gap != nil && gap!.widthPx == 30 && gap!.heightPx == 80, "左侧空白间距应测得 30×80 px")
     check(gap != nil && !gap!.hitLeft && gap!.hitRight, "左侧贴屏边缘不应标记 hitLeft，右侧撞按钮应标记 hitRight")
+}
+
+func testShortcutPresetsOverridesAndCanvasSwap() {
+    // 1) 默认预设 optASD 必须采用零冲突左手双键（⌥+字母），严禁抢占 ⌘1 / ⌘⇧P
+    let defPreset = HotKeyPreset.optASD
+    check(defPreset.defaultCombo(for: .capture)?.displayString == "⌥A", "默认截图热键应为左手双键 ⌥A")
+    check(defPreset.defaultCombo(for: .pin)?.displayString == "⌥T", "默认贴图热键应为左手双键 ⌥T")
+    check(defPreset.defaultCombo(for: .ocr)?.displayString == "⌥S", "默认识字热键应为左手双键 ⌥S")
+    check(defPreset.defaultCombo(for: .translate)?.displayString == "⌥D", "默认翻译热键应为左手双键 ⌥D")
+    check(defPreset.defaultCombo(for: .longShot)?.displayString == "⌥E", "默认长截图热键应为左手双键 ⌥E")
+    check(defPreset.defaultCombo(for: .record)?.displayString == "⌥R", "默认录屏热键应为左手双键 ⌥R")
+    check(defPreset.defaultCombo(for: .latex) == nil, "低频公式热键默认留空不占全局键位")
+
+    // 2) 数字双键预设 opt123 与历史旧版配置名兼容解码
+    check(HotKeyPreset.opt123.defaultCombo(for: .capture)?.displayString == "⌥1", "数字双键预设应为 ⌥1")
+    check(HotKeyPreset.fnKeys.defaultCombo(for: .pin)?.displayString == "F2", "F 键预设应按 F1/F2 顺序排列")
+    let legacyDecoded = try? JSONDecoder().decode(HotKeyPreset.self, from: Data("\"cmd12\"".utf8))
+    check(legacyDecoded == .optASD, "旧版抢占浏览器的 cmd12 配置解码时应平滑迁移至推荐双键 optASD")
+
+    // 3) 画布内 24 项单键重绑定与冲突自动互换（保证全表无重复键位）
+    var customMap: [String: String] = [:]
+    let swapped = CanvasAction.bind(key: "a", to: .ocr, in: &customMap)
+    check(swapped == .arrow, "将识字 T 改为已占用的 A 时应与箭头自动互换")
+    check((customMap[CanvasAction.ocr.rawValue] ?? "t") == "a", "识字应更新为 a")
+    check((customMap[CanvasAction.arrow.rawValue] ?? "a") == "t", "原箭头应互换为 t")
+    let allResolved = Set(CanvasAction.allCases.map { customMap[$0.rawValue] ?? $0.defaultKey })
+    check(allResolved.count == CanvasAction.allCases.count, "自动互换后 24 项画布动作单键必须保持两两不冲突双射")
+
+    // 4) 全局热键冲突检测引擎（MSnip 内部 / macOS 系统 / Carbon 独占 / 运行中第三方软件 / 通用快捷键 / 推荐零冲突键）
+    let optA = KeyCombo(keyCode: 0, carbonModifiers: 2048)       // ⌥A
+    let optT = KeyCombo(keyCode: 17, carbonModifiers: 2048)      // ⌥T
+    let cmdSpace = KeyCombo(keyCode: 49, carbonModifiers: 256)   // ⌘␣
+    let ctrlCmdA = KeyCombo(keyCode: 0, carbonModifiers: 4352)   // ⌃⌘A
+    let cmdC = KeyCombo(keyCode: 8, carbonModifiers: 256)        // ⌘C
+
+    let ownBindings: [GlobalHotKeyAction: KeyCombo] = [.capture: optA, .pin: optT]
+    let sysEntries = [OccupiedHotKeyEntry(combo: cmdSpace, owner: "macOS", feature: "聚焦搜索 (Spotlight)", category: .system)]
+    let wechatRunning = HotKeyConflictCatalog.runningAppEntries(for: ["com.tencent.xinWeChat"])
+    let noAppsRunning = HotKeyConflictCatalog.runningAppEntries(for: ["com.apple.Finder"])
+
+    let internalHits = HotKeyConflictCatalog.evaluate(
+        combo: optT, excluding: .capture, ownBindings: ownBindings,
+        systemEntries: sysEntries, runningAppEntries: noAppsRunning, carbonExclusiveOccupied: false
+    )
+    check(internalHits.first?.owner == "MSnip" && internalHits.first?.severity == .blocking, "应拦截 MSnip 内部重复按键")
+
+    let sysHits = HotKeyConflictCatalog.evaluate(
+        combo: cmdSpace, excluding: .capture, ownBindings: ownBindings,
+        systemEntries: sysEntries, runningAppEntries: noAppsRunning, carbonExclusiveOccupied: true
+    )
+    check(sysHits.first?.owner == "macOS" && sysHits.first?.requiresDoublePressConfirm == true, "应检出 macOS Spotlight 系统热键冲突")
+
+    let wechatHits = HotKeyConflictCatalog.evaluate(
+        combo: ctrlCmdA, excluding: .capture, ownBindings: ownBindings,
+        systemEntries: sysEntries, runningAppEntries: wechatRunning, carbonExclusiveOccupied: false
+    )
+    check(wechatHits.first?.owner == "微信" && wechatHits.first?.severity == .warning, "微信运行时应预警 ⌃⌘A 冲突")
+
+    let cleanWhenClosed = HotKeyConflictCatalog.evaluate(
+        combo: ctrlCmdA, excluding: .capture, ownBindings: ownBindings,
+        systemEntries: sysEntries, runningAppEntries: noAppsRunning, carbonExclusiveOccupied: false
+    )
+    check(cleanWhenClosed.isEmpty, "微信未运行时 ⌃⌘A 不应误报冲突")
+
+    let copyHits = HotKeyConflictCatalog.evaluate(
+        combo: cmdC, excluding: .capture, ownBindings: ownBindings,
+        systemEntries: sysEntries, runningAppEntries: noAppsRunning, carbonExclusiveOccupied: false
+    )
+    check(copyHits.first?.shortBadge == "拦截复制" && copyHits.first?.requiresDoublePressConfirm == true, "⌘C 应提示会拦截通用复制快捷键")
+
+    let suggested = HotKeyConflictCatalog.suggestConflictFreeCombo(
+        for: .capture, ownBindings: ownBindings, occupied: Set([optA, optT, KeyCombo(keyCode: 1, carbonModifiers: 2048)])
+    )
+    check(suggested != nil && suggested != optA && suggested != optT, "推荐算法应避开全部已占与内部绑定键位")
+
+    // 5) PixPin 真实 Bundle ID 与 KeyboardShortcuts / Raycast 配置解析测试
+    let pixpinEntries = HotKeyConflictCatalog.runningAppEntries(for: ["com.depthpicture.PixPin"])
+    check(pixpinEntries.contains { $0.owner == "PixPin" && $0.combo.displayString == "⌥1" }, "应精准识别真实运行中的 PixPin (com.depthpicture.PixPin)")
+    let parsedKS = HotKeyConflictProfiles.parseKeyboardShortcutsJSON("{\"carbonKeyCode\":1,\"carbonModifiers\":2048}")
+    check(parsedKS?.displayString == "⌥S", "应精确解析 KeyboardShortcuts 标准 JSON 热键")
+    let parsedRaycast = HotKeyConflictProfiles.parseRaycastHotkeyString("Option-49")
+    check(parsedRaycast?.displayString == "⌥␣", "应精确解析 Raycast 全局热键配置字符串")
 }

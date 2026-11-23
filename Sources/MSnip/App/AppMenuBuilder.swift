@@ -7,8 +7,14 @@ import MSnipCore
 extension AppController {
     func rebuildMenu() {
         let menu = NSMenu()
-        let capKey = config.activeCaptureCombo
-        let pinKey = config.activePinCombo
+        func makeHotKeyItem(title: String, symbol: String, action: Selector, slot: GlobalHotKeyAction) -> NSMenuItem {
+            let combo = config.hotKeysEnabled ? config.activeCombo(for: slot) : nil
+            let item = NSMenuItem(title: title, action: action, keyEquivalent: combo?.menuKeyEquivalent ?? "")
+            item.keyEquivalentModifierMask = combo?.cocoaModifierMask ?? []
+            item.image = MSnipUITheme.menuSymbol(symbol)
+            item.target = self
+            return item
+        }
 
         // 仅在缺失屏幕录制权限时于最顶部显示单行提醒，授权后自动隐藏
         let screenOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
@@ -28,21 +34,16 @@ extension AppController {
         menu.addItem(warnSep)
         permWarnSepItem = warnSep
 
-        // 1) 截图
-        let shotItem = NSMenuItem(title: "截图", action: #selector(startCapture), keyEquivalent: capKey.menuKeyEquivalent)
-        shotItem.keyEquivalentModifierMask = capKey.cocoaModifierMask
-        shotItem.image = MSnipUITheme.menuSymbol("viewfinder")
-        shotItem.target = self
-        menu.addItem(shotItem)
+        menu.addItem(makeHotKeyItem(title: "区域截图", symbol: "viewfinder", action: #selector(startCapture), slot: .capture))
+        menu.addItem(makeHotKeyItem(title: "桌面贴图", symbol: "pin", action: #selector(handlePinHotKey), slot: .pin))
+        menu.addItem(makeHotKeyItem(title: "快捷识字", symbol: "text.viewfinder", action: #selector(startQuickOCR), slot: .ocr))
+        menu.addItem(makeHotKeyItem(title: "截图翻译", symbol: "character.bubble", action: #selector(startQuickTranslate), slot: .translate))
+        menu.addItem(makeHotKeyItem(title: "滚动长截图", symbol: "scissors", action: #selector(startQuickLongShot), slot: .longShot))
+        menu.addItem(makeHotKeyItem(title: "区域录屏", symbol: "video", action: #selector(startQuickRecord), slot: .record))
 
-        // 2) 贴图
-        let pinItem = NSMenuItem(title: "贴图", action: #selector(handlePinHotKey), keyEquivalent: pinKey.menuKeyEquivalent)
-        pinItem.keyEquivalentModifierMask = pinKey.cocoaModifierMask
-        pinItem.image = MSnipUITheme.menuSymbol("pin")
-        pinItem.target = self
-        menu.addItem(pinItem)
+        menu.addItem(.separator())
 
-        // 3) 最近截图
+        // 最近截图
         let histTitle = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
         let histRoot = NSMenuItem(title: histTitle, action: nil, keyEquivalent: "")
         histRoot.image = MSnipUITheme.menuSymbol("clock")
@@ -50,6 +51,10 @@ extension AppController {
         menu.addItem(histRoot)
 
         // 动态贴图管理项（仅在桌面存在贴图时出现）
+        if pinManager.count > 0 {
+            let visTitle = pinManager.arePinsHidden ? "恢复显示贴图 (\(pinManager.count))" : "暂藏全部贴图 (\(pinManager.count))"
+            menu.addItem(makeHotKeyItem(title: visTitle, symbol: pinManager.arePinsHidden ? "eye" : "eye.slash", action: #selector(togglePinsVisibility), slot: .togglePins))
+        }
         if pinManager.clickThroughCount > 0 {
             let unghostItem = NSMenuItem(
                 title: "恢复穿透贴图 (\(pinManager.clickThroughCount))",
@@ -190,7 +195,7 @@ extension AppController {
 
     @objc func restoreClickThroughPins() { pinManager.restoreAllClickThroughPins() }
     @objc func closeAllPins() { pinManager.closeAll() }
-    @objc func openHotKeyRecorder() { hotKeyRecorder.show(with: config) }
+    @objc func openHotKeyRecorder() { translationSettings.show(tab: .shortcuts) }
 
     @objc func toggleLaunchAtLogin() {
         _ = LaunchAtLoginManager.setEnabled(!LaunchAtLoginManager.isEnabled)

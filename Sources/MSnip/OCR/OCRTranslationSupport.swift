@@ -32,16 +32,18 @@ extension OCRResultController {
         strip.addSubview(engPill)
         self.enginePill = engPill
 
-        let langPill = LightDropdownPill(
-            symbol: "globe",
-            items: TranslationTargetLang.allCases.map(\.displayName)
-        )
-        langPill.onSelect = { [weak self] idx in
-            guard let self, TranslationTargetLang.allCases.indices.contains(idx) else { return }
-            let lang = TranslationTargetLang.allCases[idx]
-            self.selectedTargetLang = lang
-            TranslationService.shared.updateSettings { $0.targetLang = lang }
-            self.triggerStreamingTranslation()
+        let langPill = LightDropdownPill(symbol: "globe")
+        langPill.customDisplayTitle = TranslationService.shared.settings.targetLang.displayName
+        langPill.onCustomClick = { [weak self] anchor in
+            guard let self else { return }
+            let cur = self.selectedTargetLang ?? TranslationService.shared.settings.targetLang
+            LanguagePickerPopover.shared.show(anchoredTo: anchor, current: cur, dark: false) { [weak self] picked in
+                guard let self else { return }
+                self.selectedTargetLang = picked
+                self.targetLangPill?.customDisplayTitle = picked.displayName
+                TranslationService.shared.updateSettings { $0.targetLang = picked }
+                self.triggerStreamingTranslation()
+            }
         }
         strip.addSubview(langPill)
         self.targetLangPill = langPill
@@ -101,9 +103,7 @@ extension OCRResultController {
         }
 
         let target = selectedTargetLang ?? cfg.targetLang
-        if let idx = TranslationTargetLang.allCases.firstIndex(of: target) {
-            targetLangPill.selectedIndex = idx
-        }
+        targetLangPill.customDisplayTitle = target.displayName
     }
 
     func toggleTranslationPane() {

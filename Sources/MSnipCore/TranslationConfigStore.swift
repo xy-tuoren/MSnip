@@ -53,12 +53,10 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
             return true
         case .openAICompatible:
             guard !ep.isEmpty else { return false }
-            let lower = ep.lowercased()
-            if lower.contains("127.0.0.1") || lower.contains("localhost") || lower.contains(":11434") {
-                return true
-            }
-            return !key.isEmpty
-        case .anthropicCompatible, .geminiNative:
+            return isLocalNoKeyEndpoint || !key.isEmpty
+        case .anthropicCompatible:
+            return isLocalNoKeyEndpoint || !key.isEmpty
+        case .geminiNative:
             return !key.isEmpty
         case .tencent, .baidu, .youdao:
             return !appId.isEmpty && !key.isEmpty
@@ -88,15 +86,15 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
             return TranslationProviderProfile(
                 name: "Claude",
                 kind: .anthropicCompatible,
-                endpoint: "https://api.anthropic.com/v1/messages",
-                model: "claude-3-5-haiku-latest"
+                endpoint: LLMQuickPreset.claude.baseURL,
+                model: LLMQuickPreset.claude.defaultModel
             )
         case .geminiNative:
             return TranslationProviderProfile(
                 name: "Google Gemini",
                 kind: .geminiNative,
-                endpoint: "https://generativelanguage.googleapis.com/v1beta",
-                model: "gemini-2.0-flash"
+                endpoint: LLMQuickPreset.gemini.baseURL,
+                model: LLMQuickPreset.gemini.defaultModel
             )
         case .tencent:
             return TranslationProviderProfile(
@@ -136,12 +134,13 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
     }
 }
 
-/// 翻译全局配置与 `0600` 仅当前用户可读本地存储（免钥匙串弹窗且方便备份迁移）
+/// 翻译全局配置：默认采用 `0600` 仅当前用户可读本地存储（免无证书签名弹窗），亦支持开启系统钥匙串加密存储
 public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
     public var activeProfileID: UUID?
     public var fallbackProfileID: UUID?
     public var targetLang: TranslationTargetLang
     public var autoCopyTranslation: Bool
+    public var preferKeychainStorage: Bool
     public var profiles: [TranslationProviderProfile]
 
     public init(
@@ -149,6 +148,7 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
         fallbackProfileID: UUID? = nil,
         targetLang: TranslationTargetLang = .autoZhEn,
         autoCopyTranslation: Bool = true,
+        preferKeychainStorage: Bool = false,
         profiles: [TranslationProviderProfile] = Self.defaultStarterProfiles()
     ) {
         self.profiles = profiles
@@ -156,6 +156,19 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
         self.fallbackProfileID = fallbackProfileID ?? profiles.first(where: { $0.kind == .appleNative })?.id
         self.targetLang = targetLang
         self.autoCopyTranslation = autoCopyTranslation
+        self.preferKeychainStorage = preferKeychainStorage
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let list = try c.decodeIfPresent([TranslationProviderProfile].self, forKey: .profiles) ?? Self.defaultStarterProfiles()
+        self.profiles = list
+        self.activeProfileID = try c.decodeIfPresent(UUID.self, forKey: .activeProfileID) ?? list.first?.id
+        self.fallbackProfileID = try c.decodeIfPresent(UUID.self, forKey: .fallbackProfileID)
+            ?? list.first(where: { $0.kind == .appleNative })?.id
+        self.targetLang = try c.decodeIfPresent(TranslationTargetLang.self, forKey: .targetLang) ?? .autoZhEn
+        self.autoCopyTranslation = try c.decodeIfPresent(Bool.self, forKey: .autoCopyTranslation) ?? true
+        self.preferKeychainStorage = try c.decodeIfPresent(Bool.self, forKey: .preferKeychainStorage) ?? false
     }
 
     public static func defaultStarterProfiles() -> [TranslationProviderProfile] {
@@ -185,42 +198,58 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
         return dir.appendingPathComponent("translation_providers.json")
     }
 
-    public static func load(from customURL: URL? = nil) -> TranslationSettingsConfig {
+    public static func load(from customURL: URL? = nil, secretStore: CredentialStoring? = nil) -> TranslationSettingsConfig {
         let url = customURL ?? storageURL
+        let vault = secretStore ?? (customURL == nil ? CredentialVault.shared : nil)
         guard let data = try? Data(contentsOf: url),
-              let decoded = try? JSONDecoder().decode(TranslationSettingsConfig.self, from: data),
+              var decoded = try? JSONDecoder().decode(TranslationSettingsConfig.self, from: data),
               !decoded.profiles.isEmpty else {
             let initial = TranslationSettingsConfig()
-            if customURL == nil { initial.save() }
+            if customURL == nil { initial.save(secretStore: secretStore) }
             return initial
+        }
+        if decoded.preferKeychainStorage, let vault {
+            for i in decoded.profiles.indices where decoded.profiles[i].apiKey.isEmpty {
+                if let s = vault.readSecret(account: keychainAccount(for: decoded.profiles[i].id)), !s.isEmpty {
+                    decoded.profiles[i].apiKey = s
+                }
+            }
         }
         return decoded
     }
 
-    public func save(to customURL: URL? = nil) {
+    public func save(to customURL: URL? = nil, secretStore: CredentialStoring? = nil) {
         let url = customURL ?? Self.storageURL
-        let dir = url.deletingLastPathComponent()
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let vault = secretStore ?? (customURL == nil ? CredentialVault.shared : nil)
+        try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        var diskCopy = self
+        if let vault {
+            for i in diskCopy.profiles.indices {
+                let acct = Self.keychainAccount(for: diskCopy.profiles[i].id)
+                let secret = diskCopy.profiles[i].apiKey
+                if preferKeychainStorage {
+                    if !secret.isEmpty, vault.writeSecret(secret, account: acct) {
+                        diskCopy.profiles[i].apiKey = ""
+                    } else if secret.isEmpty {
+                        _ = vault.deleteSecret(account: acct)
+                    }
+                } else {
+                    _ = vault.deleteSecret(account: acct)
+                }
+            }
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(self) else { return }
+        guard let data = try? encoder.encode(diskCopy) else { return }
         try? data.write(to: url, options: .atomic)
-        // 强制 0600 仅当前登录用户可读写，隔离保护 API Key 隐私且不弹系统钥匙串密码框
         try? FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: url.path)
     }
 
+    private static func keychainAccount(for id: UUID) -> String { "translation.profile.\(id.uuidString)" }
+
     /// 智能补全 OpenAI 兼容接口路径（兼容用户粘贴域名、`/v1` 或完整 `/chat/completions`）
     public static func resolveChatCompletionsURL(_ raw: String) -> URL? {
-        var trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        while trimmed.hasSuffix("/") { trimmed.removeLast() }
-        guard !trimmed.isEmpty else { return nil }
-        if trimmed.hasSuffix("/chat/completions") {
-            return URL(string: trimmed)
-        }
-        if trimmed.hasSuffix("/v1") || trimmed.hasSuffix("/v3") || trimmed.hasSuffix("/v4") {
-            return URL(string: trimmed + "/chat/completions")
-        }
-        return URL(string: trimmed + "/v1/chat/completions")
+        LLMProtocolHelpers.resolveOpenAIChatURL(raw)
     }
 
     /// 按点分路径提取任意 JSON 响应字段（如 `data.translations.0.text` 或 `data`）

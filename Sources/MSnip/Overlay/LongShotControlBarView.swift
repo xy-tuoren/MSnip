@@ -146,3 +146,76 @@ final class LongShotControlBarView: NSView {
         slots = list
     }
 }
+
+// MARK: - LongShotSession Panel Construction & Layout
+
+extension LongShotSession {
+    func setupPanels(screen: NSScreen, localRect: CGRect, pinHint: String) {
+        let appKitSel = NSRect(
+            x: screen.frame.minX + localRect.minX,
+            y: screen.frame.maxY - localRect.maxY,
+            width: localRect.width,
+            height: localRect.height
+        )
+
+        let pad = LongShotBorderView.sidePad
+        let topSpace = LongShotBorderView.topBadgeSpace
+        let borderFrame = NSRect(
+            x: appKitSel.minX - pad,
+            y: appKitSel.minY - pad,
+            width: appKitSel.width + pad * 2,
+            height: appKitSel.height + pad + topSpace
+        )
+        let bp = makeLongShotPanel(frame: borderFrame, ignoresMouse: true)
+        let bv = LongShotBorderView(frame: NSRect(origin: .zero, size: borderFrame.size))
+        bp.contentView = bv
+        self.borderPanel = bp
+        self.borderView = bv
+
+        let prevW: CGFloat = 152
+        let prevH: CGFloat = min(max(190, appKitSel.height), 380)
+        let rightX = appKitSel.maxX + 12
+        let leftX = appKitSel.minX - prevW - 12
+        let prevX = (rightX + prevW + 8 <= screen.frame.maxX)
+            ? rightX
+            : (leftX >= screen.frame.minX + 8 ? leftX : screen.frame.maxX - prevW - 10)
+        let prevY = min(max(screen.visibleFrame.minY + 10, appKitSel.maxY - prevH), screen.visibleFrame.maxY - prevH - 10)
+        let prevFrame = NSRect(x: round(prevX), y: round(prevY), width: prevW, height: round(prevH))
+
+        let pp = makeLongShotPanel(frame: prevFrame, ignoresMouse: true)
+        let pv = LongShotPreviewView(frame: NSRect(origin: .zero, size: prevFrame.size))
+        pv.baseHeightPx = Int((localRect.height * scaleFactor).rounded())
+        pp.contentView = pv
+        self.previewPanel = pp
+        self.previewView = pv
+
+        let barSz = LongShotControlBarView.barSize
+        let barX = min(max(screen.frame.minX + 8, appKitSel.maxX - barSz.width), screen.frame.maxX - barSz.width - 8)
+        let belowY = appKitSel.minY - barSz.height - 10
+        let aboveY = borderFrame.maxY + 8
+        let barY = (belowY >= screen.visibleFrame.minY + 6)
+            ? belowY
+            : (aboveY + barSz.height <= screen.visibleFrame.maxY ? aboveY : screen.visibleFrame.minY + 12)
+        let cp = makeLongShotPanel(frame: NSRect(x: round(barX), y: round(barY), width: barSz.width, height: barSz.height), ignoresMouse: false)
+        let cv = LongShotControlBarView()
+        cv.pinHint = pinHint
+        cv.onAction = { [weak self] act in self?.handleControlAction(act) }
+        cp.contentView = cv
+        self.controlPanel = cp
+        self.controlView = cv
+
+        bp.orderFrontRegardless()
+        pp.orderFrontRegardless()
+        cp.orderFrontRegardless()
+    }
+
+    private func makeLongShotPanel(frame: NSRect, ignoresMouse: Bool) -> NSPanel {
+        let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        p.level = .statusBar; p.animationBehavior = .none
+        p.isFloatingPanel = true; p.hidesOnDeactivate = false
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        p.isOpaque = false; p.backgroundColor = .clear
+        p.hasShadow = !ignoresMouse; p.ignoresMouseEvents = ignoresMouse
+        return p
+    }
+}

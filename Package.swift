@@ -23,6 +23,7 @@ let package = Package(
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("CoreVideo"),
                 .linkedFramework("ImageIO"),
+                .linkedFramework("Security"),
                 .linkedFramework("UniformTypeIdentifiers")
             ]
         ),
@@ -42,6 +43,7 @@ let package = Package(
                 .linkedFramework("ImageIO"),
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("ScreenCaptureKit"),
+                .linkedFramework("Security"),
                 .linkedFramework("ServiceManagement"),
                 .linkedFramework("UniformTypeIdentifiers"),
                 .linkedFramework("VideoToolbox"),

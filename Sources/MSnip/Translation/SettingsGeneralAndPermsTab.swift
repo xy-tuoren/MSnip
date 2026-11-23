@@ -2,178 +2,152 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 快捷键行前置极客小图标底座
-private final class GeekIconBadge: NSView {
-    private let symbol: String
-    override var isFlipped: Bool { true }
-    init(symbol: String, frame: NSRect) {
-        self.symbol = symbol
-        super.init(frame: frame)
-        wantsLayer = true
-        layer?.backgroundColor = GeekTheme.controlBg.cgColor
-        layer?.cornerRadius = 8.0
-        layer?.borderWidth = 1.0
-        layer?.borderColor = GeekTheme.border.cgColor
-    }
-    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
-
-    override func draw(_ dirtyRect: NSRect) {
-        ToolbarView.drawSymbol(symbol, in: bounds, alpha: 0.92, tint: GeekTheme.inkPrimary)
-    }
+/// 识字与翻译双栏面板默认行为控件盒（跨「通用」与「翻译」双标签页实时同步）
+@MainActor
+final class GeneralModeControls {
+    var ocrModeSegment: GeekSegmentControl?
+    var translateModeSegment: GeekSegmentControl?
+    var transTabDualSwitch: GeekToggleSwitch?
 }
 
-/// 设置窗口「通用」页与独立「快捷键」页构建及行内录入扩展
+/// 设置窗口「通用」标签页（基础设置、识字与翻译面板模式、导出格式与钥匙串密钥加密、系统权限状态）
 extension TranslationSettingsWindow {
     func buildGeneralPage(in page: GeekFlippedView) {
-        let cardW = page.bounds.width - 56 // 664
+        let cardW = page.bounds.width - 56 // 724
+        let rowH: CGFloat = 44
 
-        // 1) 基础（3 行 × 48px）
-        addSectionHeader("基础", x: 30, y: 14, in: page)
-        let baseCard = GeekCardView(frame: NSRect(x: 28, y: 38, width: cardW, height: 144))
-        page.addSubview(baseCard)
+        let scroll = NSScrollView(frame: page.bounds)
+        scroll.drawsBackground = false; scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
+        let content = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: page.bounds.width, height: 632))
+        scroll.documentView = content
+        page.addSubview(scroll)
 
-        addRowLabel("开机自动启动", y: 0, height: 48, in: baseCard)
+        // 1) 基础（3 行 × 44px）
+        addSectionHeader("基础", x: 30, y: 18, in: content)
+        let baseCard = GeekCardView(frame: NSRect(x: 28, y: 42, width: cardW, height: rowH * 3))
+        content.addSubview(baseCard)
+
+        addRowLabel("开机自动启动", y: 0, height: rowH, in: baseCard)
         loginSwitch = GeekToggleSwitch()
-        loginSwitch.frame = NSRect(x: cardW - 54, y: 13, width: 38, height: 22)
+        loginSwitch.frame = NSRect(x: cardW - 54, y: 11, width: 38, height: 22)
         loginSwitch.onToggle = { on in _ = LaunchAtLoginManager.setEnabled(on) }
         baseCard.addSubview(loginSwitch)
 
-        baseCard.addHairline(atY: 48)
-        addRowLabel("截图时显示快捷键提示", y: 48, height: 48, in: baseCard)
+        baseCard.addHairline(atY: rowH)
+        addRowLabel("截图时显示快捷键提示", y: rowH, height: rowH, in: baseCard)
         tipsSwitch = GeekToggleSwitch()
-        tipsSwitch.frame = NSRect(x: cardW - 54, y: 61, width: 38, height: 22)
+        tipsSwitch.frame = NSRect(x: cardW - 54, y: rowH + 11, width: 38, height: 22)
         tipsSwitch.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.showShortcutTips = on } }
         baseCard.addSubview(tipsSwitch)
 
-        baseCard.addHairline(atY: 96)
-        addRowLabel("截图保存位置", y: 96, height: 48, in: baseCard)
+        baseCard.addHairline(atY: rowH * 2)
+        addRowLabel("截图保存位置", y: rowH * 2, height: rowH, in: baseCard)
         saveDirPathLabel = NSTextField(labelWithString: "~/Pictures/MSnip")
         saveDirPathLabel.font = .monospacedSystemFont(ofSize: 12.5, weight: .regular)
         saveDirPathLabel.textColor = GeekTheme.inkSecondary
         saveDirPathLabel.lineBreakMode = .byTruncatingMiddle
         saveDirPathLabel.alignment = .right
-        saveDirPathLabel.frame = NSRect(x: 164, y: 111, width: cardW - 306, height: 18)
+        GeekTheme.placeCentered(saveDirPathLabel, x: 164, width: cardW - 314, centerY: rowH * 2 + rowH * 0.5)
         baseCard.addSubview(saveDirPathLabel)
 
         let chooseBtn = GeekButton(title: "更改", style: .subtle)
-        chooseBtn.frame = NSRect(x: cardW - 134, y: 105, width: 56, height: 30)
+        chooseBtn.frame = NSRect(x: cardW - 138, y: rowH * 2 + 7, width: 58, height: 30)
         chooseBtn.onClick = { [weak self] in self?.chooseQuickSaveDirectory() }
         baseCard.addSubview(chooseBtn)
 
         let openDirBtn = GeekButton(title: "打开", style: .subtle)
-        openDirBtn.frame = NSRect(x: cardW - 72, y: 105, width: 56, height: 30)
+        openDirBtn.frame = NSRect(x: cardW - 74, y: rowH * 2 + 7, width: 58, height: 30)
         openDirBtn.onClick = { [weak self] in
             NSWorkspace.shared.open(ClipboardAndSave.resolveQuickSaveDirectory(preferred: self?.appConfigProvider?().lastSaveDirectory))
         }
         baseCard.addSubview(openDirBtn)
 
-        // 2) 默认格式（拆成独立 2 行 × 48px，彻底不挤）
-        addSectionHeader("默认格式", x: 30, y: 198, in: page)
-        let fmtCard = GeekCardView(frame: NSRect(x: 28, y: 222, width: cardW, height: 96))
-        page.addSubview(fmtCard)
+        // 2) 识字与翻译展示模式（2 行 × 44px，支持各自独立设置原位或自动打开双栏面板）
+        addSectionHeader("识字与翻译面板", x: 30, y: 194, in: content)
+        let panelCard = GeekCardView(frame: NSRect(x: 28, y: 218, width: cardW, height: rowH * 2))
+        content.addSubview(panelCard)
 
-        addRowLabel("取色复制格式", y: 0, height: 48, in: fmtCard)
+        addRowLabel("提取文字 (OCR) 自动打开双栏面板", y: 0, height: rowH, in: panelCard)
+        let ocrSeg = GeekSegmentControl(items: ["原位划词", "双栏面板"], selectedIndex: 0)
+        ocrSeg.toolTip = "选择提取文字的默认交互方式（按住 ⌥ 触发可临时切换为另一种方式）"
+        ocrSeg.frame = NSRect(x: cardW - 196, y: 7, width: 180, height: 30)
+        ocrSeg.onSelect = { [weak self] idx in
+            self?.onAppConfigMutated? { $0.ocrAutoOpenDualPane = (idx == 1) }
+        }
+        modeControls.ocrModeSegment = ocrSeg
+        panelCard.addSubview(ocrSeg)
+
+        panelCard.addHairline(atY: rowH)
+        addRowLabel("截图翻译自动打开双栏面板", y: rowH, height: rowH, in: panelCard)
+        let trSeg = GeekSegmentControl(items: ["原位译文", "双栏面板"], selectedIndex: 0)
+        trSeg.toolTip = "选择截图翻译的默认交互方式（按住 ⌥ 触发可临时切换为另一种方式）"
+        trSeg.frame = NSRect(x: cardW - 196, y: rowH + 7, width: 180, height: 30)
+        trSeg.onSelect = { [weak self] idx in
+            let dual = (idx == 1)
+            self?.onAppConfigMutated? { $0.translateAutoOpenDualPane = dual }
+            self?.modeControls.transTabDualSwitch?.isOn = dual
+        }
+        modeControls.translateModeSegment = trSeg
+        panelCard.addSubview(trSeg)
+
+        // 3) 格式与密钥安全（3 行 × 44px）
+        addSectionHeader("格式与安全", x: 30, y: 326, in: content)
+        let fmtCard = GeekCardView(frame: NSRect(x: 28, y: 350, width: cardW, height: rowH * 3))
+        content.addSubview(fmtCard)
+
+        addRowLabel("取色复制格式", y: 0, height: rowH, in: fmtCard)
         colorFmtSegment = GeekSegmentControl(items: ColorCopyFormat.allCases.map(\.rawValue), selectedIndex: 0, mono: true)
-        colorFmtSegment.frame = NSRect(x: cardW - 256, y: 9, width: 240, height: 30)
+        colorFmtSegment.frame = NSRect(x: cardW - 264, y: 7, width: 248, height: 30)
         colorFmtSegment.onSelect = { [weak self] idx in
             guard ColorCopyFormat.allCases.indices.contains(idx) else { return }
             self?.onAppConfigMutated? { $0.colorCopyFormat = ColorCopyFormat.allCases[idx] }
         }
         fmtCard.addSubview(colorFmtSegment)
 
-        fmtCard.addHairline(atY: 48)
-        addRowLabel("录屏导出格式", y: 48, height: 48, in: fmtCard)
+        fmtCard.addHairline(atY: rowH)
+        addRowLabel("录屏导出格式", y: rowH, height: rowH, in: fmtCard)
         recFmtSegment = GeekSegmentControl(items: ["GIF", "MP4"], selectedIndex: 0, mono: true)
-        recFmtSegment.frame = NSRect(x: cardW - 136, y: 57, width: 120, height: 30)
+        recFmtSegment.frame = NSRect(x: cardW - 144, y: rowH + 7, width: 128, height: 30)
         recFmtSegment.onSelect = { [weak self] idx in
             self?.onAppConfigMutated? { $0.preferredRecordingFormat = (idx == 1) ? .mp4 : .gif }
         }
         fmtCard.addSubview(recFmtSegment)
 
-        // 3) 系统权限（2 行 × 44px，已授权仅显示清爽状态，无多余按钮）
-        addSectionHeader("系统权限", x: 30, y: 334, in: page)
-        let permCard = GeekCardView(frame: NSRect(x: 28, y: 358, width: cardW, height: 88))
-        page.addSubview(permCard)
+        fmtCard.addHairline(atY: rowH * 2)
+        addRowLabel("钥匙串加密存储 API 密钥", y: rowH * 2, height: rowH, in: fmtCard)
+        keychainSwitch = GeekToggleSwitch()
+        keychainSwitch.toolTip = CredentialVault.hasStableCodeSignature()
+            ? "将翻译与公式 API 密钥存入 macOS 登录钥匙串，本地 JSON 自动脱敏留空"
+            : "将密钥转存至系统钥匙串（提示：建议先运行 scripts/setup-cert.sh 配置固定证书以免升级弹窗）"
+        keychainSwitch.frame = NSRect(x: cardW - 54, y: rowH * 2 + 11, width: 38, height: 22)
+        keychainSwitch.onToggle = { [weak self] on in
+            guard let self else { return }
+            self.commitCurrentFormEdits()
+            self.draft.preferKeychainStorage = on
+            self.persistDraft()
+        }
+        fmtCard.addSubview(keychainSwitch)
 
-        screenPermRow = GeekDotLabel(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: 44))
+        // 4) 系统权限（2 行 × 44px）
+        addSectionHeader("系统权限", x: 30, y: 502, in: content)
+        let permCard = GeekCardView(frame: NSRect(x: 28, y: 526, width: cardW, height: rowH * 2))
+        content.addSubview(permCard)
+
+        screenPermRow = GeekDotLabel(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: rowH))
         permCard.addSubview(screenPermRow)
         screenPermBtn = GeekButton(title: "前往开启", style: .accent)
-        screenPermBtn.frame = NSRect(x: cardW - 102, y: 7, width: 86, height: 30)
+        screenPermBtn.frame = NSRect(x: cardW - 104, y: 7, width: 88, height: 30)
         screenPermBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?() }
         permCard.addSubview(screenPermBtn)
 
-        permCard.addHairline(atY: 44)
-        axPermRow = GeekDotLabel(frame: NSRect(x: 16, y: 44, width: cardW - 32, height: 44))
+        permCard.addHairline(atY: rowH)
+        axPermRow = GeekDotLabel(frame: NSRect(x: 16, y: rowH, width: cardW - 32, height: rowH))
         permCard.addSubview(axPermRow)
         axPermBtn = GeekButton(title: "前往开启", style: .subtle)
-        axPermBtn.frame = NSRect(x: cardW - 102, y: 51, width: 86, height: 30)
+        axPermBtn.frame = NSRect(x: cardW - 104, y: rowH + 7, width: 88, height: 30)
         axPermBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?() }
         permCard.addSubview(axPermBtn)
-    }
-
-    func buildShortcutsPage(in page: GeekFlippedView) {
-        let cardW = page.bounds.width - 56 // 664
-
-        addSectionHeader("全局快捷键", x: 30, y: 20, in: page)
-        hotKeyHintLabel = NSTextField(labelWithString: "点击右侧键帽直接录入 · Esc 取消 · ⌫ 恢复默认")
-        hotKeyHintLabel.font = .systemFont(ofSize: 12.5, weight: .regular)
-        hotKeyHintLabel.textColor = GeekTheme.inkMuted
-        hotKeyHintLabel.alignment = .right
-        hotKeyHintLabel.frame = NSRect(x: 160, y: 20, width: cardW - 134, height: 18)
-        page.addSubview(hotKeyHintLabel)
-
-        // 宽敞 3 行大卡片（每行 64px）
-        let hkCard = GeekCardView(frame: NSRect(x: 28, y: 48, width: cardW, height: 192))
-        page.addSubview(hkCard)
-        for (i, slot) in HotKeySlot.allCases.enumerated() {
-            let ry = CGFloat(i) * 64
-            if i > 0 { hkCard.addHairline(atY: ry) }
-            hkCard.addSubview(GeekIconBadge(symbol: slot.symbol, frame: NSRect(x: 16, y: ry + 16, width: 32, height: 32)))
-
-            let titleLbl = NSTextField(labelWithString: slot.title)
-            titleLbl.font = .systemFont(ofSize: 14.5, weight: .semibold)
-            titleLbl.textColor = GeekTheme.inkPrimary
-            titleLbl.frame = NSRect(x: 60, y: ry + 11, width: 280, height: 20)
-            hkCard.addSubview(titleLbl)
-
-            let subLbl = NSTextField(labelWithString: slot.subtitle)
-            subLbl.font = .systemFont(ofSize: 12.5, weight: .regular)
-            subLbl.textColor = GeekTheme.inkSecondary
-            subLbl.frame = NSRect(x: 60, y: ry + 34, width: 420, height: 18)
-            hkCard.addSubview(subLbl)
-
-            let pill = GeekHotKeyPill(frame: NSRect(x: cardW - 142, y: ry + 16, width: 126, height: 32))
-            pill.onClick = { [weak self] in self?.toggleInlineHotKey(slot) }
-            hotKeyPills[slot] = pill
-            hkCard.addSubview(pill)
-        }
-
-        // 快捷预设与总开关（2 行 × 52px）
-        addSectionHeader("方案与开关", x: 30, y: 262, in: page)
-        let optCard = GeekCardView(frame: NSRect(x: 28, y: 288, width: cardW, height: 104))
-        page.addSubview(optCard)
-
-        addRowLabel("常用预设方案", y: 0, height: 52, in: optCard)
-        presetSegment = GeekSegmentControl(items: ["⌘1 / ⌘2", "⌘⇧A / P", "⌥A / P", "F1 / F3"], selectedIndex: 0, mono: true)
-        presetSegment.frame = NSRect(x: cardW - 396, y: 10, width: 380, height: 32)
-        presetSegment.onSelect = { [weak self] idx in
-            guard let self, HotKeyPreset.allCases.indices.contains(idx) else { return }
-            self.cancelInlineHotKeyRecording(restoreHotKeys: false)
-            let preset = HotKeyPreset.allCases[idx]
-            self.onAppConfigMutated? { $0.hotKeyPreset = preset; $0.clearCustomHotKeys(); $0.hotKeysEnabled = true }
-            self.refreshGeneralAndPermissionsUI()
-        }
-        optCard.addSubview(presetSegment)
-
-        optCard.addHairline(atY: 52)
-        addRowLabel("启用全局快捷键", y: 52, height: 52, in: optCard)
-        hotKeyEnableSwitch = GeekToggleSwitch(isOn: true)
-        hotKeyEnableSwitch.frame = NSRect(x: cardW - 54, y: 67, width: 38, height: 22)
-        hotKeyEnableSwitch.onToggle = { [weak self] on in
-            self?.onAppConfigMutated? { $0.hotKeysEnabled = on }
-            self?.refreshGeneralAndPermissionsUI()
-        }
-        optCard.addSubview(hotKeyEnableSwitch)
     }
 
     func refreshGeneralAndPermissionsUI() {
@@ -181,10 +155,15 @@ extension TranslationSettingsWindow {
         let cfg = appConfigProvider?() ?? AppConfig()
         loginSwitch.isOn = LaunchAtLoginManager.isEnabled
         tipsSwitch.isOn = cfg.showShortcutTips
+        keychainSwitch?.isOn = draft.preferKeychainStorage
+        modeControls.ocrModeSegment?.selectedIndex = cfg.ocrAutoOpenDualPane ? 1 : 0
+        modeControls.translateModeSegment?.selectedIndex = cfg.translateAutoOpenDualPane ? 1 : 0
+        modeControls.transTabDualSwitch?.isOn = cfg.translateAutoOpenDualPane
         if let cIdx = ColorCopyFormat.allCases.firstIndex(of: cfg.colorCopyFormat) { colorFmtSegment.selectedIndex = cIdx }
         recFmtSegment.selectedIndex = (cfg.preferredRecordingFormat == .mp4) ? 1 : 0
-        saveDirPathLabel.stringValue = ClipboardAndSave.resolveQuickSaveDirectory(preferred: cfg.lastSaveDirectory)
-            .path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        let resolvedDir = ClipboardAndSave.resolveQuickSaveDirectory(preferred: cfg.lastSaveDirectory).path
+        saveDirPathLabel.stringValue = resolvedDir.replacingOccurrences(of: NSHomeDirectory(), with: "~")
+        saveDirPathLabel.toolTip = resolvedDir
 
         let scrOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
         screenPermRow.dotColor = scrOK ? GeekTheme.emerald : GeekTheme.amber
@@ -198,77 +177,10 @@ extension TranslationSettingsWindow {
         axPermRow.detail = axOK ? "已授权" : ""
         axPermBtn.isHidden = axOK
 
-        hotKeyEnableSwitch.isOn = cfg.hotKeysEnabled
-        presetSegment.selectedIndex = cfg.hasCustomHotKeys
-            ? -1
-            : (HotKeyPreset.allCases.firstIndex(of: cfg.hotKeyPreset) ?? 0)
-        for slot in HotKeySlot.allCases {
-            hotKeyPills[slot]?.configure(label: comboForSlot(slot, in: cfg).displayString, recording: activeRecordingSlot == slot)
-        }
+        refreshShortcutsPageUI(with: cfg)
     }
 
-    private func comboForSlot(_ slot: HotKeySlot, in cfg: AppConfig) -> KeyCombo {
-        switch slot {
-        case .capture: return cfg.activeCaptureCombo
-        case .pin:     return cfg.activePinCombo
-        case .ocr:     return cfg.activeOCRCombo
-        }
-    }
-
-    private func toggleInlineHotKey(_ slot: HotKeySlot) {
-        if activeRecordingSlot == slot { cancelInlineHotKeyRecording(restoreHotKeys: true); return }
-        activeRecordingSlot = slot
-        onBeginHotKeyRecording?()
-        hotKeyHintLabel.textColor = GeekTheme.accent
-        hotKeyHintLabel.stringValue = "请按下「\(slot.title)」的新组合键（Esc 取消，⌫ 恢复默认）"
-        refreshGeneralAndPermissionsUI()
-    }
-
-    func cancelInlineHotKeyRecording(restoreHotKeys: Bool) {
-        guard activeRecordingSlot != nil else { return }
-        activeRecordingSlot = nil
-        if restoreHotKeys { onEndHotKeyRecording?() }
-        hotKeyHintLabel?.textColor = GeekTheme.inkMuted
-        hotKeyHintLabel?.stringValue = "点击右侧键帽直接录入 · Esc 取消 · ⌫ 恢复默认"
-        refreshGeneralAndPermissionsUI()
-    }
-
-    func handleInlineHotKeyEvent(_ event: NSEvent) -> Bool {
-        guard let slot = activeRecordingSlot else { return false }
-        if event.keyCode == 53 { cancelInlineHotKeyRecording(restoreHotKeys: true); return true }
-        if event.keyCode == 51 || event.keyCode == 117 {
-            applyCustomCombo(nil, for: slot)
-            hotKeyHintLabel.textColor = GeekTheme.emerald; hotKeyHintLabel.stringValue = "已恢复「\(slot.title)」为预设默认"
-            return true
-        }
-        guard let combo = KeyCombo.from(event: event) else {
-            NSSound.beep(); hotKeyHintLabel.textColor = GeekTheme.amber; hotKeyHintLabel.stringValue = "请包含 ⌘ / ⌥ / ⌃ 修饰键，或直接按 F1–F19"
-            return true
-        }
-        let cfg = appConfigProvider?() ?? AppConfig()
-        for other in HotKeySlot.allCases where other != slot && comboForSlot(other, in: cfg) == combo {
-            NSSound.beep(); hotKeyHintLabel.textColor = GeekTheme.danger; hotKeyHintLabel.stringValue = "\(combo.displayString) 已被「\(other.title)」占用"
-            return true
-        }
-        applyCustomCombo(combo, for: slot)
-        hotKeyHintLabel.textColor = GeekTheme.emerald; hotKeyHintLabel.stringValue = "「\(slot.title)」已更新为 \(combo.displayString)"
-        return true
-    }
-
-    private func applyCustomCombo(_ combo: KeyCombo?, for slot: HotKeySlot) {
-        onAppConfigMutated? { c in
-            if combo != nil { c.hotKeysEnabled = true }
-            switch slot {
-            case .capture: c.customCaptureCombo = combo
-            case .pin:     c.customPinCombo = combo
-            case .ocr:     c.customOCRCombo = combo
-            }
-        }
-        activeRecordingSlot = nil
-        refreshGeneralAndPermissionsUI()
-    }
-
-    private func chooseQuickSaveDirectory() {
+    func chooseQuickSaveDirectory() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false; panel.canChooseDirectories = true; panel.canCreateDirectories = true
         panel.allowsMultipleSelection = false; panel.prompt = "设为保存目录"
@@ -278,17 +190,17 @@ extension TranslationSettingsWindow {
         refreshGeneralAndPermissionsUI()
     }
 
-    private func addSectionHeader(_ text: String, x: CGFloat, y: CGFloat, in parent: NSView) {
+    func addSectionHeader(_ text: String, x: CGFloat, y: CGFloat, in parent: NSView) {
         let lbl = NSTextField(labelWithString: text)
         lbl.font = .systemFont(ofSize: 13.0, weight: .semibold); lbl.textColor = GeekTheme.inkSecondary
-        lbl.frame = NSRect(x: x, y: y, width: 140, height: 18)
+        GeekTheme.placeCentered(lbl, x: x, width: 160, centerY: y + 9.0)
         parent.addSubview(lbl)
     }
 
-    private func addRowLabel(_ text: String, y: CGFloat, height: CGFloat, in card: GeekCardView) {
+    func addRowLabel(_ text: String, y: CGFloat, height: CGFloat, in card: GeekCardView) {
         let lbl = NSTextField(labelWithString: text)
         lbl.font = .systemFont(ofSize: 14.0, weight: .medium); lbl.textColor = GeekTheme.inkPrimary; lbl.sizeToFit()
-        lbl.frame = NSRect(x: 16, y: round(y + (height - lbl.frame.height) * 0.5), width: lbl.frame.width + 4, height: lbl.frame.height)
+        GeekTheme.placeCentered(lbl, x: 16, width: lbl.frame.width + 6, centerY: y + height * 0.5)
         card.addSubview(lbl)
     }
 

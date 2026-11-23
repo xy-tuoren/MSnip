@@ -3,8 +3,34 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 贴图窗口的鼠标穿透对照、无损二次标注编辑、缩放与右键菜单动作扩展
+/// 贴图窗口的外置悬浮条联动、鼠标穿透对照、无损二次标注与右键菜单扩展
 extension PinWindow {
+    func syncHoverBarVisibility() {
+        hideHoverWorkItem?.cancel()
+        hideHoverWorkItem = nil
+
+        if isClickThrough || editorCanvas != nil {
+            hoverBarPanel.orderOut(nil)
+            return
+        }
+
+        if isMouseInPin || isMouseInHoverBar || isDraggingFromBar {
+            hoverBarPanel.reposition(anchoringTo: frame, on: screen)
+            if !hoverBarPanel.isVisible {
+                hoverBarPanel.orderFrontRegardless()
+            }
+        } else {
+            let work = DispatchWorkItem { [weak self] in
+                MainActor.assumeIsolated {
+                    guard let self, !self.isMouseInPin, !self.isMouseInHoverBar, !self.isDraggingFromBar else { return }
+                    self.hoverBarPanel.orderOut(nil)
+                }
+            }
+            hideHoverWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16, execute: work)
+        }
+    }
+
     @objc func enableClickThrough() { setClickThrough(true) }
 
     func setClickThrough(_ enabled: Bool) {
@@ -13,6 +39,7 @@ extension PinWindow {
         isClickThrough = enabled
         ignoresMouseEvents = enabled
         pinContentView.isGhostMode = enabled
+        syncHoverBarVisibility()
         if enabled {
             preGhostAlpha = alphaValue
             if alphaValue > 0.82 { alphaValue = 0.68 }
@@ -28,6 +55,7 @@ extension PinWindow {
         pinContentView.liveTextView.clearSelection()
         pinContentView.liveTextView.configure(cgImage: baseCGImage, logicalSize: frame.size)
         pinContentView.isAnnotating = true
+        syncHoverBarVisibility()
 
         let canvas = PinAnnotationCanvasView(baseSampler: baseSampler, baseSize: baseSize, imageScale: imageScale)
         canvas.frame = pinContentView.bounds
@@ -59,19 +87,13 @@ extension PinWindow {
             canvas.commitTextField()
             switch act {
             case .selectTool(let t):
-                canvas.activeTool = t
-                panel.barView.activeTool = t
-                panel.subbarView.activeTool = t
+                canvas.activeTool = t; panel.barView.activeTool = t; panel.subbarView.activeTool = t
                 panel.reposition(anchoringTo: self.frame, on: self.screen)
             case .toggleTextCapsule: canvas.togglePinTextCapsule()
             case .selectColor(let c):
-                canvas.applyStyleColor(c)
-                panel.barView.colorIndex = c
-                panel.subbarView.colorIndex = c
+                canvas.applyStyleColor(c); panel.barView.colorIndex = c; panel.subbarView.colorIndex = c
             case .selectStroke(let w):
-                canvas.applyStrokeWidth(w)
-                panel.barView.lineWidth = w
-                panel.subbarView.lineWidth = w
+                canvas.applyStrokeWidth(w); panel.barView.lineWidth = w; panel.subbarView.lineWidth = w
             case .undo: _ = canvas.doc.undo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .redo: _ = canvas.doc.redo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .clearAnnotations: canvas.doc.clearAll(); canvas.selectedIndex = nil; canvas.needsDisplay = true; canvas.onDocStateChanged?()
@@ -97,22 +119,19 @@ extension PinWindow {
         guard editorCanvas != nil || toolbarPanel != nil else { return }
         editorCanvas?.commitTextField()
         if commit, let baked = AnnotationRenderer.bakeExportImage(
-            sampler: baseSampler,
-            selection: CGRect(origin: .zero, size: baseSize),
-            imageScale: imageScale,
-            annotations: annotationDoc.objects
+            sampler: baseSampler, selection: CGRect(origin: .zero, size: baseSize),
+            imageScale: imageScale, annotations: annotationDoc.objects
         ) {
             currentCGImage = baked
             ToastHUD.show(message: "已更新贴图标注")
         }
-        editorCanvas?.removeFromSuperview()
-        editorCanvas = nil
-        toolbarPanel?.orderOut(nil)
-        toolbarPanel = nil
+        editorCanvas?.removeFromSuperview(); editorCanvas = nil
+        toolbarPanel?.orderOut(nil); toolbarPanel = nil
         pinContentView.isAnnotating = false
         if reanalyzeLiveText {
-            pinContentView.liveTextView.configure(cgImage: currentCGImage, logicalSize: frame.size)
+            pinContentView.liveTextView.configure(cgImage: currentCGImage, logicalSize: baseSize)
         }
+        syncHoverBarVisibility()
         AnnotationRenderer.purgeCaches()
     }
 
@@ -126,7 +145,10 @@ extension PinWindow {
     @objc func quickSaveImage() { onQuickSavePNG?(currentCGImage, imageScale) }
     @objc func resetZoom() { applyZoom(newZoom: 1.0); alphaValue = 1.0 }
     @objc func toggleHalfOpacity() { alphaValue = alphaValue < 0.95 ? 1.0 : 0.55 }
+
     @objc func closePin() {
+        hideHoverWorkItem?.cancel(); hideHoverWorkItem = nil
+        hoverBarPanel.orderOut(nil)
         endAnnotationEditing(commit: false, reanalyzeLiveText: false)
         pinContentView.liveTextView.clearAll()
         pinContentView.menu = nil
@@ -134,6 +156,7 @@ extension PinWindow {
         orderOut(nil)
         onClose?(self)
     }
+
     @objc func closeAllPins() { onCloseAll?() }
 
     func applyZoom(newZoom: CGFloat) {
@@ -143,10 +166,11 @@ extension PinWindow {
         let ry = old.height > 0 ? (mouse.y - old.minY) / old.height : 0.5
         zoomFactor = newZoom
         let sz = NSSize(width: round(baseSize.width * zoomFactor), height: round(baseSize.height * zoomFactor))
-        let ax = old.contains(mouse) ? mouse.x - sz.width * rx : old.midX - sz.width * 0.5
-        let ay = old.contains(mouse) ? mouse.y - sz.height * ry : old.midY - sz.height * 0.5
+        let ax = ((old.contains(mouse) ? mouse.x - sz.width * rx : old.midX - sz.width * 0.5) * imageScale).rounded() / imageScale
+        let ay = ((old.contains(mouse) ? mouse.y - sz.height * ry : old.midY - sz.height * 0.5) * imageScale).rounded() / imageScale
         setFrame(NSRect(origin: NSPoint(x: ax, y: ay), size: sz), display: true)
         toolbarPanel?.reposition(anchoringTo: frame, on: screen)
+        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: frame, on: screen) }
     }
 
     func buildContextMenu() -> NSMenu {
@@ -168,7 +192,7 @@ extension PinWindow {
         menu.addItem(withTitle: "重置 100% 大小与不透明", action: #selector(resetZoom), keyEquivalent: "0")
         menu.addItem(withTitle: "切换半透明对照 (55%)", action: #selector(toggleHalfOpacity), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "关闭此贴图 (双击空白处)", action: #selector(closePin), keyEquivalent: "")
+        menu.addItem(withTitle: "关闭此贴图 (Esc / 双击空白处)", action: #selector(closePin), keyEquivalent: "")
         menu.addItem(withTitle: "关闭全部贴图", action: #selector(closeAllPins), keyEquivalent: "")
         for item in menu.items { item.target = self }
         return menu

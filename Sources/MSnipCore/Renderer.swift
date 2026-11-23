@@ -46,15 +46,14 @@ public final class PixelSampler: @unchecked Sendable {
         return (Int(ptr[offset + rIdx]), Int(ptr[offset + gIdx]), Int(ptr[offset + bIdx]))
     }
 
-    /// 按物理像素坐标 `(px, py)`（左上角为原点）读取颜色
+    /// 按物理像素坐标 `(px, py)`（左上角为原点）读取原色域颜色（与源图色彩空间 1:1 一致）
     public func sampleColor(px: Int, py: Int) -> CGColor {
         let (r, g, b) = sampleRGB(px: px, py: py)
-        return CGColor(
-            srgbRed: CGFloat(r) / 255.0,
-            green: CGFloat(g) / 255.0,
-            blue: CGFloat(b) / 255.0,
-            alpha: 1.0
-        )
+        if let cs = cgImage.colorSpace, cs.model == .rgb, cs.supportsOutput,
+           let c = CGColor(colorSpace: cs, components: [CGFloat(r) / 255.0, CGFloat(g) / 255.0, CGFloat(b) / 255.0, 1.0]) {
+            return c
+        }
+        return CGColor(srgbRed: CGFloat(r) / 255.0, green: CGFloat(g) / 255.0, blue: CGFloat(b) / 255.0, alpha: 1.0)
     }
 }
 
@@ -214,56 +213,37 @@ public enum AnnotationRenderer {
             height: max(1, round(selection.height * imageScale))
         ).intersection(CGRect(x: 0, y: 0, width: sampler.width, height: sampler.height))
 
-        let outW = Int(pxRect.width)
-        let outH = Int(pxRect.height)
-        guard outW > 0, outH > 0, let cropped = sampler.cgImage.cropping(to: pxRect) else {
-            return nil
-        }
+        let outW = Int(pxRect.width), outH = Int(pxRect.height)
+        guard outW > 0, outH > 0, let cropped = sampler.cgImage.cropping(to: pxRect) else { return nil }
 
-        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        // 无标注/无圆角/无衬底时零重绘直出原生裁剪块：保留 100% 原始像素与显示器原生 ICC 色彩空间，彻底零色差
+        if annotations.isEmpty && cornerRadiusPt <= 0.5 && backdropStyle == .none { return cropped }
+
+        let colorSpace: CGColorSpace = (sampler.cgImage.colorSpace?.model == .rgb && sampler.cgImage.colorSpace?.supportsOutput == true)
+            ? sampler.cgImage.colorSpace!
+            : (CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB())
         guard let ctx = CGContext(
-            data: nil,
-            width: outW,
-            height: outH,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: colorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            return nil
-        }
+            data: nil, width: outW, height: outH, bitsPerComponent: 8, bytesPerRow: 0,
+            space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
 
         if backdropStyle == .none, cornerRadiusPt > 0.5 {
             let rPx = min(cornerRadiusPt * imageScale, CGFloat(min(outW, outH)) * 0.5)
-            let clipPath = CGPath(roundedRect: CGRect(x: 0, y: 0, width: outW, height: outH), cornerWidth: rPx, cornerHeight: rPx, transform: nil)
-            ctx.addPath(clipPath)
+            ctx.addPath(CGPath(roundedRect: CGRect(x: 0, y: 0, width: outW, height: outH), cornerWidth: rPx, cornerHeight: rPx, transform: nil))
             ctx.clip()
         }
 
-        // 1) 在标准未翻转 CG 坐标系下绘制裁剪底图，确保原图方向正立不颠倒
-        ctx.interpolationQuality = .high
+        // 1) 在标准未翻转 CG 坐标系下 1:1 无插值绘制裁剪底图，确保原图方向正立、像素零模糊
+        ctx.interpolationQuality = .none
         ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: outW, height: outH))
 
         // 2) 切换到与覆盖层一致的「左上角原点 + 逻辑点」坐标系绘制矢量标注
         ctx.translateBy(x: 0, y: CGFloat(outH))
         ctx.scaleBy(x: imageScale, y: -imageScale)
         ctx.translateBy(x: -selection.minX, y: -selection.minY)
-
-        drawAnnotations(
-            in: ctx,
-            annotations: annotations,
-            draft: nil,
-            sampler: sampler,
-            imageScale: imageScale,
-            clipRect: selection
-        )
+        drawAnnotations(in: ctx, annotations: annotations, draft: nil, sampler: sampler, imageScale: imageScale, clipRect: selection)
         guard let rawCard = ctx.makeImage() else { return nil }
-        return BackdropBeautifier.apply(
-            to: rawCard,
-            style: backdropStyle,
-            imageScale: imageScale,
-            innerCornerRadiusPt: cornerRadiusPt
-        )
+        return BackdropBeautifier.apply(to: rawCard, style: backdropStyle, imageScale: imageScale, innerCornerRadiusPt: cornerRadiusPt)
     }
 
     // MARK: - Private Text Helpers

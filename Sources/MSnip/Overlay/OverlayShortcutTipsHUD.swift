@@ -48,28 +48,29 @@ extension OverlayView {
     private func currentShortcutTipRows() -> [(key: String, desc: String)] {
         if isRecordingMode {
             return selection == nil
-                ? [("单击 / 拖拽", "吸附窗口 / 框选录屏区"), ("滚轮 / 方向键", "切窗口层级 / 1px 微调"), ("V", "切换回截图模式"), ("右键 / Esc", "退出录屏")]
-                : [("↩ / 双击", "开始 3-2-1 倒计时录屏"), ("方向键", "1px 微调录屏选区"), ("F / E", "对齐窗口 / 上次选区"), ("V", "切换回截图模式"), ("右键 / Esc", "重选录屏区域")]
+                ? [("单击 / 拖拽", "吸附窗口 / 框选录屏区"), ("滚轮 / 方向键", "切窗口层级 / 1px 微调"), (keyUpper(.record), "切换回截图模式"), ("右键 / Esc", "退出录屏")]
+                : [("↩ / 双击", "开始 3-2-1 倒计时录屏"), ("方向键", "1px 微调录屏选区"), ("\(keyUpper(.snapWindow)) / \(keyUpper(.eraser))", "对齐窗口 / 上次选区"), (keyUpper(.record), "切换回截图模式"), ("右键 / Esc", "重选录屏区域")]
         }
         if selection == nil {
             return [
-                ("C / Tab", "复制色值 / 切格式"),
-                ("Z / X", "像素测距 / 复制坐标"),
-                ("G / O", "相对坐标 / 显示隐藏放大镜"),
-                ("P / S", "直接贴图 / 一键快存"),
-                ("T / Y", "识字 / 原位翻译"),
-                ("L / V", "长截图 / 录视频"),
-                ("E / F", "上次选区 / 对齐窗口"),
+                ("\(keyUpper(.copy)) / Tab", "复制色值 / 切格式"),
+                ("\(keyUpper(.caliper)) / \(keyUpper(.copyCoord))", "像素测距 / 复制坐标"),
+                ("\(keyUpper(.backdropOrCoord)) / \(keyUpper(.toggleMagnifier))", "相对坐标 / 显隐放大镜"),
+                ("\(keyUpper(.pin)) / \(keyUpper(.quickSave))", "直接贴图 / 一键快存"),
+                ("\(keyUpper(.ocr)) / \(keyUpper(.translate))", "识字 / 原位翻译"),
+                ("\(keyUpper(.longShot)) / \(keyUpper(.record))", "长截图 / 录视频"),
+                ("\(keyUpper(.eraser)) / \(keyUpper(.snapWindow))", "上次选区 / 对齐窗口"),
                 ("滚轮 / 方向键", "切层级 / 1px 微调")
             ]
         } else {
+            let tools = [keyUpper(.rect), keyUpper(.arrow), keyUpper(.pen), keyUpper(.text), keyUpper(.mosaic), keyUpper(.eraser)].joined(separator: " ")
             return [
-                ("C / ↩", "复制截图并退出"),
-                ("P / S", "贴图 / 一键快存"),
-                ("R A D W M E", "框 箭 笔 字 马赛克 橡皮"),
+                ("\(keyUpper(.copy)) / ↩", "复制截图并退出"),
+                ("\(keyUpper(.pin)) / \(keyUpper(.quickSave))", "贴图 / 一键快存"),
+                (tools, "框 箭 笔 字 马赛克 橡皮"),
                 ("↑↓←→ / ⌘Z", "调工具大小 / 撤销"),
-                ("T / ⇧T / Y", "识字 / LaTeX 公式 / 翻译"),
-                ("L / V", "长截图 / 录制视频"),
+                ("\(keyUpper(.ocr)) / ⇧\(keyUpper(.ocr)) / \(keyUpper(.translate))", "识字 / 公式 / 翻译"),
+                ("\(keyUpper(.longShot)) / \(keyUpper(.record))", "长截图 / 录制视频"),
                 ("右键 / Esc", "取消选框")
             ]
         }
@@ -164,7 +165,7 @@ extension OverlayView {
             at: CGPoint(x: round(rect.minX + padX), y: round(rect.minY + 9)),
             withAttributes: Self.headerTitleAttrs
         )
-        let hideHint = "按 H 隐藏" as NSString
+        let hideHint = "按 \(keyUpper(.toggleTips)) 隐藏" as NSString
         let hideSz = hideHint.size(withAttributes: Self.headerHintAttrs)
         hideHint.draw(
             at: CGPoint(x: round(rect.maxX - padX - hideSz.width), y: round(rect.minY + 9)),
@@ -282,16 +283,16 @@ extension OverlayView {
         }
         ctx.restoreGState()
 
-        let pxX = Int((sel.minX * snapshot.scaleFactor).rounded())
-        let pxY = Int((sel.minY * snapshot.scaleFactor).rounded())
-        let pxW = Int((sel.width * snapshot.scaleFactor).rounded())
-        let pxH = Int((sel.height * snapshot.scaleFactor).rounded())
+        let s = snapshot.scaleFactor
+        let pxX = Int((sel.minX * s).rounded()), pxY = Int((sel.minY * s).rounded())
+        let pxW = Int((sel.width * s).rounded()), pxH = Int((sel.height * s).rounded())
         var parts = [isRecordingMode ? "录屏 · \(pxX),\(pxY)  \(pxW) × \(pxH) px" : "\(pxX),\(pxY)  \(pxW) × \(pxH) px"]
         if isRecordingMode {
             parts.append(toolbar.recordingFormat.badgeTitle)
         } else {
             if cornerRadius > 0.5 { parts.append("圆角 \(Int((cornerRadiusRatio * 100).rounded()))%") }
             if backdropStyle != .none { parts.append(backdropStyle.title) }
+            if let trTag = inPlaceTranslateHUDTag { parts.append(trTag) }
         }
         drawHUDPill(ctx: ctx, anchorRect: sel, text: parts.joined(separator: "  ·  "))
     }

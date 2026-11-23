@@ -59,7 +59,12 @@ extension OverlayView {
             return
         }
 
-        // 兼容系统通用 ⌘ 组合键（⌘C / ⌘S / ⌘Z / ⌘A / ⌘2 / ⌘O / ⌘B）
+        if let pCombo = activePinCombo, KeyCombo.from(event: event) == pCombo {
+            exportAndFinish(mode: .pin)
+            return
+        }
+
+        // 兼容系统通用 ⌘ 组合键（⌘C / ⌘S / ⌘Z / ⌘A / ⌘O / ⌘B）
         if cmd {
             switch letter {
             case "c":
@@ -73,7 +78,6 @@ extension OverlayView {
                 if shift { quickSaveInPlace() } else { exportAndFinish(mode: .save) }
                 return
             case "b": toggleTextCapsuleMode(); return
-            case "2": exportAndFinish(mode: .pin); return
             case "a": selection = bounds; return
             case "o": exportAndFinish(mode: .extractText); return
             case "z", "y":
@@ -81,7 +85,6 @@ extension OverlayView {
             default: break
             }
         }
-        if event.keyCode == 99 { exportAndFinish(mode: .pin); return } // F3
 
         if event.keyCode == 51 || event.keyCode == 117 { // Delete / ForwardDelete
             if cmd && shift {
@@ -110,26 +113,50 @@ extension OverlayView {
         }
     }
 
+    private func matchedCanvasAction(for key: String) -> CanvasAction? {
+        let lower = key.lowercased()
+        return CanvasAction.allCases.first { (canvasKeyMap[$0] ?? $0.defaultKey).lowercased() == lower }
+    }
+
     private func handleSingleKeyShortcut(_ key: String, shift: Bool, opt: Bool, isRepeat: Bool) -> Bool {
         if isRecordingMode {
-            switch key {
-            case "v": if !isRepeat { toggleRecordingMode() }
-            case "q": onCancel?()
-            case "f": snapSelectionToUnderlyingWindow()
-            case "e": if let prev = lastHistorySelection { selection = Geometry.clampRect(prev, within: bounds) }
-            case "z": if !shift && !opt && !isRepeat { caliperActive.toggle() }
-            case "o", "`", "~": if !shift && !opt && !isRepeat { magnifierVisibilityOverride = magnifierView.isHidden }
-            case "g": useRelativeCoordinates.toggle()
-            case "h", "/", "?":
-                showShortcutTips.toggle(); onPrefsChanged?(colorCopyFormat, showShortcutTips)
-            default: return false
+            if key == "`" || key == "~" {
+                if !shift && !opt && !isRepeat { magnifierVisibilityOverride = magnifierView.isHidden }; return true
+            }
+            if key == "/" || key == "?" {
+                showShortcutTips.toggle(); onPrefsChanged?(colorCopyFormat, showShortcutTips); return true
+            }
+            guard let act = matchedCanvasAction(for: key) else { return false }
+            switch act {
+            case .record:          if !isRepeat { toggleRecordingMode() }
+            case .cancel:          onCancel?()
+            case .snapWindow:      snapSelectionToUnderlyingWindow()
+            case .eraser:          if let prev = lastHistorySelection { selection = Geometry.clampRect(prev, within: bounds) }
+            case .caliper:         if !shift && !opt && !isRepeat { caliperActive.toggle() }
+            case .toggleMagnifier: if !shift && !opt && !isRepeat { magnifierVisibilityOverride = magnifierView.isHidden }
+            case .backdropOrCoord: useRelativeCoordinates.toggle()
+            case .toggleTips:      showShortcutTips.toggle(); onPrefsChanged?(colorCopyFormat, showShortcutTips)
+            default:               return false
             }
             return true
         }
 
-        switch key {
-        // 1) 高频结束 / 输出动作
-        case "c":
+        if key == "[" || key == "-" {
+            if selection != nil { adjustAnnotationSize(by: shift ? -3.0 : -1.0) }; return true
+        }
+        if key == "]" || key == "=" || key == "+" {
+            if selection != nil { adjustAnnotationSize(by: shift ? 3.0 : 1.0) }; return true
+        }
+        if key == "`" || key == "~" {
+            if !shift && !opt && !isRepeat { magnifierVisibilityOverride = magnifierView.isHidden }; return true
+        }
+        if key == "/" || key == "?" {
+            showShortcutTips.toggle(); onPrefsChanged?(colorCopyFormat, showShortcutTips); return true
+        }
+
+        guard let act = matchedCanvasAction(for: key) else { return false }
+        switch act {
+        case .copy:
             if selection != nil && !opt && !eyedropperActive {
                 if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() {
                     ToastHUD.show(message: "已复制划选文字")
@@ -145,76 +172,53 @@ extension OverlayView {
             } else {
                 copyColorAtCursorAndFinish()
             }
-        case "s":
+        case .quickSave:
             if shift { exportAndFinish(mode: .save) } else { quickSaveInPlace() }
-        case "p":
+        case .pin:
             exportAndFinish(mode: .pin)
-        case "q":
+        case .cancel:
             onCancel?()
-
-        // 2) 左手高频标注工具 + Z 四向像素测距（撤销/重做走 ⌘Z / ⌘⇧Z）
-        case "r": toggleToolShortcut(shift ? .ellipse : .rect)
-        case "a": toggleToolShortcut(.arrow)
-        case "d": toggleToolShortcut(shift ? .highlighter : .pen)
-        case "w": toggleToolShortcut(.text)
-        case "m": toggleToolShortcut(shift ? .gaussianBlur : .mosaic)
-        case "n": toggleToolShortcut(.step)
-        case "z":
-            if !shift && !opt && !isRepeat { caliperActive.toggle() }
-
-        // 3) 多模态扩展：识字 / LaTeX 公式 / 翻译 / 长截图 / 录屏
-        case "t":
+        case .rect:       toggleToolShortcut(shift ? .ellipse : .rect)
+        case .arrow:      toggleToolShortcut(.arrow)
+        case .pen:        toggleToolShortcut(shift ? .highlighter : .pen)
+        case .text:       toggleToolShortcut(.text)
+        case .mosaic:     toggleToolShortcut(shift ? .gaussianBlur : .mosaic)
+        case .step:       toggleToolShortcut(.step)
+        case .caliper:    if !shift && !opt && !isRepeat { caliperActive.toggle() }
+        case .ocr:
             if shift { exportAndFinish(mode: .recognizeLatex) }
-            else if opt { exportAndFinish(mode: .extractText) }
+            else if opt != ocrAutoOpenDualPane { exportAndFinish(mode: .extractText) }
             else { toggleInPlaceOCR() }
-        case "y":
-            if opt { exportAndFinish(mode: .translateWindow) } else { toggleInPlaceTranslate() }
-        case "l": beginLongShot()
-        case "v": if !isRepeat { toggleRecordingMode() }
-
-        // 4) 外观、窗口对齐与坐标/取色/橡皮擦辅助
-        case "b": toggleCornerRadiusSlider(resetOnly: opt)
-        case "f":
+        case .translate:
+            if opt != translateAutoOpenDualPane { exportAndFinish(mode: .translateWindow) } else { toggleInPlaceTranslate() }
+        case .longShot:   beginLongShot()
+        case .record:     if !isRepeat { toggleRecordingMode() }
+        case .cornerRadius: toggleCornerRadiusSlider(resetOnly: opt)
+        case .snapWindow:
             if opt { captureCurrentWindowAndFinish(pin: false) } else { snapSelectionToUnderlyingWindow() }
-        case "e":
-            if selection != nil {
-                toggleToolShortcut(.eraser)
-            } else if let prev = lastHistorySelection {
-                selection = Geometry.clampRect(prev, within: bounds)
-            }
-        case "g":
-            if selection == nil || shouldShowMagnifier {
-                useRelativeCoordinates.toggle()
-            } else {
-                cycleBackdropStyle()
-            }
-        case "k": toggleTextCapsuleMode()
-        case "i":
+        case .eraser:
+            if selection != nil { toggleToolShortcut(.eraser) }
+            else if let prev = lastHistorySelection { selection = Geometry.clampRect(prev, within: bounds) }
+        case .backdropOrCoord:
+            if selection == nil || shouldShowMagnifier { useRelativeCoordinates.toggle() } else { cycleBackdropStyle() }
+        case .textCapsule: toggleTextCapsuleMode()
+        case .eyedropper:
             if selection == nil, let snap = hoveredAutoRect { selection = snap }
             eyedropperActive.toggle()
-        case "x":
-            if shift {
-                useRelativeCoordinates.toggle()
-            } else if selection != nil, let sample = samplePixelAtCursor() {
+        case .copyCoord:
+            if shift { useRelativeCoordinates.toggle() }
+            else if selection != nil, let sample = samplePixelAtCursor() {
                 let coord = formattedCoordinateAtCursor(px: sample.px, py: sample.py)
                 ClipboardAndSave.copyText(coord.copyValue)
                 ToastHUD.show(message: "坐标 \(coord.copyValue) 已复制")
             } else {
                 copyCoordinatesAtCursorAndFinish()
             }
-        case "o", "`", "~":
-            if !shift && !opt && !isRepeat {
-                magnifierVisibilityOverride = magnifierView.isHidden
-            }
-        case "[", "-":
-            if selection != nil { adjustAnnotationSize(by: shift ? -3.0 : -1.0) }
-        case "]", "=", "+":
-            if selection != nil { adjustAnnotationSize(by: shift ? 3.0 : 1.0) }
-        case "h", "/", "?":
+        case .toggleMagnifier:
+            if !shift && !opt && !isRepeat { magnifierVisibilityOverride = magnifierView.isHidden }
+        case .toggleTips:
             showShortcutTips.toggle()
             onPrefsChanged?(colorCopyFormat, showShortcutTips)
-        default:
-            return false
         }
         return true
     }
@@ -252,20 +256,13 @@ extension OverlayView {
         }
     }
 
-    /// 物理 ANSI 键码映射到标准小写字母（免疫中文输入法与 CapsLock）
+    /// 物理 ANSI 键码映射到标准小写字母或符号（免疫中文输入法与 CapsLock）
     private func ansiLetter(for keyCode: UInt16) -> String? {
+        if let token = CanvasAction.singleKeyToken(for: keyCode) { return token }
         switch Int(keyCode) {
-        case kVK_ANSI_A: return "a"; case kVK_ANSI_B: return "b"; case kVK_ANSI_C: return "c"
-        case kVK_ANSI_D: return "d"; case kVK_ANSI_E: return "e"; case kVK_ANSI_F: return "f"
-        case kVK_ANSI_G: return "g"; case kVK_ANSI_H: return "h"; case kVK_ANSI_I: return "i"
-        case kVK_ANSI_K: return "k"; case kVK_ANSI_L: return "l"; case kVK_ANSI_M: return "m"
-        case kVK_ANSI_N: return "n"; case kVK_ANSI_O: return "o"; case kVK_ANSI_P: return "p"
-        case kVK_ANSI_Q: return "q"; case kVK_ANSI_R: return "r"; case kVK_ANSI_S: return "s"
-        case kVK_ANSI_T: return "t"; case kVK_ANSI_V: return "v"; case kVK_ANSI_W: return "w"
-        case kVK_ANSI_X: return "x"; case kVK_ANSI_Y: return "y"; case kVK_ANSI_Z: return "z"
         case kVK_ANSI_LeftBracket: return "["; case kVK_ANSI_RightBracket: return "]"
-        case kVK_ANSI_Minus: return "-"; case kVK_ANSI_Equal: return "="
-        case kVK_ANSI_Grave: return "`"
+        case kVK_ANSI_Minus: return "-";       case kVK_ANSI_Equal: return "="
+        case kVK_ANSI_Grave: return "`";       case kVK_ANSI_Slash: return "/"
         default: return nil
         }
     }

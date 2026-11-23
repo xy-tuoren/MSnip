@@ -144,7 +144,6 @@ enum ScreenCapturer {
             cfg.width = Int((screen.frame.width * scale).rounded())
             cfg.height = Int((screen.frame.height * scale).rounded())
             cfg.pixelFormat = kCVPixelFormatType_32BGRA
-            cfg.colorSpaceName = CGColorSpace.sRGB
             cfg.showsCursor = false
             cfg.capturesAudio = false
             specs.append(CaptureSpec(index: idx, displayID: id, filter: filter, cfg: cfg))
@@ -214,7 +213,6 @@ enum ScreenCapturer {
             cfg.width = max(16, Int((scWin.frame.width * scale).rounded()))
             cfg.height = max(16, Int((scWin.frame.height * scale).rounded()))
             cfg.pixelFormat = kCVPixelFormatType_32BGRA
-            cfg.colorSpaceName = CGColorSpace.sRGB
             cfg.showsCursor = false
             cfg.capturesAudio = false
             cfg.shouldBeOpaque = false

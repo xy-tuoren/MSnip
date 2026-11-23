@@ -108,4 +108,95 @@ func testTranslationConfigAndModels() {
     check(loaded.targetLang == .en && loaded.profiles.count == cfg.profiles.count, "翻译配置文件读写往返应完整一致")
     let perms = (try? FileManager.default.attributesOfItem(atPath: tmpURL.path)[.posixPermissions] as? NSNumber)?.int16Value ?? 0
     check(perms == 0o600, "翻译密钥配置文件权限必须严格为 0600，实际: \(String(perms, radix: 8))")
+
+    // 5) 钥匙串加密隔离存储：开启后本地 JSON 自动脱敏清空 API Key，加载时透明回填，关闭时无损迁回
+    let vault = MemoryCredentialStore()
+    var secureCfg = TranslationSettingsConfig()
+    secureCfg.preferKeychainStorage = true
+    secureCfg.profiles[1].apiKey = "sk-secret-zhipu-999"
+    secureCfg.save(to: tmpURL, secretStore: vault)
+
+    let rawDiskText = (try? String(contentsOf: tmpURL, encoding: .utf8)) ?? ""
+    check(!rawDiskText.contains("sk-secret-zhipu-999"), "开启钥匙串存储后磁盘 JSON 中绝不应残留明文 API Key")
+
+    let hydrated = TranslationSettingsConfig.load(from: tmpURL, secretStore: vault)
+    check(hydrated.preferKeychainStorage && hydrated.profiles[1].apiKey == "sk-secret-zhipu-999", "加载配置时应从凭据仓透明回填 API Key")
+
+    var migratedBack = hydrated
+    migratedBack.preferKeychainStorage = false
+    migratedBack.save(to: tmpURL, secretStore: vault)
+    let acct = "translation.profile.\(migratedBack.profiles[1].id.uuidString)"
+    check(vault.readSecret(account: acct) == nil, "关闭钥匙串存储后应清理凭据仓中的旧密钥条目")
+    let reloadedPlain = TranslationSettingsConfig.load(from: tmpURL, secretStore: vault)
+    check(reloadedPlain.profiles[1].apiKey == "sk-secret-zhipu-999", "关闭钥匙串存储后应无损恢复为 0600 本地配置存储")
+
+    // 6) LaTeX 配置钥匙串脱敏及旧版缺省字段向后兼容
+    let latexURL = FileManager.default.temporaryDirectory.appendingPathComponent("msnip_latex_test_\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: latexURL) }
+    var latexCfg = LatexRecognitionConfig()
+    latexCfg.simpleTexToken = "uat-token-888"
+    latexCfg.save(to: latexURL, secretStore: vault, useKeychain: true)
+    let latexRaw = (try? String(contentsOf: latexURL, encoding: .utf8)) ?? ""
+    let latexLoaded = LatexRecognitionConfig.load(from: latexURL, secretStore: vault)
+    check(!latexRaw.contains("uat-token-888") && latexLoaded.simpleTexToken == "uat-token-888", "LaTeX Token 开启钥匙串后应落盘脱敏并加载回填")
+
+    // 7) Google 翻译级百种语种目录、搜索匹配与自由自定义目标语言测试
+    check(TranslationLanguageCatalog.allEntries.count >= 110, "内置世界语种目录应不少于 110 种，实际: \(TranslationLanguageCatalog.allEntries.count)")
+    let esHits = TranslationLanguageCatalog.allEntries.filter { $0.matches("西班牙") }
+    check(esHits.contains(where: { $0.code == "es" }), "中文关键字搜索应命中 es 西班牙语")
+    check(TranslationTargetLang.language("es").baiduCode == "spa" && TranslationTargetLang.language("vi").baiduCode == "vie", "百度不规则语种代码映射应准确")
+
+    let customStyle = TranslationTargetLang.custom("地道粤语口语")
+    check(customStyle.isCustom && customStyle.promptLanguageName == "地道粤语口语" && customStyle.baiduCode == "yue", "自定义目标应保留原始大模型提示词并智能推断云 API 回退语种码")
+    let customCfg = TranslationSettingsConfig(targetLang: customStyle)
+    customCfg.save(to: tmpURL)
+    let reloadedCustom = TranslationSettingsConfig.load(from: tmpURL)
+    check(reloadedCustom.targetLang == customStyle && reloadedCustom.targetLang.displayName == "自定义：地道粤语口语", "自定义目标语言 JSON 读写往返应完全一致")
+
+    // 8) 兼容协议 URL 自动补全、Anthropic /v1 去重、局域网免 Key、思考标签剥离与 /models 解析
+    check(
+        LLMProtocolHelpers.resolveOpenAIModelsURL("https://api.deepseek.com/v1/chat/completions")?.absoluteString
+            == "https://api.deepseek.com/v1/models",
+        "完整 chat/completions 地址应自动推导对应的 /v1/models 地址"
+    )
+    check(
+        LLMProtocolHelpers.resolveAnthropicMessagesURL("https://proxy.example.com/v1")?.absoluteString
+            == "https://proxy.example.com/v1/messages",
+        "Anthropic 兼容地址以 /v1 结尾时绝不应重复拼接 /v1/v1/messages"
+    )
+    check(
+        LLMProtocolHelpers.isLocalOrPrivateEndpoint("http://192.168.1.88:8000/v1")
+            && LLMProtocolHelpers.isLocalOrPrivateEndpoint("http://10.0.0.12:11434/v1")
+            && LLMProtocolHelpers.isLocalOrPrivateEndpoint("http://macstudio.local:8080/v1")
+            && !LLMProtocolHelpers.isLocalOrPrivateEndpoint("https://api.deepseek.com/v1"),
+        "局域网私有 IP 与 .local 地址应判定为本地免 Key 兼容端点，公网域名仍需 API Key"
+    )
+    check(
+        LLMProtocolHelpers.stripThinkingTags("<think>step 1\nstep 2</think>\n你好世界") == "你好世界",
+        "应自动剥离思考类模型内联输出的 <think>...</think> 标签"
+    )
+    check(
+        LLMProtocolHelpers.stripThinkingTags("<think>正在推理尚未闭合") == "",
+        "流式传输未闭合 <think> 前缀时应暂不暴露推理草稿"
+    )
+    let openAIModelsJSON = Data("{\"data\":[{\"id\":\"deepseek-reasoner\"},{\"id\":\"deepseek-chat\"}]}".utf8)
+    let parsedOpenAI = LLMProtocolHelpers.parseModelIDs(from: openAIModelsJSON, kind: .openAICompatible)
+    check(parsedOpenAI == ["deepseek-chat", "deepseek-reasoner"], "OpenAI /v1/models JSON 应解析并排序模型列表")
+    let geminiModelsJSON = Data("{\"models\":[{\"name\":\"models/gemini-2.0-flash\"}]}".utf8)
+    let parsedGemini = LLMProtocolHelpers.parseModelIDs(from: geminiModelsJSON, kind: .geminiNative)
+    check(parsedGemini == ["gemini-2.0-flash"], "Gemini 模型列表应自动去除 models/ 前缀")
+    check(
+        LLMQuickPreset.deepseek.providerKind == .openAICompatible
+            && LLMQuickPreset.claude.providerKind == .anthropicCompatible
+            && LLMQuickPreset.gemini.providerKind == .geminiNative
+            && LLMQuickPreset.allCases.count >= 20,
+        "统一 LLM 官网预设应覆盖 20+ 主流国内外厂商并准确映射到 OpenAI / Anthropic / Gemini 协议"
+    )
+    check(
+        LLMQuickPreset.match(endpoint: "https://api.hunyuan.cloud.tencent.com/v1") == .hunyuan
+            && LLMQuickPreset.match(endpoint: "https://api.groq.com/openai/v1") == .groq
+            && LLMQuickPreset.match(endpoint: "https://qianfan.baidubce.com/v2") == .qianfan
+            && LLMQuickPreset.match(endpoint: "http://127.0.0.1:1234/v1") == .lmStudioLocal,
+        "根据官网端点地址应准确反查对应的官方预设与密钥控制台链接"
+    )
 }

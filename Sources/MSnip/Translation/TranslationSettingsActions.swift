@@ -5,18 +5,27 @@ import MSnipCore
 /// 翻译页两步极简状态绑定：默认仅露核心密钥框、一键获取 Key、一键粘贴、测通自动启用
 extension TranslationSettingsWindow {
     func refreshTopBarPopups() {
-        if let idx = TranslationTargetLang.allCases.firstIndex(of: draft.targetLang) {
-            targetLangPill.selectedIndex = idx
-        }
+        targetLangPill.customDisplayTitle = draft.targetLang.displayName
         autoCopySwitch.isOn = draft.autoCopyTranslation
+        modeControls.transTabDualSwitch?.isOn = appConfigProvider?().translateAutoOpenDualPane ?? false
         removeBtn.isEnabled = draft.profiles.count > 1
+    }
+
+    func presentTargetLanguagePicker(from anchor: NSView) {
+        LanguagePickerPopover.shared.show(anchoredTo: anchor, current: draft.targetLang, dark: true) { [weak self] picked in
+            guard let self else { return }
+            self.commitCurrentFormEdits()
+            self.draft.targetLang = picked
+            self.targetLangPill.customDisplayTitle = picked.displayName
+            self.persistDraft()
+        }
     }
 
     func loadSelectedProfileIntoForm() {
         guard draft.profiles.indices.contains(selectedIndex) else { return }
         let p = draft.profiles[selectedIndex]
-        detailHeaderTitle.stringValue = p.name
-        detailHeaderSubtitle.stringValue = makeSubtitle(for: p)
+        detailHeaderTitle.setTextWithTooltip(p.name)
+        detailHeaderSubtitle.setTextWithTooltip(makeSubtitle(for: p))
         nameField.stringValue = p.name
 
         let isMain = (p.id == draft.activeProfileID)
@@ -30,13 +39,18 @@ extension TranslationSettingsWindow {
         if let kIdx = TranslationProviderKind.allCases.firstIndex(of: p.kind) {
             kindPill.selectedIndex = kIdx
         }
-        llmPresetPill.selectedIndex = 0
+        llmProtocolSegment.selectedIndex = (p.kind == .anthropicCompatible) ? 1 : ((p.kind == .geminiNative) ? 2 : 0)
+        if let matched = LLMQuickPreset.match(endpoint: p.endpoint) {
+            llmPresetPill.customDisplayTitle = matched.shortName
+        } else {
+            llmPresetPill.customDisplayTitle = "选择主流大模型官网预设…"
+        }
         appIdField.stringValue = p.appIdOrSecretId
         endpointField.stringValue = p.endpoint
         apiKeySecureField.stringValue = p.apiKey
         apiKeyPlainField.stringValue = p.apiKey
         modelField.stringValue = p.model
-        testStatusLabel.stringValue = ""
+        testStatusLabel.setTextWithTooltip("")
         updateFieldVisibility(for: p)
     }
 
@@ -70,8 +84,7 @@ extension TranslationSettingsWindow {
     func onPasteAPIKeyClicked() {
         guard let raw = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else {
-            testStatusLabel.textColor = GeekTheme.amber
-            testStatusLabel.stringValue = "剪贴板中暂无文本"
+            testStatusLabel.setTextWithTooltip("剪贴板中暂无文本", color: GeekTheme.amber)
             return
         }
         apiKeySecureField.stringValue = raw
@@ -80,8 +93,7 @@ extension TranslationSettingsWindow {
         persistDraft()
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
-        testStatusLabel.textColor = GeekTheme.emerald
-        testStatusLabel.stringValue = "✓ 已粘贴密钥 · 点左侧「\(testBtn.title)」验证"
+        testStatusLabel.setTextWithTooltip("✓ 已粘贴密钥 · 点左侧「\(testBtn.title)」验证", color: GeekTheme.emerald)
     }
 
     func onOpenConsoleURLClicked() {
@@ -94,40 +106,55 @@ extension TranslationSettingsWindow {
     func updateFieldVisibility(for p: TranslationProviderProfile) {
         let kind = p.kind
         let isNative = (kind == .appleNative)
-        let isOllama = (kind == .openAICompatible && p.isLocalNoKeyEndpoint)
         let isCustom = (kind == .customWebhook)
+        let isLLMKind = (kind == .openAICompatible || kind == .anthropicCompatible || kind == .geminiNative)
 
         nativeCardBox.isHidden = !isNative
-        guideCard.isHidden = isNative
+        guideCard.isHidden = isNative || isLLMKind
 
-        if !isNative {
-            guideLabel.stringValue = p.quickGuideText
+        let fullW = formScrollView.bounds.width - 114
+        if !guideCard.isHidden {
+            guideLabel.setTextWithTooltip(p.quickGuideText)
             let hasLink = (p.consoleURL != nil)
             getKeyBtn.isHidden = !hasLink
-            guideLabel.frame.size.width = hasLink ? (guideCard.bounds.width - 112) : (guideCard.bounds.width - 24)
+            guideLabel.frame.size.width = hasLink ? (guideCard.bounds.width - 118) : (guideCard.bounds.width - 28)
         }
+        let hasLLMLink = isLLMKind && (p.consoleURL != nil)
+        presetGetKeyBtn.isHidden = !hasLLMLink
+        llmPresetPill.frame.size.width = hasLLMLink ? (fullW - 94) : fullW
 
-        // 默认极简视图仅露核心 1~2 项，其余收进可展开的「更多设置」
+        // 大模型统一表单：请求协议 + 快捷模版 + 接口地址 + API 密钥 + 模型名称(+拉取) 一屏直出
         let primaryNeedsAppId = (kind == .tencent || kind == .baidu || kind == .youdao)
-        let primaryNeedsKey = !isNative && !isOllama && !(kind == .deepl && p.isLocalNoKeyEndpoint)
-        let primaryNeedsModel = isOllama
-        let primaryNeedsEndpoint = isCustom || (kind == .deepl && p.isLocalNoKeyEndpoint)
+        let primaryNeedsKey = !isNative && !(kind == .deepl && p.isLocalNoKeyEndpoint)
+        let primaryNeedsModel = isLLMKind
+        let primaryNeedsEndpoint = isLLMKind || isCustom || (kind == .deepl && p.isLocalNoKeyEndpoint)
 
-        let supportsModel = (kind == .openAICompatible || kind == .anthropicCompatible || kind == .geminiNative || kind == .tencent)
-        let supportsExtra = (kind == .openAICompatible || kind == .anthropicCompatible || kind == .geminiNative || kind == .customWebhook)
+        let supportsModel = isLLMKind || (kind == .tencent)
+        let supportsExtra = isLLMKind || isCustom
 
+        llmProtocolRow.isHidden = !isLLMKind
+        presetRowView.isHidden = !isLLMKind
         appIdRow.isHidden = !primaryNeedsAppId
         apiKeyRow.isHidden = !primaryNeedsKey
         apiKeySecureBox.isHidden = isAPIKeyRevealed
         apiKeyPlainBox.isHidden = !isAPIKeyRevealed
+        fetchModelsBtn.isHidden = !isLLMKind
+        let nextModelW = isLLMKind ? (fullW - 74) : fullW
+        modelInputBox.frame.size.width = nextModelW
+        modelField.frame.size.width = max(40, nextModelW - 20)
+
+        let keyPlaceholder = (isLLMKind && p.isLocalNoKeyEndpoint) ? "可选（本机/局域网免鉴权可留空）" : "粘贴 API Key 即可使用"
+        apiKeySecureField.setGeekPlaceholder(keyPlaceholder)
+        apiKeyPlainField.setGeekPlaceholder(keyPlaceholder)
 
         advancedToggleBtn.isHidden = isNative
         advancedToggleBtn.symbolName = isAdvancedExpanded ? "chevron.down" : "chevron.right"
-        advancedToggleBtn.title = isAdvancedExpanded ? "收起更多设置" : "更多设置（自定义模型 / 地址 / 名称 / 协议）"
+        advancedToggleBtn.title = isAdvancedExpanded
+            ? "收起高级设置"
+            : (isLLMKind ? "高级设置（显示名称 / 提示词 / 请求头）" : "更多设置（显示名称 / 类型 / 地址 / 参数）")
 
         nameRow.isHidden = isNative || !isAdvancedExpanded
-        kindRow.isHidden = isNative || !isAdvancedExpanded
-        presetRowView.isHidden = isNative || !isAdvancedExpanded || (kind != .openAICompatible)
+        kindRow.isHidden = isNative || isLLMKind || !isAdvancedExpanded
         endpointRow.isHidden = isNative || (!primaryNeedsEndpoint && !isAdvancedExpanded)
         modelRow.isHidden = isNative || !supportsModel || (!primaryNeedsModel && !isAdvancedExpanded)
         extra1Row.isHidden = isNative || !supportsExtra || !isAdvancedExpanded
@@ -135,13 +162,14 @@ extension TranslationSettingsWindow {
 
         configureFieldLabels(for: p)
 
-        // 按「指引条 → 核心必填项 → 展开按钮 → 更多设置」零空隙竖向排布
+        // 按「指引条/LLM协议模版 → 核心必填项 → 展开按钮 → 高级设置」舒适排布
         var cursorY: CGFloat = 14
         if !guideCard.isHidden {
             guideCard.frame.origin.y = cursorY
-            cursorY += 54
+            cursorY += 52
         }
         var primaryRows: [GeekFlippedView] = []
+        if isLLMKind { primaryRows.append(contentsOf: [llmProtocolRow, presetRowView]) }
         if primaryNeedsAppId { primaryRows.append(appIdRow) }
         if primaryNeedsEndpoint { primaryRows.append(endpointRow) }
         if primaryNeedsKey { primaryRows.append(apiKeyRow) }
@@ -156,13 +184,13 @@ extension TranslationSettingsWindow {
             cursorY += 36
         }
 
-        var advancedRows: [GeekFlippedView] = [nameRow, kindRow, presetRowView]
+        var advancedRows: [GeekFlippedView] = [nameRow, kindRow]
         if !primaryNeedsEndpoint { advancedRows.append(endpointRow) }
         if !primaryNeedsModel { advancedRows.append(modelRow) }
         advancedRows.append(contentsOf: [extra1Row, extra2Row])
         for row in advancedRows where !row.isHidden {
             row.frame.origin.y = cursorY
-            cursorY += row.frame.height + 2
+            cursorY += row.frame.height + 4
         }
 
         let minH = formScrollView.bounds.height
@@ -219,36 +247,8 @@ extension TranslationSettingsWindow {
             p.customHeadersJSON = extraField2.stringValue
         }
         draft.profiles[selectedIndex] = p
-        detailHeaderTitle.stringValue = p.name
-        detailHeaderSubtitle.stringValue = makeSubtitle(for: p)
-    }
-
-    func onSelectKindIndex(_ kIdx: Int) {
-        guard draft.profiles.indices.contains(selectedIndex), TranslationProviderKind.allCases.indices.contains(kIdx) else { return }
-        commitCurrentFormEdits()
-        let newKind = TranslationProviderKind.allCases[kIdx]
-        let tpl = TranslationProviderProfile.makePreset(newKind)
-        var p = draft.profiles[selectedIndex]
-        p.kind = newKind
-        if p.endpoint.isEmpty { p.endpoint = tpl.endpoint }
-        if p.model.isEmpty { p.model = tpl.model }
-        if p.customBodyTemplate.isEmpty { p.customBodyTemplate = tpl.customBodyTemplate }
-        if p.customResponsePath.isEmpty { p.customResponsePath = tpl.customResponsePath }
-        draft.profiles[selectedIndex] = p
-        loadSelectedProfileIntoForm()
-    }
-
-    func onSelectLLMPresetIndex(_ rawIdx: Int) {
-        let idx = rawIdx - 1
-        guard LLMQuickPreset.allCases.indices.contains(idx), draft.profiles.indices.contains(selectedIndex) else { return }
-        commitCurrentFormEdits()
-        let preset = LLMQuickPreset.allCases[idx]
-        draft.profiles[selectedIndex].name = preset.shortName
-        draft.profiles[selectedIndex].endpoint = preset.baseURL
-        draft.profiles[selectedIndex].model = preset.defaultModel
-        loadSelectedProfileIntoForm()
-        tableView.reloadData()
-        tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
+        detailHeaderTitle.setTextWithTooltip(p.name)
+        detailHeaderSubtitle.setTextWithTooltip(makeSubtitle(for: p))
     }
 
     func onSetAsPrimaryClicked() {
@@ -260,16 +260,14 @@ extension TranslationSettingsWindow {
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
         loadSelectedProfileIntoForm()
-        testStatusLabel.textColor = GeekTheme.emerald
-        testStatusLabel.stringValue = "✓ 已设为当前翻译引擎"
+        testStatusLabel.setTextWithTooltip("✓ 已设为当前翻译引擎", color: GeekTheme.emerald)
     }
 
     func onTestClicked() {
         commitCurrentFormEdits(); persistDraft()
         guard draft.profiles.indices.contains(selectedIndex) else { return }
         let prof = draft.profiles[selectedIndex]
-        testStatusLabel.textColor = GeekTheme.inkSecondary
-        testStatusLabel.stringValue = "正在探测连通性…"
+        testStatusLabel.setTextWithTooltip("正在探测连通性…", color: GeekTheme.inkSecondary)
         Task { @MainActor [weak self] in
             guard let self else { return }
             let res = await TranslationService.shared.testConnectivity(profile: prof, hostWindow: self.window)
@@ -277,11 +275,9 @@ extension TranslationSettingsWindow {
                 self.draft.activeProfileID = prof.id
                 self.persistDraft()
                 self.loadSelectedProfileIntoForm()
-                self.testStatusLabel.textColor = GeekTheme.emerald
-                self.testStatusLabel.stringValue = "\(res.message) · 已启用"
+                self.testStatusLabel.setTextWithTooltip("\(res.message) · 已启用", color: GeekTheme.emerald)
             } else {
-                self.testStatusLabel.textColor = res.ok ? GeekTheme.emerald : GeekTheme.amber
-                self.testStatusLabel.stringValue = res.message
+                self.testStatusLabel.setTextWithTooltip(res.message, color: res.ok ? GeekTheme.emerald : GeekTheme.amber)
             }
             self.tableView.reloadData()
             self.tableView.selectRowIndexes(IndexSet(integer: self.selectedIndex), byExtendingSelection: false)

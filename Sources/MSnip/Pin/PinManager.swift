@@ -14,12 +14,17 @@ final class PinManager {
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
 
     private var windows: [PinWindow] = []
+    private(set) var arePinsHidden = false
 
     var count: Int { windows.count }
     var clickThroughCount: Int { windows.filter(\.isClickThrough).count }
 
     /// 从选区渲染出的高清 `CGImage` 创建贴图并原位钉在屏幕上
     func pin(cgImage: CGImage, scaleFactor: CGFloat, topLeftOnScreen: CGPoint?, screen: NSScreen) {
+        if arePinsHidden {
+            arePinsHidden = false
+            windows.forEach { $0.orderFrontRegardless() }
+        }
         if windows.count >= Self.maxPins, let oldest = windows.first {
             oldest.closePin()
         }
@@ -93,6 +98,7 @@ final class PinManager {
             scale = max(1.0, screen.backingScaleFactor)
         } else {
             NSSound.beep()
+            ToastHUD.show(message: "剪贴板暂无图片或色值 · 可先复制图片再贴图")
             return false
         }
 
@@ -108,7 +114,26 @@ final class PinManager {
         return true
     }
 
+    /// 一键暂藏或恢复显示桌面上的全部贴图窗口
+    func toggleAllVisibility() {
+        guard !windows.isEmpty else {
+            ToastHUD.show(message: "当前桌面暂无贴图")
+            return
+        }
+        if !arePinsHidden && windows.contains(where: \.isVisible) {
+            arePinsHidden = true
+            windows.forEach { $0.orderOut(nil) }
+            ToastHUD.show(message: "已暂藏 \(windows.count) 张桌面贴图 · 再按快捷键恢复")
+        } else {
+            arePinsHidden = false
+            windows.forEach { $0.orderFrontRegardless() }
+            ToastHUD.show(message: "已恢复显示 \(windows.count) 张桌面贴图")
+        }
+        onCountChanged?(windows.count)
+    }
+
     func closeAll() {
+        arePinsHidden = false
         let current = windows
         windows.removeAll()
         for w in current {

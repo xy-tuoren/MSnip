@@ -3,7 +3,7 @@ import Carbon
 import Foundation
 
 /// 跨模块可序列化的全局快捷键组合（封装虚拟键码与 Carbon 修饰键掩码）
-public struct KeyCombo: Codable, Equatable, Sendable {
+public struct KeyCombo: Codable, Equatable, Hashable, Sendable {
     public var keyCode: UInt32
     public var carbonModifiers: UInt32
 
@@ -51,6 +51,8 @@ public struct KeyCombo: Codable, Equatable, Sendable {
         if let f = Self.functionKeyMap[Int(keyCode)] {
             return String(UnicodeScalar(f.scalar)!)
         }
+        if Int(keyCode) == kVK_Space { return " " }
+        if Int(keyCode) == kVK_Tab   { return "\t" }
         return Self.keyDisplayTable[Int(keyCode)]?.lowercased() ?? ""
     }
 
@@ -64,10 +66,26 @@ public struct KeyCombo: Codable, Equatable, Sendable {
         return mask
     }
 
+    /// 判断虚拟键码是否为可展示的常规/功能/方向键（供系统热键扫描过滤未知媒体键）
+    public static func isDisplayableKeyCode(_ code: Int) -> Bool {
+        functionKeyMap[code] != nil || keyDisplayTable[code] != nil || navDisplayTable[code] != nil
+    }
+
+    /// 判断是否为功能键或方向键（macOS `CopySymbolicHotKeys` 对这两类键会附带 Fn 位掩码）
+    public static func isFunctionOrNavKey(_ code: Int) -> Bool {
+        functionKeyMap[code] != nil || navDisplayTable[code] != nil
+    }
+
     private static func keyLabel(for code: Int) -> String {
         if let f = functionKeyMap[code] { return f.label }
+        if let n = navDisplayTable[code] { return n }
         return keyDisplayTable[code] ?? "Key\(code)"
     }
+
+    private static let navDisplayTable: [Int: String] = [
+        kVK_UpArrow: "↑", kVK_DownArrow: "↓", kVK_LeftArrow: "←", kVK_RightArrow: "→",
+        kVK_Escape: "⎋"
+    ]
 
     private static let functionKeyMap: [Int: (label: String, scalar: Int)] = [
         kVK_F1: ("F1", NSF1FunctionKey), kVK_F2: ("F2", NSF2FunctionKey),
@@ -98,6 +116,6 @@ public struct KeyCombo: Codable, Equatable, Sendable {
         kVK_ANSI_Semicolon: ";", kVK_ANSI_Quote: "'",
         kVK_ANSI_Comma: ",", kVK_ANSI_Period: ".",
         kVK_ANSI_Slash: "/", kVK_ANSI_Backslash: "\\",
-        kVK_ANSI_Grave: "`", kVK_Space: "Space"
+        kVK_ANSI_Grave: "`", kVK_Space: "␣", kVK_Tab: "⇥"
     ]
 }

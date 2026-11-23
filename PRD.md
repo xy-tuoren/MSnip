@@ -1,19 +1,19 @@
-# MSnip（麦截）产品需求与技术架构文档 (MVP v0.1)
+# MSnip（麦截）产品需求与技术架构文档
 
 ## 1. 产品定位
 
-**MSnip（麦截）** 是一款纯原生 **Swift + AppKit + CoreGraphics** 构建的超轻量 macOS 截图标注与贴图工具。
-受 Windows 端 `AirSnip` 极简设计启发，MSnip 坚持**零第三方依赖、不驻留后台轮询、几 MB 单包体积、一套通用二进制兼容全系新老 Mac（macOS 11.0+，Intel & Apple Silicon）**。
+**MSnip（麦截）** 是一款纯原生 **Swift + AppKit + CoreGraphics** 构建的超轻量 macOS 全能截图、标注、长截图、录屏、OCR/公式识别与翻译贴图工具。
+受 Windows 端 `AirSnip` 极简设计启发，MSnip 坚持**零第三方依赖、不驻留后台轮询、几 MB 单包体积、一套通用二进制兼容主流新老 Mac（macOS 12.0+，Intel & Apple Silicon）**。
 
 ## 2. 性能与质量红线
 
 | 指标 | 目标红线 | 实现手段 |
 | :--- | :--- | :--- |
-| **安装包体积** | `.app` ≤ 4 MB（双架构 Universal） | 零外部库，纯系统 AppKit / CoreGraphics / SF Symbols |
+| **安装包体积** | `.app` ≤ 4 MB（双架构 Universal） | 零外部库，纯系统 AppKit / CoreGraphics / Accelerate / SF Symbols |
 | **待机 CPU** | **0.0 %** | 纯 RunLoop 事件驱动 + Carbon `RegisterEventHotKey`，无后台轮询 |
-| **常驻内存** | 极低，不驻留全屏图像 | 截图覆盖层关闭立即销毁窗口并释放全部 `CGImage` 缓冲 |
-| **系统兼容性** | **macOS 11.0+**，`arm64` + `x86_64` | macOS 14+ 走 `ScreenCaptureKit`，macOS 11–13 自动回退 `CGWindowListCreateImage` |
-| **代码模块化** | **单文件源码 ≤ 300 行** | 核心算法模块 `MSnipCore` 与平台壳模块 `MSnip` 分离 |
+| **常驻内存** | 极低，不驻留全屏图像或帧数组 | 覆盖层关闭即释缓冲，GIF 录制采用 LZ4 磁盘流式暂存池 |
+| **系统兼容性** | **macOS 12.0+**，`arm64` + `x86_64` | macOS 14+ 走 `ScreenCaptureKit`，macOS 12–13 自动回退 CoreGraphics 动态符号 |
+| **代码模块化** | **单文件源码 ≤ 300 行** | 核心算法模块 `MSnipCore` 与平台壳模块 `MSnip` 分离，`bundle.sh` 自动守门 |
 
 ## 3. MVP 核心功能清单
 
@@ -52,5 +52,13 @@
 - **PIN-3**：左键拖拽移动、滚轮平滑缩放（`25%–400%`）、`⌘`+滚轮调节透明度（`20%–100%`）、双击或 `Esc` 关闭、右键菜单（复制 / 另存为 / 重置尺寸 / 透明度 / 关闭全部）。
 
 ### 3.5 导出与剪贴板 (OUT)
-- **OUT-1**：选区内双击、`Enter` 或 `⌘C` 立即将 Retina 高清合成图写入系统剪贴板并关闭覆盖层。
-- **OUT-2**：`⌘S` 弹出原生保存面板导出高清 PNG（默认文件名 `MSnip-YYYYMMDD-HHMMSS.png`，记忆上次保存目录）。
+- **OUT-1**：选区内双击、`Enter` 或 `⌘C` 通过 `ClipboardImagePromise` 延迟兑现机制瞬时写入系统剪贴板并关闭覆盖层。
+- **OUT-2**：`⌘⇧S` 免弹窗一键快存至默认目录，`⌘S` 弹出原生保存面板导出高清 PNG。
+
+## 4. v0.2 进阶全能特性演进
+
+- **EDT+（11 种专业工具）**：在基础 7 种工具上新增**自适应明暗底荧光笔 (`6`)**、**自增步骤序号 `①②③` (`7`)**、**`vImage` SIMD 高斯毛玻璃 (`9`)**、**圆角胶囊底色字 (`K`/`⌘B`)** 与**笔迹分段智能橡皮擦 (`E`)**，并支持 5 套美观渐变背景衬底 (`P`) 与圆角裁切 (`B`)。
+- **LONG（60Hz 自愈滚动长截图 `L`）**：基于 `SCStream` 无损采集与 `ScrollStitcher` 行摘要匹配，自动屏蔽侧边栏与固定顶底栏，支持跨整屏快滚失步自动重锚续接。
+- **REC（选区 GIF / MP4 录屏 `V`）**：镂空鼠标穿透取景框 + 3-2-1 倒计时 + 点击扩散波纹与脱敏快捷键胶囊 HUD，原生 `ImageIO` / `AVAssetWriter` 编码。
+- **OCR & LATEX（离线识字 `⌘3`/`T` 与公式识别）**：小图超分锐化 + `Vision Revision3` 并发 `VisionKit` 实况划词；支持多模态视觉大模型、SimpleTex、Mathpix 与离线兜底的 LaTeX 数学公式识别及 KaTeX 预览。
+- **TRANS（原位覆盖翻译 `Y` & 双栏流式对照 `⌥Y`）**：内置 macOS 15+ 免费离线神经网络翻译，兼容 OpenAI SSE 流式、Claude、Gemini 及主流云翻译 API，支持 `0600` 本地隔离或系统钥匙串（Keychain）加密存储密钥。

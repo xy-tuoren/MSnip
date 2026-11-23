@@ -5,8 +5,8 @@ import ImageIO
 import VisionKit
 
 /// 原生实况文本（Live Text）图像容器：
-/// 在 macOS 13+ 自动挂载系统 `ImageAnalysisOverlayView`，支持原图 `I` 光标按字/按词划选复制、链接点击与字块高亮；
-/// 在 macOS 12 自动平滑回退为纯高清图像展示。
+/// - 在 macOS 13+ 自动挂载系统 `ImageAnalysisOverlayView`，直接支持原图 `I` 光标划词复制与链接点击；
+/// - 强制开启 `isSupplementaryInterfaceHidden = true` 隐藏右下角系统自带的「翻译/实况文本」冗余悬浮角标。
 @MainActor
 final class LiveTextImageView: NSView {
     let imageView = NSImageView()
@@ -60,6 +60,7 @@ final class LiveTextImageView: NSView {
             ov.autoresizingMask = [.width, .height]
             ov.trackingImageView = imageView
             ov.preferredInteractionTypes = [.textSelection, .dataDetectors]
+            ov.isSupplementaryInterfaceHidden = true
             addSubview(ov)
             overlayRef = ov
         }
@@ -78,6 +79,7 @@ final class LiveTextImageView: NSView {
         imageView.image = NSImage(cgImage: cgImage, size: logicalSize)
         if #available(macOS 13.0, *), let ov = overlayRef as? ImageAnalysisOverlayView {
             ov.analysis = nil
+            ov.isSupplementaryInterfaceHidden = true
         }
     }
 
@@ -88,6 +90,7 @@ final class LiveTextImageView: NSView {
            let ov = overlayRef as? ImageAnalysisOverlayView,
            let analysis = analysisObj as? ImageAnalysis {
             ov.analysis = analysis
+            ov.isSupplementaryInterfaceHidden = true
             ov.selectableItemsHighlighted = highlightBlocks
         }
     }
@@ -106,6 +109,7 @@ final class LiveTextImageView: NSView {
                   !Task.isCancelled,
                   let self, let ov else { return }
             ov.analysis = analysis
+            ov.isSupplementaryInterfaceHidden = true
             ov.selectableItemsHighlighted = self.highlightBlocks
         }
     }
@@ -127,7 +131,6 @@ final class LiveTextImageView: NSView {
         }
     }
 
-    /// 取消后台实况分析并彻底释放已持有的高清图像与 VisionKit 分析缓存
     func clearAll() {
         analysisTask?.cancel()
         analysisTask = nil

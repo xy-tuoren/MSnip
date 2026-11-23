@@ -211,6 +211,18 @@ extension OverlayView {
         if notifySiblings { onRecordingModeChanged?(enabled) }
     }
 
+    func triggerQuickLaunchIfNeeded() {
+        switch quickLaunchMode {
+        case .standard, .quickRecord: break
+        case .quickOCR:
+            if ocrAutoOpenDualPane { exportAndFinish(mode: .extractText) } else { activateInPlaceOCR() }
+        case .quickTranslate:
+            if translateAutoOpenDualPane { exportAndFinish(mode: .translateWindow) } else { activateInPlaceTranslate() }
+        case .quickLongShot:  beginLongShot()
+        case .quickLatex:     exportAndFinish(mode: .recognizeLatex)
+        }
+    }
+
     func confirmBeginRegionRecording() {
         commitTextEditing()
         deactivateInPlaceOCR()

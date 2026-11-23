@@ -87,13 +87,33 @@ func testMilestone3To5Features() {
         let img = makeSolidFrame(width: 160, height: 120, r: Double(i) * 0.16, g: 0.5, b: 0.9)
         gifEnc.appendFrame(img, at: Double(i) * 0.12)
     }
+    check(FileManager.default.fileExists(atPath: gifEnc.spoolFileURL.path), "GIF 录制期应将帧数据流式写入磁盘暂存池而非堆积内存")
     let finishedGIF = runAsyncSync { await gifEnc.finish(finalTimestamp: 0.80) }
     check(finishedGIF == gifURL && FileManager.default.fileExists(atPath: gifURL.path), "GIF 编码器应生成有效 .gif 文件")
+    check(!FileManager.default.fileExists(atPath: gifEnc.spoolFileURL.path), "GIF 合成完成后磁盘暂存池文件必须立即自动清理")
     if let src = CGImageSourceCreateWithURL(gifURL as CFURL, nil) {
         check(CGImageSourceGetCount(src) == 6, "合成的动画 GIF 应包含完整 6 帧，实际: \(CGImageSourceGetCount(src))")
     } else {
         check(false, "ImageIO 应能读取生成的 GIF")
     }
+
+    // 验证超宽大图自动限幅 (<=880px) 与取消录制时磁盘暂存清理
+    let largeGifURL = clipDir.appendingPathComponent("large.gif")
+    let largeEnc = MediaClipEncoder(format: .gif, outputURL: largeGifURL)
+    largeEnc.appendFrame(makeSolidFrame(width: 1200, height: 600, r: 0.9, g: 0.3, b: 0.2), at: 0.0)
+    let finishedLargeGIF = runAsyncSync { await largeEnc.finish(finalTimestamp: 0.25) }
+    if let url = finishedLargeGIF, let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+       let firstCG = CGImageSourceCreateImageAtIndex(src, 0, nil) {
+        check(firstCG.width == 880 && firstCG.height == 440, "超大尺寸 GIF 帧应自动等比缩放到 880px 长边，实际: \(firstCG.width)×\(firstCG.height)")
+    } else {
+        check(false, "大图降采样 GIF 应成功导出")
+    }
+
+    let cancelGifURL = clipDir.appendingPathComponent("cancelled.gif")
+    let cancelEnc = MediaClipEncoder(format: .gif, outputURL: cancelGifURL)
+    cancelEnc.appendFrame(makeSolidFrame(width: 120, height: 90, r: 0.2, g: 0.8, b: 0.4), at: 0.0)
+    cancelEnc.cancel()
+    check(!FileManager.default.fileExists(atPath: cancelEnc.spoolFileURL.path) && !FileManager.default.fileExists(atPath: cancelGifURL.path), "取消录制后暂存文件与目标文件均应彻底移除")
 
     let mp4URL = clipDir.appendingPathComponent("sample.mp4")
     let mp4Enc = MediaClipEncoder(format: .mp4, outputURL: mp4URL)

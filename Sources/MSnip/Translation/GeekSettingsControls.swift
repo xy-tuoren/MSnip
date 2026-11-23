@@ -3,17 +3,20 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 极客单色分段切换控件（支持普通 13.5pt / 等宽 12.5pt，selectedIndex = -1 表示未选中任何预设）
+/// 极客单色分段切换控件（支持图文图标混排、等宽模式及半点光学居中）
 final class GeekSegmentControl: NSView {
     var items: [String] { didSet { needsDisplay = true } }
+    var symbols: [String]? { didSet { needsDisplay = true } }
     var selectedIndex: Int = 0 { didSet { needsDisplay = true } }
     var monoFont: Bool = false
     var onSelect: ((Int) -> Void)?
     private var hoveredIdx: Int? { didSet { if oldValue != hoveredIdx { needsDisplay = true } } }
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
 
-    init(items: [String], selectedIndex: Int = 0, mono: Bool = false) {
+    init(items: [String], symbols: [String]? = nil, selectedIndex: Int = 0, mono: Bool = false) {
         self.items = items
+        self.symbols = symbols
         self.selectedIndex = selectedIndex
         self.monoFont = mono
         super.init(frame: .zero)
@@ -67,30 +70,38 @@ final class GeekSegmentControl: NSView {
             }
             let font: NSFont = monoFont
                 ? .monospacedSystemFont(ofSize: 12.0, weight: active ? .semibold : .medium)
-                : .systemFont(ofSize: 13.5, weight: active ? .semibold : .medium)
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: active ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
-            ]
-            let ns = label as NSString
-            let sz = ns.size(withAttributes: attrs)
-            ns.draw(at: CGPoint(x: round(sr.midX - sz.width * 0.5), y: round(sr.midY - sz.height * 0.5)), withAttributes: attrs)
+                : .systemFont(ofSize: 13.0, weight: active ? .semibold : .medium)
+            let fg = active ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
+            if let syms = symbols, syms.indices.contains(i),
+               let entry = GeekTheme.symbolEntry(syms[i], pointSize: 11.5, weight: active ? .semibold : .medium) {
+                let textW = GeekTheme.measureTextWidth(label, font: font)
+                let gap: CGFloat = 5.5
+                let totalW = entry.pointSize.width + gap + textW
+                let sx = GeekTheme.snap(sr.midX - totalW * 0.5)
+                let symTint = active ? GeekTheme.accent : GeekTheme.inkMuted
+                GeekTheme.drawSymbol(syms[i], pointSize: 11.5, weight: active ? .semibold : .medium, in: CGRect(x: sx, y: sr.minY, width: entry.pointSize.width, height: sr.height), alpha: 0.96, tint: symTint)
+                GeekTheme.drawText(label, in: CGRect(x: sx + entry.pointSize.width + gap, y: sr.minY, width: textW + 2, height: sr.height), font: font, color: fg)
+            } else {
+                GeekTheme.drawText(label, in: sr.insetBy(dx: 4, dy: 0), font: font, color: fg, align: .center)
+            }
         }
         ctx.restoreGState()
     }
 }
 
-/// 极客微按钮（13pt 清晰字号，图标与文字严格留足 6px 间距）
+/// 极客微按钮（13pt 清晰字号，图标真实墨迹宽度与文字整体光学居中）
 final class GeekButton: NSView {
-    enum Style { case ghost, subtle, accent, emeraldSoft }
+    enum Style { case ghost, subtle, accent, emeraldSoft, amberSoft, dangerSoft }
     var title: String { didSet { needsDisplay = true } }
     var symbolName: String? { didSet { needsDisplay = true } }
     var style: Style { didSet { needsDisplay = true } }
     var mono: Bool = false
+    var contentAlignment: NSTextAlignment = .center { didSet { needsDisplay = true } }
     var isEnabled: Bool = true { didSet { needsDisplay = true } }
     var onClick: (() -> Void)?
     private var hovered = false { didSet { if oldValue != hovered { needsDisplay = true } } }
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
 
     init(title: String, symbol: String? = nil, style: Style = .subtle, mono: Bool = false) {
         self.title = title; self.symbolName = symbol; self.style = style; self.mono = mono
@@ -116,11 +127,23 @@ final class GeekButton: NSView {
         let fg: NSColor
         switch style {
         case .emeraldSoft:
-            ctx.setFillColor(GeekTheme.emeraldSoft.cgColor)
+            ctx.setFillColor((hovered ? GeekTheme.emerald.withAlphaComponent(0.24) : GeekTheme.emeraldSoft).cgColor)
             ctx.addPath(p); ctx.fillPath()
-            ctx.setStrokeColor(GeekTheme.emerald.withAlphaComponent(0.35).cgColor)
+            ctx.setStrokeColor(GeekTheme.emerald.withAlphaComponent(0.38).cgColor)
             ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
             fg = GeekTheme.emerald
+        case .amberSoft:
+            ctx.setFillColor(GeekTheme.amber.withAlphaComponent(hovered ? 0.24 : 0.14).cgColor)
+            ctx.addPath(p); ctx.fillPath()
+            ctx.setStrokeColor(GeekTheme.amber.withAlphaComponent(0.45).cgColor)
+            ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
+            fg = GeekTheme.amber
+        case .dangerSoft:
+            ctx.setFillColor(GeekTheme.danger.withAlphaComponent(hovered ? 0.24 : 0.14).cgColor)
+            ctx.addPath(p); ctx.fillPath()
+            ctx.setStrokeColor(GeekTheme.danger.withAlphaComponent(0.50).cgColor)
+            ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
+            fg = GeekTheme.danger
         case .accent:
             ctx.setFillColor((hovered ? GeekTheme.accent.withAlphaComponent(0.26) : GeekTheme.accentSoft).cgColor)
             ctx.addPath(p); ctx.fillPath()
@@ -143,35 +166,46 @@ final class GeekButton: NSView {
 
         let font: NSFont = mono
             ? .monospacedSystemFont(ofSize: 12.0, weight: .medium)
-            : .systemFont(ofSize: 13.0, weight: (style == .accent || style == .emeraldSoft) ? .semibold : .medium)
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: fg.withAlphaComponent(alpha)]
-        let tSz = title.isEmpty ? .zero : (title as NSString).size(withAttributes: attrs)
-        let iconW: CGFloat = symbolName != nil ? 15 : 0
-        let gap: CGFloat = (symbolName != nil && !title.isEmpty) ? 6 : 0
-        var sx = (bounds.width - tSz.width - iconW - gap) * 0.5
-        if let sym = symbolName {
-            ToolbarView.drawSymbol(sym, in: CGRect(x: round(sx), y: 0, width: iconW, height: bounds.height), alpha: alpha * 0.95, tint: fg)
+            : .systemFont(ofSize: 13.0, weight: (style == .subtle || style == .ghost) ? .medium : .semibold)
+        let symPt: CGFloat = title.isEmpty ? 12.5 : 11.5
+        let symEntry = symbolName.flatMap { GeekTheme.symbolEntry($0, pointSize: symPt, weight: .semibold) }
+        let iconW = symEntry?.pointSize.width ?? 0
+        let textW = GeekTheme.measureTextWidth(title, font: font)
+        let gap: CGFloat = (symEntry != nil && !title.isEmpty) ? 5.5 : 0
+        let totalW = iconW + gap + textW
+        var sx: CGFloat = (contentAlignment == .left) ? 8.0 : GeekTheme.snap((bounds.width - totalW) * 0.5)
+        if let sym = symbolName, symEntry != nil {
+            GeekTheme.drawSymbol(sym, pointSize: symPt, weight: .semibold, in: CGRect(x: sx, y: 0, width: iconW, height: bounds.height), alpha: alpha * 0.96, tint: fg)
             sx += iconW + gap
         }
         if !title.isEmpty {
-            (title as NSString).draw(at: CGPoint(x: round(sx), y: round((bounds.height - tSz.height) * 0.5)), withAttributes: attrs)
+            let maxTextW = max(16, bounds.width - sx - 6)
+            GeekTheme.drawText(title, in: CGRect(x: sx, y: 0, width: min(textW + 2, maxTextW), height: bounds.height), font: font, color: fg.withAlphaComponent(alpha))
         }
         ctx.restoreGState()
     }
 }
 
-/// 极客暗色下拉选择器（13pt 清晰字号 + 中性灰前缀图标，克制不花哨）
+/// 极客暗色下拉选择器（13pt 清晰字号 + 中性灰前缀图标，严格中轴对齐）
 final class GeekDropdownPill: NSView {
-    var items: [String] = [] { didSet { needsDisplay = true } }
-    var selectedIndex: Int = 0 { didSet { needsDisplay = true } }
+    var items: [String] = [] { didSet { syncTooltip(); needsDisplay = true } }
+    var selectedIndex: Int = 0 { didSet { syncTooltip(); needsDisplay = true } }
+    var customDisplayTitle: String? { didSet { syncTooltip(); needsDisplay = true } }
     var symbolName: String? { didSet { needsDisplay = true } }
     var onSelect: ((Int) -> Void)?
+    var onCustomClick: ((NSView) -> Void)?
     private var hovered = false { didSet { if oldValue != hovered { needsDisplay = true } } }
     override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
 
     init(symbol: String? = nil, items: [String] = [], selectedIndex: Int = 0) {
         self.symbolName = symbol; self.items = items; self.selectedIndex = selectedIndex
         super.init(frame: .zero)
+        syncTooltip()
+    }
+    private func syncTooltip() {
+        let txt = customDisplayTitle ?? (items.indices.contains(selectedIndex) ? items[selectedIndex] : nil)
+        toolTip = txt
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
@@ -184,6 +218,10 @@ final class GeekDropdownPill: NSView {
     override func mouseExited(with event: NSEvent) { hovered = false }
 
     override func mouseDown(with event: NSEvent) {
+        if let custom = onCustomClick {
+            custom(self)
+            return
+        }
         guard !items.isEmpty else { return }
         let menu = NSMenu()
         for (idx, title) in items.enumerated() {
@@ -212,30 +250,26 @@ final class GeekDropdownPill: NSView {
         ctx.setStrokeColor((hovered ? GeekTheme.borderStrong : GeekTheme.border).cgColor)
         ctx.setLineWidth(1.0); ctx.addPath(path); ctx.strokePath()
 
-        var leftX: CGFloat = 10
+        var leftX: CGFloat = 12
         if let sym = symbolName {
-            ToolbarView.drawSymbol(sym, in: CGRect(x: leftX, y: 0, width: 14, height: bounds.height), alpha: 0.85, tint: GeekTheme.inkSecondary)
-            leftX += 20
+            let w = max(14, GeekTheme.symbolEntry(sym, pointSize: 12.5, weight: .medium)?.pointSize.width ?? 14)
+            GeekTheme.drawSymbol(sym, pointSize: 12.5, weight: .medium, in: CGRect(x: leftX, y: 0, width: w, height: bounds.height), alpha: 0.88, tint: GeekTheme.inkSecondary)
+            leftX += w + 7
         }
-        let text = items.indices.contains(selectedIndex) ? items[selectedIndex] : "—"
-        let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13.0, weight: .medium),
-            .foregroundColor: GeekTheme.inkPrimary,
-            .paragraphStyle: para
-        ]
-        let sz = (text as NSString).size(withAttributes: attrs)
-        (text as NSString).draw(
-            in: CGRect(x: round(leftX), y: round((bounds.height - sz.height) * 0.5), width: max(20, bounds.width - leftX - 22), height: sz.height + 2),
-            withAttributes: attrs
+        let text = customDisplayTitle ?? (items.indices.contains(selectedIndex) ? items[selectedIndex] : "—")
+        GeekTheme.drawText(
+            text,
+            in: CGRect(x: leftX, y: 0, width: max(20, bounds.width - leftX - 26), height: bounds.height),
+            font: .systemFont(ofSize: 13.0, weight: .medium),
+            color: GeekTheme.inkPrimary
         )
         let chevronTint = hovered ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
         ctx.setStrokeColor(chevronTint.cgColor)
-        ctx.setLineWidth(1.3); ctx.setLineCap(.round); ctx.setLineJoin(.round)
-        let cx = bounds.width - 11.5, cy = bounds.midY + 0.5
-        ctx.move(to: CGPoint(x: cx - 3.0, y: cy - 1.4))
-        ctx.addLine(to: CGPoint(x: cx, y: cy + 1.8))
-        ctx.addLine(to: CGPoint(x: cx + 3.0, y: cy - 1.4))
+        ctx.setLineWidth(1.35); ctx.setLineCap(.round); ctx.setLineJoin(.round)
+        let cx = bounds.width - 13.5, cy = bounds.midY
+        ctx.move(to: CGPoint(x: cx - 3.2, y: cy - 1.6))
+        ctx.addLine(to: CGPoint(x: cx, y: cy + 1.6))
+        ctx.addLine(to: CGPoint(x: cx + 3.2, y: cy - 1.6))
         ctx.strokePath()
         ctx.restoreGState()
     }

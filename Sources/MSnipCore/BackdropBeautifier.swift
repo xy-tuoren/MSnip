@@ -74,7 +74,9 @@ public enum BackdropBeautifier {
         let canvasW = cardImage.width + padPx * 2
         let canvasH = cardImage.height + padPx * 2
 
-        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let cs: CGColorSpace = (cardImage.colorSpace?.model == .rgb && cardImage.colorSpace?.supportsOutput == true)
+            ? cardImage.colorSpace!
+            : (CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB())
         guard let ctx = CGContext(
             data: nil,
             width: canvasW,
@@ -147,7 +149,9 @@ public enum BackdropBeautifier {
         let canvasW = windowImage.width + padSidePx * 2
         let canvasH = windowImage.height + padTopPx + padBottomPx
 
-        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let cs: CGColorSpace = (windowImage.colorSpace?.model == .rgb && windowImage.colorSpace?.supportsOutput == true)
+            ? windowImage.colorSpace!
+            : (CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB())
         guard let ctx = CGContext(
             data: nil,
             width: canvasW,

@@ -163,9 +163,10 @@ enum LLMTranslator {
                       let delta = choices.first?["delta"] as? [String: Any],
                       let content = delta["content"] as? String, !content.isEmpty else { continue }
                 full += content
-                onChunk?(full)
+                let visible = LLMProtocolHelpers.stripThinkingTags(full)
+                if !visible.isEmpty { onChunk?(visible) }
             }
-            let cleaned = full.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = LLMProtocolHelpers.stripThinkingTags(full)
             if cleaned.isEmpty { throw LLMError.emptyResponse }
             return cleaned
         } else {
@@ -177,7 +178,9 @@ enum LLMTranslator {
                   let content = msg["content"] as? String else {
                 throw LLMError.emptyResponse
             }
-            return content.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = LLMProtocolHelpers.stripThinkingTags(content)
+            if cleaned.isEmpty { throw LLMError.emptyResponse }
+            return cleaned
         }
     }
 
@@ -186,15 +189,15 @@ enum LLMTranslator {
         user: String,
         profile: TranslationProviderProfile
     ) async throws -> String {
-        var ep = profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        if ep.isEmpty { ep = "https://api.anthropic.com/v1/messages" }
-        else if !ep.hasSuffix("/messages") { ep = ep.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/v1/messages" }
-        guard let url = URL(string: ep) else { throw LLMError.invalidEndpoint(ep) }
+        guard let url = LLMProtocolHelpers.resolveAnthropicMessagesURL(profile.endpoint) else {
+            throw LLMError.invalidEndpoint(profile.endpoint)
+        }
 
         var req = URLRequest(url: url, timeoutInterval: 35)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.setValue(profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "x-api-key")
+        let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !key.isEmpty { req.setValue(key, forHTTPHeaderField: "x-api-key") }
         req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
         applyCustomHeaders(profile.customHeadersJSON, to: &req)
 
@@ -215,7 +218,7 @@ enum LLMTranslator {
               let text = contentArr.first?["text"] as? String else {
             throw LLMError.emptyResponse
         }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return LLMProtocolHelpers.stripThinkingTags(text)
     }
 
     private static func callGemini(
@@ -252,7 +255,7 @@ enum LLMTranslator {
               let text = parts.first?["text"] as? String else {
             throw LLMError.emptyResponse
         }
-        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return LLMProtocolHelpers.stripThinkingTags(text)
     }
 
     private static func applyCustomHeaders(_ rawJSON: String, to req: inout URLRequest) {

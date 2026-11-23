@@ -5,7 +5,7 @@ import MSnipCore
 
 /// 覆盖层的标注草稿构建、取色/坐标复制、1px 边缘微调与导出烘焙扩展
 extension OverlayView {
-    enum FinishMode: Equatable { case copy, save, quickSave, saveToFolder(String), pickDirectorySave, pin, extractText, recognizeLatex, translateWindow }
+    enum FinishMode: Equatable { case copy, save, quickSave, saveToFolder(String), pin, extractText, recognizeLatex, translateWindow }
 
     func currentExportableImage(for targetRect: CGRect, plainForOCR: Bool) -> CGImage? {
         if !plainForOCR, let translated = inPlaceTranslateView?.translatedImage {
@@ -19,7 +19,9 @@ extension OverlayView {
             }
             if cornerRadiusPt > 0.5 {
                 let rPx = min(cornerRadiusPt * snapshot.scaleFactor, CGFloat(min(translated.width, translated.height)) * 0.5)
-                let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+                let cs = (translated.colorSpace?.model == .rgb && translated.colorSpace?.supportsOutput == true)
+                    ? translated.colorSpace!
+                    : (CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB())
                 if let ctx = CGContext(
                     data: nil, width: translated.width, height: translated.height,
                     bitsPerComponent: 8, bytesPerRow: 0, space: cs,
@@ -73,8 +75,10 @@ extension OverlayView {
         case .save:              onFinishSave?(baked, snapshot.scaleFactor, targetRect)
         case .quickSave:         onQuickSaveInPlace?(baked, snapshot.scaleFactor, targetRect)
         case .saveToFolder(let d): onFinishSaveToFolder?(baked, snapshot.scaleFactor, d, targetRect)
-        case .pickDirectorySave: onFinishPickDirectorySave?(baked, snapshot.scaleFactor, targetRect)
-        case .pin:             onFinishPin?(baked, snapshot.scaleFactor, targetRect.origin, snapshot.screen, targetRect)
+        case .pin:
+            let s = max(1.0, snapshot.scaleFactor)
+            let snappedOrigin = CGPoint(x: round(targetRect.minX * s) / s, y: round(targetRect.minY * s) / s)
+            onFinishPin?(baked, snapshot.scaleFactor, snappedOrigin, snapshot.screen, targetRect)
         case .extractText:     onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         case .recognizeLatex:  onFinishRecognizeLatex?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         case .translateWindow: onFinishTranslateWindow?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)

@@ -27,7 +27,7 @@ extension ToolbarView {
             symbol: curShape.sfSymbolName,
             hasChevron: true,
             active: shapeActive,
-            tip: "形状：矩形 (R) / 椭圆 (⇧R)",
+            tip: "形状：矩形 (\(keyUpper(.rect))) / 椭圆 (⇧\(keyUpper(.rect)))",
             targetTool: shapeActive ? nil : curShape
         ))
 
@@ -39,7 +39,7 @@ extension ToolbarView {
             symbol: brushSym,
             hasChevron: true,
             active: brushActive,
-            tip: "画笔 (D) / 荧光笔 (⇧D) / 直线 (4)",
+            tip: "画笔 (\(keyUpper(.pen))) / 荧光笔 (⇧\(keyUpper(.pen))) / 直线 (4)",
             targetTool: brushActive ? nil : curBrush
         ))
 
@@ -49,7 +49,7 @@ extension ToolbarView {
             symbol: ToolKind.arrow.sfSymbolName,
             hasChevron: true,
             active: arrowActive,
-            tip: "箭头指示 (A)",
+            tip: "箭头指示 (\(keyUpper(.arrow)))",
             targetTool: arrowActive ? nil : .arrow
         ))
 
@@ -59,7 +59,7 @@ extension ToolbarView {
             symbol: "character",
             hasChevron: true,
             active: textActive,
-            tip: "文字标注 (W · 按 K 切胶囊底色)",
+            tip: "文字标注 (\(keyUpper(.text)) · 按 \(keyUpper(.textCapsule)) 切胶囊底色)",
             targetTool: textActive ? nil : .text
         ))
 
@@ -73,7 +73,7 @@ extension ToolbarView {
             symbol: stepSym,
             hasChevron: false,
             active: stepActive,
-            tip: "步骤序号 ①②③ (N · 拖拽可拉出箭头)",
+            tip: "步骤序号 ①②③ (\(keyUpper(.step)) · 拖拽可拉出箭头)",
             targetTool: stepActive ? nil : .step
         ))
 
@@ -84,7 +84,7 @@ extension ToolbarView {
             symbol: curRedact.sfSymbolName,
             hasChevron: true,
             active: redactActive,
-            tip: "马赛克 (M) / 高斯毛玻璃 (⇧M)",
+            tip: "马赛克 (\(keyUpper(.mosaic))) / 高斯毛玻璃 (⇧\(keyUpper(.mosaic)))",
             targetTool: redactActive ? nil : curRedact
         ))
 
@@ -94,7 +94,7 @@ extension ToolbarView {
             symbol: "eraser",
             hasChevron: false,
             active: eraserActive,
-            tip: "橡皮擦：点击或涂抹擦除标注 (E)",
+            tip: "橡皮擦：点击或涂抹擦除标注 (\(keyUpper(.eraser)))",
             targetTool: eraserActive ? nil : .eraser
         ))
 
@@ -111,14 +111,17 @@ extension ToolbarView {
             list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "完成", tip: "更新贴图 (↩)"))
         } else {
             // 3) 页面内交互与多模态功能键（长截图 / 录视频 / 页内实况识字 / 页内翻译）
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "scissors", tip: "滚动长截图 (L)", enabled: true, action: .startLongShot))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "video", tip: "选区录制 GIF / MP4 视频 (V)", enabled: true, action: .startRecording))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "scissors", tip: "滚动长截图 (\(keyUpper(.longShot)))", enabled: true, action: .startLongShot))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "video", tip: "选区录制 GIF / MP4 视频 (\(keyUpper(.record)))", enabled: true, action: .startRecording))
+            let ocrTip: String = inPlaceOCRActive
+                ? "正在页内实况识字：可直接划词复制（再次点击返回标注 · ⌥+点击打开双栏面板）"
+                : (ocrAutoOpenDualPane
+                    ? "提取文字：直接打开双栏对照面板 (\(keyUpper(.ocr)) · ⌥+点击页内划词)"
+                    : "提取文字：在当前选区内直接划选文字 (\(keyUpper(.ocr)) · ⌥+点击打开双栏面板)")
             list.append(iconAction(
                 x: &x, y: y, h: h,
                 symbol: "text.viewfinder",
-                tip: inPlaceOCRActive
-                    ? "正在页内实况识字：可直接划词复制（再次点击返回标注 · ⌥+点击打开双栏对照窗）"
-                    : "在当前选区内直接识别并划选文字 (T · ⌥+点击打开双栏对照窗)",
+                tip: ocrTip,
                 enabled: true,
                 active: inPlaceOCRActive,
                 tint: inPlaceOCRActive ? Self.accentBlue : Self.inkDark,
@@ -127,17 +130,20 @@ extension ToolbarView {
             list.append(iconAction(
                 x: &x, y: y, h: h,
                 symbol: "function",
-                tip: "识别 LaTeX 数学公式与实时预览 (⇧T)",
+                tip: "识别 LaTeX 数学公式与实时预览 (⇧\(keyUpper(.ocr)))",
                 enabled: true,
                 tint: Self.inkDark,
                 action: .recognizeLatex
             ))
+            let trTip: String = inPlaceTranslateActive
+                ? "正在页内原位翻译：按住画面对比原图，按 ↩ 复制翻译图（再次点击还原 · ⌥+点击打开双栏面板）"
+                : (translateAutoOpenDualPane
+                    ? "截图翻译：直接打开双栏流式翻译面板 (\(keyUpper(.translate)) · ⌥+点击原位译文)"
+                    : "截图翻译：原位替换译文 (\(keyUpper(.translate)) · ⌥+点击打开双栏流式面板)")
             list.append(iconAction(
                 x: &x, y: y, h: h,
                 symbol: "character.bubble",
-                tip: inPlaceTranslateActive
-                    ? "正在页内原位翻译：可按住画面对比原图，按 ↩ 复制翻译图（再次点击还原 · ⌥+点击打开双栏流式翻译窗）"
-                    : "截图翻译：原位替换译文 (Y · ⌥+点击打开双栏流式对照翻译窗)",
+                tip: trTip,
                 enabled: true,
                 active: inPlaceTranslateActive,
                 tint: inPlaceTranslateActive ? Self.accentBlue : Self.inkDark,
@@ -147,12 +153,13 @@ extension ToolbarView {
             x = appendDivider(at: x, into: &list)
 
             // 4) 终态输出组：贴图 / 保存 / 关闭 / 醒目蓝色复制主胶囊
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "pin", tip: "贴到桌面 (P / \(pinHint))", enabled: true, action: .pin))
+            let pinTip = pinHint.isEmpty ? "贴到桌面 (\(keyUpper(.pin)))" : "贴到桌面 (\(keyUpper(.pin)) / \(pinHint))"
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "pin", tip: pinTip, enabled: true, action: .pin))
             let saveRect = CGRect(x: x, y: y, width: 34, height: h)
             x += 36
             list.append(HitItem(
                 rect: saveRect,
-                tooltip: "下载保存：点击快速选择目录（S 一键快存 · ⌘S 另存为）",
+                tooltip: "下载保存：点击快速选择目录（\(keyUpper(.quickSave)) 一键快存 · ⌘S 另存为）",
                 enabled: true,
                 draw: { ctx, r, hov in
                     Self.drawButtonBg(ctx: ctx, rect: r, active: false, hovered: hov)
@@ -161,8 +168,8 @@ extension ToolbarView {
                 },
                 action: .save
             ))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出截图 (Q / Esc / 右键)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
-            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "复制", tip: "复制到剪贴板 (C / ↩ / 双击选区)"))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出截图 (\(keyUpper(.cancel)) / Esc / 右键)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
+            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "复制", tip: "复制到剪贴板 (\(keyUpper(.copy)) / ↩ / 双击选区)"))
         }
 
         items = list

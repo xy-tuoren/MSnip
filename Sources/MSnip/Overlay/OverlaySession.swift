@@ -37,7 +37,6 @@ final class OverlaySession {
         case saved(CGImage, CGFloat)
         case quickSaved(CGImage, CGFloat)
         case savedToFolder(CGImage, CGFloat, String)
-        case pickDirectorySave(CGImage, CGFloat)
         case pinned(CGImage, CGFloat, CGPoint, NSScreen)
         case isolatedWindow(CGWindowID, CGFloat, BackdropStyle, Bool, CGPoint, NSScreen)
         case copiedColor(String, RGBAColor, NSPoint)
@@ -52,6 +51,12 @@ final class OverlaySession {
     }
 
     private static var lastSelectionByDisplay: [CGDirectDisplayID: CGRect] = [:]
+    static var lastCaptureTarget: (displayID: CGDirectDisplayID, rect: CGRect)?
+
+    private static func rememberSelection(_ rect: CGRect, on displayID: CGDirectDisplayID) {
+        lastSelectionByDisplay[displayID] = rect
+        lastCaptureTarget = (displayID, rect)
+    }
 
     var onStyleUpdated: ((Int, CGFloat) -> Void)?
     var onCapsuleUpdated: ((Bool) -> Void)?
@@ -77,8 +82,11 @@ final class OverlaySession {
         saveFolderOptions: [QuickSaveFolder] = [],
         recordingFormat: RecordingFormat = .gif,
         recordingHUDEnabled: Bool = true,
-        quickOCRMode: Bool = false,
-        quickTranslateMode: Bool = false
+        launchMode: OverlayQuickLaunchMode = .standard,
+        canvasKeyMap: [CanvasAction: String] = CanvasAction.defaultMap,
+        activePinCombo: KeyCombo? = nil,
+        ocrAutoOpenDualPane: Bool = false,
+        translateAutoOpenDualPane: Bool = false
     ) {
         let mouse = NSEvent.mouseLocation
         var targetWindowToFocus: OverlayWindow?
@@ -98,9 +106,18 @@ final class OverlaySession {
             view.toolbar.textCapsule = textCapsule
             view.toolbar.recordingFormat = recordingFormat
             view.toolbar.recordingHUDEnabled = recordingHUDEnabled
+            view.toolbar.canvasKeyMap = canvasKeyMap
+            view.toolbar.ocrAutoOpenDualPane = ocrAutoOpenDualPane
+            view.toolbar.translateAutoOpenDualPane = translateAutoOpenDualPane
             view.saveFolderOptions = saveFolderOptions
-            view.quickOCRMode = quickOCRMode
-            view.quickTranslateMode = quickTranslateMode
+            view.quickLaunchMode = launchMode
+            view.canvasKeyMap = canvasKeyMap
+            view.activePinCombo = activePinCombo
+            view.ocrAutoOpenDualPane = ocrAutoOpenDualPane
+            view.translateAutoOpenDualPane = translateAutoOpenDualPane
+            if launchMode == .quickRecord {
+                view.setRecordingMode(true, notifySiblings: false)
+            }
             view.onSelectionActivated = { [weak self] sender in
                 self?.activateView(sender)
             }
@@ -130,27 +147,23 @@ final class OverlaySession {
                 }
             }
             view.onFinishCopy = { [weak self] img, scale, rect in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
+                Self.rememberSelection(rect, on: snap.displayID)
                 self?.finish(.copied(img, scale))
             }
             view.onFinishSave = { [weak self] img, scale, rect in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
+                Self.rememberSelection(rect, on: snap.displayID)
                 self?.finish(.saved(img, scale))
             }
             view.onFinishSaveToFolder = { [weak self] img, scale, dir, rect in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
+                Self.rememberSelection(rect, on: snap.displayID)
                 self?.finish(.savedToFolder(img, scale, dir))
             }
-            view.onFinishPickDirectorySave = { [weak self] img, scale, rect in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
-                self?.finish(.pickDirectorySave(img, scale))
-            }
             view.onQuickSaveInPlace = { [weak self] img, scale, rect in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
-                self?.onQuickSaveInPlace?(img, scale)
+                Self.rememberSelection(rect, on: snap.displayID)
+                self?.finish(.quickSaved(img, scale))
             }
             view.onFinishPin = { [weak self] img, scale, origin, screen, rect in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
+                Self.rememberSelection(rect, on: snap.displayID)
                 self?.finish(.pinned(img, scale, origin, screen))
             }
             view.onFinishIsolatedWindow = { [weak self] winID, scale, backdrop, pin, origin, screen in

@@ -3,7 +3,10 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 单个置顶贴图窗口：支持实况划词复制、鼠标穿透对照、`⌘+拖拽`（或右上角按钮）直投 PNG 文件与无损二次圈记标注
+/// 单个置顶贴图窗口：
+/// - 原图直接支持实况文本 `I` 光标划词复制，无右下角系统冗余角标；
+/// - 悬停时在贴图外框上方浮出微操作条（含「✥ 按住拖动」手柄，满屏文字时也可轻松挪动且零遮挡画面）；
+/// - 点击贴图任意位置即选中聚焦，按 `Esc` 立即关闭贴图。
 final class PinWindow: NSPanel {
     var onClose: ((PinWindow) -> Void)?
     var onCloseAll: (() -> Void)?
@@ -24,6 +27,12 @@ final class PinWindow: NSPanel {
     var annotationDoc = AnnotationDocument()
     var editorCanvas: PinAnnotationCanvasView?
     var toolbarPanel: PinToolbarPanel?
+    let hoverBarPanel = PinHoverBarPanel()
+
+    var isMouseInPin = false
+    var isMouseInHoverBar = false
+    var isDraggingFromBar = false
+    var hideHoverWorkItem: DispatchWorkItem?
 
     private var isDraggingWindow = false
     private var dragMouseStart: NSPoint = .zero
@@ -34,20 +43,22 @@ final class PinWindow: NSPanel {
     init(cgImage: CGImage, scaleFactor: CGFloat, screenOriginTopLeft: CGPoint?, on screen: NSScreen) {
         self.baseCGImage = cgImage
         self.currentCGImage = cgImage
-        self.imageScale = max(1.0, scaleFactor)
+        let s = max(1.0, scaleFactor)
+        self.imageScale = s
         self.baseSize = NSSize(
-            width: max(24, CGFloat(cgImage.width) / self.imageScale),
-            height: max(24, CGFloat(cgImage.height) / self.imageScale)
+            width: max(8, CGFloat(cgImage.width) / s),
+            height: max(8, CGFloat(cgImage.height) / s)
         )
         self.pinContentView = PinContentView(cgImage: cgImage, baseSize: baseSize)
 
+        let snapPx: (CGFloat) -> CGFloat = { v in (v * s).rounded() / s }
         let frameOrigin: NSPoint
         if let topLeft = screenOriginTopLeft {
             let yBottom = screen.frame.maxY - topLeft.y - baseSize.height
-            frameOrigin = NSPoint(x: screen.frame.minX + topLeft.x, y: yBottom)
+            frameOrigin = NSPoint(x: snapPx(screen.frame.minX + topLeft.x), y: snapPx(yBottom))
         } else {
             let visible = screen.visibleFrame
-            frameOrigin = NSPoint(x: visible.midX - baseSize.width * 0.5, y: visible.midY - baseSize.height * 0.5)
+            frameOrigin = NSPoint(x: snapPx(visible.midX - baseSize.width * 0.5), y: snapPx(visible.midY - baseSize.height * 0.5))
         }
 
         super.init(
@@ -59,6 +70,7 @@ final class PinWindow: NSPanel {
 
         self.level = .floating
         self.animationBehavior = .none
+        self.becomesKeyOnlyIfNeeded = false
         self.isFloatingPanel = true
         self.hidesOnDeactivate = false
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
@@ -67,12 +79,43 @@ final class PinWindow: NSPanel {
         self.hasShadow = true
         self.contentView = pinContentView
 
-        pinContentView.onRequestAnnotate = { [weak self] in self?.beginAnnotationEditing() }
-        pinContentView.onRequestOCR = { [weak self] in self?.openOCRPanel() }
-        pinContentView.onRequestClose = { [weak self] in self?.closePin() }
-        pinContentView.onRequestFileDrag = { [weak self] ev in
+        pinContentView.onHoverChanged = { [weak self] inside in
+            self?.isMouseInPin = inside
+            self?.syncHoverBarVisibility()
+        }
+        hoverBarPanel.barView.onHoverChanged = { [weak self] inside in
+            self?.isMouseInHoverBar = inside
+            self?.syncHoverBarVisibility()
+        }
+        hoverBarPanel.barView.onAction = { [weak self] act in
             guard let self else { return }
-            self.pinContentView.startPNGFileDrag(with: ev, cgImage: self.currentCGImage, scaleFactor: self.imageScale)
+            switch act {
+            case .annotate: self.beginAnnotationEditing()
+            case .ocr:      self.openOCRPanel()
+            case .close:    self.closePin()
+            }
+        }
+        hoverBarPanel.barView.onDragStart = { [weak self] in
+            guard let self else { return }
+            self.makeKeyAndOrderFront(nil)
+            self.isDraggingFromBar = true
+            self.dragMouseStart = NSEvent.mouseLocation
+            self.dragOriginStart = self.frame.origin
+        }
+        hoverBarPanel.barView.onDragMove = { [weak self] in
+            guard let self, self.isDraggingFromBar else { return }
+            let now = NSEvent.mouseLocation
+            let s = self.imageScale
+            self.setFrameOrigin(NSPoint(
+                x: ((self.dragOriginStart.x + (now.x - self.dragMouseStart.x)) * s).rounded() / s,
+                y: ((self.dragOriginStart.y + (now.y - self.dragMouseStart.y)) * s).rounded() / s
+            ))
+            self.hoverBarPanel.reposition(anchoringTo: self.frame, on: self.screen)
+        }
+        hoverBarPanel.barView.onDragEnd = { [weak self] in
+            guard let self else { return }
+            self.isDraggingFromBar = false
+            self.syncHoverBarVisibility()
         }
 
         let menu = buildContextMenu()
@@ -82,8 +125,10 @@ final class PinWindow: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    override func becomeKey() { super.becomeKey(); pinContentView.isSelectedKey = true }
+    override func resignKey() { super.resignKey(); pinContentView.isSelectedKey = false }
 
-    // MARK: - Event Routing (Annotation / File Drag / Live Text / Window Move)
+    // MARK: - Event Routing (Direct Text Selection + Blank/Handle Drag + Guaranteed Esc)
 
     override func sendEvent(_ event: NSEvent) {
         if editorCanvas != nil {
@@ -92,10 +137,7 @@ final class PinWindow: NSPanel {
         }
         switch event.type {
         case .leftMouseDown:
-            if pinContentView.hitHoverControl(atWindowPoint: event.locationInWindow) {
-                super.sendEvent(event)
-                return
-            }
+            if !isKeyWindow { makeKeyAndOrderFront(nil) }
             if event.modifierFlags.contains(.command) {
                 pinContentView.startPNGFileDrag(with: event, cgImage: currentCGImage, scaleFactor: imageScale)
                 return
@@ -104,7 +146,6 @@ final class PinWindow: NSPanel {
             let hitLiveText = !forceDrag && pinContentView.liveTextView.hasInteractiveItem(atWindowPoint: event.locationInWindow)
             if hitLiveText {
                 isDraggingWindow = false
-                if !isKeyWindow { makeKey() }
                 super.sendEvent(event)
                 return
             }
@@ -121,9 +162,12 @@ final class PinWindow: NSPanel {
             if isDraggingWindow {
                 let now = NSEvent.mouseLocation
                 setFrameOrigin(NSPoint(
-                    x: dragOriginStart.x + (now.x - dragMouseStart.x),
-                    y: dragOriginStart.y + (now.y - dragMouseStart.y)
+                    x: ((dragOriginStart.x + (now.x - dragMouseStart.x)) * imageScale).rounded() / imageScale,
+                    y: ((dragOriginStart.y + (now.y - dragMouseStart.y)) * imageScale).rounded() / imageScale
                 ))
+                if hoverBarPanel.isVisible {
+                    hoverBarPanel.reposition(anchoringTo: frame, on: screen)
+                }
                 return
             }
             super.sendEvent(event)
@@ -135,6 +179,11 @@ final class PinWindow: NSPanel {
             }
             super.sendEvent(event)
 
+        case .keyDown:
+            // 在窗口分发入口直接拦截 Esc 与单键快捷操作，防止 VisionKit 子视图吞噬按键导致 Esc 不响应
+            if handlePinKeyDown(event) { return }
+            super.sendEvent(event)
+
         default:
             super.sendEvent(event)
         }
@@ -144,7 +193,7 @@ final class PinWindow: NSPanel {
         if editorCanvas != nil { return super.performKeyEquivalent(with: event) }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
-        if flags == .command && chars == "c" {
+        if (flags == .command || flags == .control) && chars == "c" {
             if pinContentView.liveTextView.copySelectionIfActive() {
                 ToastHUD.show(message: "已复制贴图划选文字")
                 return true
@@ -179,29 +228,25 @@ final class PinWindow: NSPanel {
         }
     }
 
-    override func keyDown(with event: NSEvent) {
-        if editorCanvas != nil { super.keyDown(with: event); return }
+    private func handlePinKeyDown(_ event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
         if event.keyCode == 53 {
-            if pinContentView.liveTextView.hasSelection {
-                pinContentView.liveTextView.clearSelection()
-            } else {
-                closePin()
-            }
-        } else if event.modifierFlags.contains(.command), chars == "s" {
-            if event.modifierFlags.contains(.shift) {
-                quickSaveImage()
-            } else {
-                saveImage()
-            }
-        } else if chars == "e", !event.modifierFlags.contains(.command) {
-            beginAnnotationEditing()
-        } else if chars == "p", !event.modifierFlags.contains(.command) {
-            enableClickThrough()
-        } else if chars == "t", !event.modifierFlags.contains(.command) {
-            openOCRPanel()
-        } else {
-            super.keyDown(with: event)
+            closePin()
+            return true
         }
+        if flags.contains(.command), chars == "s" {
+            if flags.contains(.shift) { quickSaveImage() } else { saveImage() }
+            return true
+        }
+        if flags.isEmpty {
+            switch chars {
+            case "e": beginAnnotationEditing(); return true
+            case "p": enableClickThrough(); return true
+            case "t": openOCRPanel(); return true
+            default: break
+            }
+        }
+        return false
     }
 }

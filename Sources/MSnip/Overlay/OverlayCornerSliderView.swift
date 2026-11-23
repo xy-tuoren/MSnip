@@ -219,7 +219,6 @@ extension OverlayView {
             self.updateToolbarLayout()
             switch choice {
             case .folder(let dir): self.exportAndFinish(mode: .saveToFolder(dir))
-            case .chooseFolder:    self.exportAndFinish(mode: .pickDirectorySave)
             case .saveAsPanel:     self.exportAndFinish(mode: .save)
             }
         }

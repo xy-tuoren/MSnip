@@ -18,7 +18,7 @@ extension OverlayView {
     /// 刷新局部坐标处的自动识别矩阵栈（高速移动时先瞬时对齐窗口，停顿 22ms 后无感补齐子控件）
     func updateAutoSnap(at localPoint: CGPoint, previousPoint: CGPoint? = nil, immediate: Bool = false) {
         guard selection == nil else { return }
-        deferredSnapWork?.cancel()
+        autoSnap.deferredWork?.cancel()
 
         let stepDist = previousPoint.map { hypot(localPoint.x - $0.x, localPoint.y - $0.y) } ?? 0
         let fastSweep = !immediate && stepDist > 18.0
@@ -34,7 +34,7 @@ extension OverlayView {
                     self.applyDetectedSnapStack(refined, at: curPt, immediate: false)
                 }
             }
-            deferredSnapWork = work
+            autoSnap.deferredWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.022, execute: work)
         }
     }
@@ -43,23 +43,23 @@ extension OverlayView {
         guard !newStack.isEmpty else { return }
         let prevTarget = hoveredAutoRect
         if newStack.count <= 1 {
-            preferredSnapArea = nil
-        } else if let prevWin = autoSnapStack.dropLast().last,
+            autoSnap.preferredArea = nil
+        } else if let prevWin = autoSnap.stack.dropLast().last,
                   let curWin = newStack.dropLast().last,
                   !Self.isSameRegion(prevWin, curWin, tol: 8) {
-            preferredSnapArea = nil
+            autoSnap.preferredArea = nil
         }
 
         let chosenIndex = chooseStableIndex(in: newStack, at: localPoint, previousTarget: prevTarget)
-        autoSnapStack = newStack
-        autoSnapIndex = chosenIndex
-        scrollSnapAccumulator = 0
+        autoSnap.stack = newStack
+        autoSnap.index = chosenIndex
+        autoSnap.scrollAccumulator = 0
 
         guard let target = hoveredAutoRect else { return }
-        if immediate || displayedAutoRect == nil {
-            let prevDisplayed = displayedAutoRect
+        if immediate || autoSnap.displayedRect == nil {
+            let prevDisplayed = autoSnap.displayedRect
             stopSnapGlide()
-            displayedAutoRect = target
+            autoSnap.displayedRect = target
             invalidateAutoSnapTransition(from: prevDisplayed, to: target)
         } else if prevTarget != target {
             startSnapGlideToTarget()
@@ -67,25 +67,25 @@ extension OverlayView {
     }
 
     func stepAutoSnapTier(by step: Int) {
-        guard autoSnapStack.count > 1 else { return }
-        let nextIdx = min(max(0, autoSnapIndex + step), autoSnapStack.count - 1)
-        guard nextIdx != autoSnapIndex else { return }
-        autoSnapIndex = nextIdx
+        guard autoSnap.stack.count > 1 else { return }
+        let nextIdx = min(max(0, autoSnap.index + step), autoSnap.stack.count - 1)
+        guard nextIdx != autoSnap.index else { return }
+        autoSnap.index = nextIdx
         if let target = hoveredAutoRect {
-            preferredSnapArea = target.width * target.height
+            autoSnap.preferredArea = target.width * target.height
             startSnapGlideToTarget()
         }
     }
 
     func stopSnapGlide() {
-        deferredSnapWork?.cancel()
-        deferredSnapWork = nil
-        snapAnimTimer?.invalidate()
-        snapAnimTimer = nil
-        if #available(macOS 14.0, *), let dl = snapDisplayLink as? CADisplayLink {
+        autoSnap.deferredWork?.cancel()
+        autoSnap.deferredWork = nil
+        autoSnap.animTimer?.invalidate()
+        autoSnap.animTimer = nil
+        if #available(macOS 14.0, *), let dl = autoSnap.displayLink as? CADisplayLink {
             dl.invalidate()
         }
-        snapDisplayLink = nil
+        autoSnap.displayLink = nil
     }
 
     func drawAutoSnapChrome(ctx: CGContext, displayRect: CGRect, targetRect: CGRect) {
@@ -100,12 +100,12 @@ extension OverlayView {
         let pxY = Int((targetRect.minY * snapshot.scaleFactor).rounded())
         let pxW = Int((targetRect.width * snapshot.scaleFactor).rounded())
         let pxH = Int((targetRect.height * snapshot.scaleFactor).rounded())
-        let prefix = isRecordingMode ? "录屏 · " : (quickTranslateMode ? "翻译 · " : (quickOCRMode ? "识字 · " : ""))
+        let prefix = isRecordingMode ? "录屏 · " : quickLaunchMode.hudPrefix
         drawHUDPill(ctx: ctx, anchorRect: displayRect, text: "\(prefix)\(pxX),\(pxY)  \(pxW) × \(pxH) px")
     }
 
     private func chooseStableIndex(in stack: [CGRect], at pt: CGPoint, previousTarget: CGRect?) -> Int {
-        if let prefArea = preferredSnapArea, prefArea > 0 {
+        if let prefArea = autoSnap.preferredArea, prefArea > 0 {
             let targetLog = log(Double(prefArea))
             var bestIdx = 0
             var bestDiff = Double.greatestFiniteMagnitude
@@ -134,17 +134,17 @@ extension OverlayView {
 
     private func startSnapGlideToTarget() {
         guard let target = hoveredAutoRect else { return }
-        if displayedAutoRect == nil {
-            displayedAutoRect = target
+        if autoSnap.displayedRect == nil {
+            autoSnap.displayedRect = target
             invalidateAutoSnapTransition(from: nil, to: target)
             return
         }
-        if snapDisplayLink != nil || snapAnimTimer != nil { return }
+        if autoSnap.displayLink != nil || autoSnap.animTimer != nil { return }
 
         if #available(macOS 14.0, *) {
             let link = self.displayLink(target: self, selector: #selector(onSnapDisplayLinkTick(_:)))
             link.add(to: .main, forMode: .common)
-            snapDisplayLink = link
+            autoSnap.displayLink = link
             return
         }
 
@@ -152,7 +152,7 @@ extension OverlayView {
             MainActor.assumeIsolated { self?.advanceSnapGlide(dt: 1.0 / 60.0) }
         }
         RunLoop.main.add(timer, forMode: .common)
-        snapAnimTimer = timer
+        autoSnap.animTimer = timer
     }
 
     @available(macOS 14.0, *)
@@ -162,7 +162,7 @@ extension OverlayView {
     }
 
     private func advanceSnapGlide(dt: TimeInterval) {
-        guard selection == nil, let target = hoveredAutoRect, var cur = displayedAutoRect else {
+        guard selection == nil, let target = hoveredAutoRect, var cur = autoSnap.displayedRect else {
             stopSnapGlide()
             return
         }
@@ -179,12 +179,12 @@ extension OverlayView {
             max(abs(target.size.width - cur.size.width), abs(target.size.height - cur.size.height))
         )
         if maxErr < 0.6 {
-            displayedAutoRect = target
+            autoSnap.displayedRect = target
             stopSnapGlide()
         } else {
-            displayedAutoRect = cur
+            autoSnap.displayedRect = cur
         }
-        invalidateAutoSnapTransition(from: prevDisplayed, to: displayedAutoRect)
+        invalidateAutoSnapTransition(from: prevDisplayed, to: autoSnap.displayedRect)
     }
 
     private static func isSameRegion(_ a: CGRect, _ b: CGRect, tol: CGFloat) -> Bool {

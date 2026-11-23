@@ -134,14 +134,33 @@ enum MSnipUITheme {
         img.isTemplate = true
         return img
     }
+
+    /// 将窗口精确置于鼠标当前所在显示器可视区域的几何正中心（解决 AppKit 原生 `center()` 垂直偏上与多屏错位问题）
+    @MainActor
+    static func centerOnActiveScreen(_ window: NSWindow) {
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(mouse) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
+        guard let vf = screen?.visibleFrame else {
+            window.center()
+            return
+        }
+        window.setFrameOrigin(NSPoint(
+            x: round(vf.midX - window.frame.width * 0.5),
+            y: round(vf.midY - window.frame.height * 0.5)
+        ))
+    }
 }
 
 /// 清爽浅色白底自定义下拉胶囊选择器（替代生硬的系统旧式 `NSPopUpButton`）
 final class LightDropdownPill: NSView {
     var items: [String] = [] { didSet { needsDisplay = true } }
     var selectedIndex: Int = 0 { didSet { needsDisplay = true } }
+    var customDisplayTitle: String? { didSet { needsDisplay = true } }
     var symbolName: String? { didSet { needsDisplay = true } }
     var onSelect: ((Int) -> Void)?
+    var onCustomClick: ((NSView) -> Void)?
 
     private var hovered = false { didSet { needsDisplay = true } }
     override var isFlipped: Bool { true }
@@ -173,6 +192,10 @@ final class LightDropdownPill: NSView {
     override func mouseExited(with event: NSEvent) { hovered = false }
 
     override func mouseDown(with event: NSEvent) {
+        if let custom = onCustomClick {
+            custom(self)
+            return
+        }
         guard !items.isEmpty else { return }
         let menu = NSMenu()
         for (idx, title) in items.enumerated() {
@@ -212,7 +235,7 @@ final class LightDropdownPill: NSView {
             leftX += 18
         }
 
-        let currentTitle = items.indices.contains(selectedIndex) ? items[selectedIndex] : "未选择"
+        let currentTitle = customDisplayTitle ?? (items.indices.contains(selectedIndex) ? items[selectedIndex] : "未选择")
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [

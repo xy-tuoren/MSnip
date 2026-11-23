@@ -105,18 +105,11 @@ enum AppleNativeTranslator {
         let recognizer = NLLanguageRecognizer()
         recognizer.processString(String(sample.prefix(600)))
         var src = resolved.sourceApple
-        if let dom = recognizer.dominantLanguage {
+        if let dom = recognizer.dominantLanguage, dom != .undetermined {
             switch dom {
             case .simplifiedChinese:  src = "zh-Hans"
             case .traditionalChinese: src = "zh-Hant"
-            case .english:            src = "en"
-            case .japanese:           src = "ja"
-            case .korean:             src = "ko"
-            case .french:             src = "fr"
-            case .german:             src = "de"
-            case .spanish:            src = "es"
-            case .russian:            src = "ru"
-            default: break
+            default:                  src = dom.rawValue
             }
         }
         var dst = resolved.concreteTarget.appleIdentifier

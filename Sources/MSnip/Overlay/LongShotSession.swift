@@ -16,25 +16,25 @@ final class LongShotSession {
 
     var onComplete: ((Outcome) -> Void)?
 
-    private let stitcher = ScrollStitcher()
-    private let sampler = RegionStreamSampler()
-    private let autoScroller = AutoScroller()
+    let stitcher = ScrollStitcher()
+    let sampler = RegionStreamSampler()
+    let autoScroller = AutoScroller()
 
-    private var borderPanel: NSPanel?
-    private var previewPanel: NSPanel?
-    private var controlPanel: NSPanel?
-    private var borderView: LongShotBorderView?
-    private var previewView: LongShotPreviewView?
-    private var controlView: LongShotControlBarView?
+    var borderPanel: NSPanel?
+    var previewPanel: NSPanel?
+    var controlPanel: NSPanel?
+    var borderView: LongShotBorderView?
+    var previewView: LongShotPreviewView?
+    var controlView: LongShotControlBarView?
 
     private var globalKeyMonitor: Any?
     private var localKeyMonitor: Any?
     private var bottomWatchdog: Timer?
     private var lastAppendTimestamp: TimeInterval = 0
 
-    private var targetScreen: NSScreen!
-    private var captureLocalRect: CGRect = .zero
-    private var scaleFactor: CGFloat = 2.0
+    var targetScreen: NSScreen!
+    var captureLocalRect: CGRect = .zero
+    var scaleFactor: CGFloat = 2.0
     private var fallbackInitialFrame: CGImage?
     private var finished = false
 
@@ -46,7 +46,6 @@ final class LongShotSession {
     ) {
         self.targetScreen = screen
         self.scaleFactor = max(1.0, screen.backingScaleFactor)
-        // 对齐整数逻辑点，确保首帧快照与 SCStream 物理像素宽高 0px 误差
         let rounded = CGRect(
             x: round(selectionLocalTopLeft.minX),
             y: round(selectionLocalTopLeft.minY),
@@ -70,7 +69,6 @@ final class LongShotSession {
             }
         }
 
-        // 首帧快照仅作 0ms 瞬时预览与兜底；拼接状态机由 SCStream 首帧实时初始化，避免前后管线差异导致首页重复拼接
         self.fallbackInitialFrame = initialCroppedFrame
         if let initImg = initialCroppedFrame {
             previewView?.previewImage = initImg
@@ -112,90 +110,19 @@ final class LongShotSession {
 
     func cancel() { finish(.cancelled) }
 
-    // MARK: - Panel Construction & Layout
-
-    private func setupPanels(screen: NSScreen, localRect: CGRect, pinHint: String) {
-        let appKitSel = NSRect(
-            x: screen.frame.minX + localRect.minX,
-            y: screen.frame.maxY - localRect.maxY,
-            width: localRect.width,
-            height: localRect.height
-        )
-
-        // 1) 鼠标完全穿透的空心取景框窗口
-        let pad = LongShotBorderView.sidePad
-        let topSpace = LongShotBorderView.topBadgeSpace
-        let borderFrame = NSRect(
-            x: appKitSel.minX - pad,
-            y: appKitSel.minY - pad,
-            width: appKitSel.width + pad * 2,
-            height: appKitSel.height + pad + topSpace
-        )
-        let bp = makePanel(frame: borderFrame, ignoresMouse: true)
-        let bv = LongShotBorderView(frame: NSRect(origin: .zero, size: borderFrame.size))
-        bp.contentView = bv
-        self.borderPanel = bp
-        self.borderView = bv
-
-        // 2) 右侧（空间不足时自动翻到左侧）实时缩略预览窗口
-        let prevW: CGFloat = 152
-        let prevH: CGFloat = min(max(190, appKitSel.height), 380)
-        let rightX = appKitSel.maxX + 12
-        let leftX = appKitSel.minX - prevW - 12
-        let prevX = (rightX + prevW + 8 <= screen.frame.maxX)
-            ? rightX
-            : (leftX >= screen.frame.minX + 8 ? leftX : screen.frame.maxX - prevW - 10)
-        let prevY = min(max(screen.visibleFrame.minY + 10, appKitSel.maxY - prevH), screen.visibleFrame.maxY - prevH - 10)
-        let prevFrame = NSRect(x: round(prevX), y: round(prevY), width: prevW, height: round(prevH))
-
-        let pp = makePanel(frame: prevFrame, ignoresMouse: true)
-        let pv = LongShotPreviewView(frame: NSRect(origin: .zero, size: prevFrame.size))
-        pv.baseHeightPx = Int((localRect.height * scaleFactor).rounded())
-        pp.contentView = pv
-        self.previewPanel = pp
-        self.previewView = pv
-
-        // 3) 底部非抢焦控制栏窗口
-        let barSz = LongShotControlBarView.barSize
-        let barX = min(max(screen.frame.minX + 8, appKitSel.maxX - barSz.width), screen.frame.maxX - barSz.width - 8)
-        let belowY = appKitSel.minY - barSz.height - 10
-        let aboveY = borderFrame.maxY + 8
-        let barY = (belowY >= screen.visibleFrame.minY + 6)
-            ? belowY
-            : (aboveY + barSz.height <= screen.visibleFrame.maxY ? aboveY : screen.visibleFrame.minY + 12)
-        let cp = makePanel(frame: NSRect(x: round(barX), y: round(barY), width: barSz.width, height: barSz.height), ignoresMouse: false)
-        let cv = LongShotControlBarView()
-        cv.pinHint = pinHint
-        cv.onAction = { [weak self] act in self?.handleControlAction(act) }
-        cp.contentView = cv
-        self.controlPanel = cp
-        self.controlView = cv
-
-        bp.orderFrontRegardless()
-        pp.orderFrontRegardless()
-        cp.orderFrontRegardless()
-    }
-
-    private func makePanel(frame: NSRect, ignoresMouse: Bool) -> NSPanel {
-        let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        p.level = .statusBar; p.animationBehavior = .none
-        p.isFloatingPanel = true; p.hidesOnDeactivate = false
-        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        p.isOpaque = false; p.backgroundColor = .clear
-        p.hasShadow = !ignoresMouse; p.ignoresMouseEvents = ignoresMouse
-        return p
-    }
-
     // MARK: - Actions & Stitch Updates
 
     private enum ExportMode { case copy, save, pin }
 
-    private func handleControlAction(_ action: LongShotControlBarView.Action) {
+    func handleControlAction(_ action: LongShotControlBarView.Action) {
         switch action {
         case .toggleAutoScroll:
             let primaryH = NSScreen.screens.first?.frame.height ?? targetScreen.frame.height
             let quartzOriginY = primaryH - targetScreen.frame.maxY + captureLocalRect.minY
-            let centerQuartz = CGPoint(x: targetScreen.frame.minX + captureLocalRect.midX, y: quartzOriginY + captureLocalRect.height * 0.5)
+            let centerQuartz = CGPoint(
+                x: targetScreen.frame.minX + captureLocalRect.midX,
+                y: quartzOriginY + captureLocalRect.height * 0.5
+            )
             autoScroller.toggle(targetQuartzPoint: centerQuartz) {
                 ToastHUD.show(message: "开启「辅助功能」后可用自动滚动，当前可直接手动滚轮")
                 _ = RegionDetector.checkAccessibilityPermission(prompt: true)
@@ -239,8 +166,7 @@ final class LongShotSession {
         let t = Timer(timeInterval: 0.35, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self, self.autoScroller.isRunning else { return }
-                let idle = ProcessInfo.processInfo.systemUptime - self.lastAppendTimestamp
-                if idle >= 1.35 {
+                if ProcessInfo.processInfo.systemUptime - self.lastAppendTimestamp >= 1.35 {
                     self.autoScroller.stop()
                     self.borderView?.statusStyle = .finishedBottom
                     self.borderView?.statusText = "✓ 已滚动到底部 · \(self.stitcher.widthPx) × \(self.stitcher.totalHeightPx) px"
@@ -253,7 +179,7 @@ final class LongShotSession {
 
     private func setupKeyboardMonitors() {
         globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] ev in
-            if ev.keyCode == 53 { // Esc 全局取消长截图
+            if ev.keyCode == 53 {
                 Task { @MainActor [weak self] in self?.finish(.cancelled) }
             }
         }
@@ -289,12 +215,9 @@ final class LongShotSession {
         if let gm = globalKeyMonitor { NSEvent.removeMonitor(gm); globalKeyMonitor = nil }
         if let lm = localKeyMonitor { NSEvent.removeMonitor(lm); localKeyMonitor = nil }
 
-        borderPanel?.orderOut(nil)
-        previewPanel?.orderOut(nil)
-        controlPanel?.orderOut(nil)
+        borderPanel?.orderOut(nil); previewPanel?.orderOut(nil); controlPanel?.orderOut(nil)
         borderPanel = nil; previewPanel = nil; controlPanel = nil
         borderView = nil; previewView = nil; controlView = nil; fallbackInitialFrame = nil
-
         onComplete?(outcome)
     }
 }

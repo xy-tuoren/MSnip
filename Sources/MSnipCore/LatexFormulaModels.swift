@@ -77,21 +77,54 @@ public struct LatexRecognitionConfig: Codable, Equatable, Sendable {
         return base.appendingPathComponent("MSnip", isDirectory: true).appendingPathComponent("latex.json")
     }
 
-    public static func load() -> LatexRecognitionConfig {
-        guard let data = try? Data(contentsOf: configURL),
-              let cfg = try? JSONDecoder().decode(LatexRecognitionConfig.self, from: data) else {
+    public static func load(from customURL: URL? = nil, secretStore: CredentialStoring? = nil) -> LatexRecognitionConfig {
+        let url = customURL ?? configURL
+        guard let data = try? Data(contentsOf: url),
+              var cfg = try? JSONDecoder().decode(LatexRecognitionConfig.self, from: data) else {
             return LatexRecognitionConfig()
+        }
+        let vault = secretStore ?? (customURL == nil ? CredentialVault.shared : nil)
+        if let vault {
+            if cfg.simpleTexToken.isEmpty, let st = vault.readSecret(account: "latex.simpletex.token"), !st.isEmpty {
+                cfg.simpleTexToken = st
+            }
+            if cfg.mathpixAppKey.isEmpty, let mk = vault.readSecret(account: "latex.mathpix.key"), !mk.isEmpty {
+                cfg.mathpixAppKey = mk
+            }
         }
         return cfg
     }
 
-    public func save() {
-        let url = Self.configURL
+    public func save(to customURL: URL? = nil, secretStore: CredentialStoring? = nil, useKeychain: Bool? = nil) {
+        let url = customURL ?? Self.configURL
         try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let preferKeychain = useKeychain ?? (customURL == nil ? TranslationSettingsConfig.load().preferKeychainStorage : false)
+        let vault = secretStore ?? (customURL == nil ? CredentialVault.shared : nil)
+
+        var diskCopy = self
+        if let vault {
+            if preferKeychain {
+                if !diskCopy.simpleTexToken.isEmpty, vault.writeSecret(diskCopy.simpleTexToken, account: "latex.simpletex.token") {
+                    diskCopy.simpleTexToken = ""
+                } else if diskCopy.simpleTexToken.isEmpty {
+                    _ = vault.deleteSecret(account: "latex.simpletex.token")
+                }
+                if !diskCopy.mathpixAppKey.isEmpty, vault.writeSecret(diskCopy.mathpixAppKey, account: "latex.mathpix.key") {
+                    diskCopy.mathpixAppKey = ""
+                } else if diskCopy.mathpixAppKey.isEmpty {
+                    _ = vault.deleteSecret(account: "latex.mathpix.key")
+                }
+            } else {
+                _ = vault.deleteSecret(account: "latex.simpletex.token")
+                _ = vault.deleteSecret(account: "latex.mathpix.key")
+            }
+        }
+
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? enc.encode(self) {
+        if let data = try? enc.encode(diskCopy) {
             try? data.write(to: url, options: .atomic)
+            try? FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: url.path)
         }
     }
 }

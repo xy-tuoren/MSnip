@@ -190,8 +190,8 @@ extension ToolbarView {
             active: recordingHUDEnabled, tint: recordingHUDEnabled ? Self.accentBlue : Self.inkDark, action: .toggleRecordingHUD
         ))
         x = appendDivider(at: x, into: &list)
-        list.append(iconAction(x: &x, y: y, h: h, symbol: "camera.viewfinder", tip: "切回截图工具栏 (V)", enabled: true, tint: Self.inkDark, action: .exitRecordingMode))
-        list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出录屏 (Q / Esc)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "camera.viewfinder", tip: "切回截图工具栏 (\(keyUpper(.record)))", enabled: true, tint: Self.inkDark, action: .exitRecordingMode))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出录屏 (\(keyUpper(.cancel)) / Esc)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
         let recRect = CGRect(x: x + 2, y: y, width: 94, height: h)
         x += 98
         list.append(HitItem(rect: recRect, tooltip: "开始录制当前选区 (↩ / 双击选区)", enabled: true, draw: { ctx, r, hov in

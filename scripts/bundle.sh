@@ -38,8 +38,8 @@ ARM_TMP="$DIST_DIR/${APP_NAME}_arm"
 cp "$ARM_SRC" "$ARM_TMP"
 
 FINAL_BIN="$DIST_DIR/${APP_NAME}_bin"
-if [ "$(uname -m)" = "arm64" ] && swift build "${BUILD_FLAGS[@]}" --triple x86_64-apple-macosx14.0 >/dev/null 2>&1; then
-    X86_SRC="$(swift build "${BUILD_FLAGS[@]}" --triple x86_64-apple-macosx14.0 --show-bin-path)/$APP_NAME"
+if [ "$(uname -m)" = "arm64" ] && swift build "${BUILD_FLAGS[@]}" --triple x86_64-apple-macosx12.0 >/dev/null 2>&1; then
+    X86_SRC="$(swift build "${BUILD_FLAGS[@]}" --triple x86_64-apple-macosx12.0 --show-bin-path)/$APP_NAME"
     if [ -f "$X86_SRC" ] && [ "$(lipo -archs "$X86_SRC")" != "$(lipo -archs "$ARM_TMP")" ]; then
         lipo -create "$ARM_TMP" "$X86_SRC" -output "$FINAL_BIN"
         echo "  ✓ 已合成双架构 Universal Binary ($(lipo -archs "$FINAL_BIN"))"
@@ -122,4 +122,5 @@ echo "  App 路径: $APP_BUNDLE"
 echo "  二进制架构: $(file "$MACOS_DIR/$APP_NAME" | sed 's/.*: //')"
 echo "  App 总大小: $(du -sh "$APP_BUNDLE" | awk '{print $1}')"
 echo "  Zip 包大小: $(du -sh "$ZIP_PATH" | awk '{print $1}')"
+echo "  Zip SHA256: $(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 echo "=========================================="

@@ -1,59 +1,14 @@
-import Carbon
 import Foundation
 import MSnipCore
 import ServiceManagement
 
-/// 全局快捷键预设方案
-enum HotKeyPreset: String, CaseIterable, Codable {
-    case cmd12 = "cmd12"
-    case cmdShiftAP = "cmdShiftAP"
-    case optAP = "optAP"
-    case f1f3 = "f1f3"
-
-    var menuTitle: String {
-        switch self {
-        case .cmd12:      return "⌘1 截图  /  ⌘2 贴图  /  ⌘3 识字（默认）"
-        case .cmdShiftAP: return "⌘⇧A 截图  /  ⌘⇧P 贴图  /  ⌘⇧O 识字"
-        case .optAP:      return "⌥A 截图  /  ⌥P 贴图  /  ⌥O 识字"
-        case .f1f3:       return "F1 截图  /  F3 贴图  /  F2 识字"
-        }
-    }
-
-    var captureCombo: KeyCombo {
-        switch self {
-        case .cmd12:      return KeyCombo(keyCode: UInt32(kVK_ANSI_1), carbonModifiers: UInt32(cmdKey))
-        case .cmdShiftAP: return KeyCombo(keyCode: UInt32(kVK_ANSI_A), carbonModifiers: UInt32(cmdKey | shiftKey))
-        case .optAP:      return KeyCombo(keyCode: UInt32(kVK_ANSI_A), carbonModifiers: UInt32(optionKey))
-        case .f1f3:       return KeyCombo(keyCode: UInt32(kVK_F1), carbonModifiers: 0)
-        }
-    }
-
-    var pinCombo: KeyCombo {
-        switch self {
-        case .cmd12:      return KeyCombo(keyCode: UInt32(kVK_ANSI_2), carbonModifiers: UInt32(cmdKey))
-        case .cmdShiftAP: return KeyCombo(keyCode: UInt32(kVK_ANSI_P), carbonModifiers: UInt32(cmdKey | shiftKey))
-        case .optAP:      return KeyCombo(keyCode: UInt32(kVK_ANSI_P), carbonModifiers: UInt32(optionKey))
-        case .f1f3:       return KeyCombo(keyCode: UInt32(kVK_F3), carbonModifiers: 0)
-        }
-    }
-
-    var ocrCombo: KeyCombo {
-        switch self {
-        case .cmd12:      return KeyCombo(keyCode: UInt32(kVK_ANSI_3), carbonModifiers: UInt32(cmdKey))
-        case .cmdShiftAP: return KeyCombo(keyCode: UInt32(kVK_ANSI_O), carbonModifiers: UInt32(cmdKey | shiftKey))
-        case .optAP:      return KeyCombo(keyCode: UInt32(kVK_ANSI_O), carbonModifiers: UInt32(optionKey))
-        case .f1f3:       return KeyCombo(keyCode: UInt32(kVK_F2), carbonModifiers: 0)
-        }
-    }
-}
-
 /// 应用持久化配置（存储于 ~/Library/Application Support/MSnip/config.json）
 struct AppConfig: Codable {
-    var hotKeyPreset: HotKeyPreset = .cmd12
+    var hotKeyPreset: HotKeyPreset = .optASD
     var hotKeysEnabled: Bool = true
-    var customCaptureCombo: KeyCombo?
-    var customPinCombo: KeyCombo?
-    var customOCRCombo: KeyCombo?
+    var forcePriorityHotKeys: Bool = false
+    var globalHotKeyOverrides: [String: HotKeyBindingOverride] = [:]
+    var customCanvasKeys: [String: String] = [:]
     var defaultColorIndex: Int = 0
     var defaultLineWidth: CGFloat = 3.0
     var lastSaveDirectory: String?
@@ -63,16 +18,39 @@ struct AppConfig: Codable {
     var preferredRecordingFormat: RecordingFormat = .gif
     var recordInteractionHUD: Bool = true
     var defaultTextCapsule: Bool = false
+    var ocrAutoOpenDualPane: Bool = false
+    var translateAutoOpenDualPane: Bool = false
+
+    private enum CodingKeys: String, CodingKey {
+        case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
+        case customCaptureCombo, customPinCombo, customOCRCombo
+        case defaultColorIndex, defaultLineWidth, lastSaveDirectory, recentSaveDirectories
+        case colorCopyFormat, showShortcutTips, preferredRecordingFormat, recordInteractionHUD, defaultTextCapsule
+        case ocrAutoOpenDualPane, translateAutoOpenDualPane
+    }
 
     init() {}
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        hotKeyPreset = try c.decodeIfPresent(HotKeyPreset.self, forKey: .hotKeyPreset) ?? .cmd12
+        hotKeyPreset = try c.decodeIfPresent(HotKeyPreset.self, forKey: .hotKeyPreset) ?? .optASD
         hotKeysEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotKeysEnabled) ?? true
-        customCaptureCombo = try c.decodeIfPresent(KeyCombo.self, forKey: .customCaptureCombo)
-        customPinCombo = try c.decodeIfPresent(KeyCombo.self, forKey: .customPinCombo)
-        customOCRCombo = try c.decodeIfPresent(KeyCombo.self, forKey: .customOCRCombo)
+        forcePriorityHotKeys = try c.decodeIfPresent(Bool.self, forKey: .forcePriorityHotKeys) ?? false
+        var overrides = try c.decodeIfPresent([String: HotKeyBindingOverride].self, forKey: .globalHotKeyOverrides) ?? [:]
+        if overrides[GlobalHotKeyAction.capture.rawValue] == nil,
+           let cap = try c.decodeIfPresent(KeyCombo.self, forKey: .customCaptureCombo) {
+            overrides[GlobalHotKeyAction.capture.rawValue] = .custom(cap)
+        }
+        if overrides[GlobalHotKeyAction.pin.rawValue] == nil,
+           let pin = try c.decodeIfPresent(KeyCombo.self, forKey: .customPinCombo) {
+            overrides[GlobalHotKeyAction.pin.rawValue] = .custom(pin)
+        }
+        if overrides[GlobalHotKeyAction.ocr.rawValue] == nil,
+           let ocr = try c.decodeIfPresent(KeyCombo.self, forKey: .customOCRCombo) {
+            overrides[GlobalHotKeyAction.ocr.rawValue] = .custom(ocr)
+        }
+        globalHotKeyOverrides = overrides
+        customCanvasKeys = try c.decodeIfPresent([String: String].self, forKey: .customCanvasKeys) ?? [:]
         defaultColorIndex = try c.decodeIfPresent(Int.self, forKey: .defaultColorIndex) ?? 0
         defaultLineWidth = try c.decodeIfPresent(CGFloat.self, forKey: .defaultLineWidth) ?? 3.0
         lastSaveDirectory = try c.decodeIfPresent(String.self, forKey: .lastSaveDirectory)
@@ -82,18 +60,80 @@ struct AppConfig: Codable {
         preferredRecordingFormat = try c.decodeIfPresent(RecordingFormat.self, forKey: .preferredRecordingFormat) ?? .gif
         recordInteractionHUD = try c.decodeIfPresent(Bool.self, forKey: .recordInteractionHUD) ?? true
         defaultTextCapsule = try c.decodeIfPresent(Bool.self, forKey: .defaultTextCapsule) ?? false
+        ocrAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoOpenDualPane) ?? false
+        translateAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .translateAutoOpenDualPane) ?? false
     }
 
-    var activeCaptureCombo: KeyCombo { customCaptureCombo ?? hotKeyPreset.captureCombo }
-    var activePinCombo: KeyCombo     { customPinCombo ?? hotKeyPreset.pinCombo }
-    var activeOCRCombo: KeyCombo     { customOCRCombo ?? hotKeyPreset.ocrCombo }
-    var hasCustomHotKeys: Bool       { customCaptureCombo != nil || customPinCombo != nil || customOCRCombo != nil }
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(hotKeyPreset, forKey: .hotKeyPreset)
+        try c.encode(hotKeysEnabled, forKey: .hotKeysEnabled)
+        try c.encode(forcePriorityHotKeys, forKey: .forcePriorityHotKeys)
+        try c.encode(globalHotKeyOverrides, forKey: .globalHotKeyOverrides)
+        try c.encode(customCanvasKeys, forKey: .customCanvasKeys)
+        try c.encode(defaultColorIndex, forKey: .defaultColorIndex)
+        try c.encode(defaultLineWidth, forKey: .defaultLineWidth)
+        try c.encodeIfPresent(lastSaveDirectory, forKey: .lastSaveDirectory)
+        try c.encode(recentSaveDirectories, forKey: .recentSaveDirectories)
+        try c.encode(colorCopyFormat, forKey: .colorCopyFormat)
+        try c.encode(showShortcutTips, forKey: .showShortcutTips)
+        try c.encode(preferredRecordingFormat, forKey: .preferredRecordingFormat)
+        try c.encode(recordInteractionHUD, forKey: .recordInteractionHUD)
+        try c.encode(defaultTextCapsule, forKey: .defaultTextCapsule)
+        try c.encode(ocrAutoOpenDualPane, forKey: .ocrAutoOpenDualPane)
+        try c.encode(translateAutoOpenDualPane, forKey: .translateAutoOpenDualPane)
+    }
+
+    func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {
+        if let ov = globalHotKeyOverrides[action.rawValue] {
+            switch ov {
+            case .custom(let combo): return combo
+            case .disabled:          return nil
+            }
+        }
+        return hotKeyPreset.defaultCombo(for: action)
+    }
+
+    mutating func setGlobalCombo(_ combo: KeyCombo?, for action: GlobalHotKeyAction) {
+        let def = hotKeyPreset.defaultCombo(for: action)
+        if combo == def {
+            globalHotKeyOverrides.removeValue(forKey: action.rawValue)
+        } else if let combo {
+            globalHotKeyOverrides[action.rawValue] = .custom(combo)
+        } else {
+            globalHotKeyOverrides[action.rawValue] = .disabled
+        }
+    }
+
+    var hasCustomHotKeys: Bool { !globalHotKeyOverrides.isEmpty }
 
     mutating func clearCustomHotKeys() {
-        customCaptureCombo = nil
-        customPinCombo = nil
-        customOCRCombo = nil
+        globalHotKeyOverrides.removeAll()
     }
+
+    func canvasKey(for action: CanvasAction) -> String {
+        (customCanvasKeys[action.rawValue] ?? action.defaultKey).lowercased()
+    }
+
+    var resolvedCanvasKeyMap: [CanvasAction: String] {
+        Dictionary(uniqueKeysWithValues: CanvasAction.allCases.map { ($0, canvasKey(for: $0)) })
+    }
+
+    @discardableResult
+    mutating func setCanvasKey(_ key: String, for action: CanvasAction) -> CanvasAction? {
+        CanvasAction.bind(key: key, to: action, in: &customCanvasKeys)
+    }
+
+    mutating func resetCanvasKey(for action: CanvasAction) {
+        let def = action.defaultKey
+        _ = CanvasAction.bind(key: def, to: action, in: &customCanvasKeys)
+    }
+
+    mutating func resetAllCanvasKeys() {
+        customCanvasKeys.removeAll()
+    }
+
+    var hasCustomCanvasKeys: Bool { !customCanvasKeys.isEmpty }
 
     mutating func recordSaveDirectory(_ path: String, updateDefault: Bool = false) {
         let std = URL(fileURLWithPath: path).standardizedFileURL.path
@@ -156,21 +196,14 @@ enum LaunchAtLoginManager {
     static func setEnabled(_ enabled: Bool) -> Bool {
         if #available(macOS 13.0, *), Bundle.main.bundlePath.hasSuffix(".app") {
             do {
-                if enabled {
-                    try SMAppService.mainApp.register()
-                } else {
-                    try SMAppService.mainApp.unregister()
-                }
+                if enabled { try SMAppService.mainApp.register() }
+                else { try SMAppService.mainApp.unregister() }
                 return true
             } catch {}
         }
         if enabled {
             guard let execPath = Bundle.main.executablePath else { return false }
-            let plist: [String: Any] = [
-                "Label": agentLabel,
-                "ProgramArguments": [execPath],
-                "RunAtLoad": true
-            ]
+            let plist: [String: Any] = ["Label": agentLabel, "ProgramArguments": [execPath], "RunAtLoad": true]
             let dir = plistURL.deletingLastPathComponent()
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else {

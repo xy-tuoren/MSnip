@@ -5,12 +5,60 @@ import MSnipCore
 
 /// 主控制器快存导出、独立窗口抓拍与截图翻译快捷入口扩展
 extension AppController {
-    @objc func startQuickTranslate() {
-        beginCaptureSession(quickOCR: false, quickTranslate: true)
+    func handleGlobalHotKey(_ action: GlobalHotKeyAction) {
+        switch action {
+        case .capture:       startCapture()
+        case .pin:           handlePinHotKey()
+        case .ocr:           startQuickOCR()
+        case .translate:     startQuickTranslate()
+        case .longShot:      startQuickLongShot()
+        case .record:        startQuickRecord()
+        case .latex:         startQuickLatex()
+        case .togglePins:    togglePinsVisibility()
+        case .repeatCapture: repeatLastCapture()
+        }
+    }
+
+    @objc func startQuickTranslate() { beginCaptureSession(mode: .quickTranslate) }
+    @objc func startQuickLongShot() { beginCaptureSession(mode: .quickLongShot) }
+    @objc func startQuickRecord() { beginCaptureSession(mode: .quickRecord) }
+    @objc func startQuickLatex() { beginCaptureSession(mode: .quickLatex) }
+    @objc func togglePinsVisibility() { pinManager.toggleAllVisibility() }
+
+    @objc func repeatLastCapture() {
+        guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
+        guard let target = OverlaySession.lastCaptureTarget else {
+            startCapture()
+            return
+        }
+        isCapturing = true
+        Task { @MainActor [weak self] in
+            let snapshots = await ScreenCapturer.captureAllScreens()
+            guard let self else { return }
+            self.isCapturing = false
+            guard let snap = snapshots.first(where: { $0.displayID == target.displayID }) ?? snapshots.first else {
+                self.permissionGuide.show(opening: .screenRecording)
+                return
+            }
+            let s = snap.scaleFactor
+            let clamped = target.rect.intersection(CGRect(origin: .zero, size: snap.screen.frame.size))
+            let pxRect = CGRect(
+                x: round(clamped.minX * s), y: round(clamped.minY * s),
+                width: max(2, round(clamped.width * s)), height: max(2, round(clamped.height * s))
+            )
+            guard let cropped = snap.cgImage.cropping(to: pxRect) else { return }
+            ClipboardAndSave.copyToClipboard(cgImage: cropped, scaleFactor: s)
+            self.recordHistoryAndRefresh(img: cropped, scale: s)
+            ToastHUD.show(message: "✓ 已重截上次区域并复制", subtitle: "\(cropped.width) × \(cropped.height) px", preview: cropped)
+        }
     }
 
     @objc func openTranslationSettings() {
         translationSettings.show(tab: .translation)
+    }
+
+    @objc func openShortcutsSettings() {
+        translationSettings.show(tab: .shortcuts)
     }
 
     @objc func openGeneralPreferences() {
@@ -33,41 +81,40 @@ extension AppController {
             config.save()
             rebuildMenu()
         }
-        let folderName = dirURL.lastPathComponent
+        let shortDir = dirURL.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
         ToastHUD.show(
-            message: "已保存到 \(folderName)/\(url.lastPathComponent)",
-            actionTitle: "在 Finder 显示 ›",
-            onAction: { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+            message: "✓ 已保存截图至「\(dirURL.lastPathComponent)」",
+            subtitle: "\(shortDir)/\(url.lastPathComponent)",
+            preview: img,
+            actionTitle: "在访达中显示",
+            onAction: { [weak self] in
+                self?.activeSession?.cancel()
+                ClipboardAndSave.revealInFinder(url)
+            }
         )
     }
 
-    func performPickDirectorySave(img: CGImage, scale: CGFloat) {
-        guard let res = ClipboardAndSave.pickDirectoryAndQuickSave(
+    func performInteractiveSave(img: CGImage, scale: CGFloat) {
+        guard let res = ClipboardAndSave.savePNGInteractive(
             cgImage: img,
             scaleFactor: scale,
-            initialDirectory: config.lastSaveDirectory
+            initialDirectory: config.recentSaveDirectories.first ?? config.lastSaveDirectory
         ) else { return }
         config.recordSaveDirectory(res.dir)
         config.save()
         rebuildMenu()
         let folderName = URL(fileURLWithPath: res.dir).lastPathComponent
+        let shortPath = res.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
         ToastHUD.show(
-            message: "已保存到 \(folderName)/\(res.url.lastPathComponent)",
-            actionTitle: "在 Finder 显示 ›",
-            onAction: { NSWorkspace.shared.activateFileViewerSelecting([res.url]) }
+            message: "✓ 已保存截图至「\(folderName)」",
+            subtitle: shortPath,
+            preview: img,
+            actionTitle: "在访达中显示",
+            onAction: { [weak self] in
+                self?.activeSession?.cancel()
+                ClipboardAndSave.revealInFinder(res.url)
+            }
         )
-    }
-
-    func performInteractiveSave(img: CGImage, scale: CGFloat) {
-        if let newDir = ClipboardAndSave.savePNGInteractive(
-            cgImage: img,
-            scaleFactor: scale,
-            initialDirectory: config.lastSaveDirectory
-        ) {
-            config.recordSaveDirectory(newDir)
-            config.save()
-            rebuildMenu()
-        }
     }
 
     func captureAndExportIsolatedWindow(
@@ -124,7 +171,12 @@ extension AppController {
             case .savedFile(let url, let fmt, let dir):
                 self.config.lastSaveDirectory = dir
                 self.config.save()
-                ToastHUD.show(message: "已保存 \(fmt.badgeTitle)：\(url.lastPathComponent)")
+                ToastHUD.show(
+                    message: "✓ 已保存 \(fmt.badgeTitle) 录屏文件",
+                    subtitle: url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"),
+                    actionTitle: "在访达中显示 ›",
+                    onAction: { ClipboardAndSave.revealInFinder(url) }
+                )
             case .cancelled:
                 break
             }
@@ -138,5 +190,41 @@ extension AppController {
             initialSaveDirectory: config.lastSaveDirectory,
             autoStartCountdown: true
         )
+    }
+
+    func startLongShotSession(screen: NSScreen, rect: CGRect, initialFrame: CGImage?) {
+        let longShot = LongShotSession()
+        self.activeLongShot = longShot
+        longShot.onComplete = { [weak self] outcome in
+            guard let self else { return }
+            self.activeLongShot = nil
+            switch outcome {
+            case .copied(let img, let scale):
+                ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
+                self.recordHistoryAndRefresh(img: img, scale: scale)
+                ToastHUD.show(message: "长截图已复制 · \(img.width) × \(img.height) px")
+            case .saved(let img, let scale):
+                self.recordHistoryAndRefresh(img: img, scale: scale)
+                self.performInteractiveSave(img: img, scale: scale)
+            case .pinned(let img, let scale, let origin, let targetScreen):
+                self.recordHistoryAndRefresh(img: img, scale: scale)
+                self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: targetScreen)
+            case .cancelled:
+                break
+            }
+        }
+        longShot.start(
+            screen: screen,
+            selectionLocalTopLeft: rect,
+            initialCroppedFrame: initialFrame,
+            pinHint: config.activeCombo(for: .pin)?.displayString ?? "P"
+        )
+    }
+
+    @objc func handlePinHotKey() {
+        if let ls = activeLongShot, ls.pinCurrentIfPossible() { return }
+        if let session = activeSession, session.pinCurrentSelectionIfPossible() { return }
+        guard activeSession == nil, activeLongShot == nil, activeRecording == nil else { return }
+        pinManager.pinFromClipboard()
     }
 }

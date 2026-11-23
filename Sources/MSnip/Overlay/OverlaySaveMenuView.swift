@@ -7,7 +7,6 @@ import MSnipCore
 final class OverlaySaveMenuView: NSView {
     enum Choice {
         case folder(String)
-        case chooseFolder
         case saveAsPanel
     }
 
@@ -79,20 +78,10 @@ final class OverlaySaveMenuView: NSView {
         y += 7
 
         built.append(Row(
-            title: "选择其他目录保存…",
-            subtitle: "选择文件夹后直接下载保存",
+            title: "另存为 / 其他位置…",
+            subtitle: "自由选择文件夹或修改文件名 (⌘S / ⇧S)",
             symbol: "folder.badge.plus",
             tint: MSnipUITheme.accent,
-            choice: .chooseFolder,
-            rect: CGRect(x: 5, y: y, width: w, height: Self.rowH)
-        ))
-        y += Self.rowH
-
-        built.append(Row(
-            title: "另存为（自定义文件名）…",
-            subtitle: "弹出系统保存对话框 (⌘S)",
-            symbol: "square.and.arrow.down",
-            tint: MSnipUITheme.inkSecondary,
             choice: .saveAsPanel,
             rect: CGRect(x: 5, y: y, width: w, height: Self.rowH)
         ))

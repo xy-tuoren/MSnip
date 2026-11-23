@@ -59,6 +59,8 @@ final class ToolbarView: NSView {
     var textCapsule: Bool = false { didSet { if oldValue != textCapsule { markItemsDirty() } } }
     var inPlaceOCRActive: Bool = false { didSet { if oldValue != inPlaceOCRActive { markItemsDirty() } } }
     var inPlaceTranslateActive: Bool = false { didSet { if oldValue != inPlaceTranslateActive { markItemsDirty() } } }
+    var ocrAutoOpenDualPane: Bool = false { didSet { if oldValue != ocrAutoOpenDualPane { markItemsDirty() } } }
+    var translateAutoOpenDualPane: Bool = false { didSet { if oldValue != translateAutoOpenDualPane { markItemsDirty() } } }
     var nextStepNumber: Int = 1 { didSet { if oldValue != nextStepNumber { markItemsDirty() } } }
     var colorIndex: Int = 0 { didSet { if oldValue != colorIndex { markItemsDirty() } } }
     var customColor: RGBAColor? { didSet { if oldValue != customColor { markItemsDirty() } } }
@@ -68,8 +70,13 @@ final class ToolbarView: NSView {
     var backdropStyle: BackdropStyle = .none { didSet { if oldValue != backdropStyle { markItemsDirty() } } }
     var canUndo: Bool = false { didSet { if oldValue != canUndo { markItemsDirty() } } }
     var canRedo: Bool = false { didSet { if oldValue != canRedo { markItemsDirty() } } }
-    var pinHint: String = "⌘2" { didSet { if oldValue != pinHint { markItemsDirty() } } }
+    var pinHint: String = "⌥T" { didSet { if oldValue != pinHint { markItemsDirty() } } }
+    var canvasKeyMap: [CanvasAction: String] = CanvasAction.defaultMap { didSet { if oldValue != canvasKeyMap { markItemsDirty() } } }
     var isPinEditorMode: Bool = false { didSet { if oldValue != isPinEditorMode { markItemsDirty() } } }
+
+    func keyUpper(_ action: CanvasAction) -> String {
+        (canvasKeyMap[action] ?? action.defaultKey).uppercased()
+    }
     var isRecordingMode: Bool = false { didSet { if oldValue != isRecordingMode { markItemsDirty() } } }
     var recordingFormat: RecordingFormat = .gif { didSet { if oldValue != recordingFormat { markItemsDirty() } } }
     var recordingHUDEnabled: Bool = true { didSet { if oldValue != recordingHUDEnabled { markItemsDirty() } } }
@@ -183,10 +190,12 @@ final class ToolbarView: NSView {
         guard let item = items.first(where: { $0.rect.contains(p) && $0.enabled }) else { return }
         if case .save = item.action, event.modifierFlags.contains(.option) {
             onAction?(.quickSave)
-        } else if case .toggleInPlaceOCR = item.action, event.modifierFlags.contains(.option) {
-            onAction?(.extractTextWindow)
-        } else if case .toggleInPlaceTranslate = item.action, event.modifierFlags.contains(.option) {
-            onAction?(.translateWindow)
+        } else if case .toggleInPlaceOCR = item.action {
+            let openDual = event.modifierFlags.contains(.option) ? !ocrAutoOpenDualPane : (ocrAutoOpenDualPane && !inPlaceOCRActive)
+            onAction?(openDual ? .extractTextWindow : .toggleInPlaceOCR)
+        } else if case .toggleInPlaceTranslate = item.action {
+            let openDual = event.modifierFlags.contains(.option) ? !translateAutoOpenDualPane : (translateAutoOpenDualPane && !inPlaceTranslateActive)
+            onAction?(openDual ? .translateWindow : .toggleInPlaceTranslate)
         } else {
             onAction?(item.action)
         }

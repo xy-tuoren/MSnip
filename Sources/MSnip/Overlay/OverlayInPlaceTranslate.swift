@@ -1,15 +1,17 @@
 import AppKit
 import CoreGraphics
+import CoreText
 import Foundation
 import MSnipCore
 
-/// 截图选区内原位译文覆盖视图（自适应背景取色抹除原文 + 清晰中文译文排版 + 按住左下角对比原图）
+/// 截图选区内原位译文覆盖视图（纯画面无遮挡展示译文 + 按住画面即时对比原图，状态提示统一外置到选区外部 HUD）
 final class InPlaceTranslationOverlayView: NSView {
     var baseImage: CGImage? { didSet { needsDisplay = true } }
-    var translatedImage: CGImage? { didSet { needsDisplay = true } }
-    var statusBanner: String? { didSet { needsDisplay = true } }
+    var translatedImage: CGImage? { didSet { needsDisplay = true; onStateChanged?() } }
+    var statusBanner: String? { didSet { needsDisplay = true; onStateChanged?() } }
     var activeTask: Task<Void, Never>?
-    private var comparingOriginal = false { didSet { needsDisplay = true } }
+    var onStateChanged: (() -> Void)?
+    private(set) var comparingOriginal = false { didSet { needsDisplay = true; onStateChanged?() } }
 
     deinit {
         activeTask?.cancel()
@@ -37,36 +39,19 @@ final class InPlaceTranslationOverlayView: NSView {
             ctx.draw(cg, in: bounds)
             ctx.restoreGState()
         }
-
-        if let banner = statusBanner, !banner.isEmpty {
-            let ns = banner as NSString
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
-                .foregroundColor: MSnipUITheme.inkPrimary
-            ]
-            let sz = ns.size(withAttributes: attrs)
-            let w = min(bounds.width - 12, ceil(sz.width + 26))
-            let h: CGFloat = 28
-            let r = CGRect(x: round((bounds.width - w) * 0.5), y: 8, width: w, height: h)
-            MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: r, radius: 7.5)
-            ns.draw(at: CGPoint(x: round(r.minX + 13), y: round(r.minY + (h - sz.height) * 0.5)), withAttributes: attrs)
-        } else if translatedImage != nil {
-            let hint = (comparingOriginal ? "原图预览中" : "按住画面对比原图") as NSString
-            let attrs: [NSAttributedString.Key: Any] = [
-                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
-                .foregroundColor: MSnipUITheme.inkPrimary
-            ]
-            let sz = hint.size(withAttributes: attrs)
-            let r = CGRect(x: 8, y: max(6, bounds.height - 28), width: ceil(sz.width + 16), height: 22)
-            MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: r, radius: 6)
-            hint.draw(at: CGPoint(x: round(r.minX + 8), y: round(r.minY + (22 - sz.height) * 0.5)), withAttributes: attrs)
-        }
     }
 }
 
 /// 覆盖层页内原位截图翻译 (`译` / `Y`) 扩展：支持导出/复制/贴出已翻译图片
 @MainActor
 extension OverlayView {
+    /// 供选区外部顶部 HUD 胶囊显示翻译进度或对比提示，彻底避免小截图内被气泡遮挡译文
+    var inPlaceTranslateHUDTag: String? {
+        guard let tr = inPlaceTranslateView, !tr.isHidden else { return nil }
+        if let banner = tr.statusBanner, !banner.isEmpty { return banner }
+        if tr.translatedImage != nil { return tr.comparingOriginal ? "原图预览中" : "已翻译 · 按住对比原图" }
+        return nil
+    }
     func toggleInPlaceTranslate() {
         if toolbar.inPlaceTranslateActive {
             deactivateInPlaceTranslate()
@@ -99,6 +84,7 @@ extension OverlayView {
 
         let overlay = inPlaceTranslateView ?? {
             let v = InPlaceTranslationOverlayView(frame: sel)
+            v.onStateChanged = { [weak self] in self?.needsDisplay = true }
             addSubview(v, positioned: .below, relativeTo: toolbar)
             inPlaceTranslateView = v
             return v
@@ -107,7 +93,7 @@ extension OverlayView {
         overlay.baseImage = baked
         overlay.translatedImage = nil
         let activeName = TranslationService.shared.settings.resolvedActiveProfile?.name ?? "离线翻译"
-        overlay.statusBanner = "正在识别并使用「\(activeName)」翻译…"
+        overlay.statusBanner = "正在用「\(activeName)」翻译…"
         overlay.isHidden = false
         updateToolbarLayout()
         needsDisplay = true
@@ -185,7 +171,9 @@ extension OverlayView {
         translations: [String]
     ) -> CGImage? {
         let w = base.width, h = base.height
-        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let cs = (base.colorSpace?.model == .rgb && base.colorSpace?.supportsOutput == true)
+            ? base.colorSpace!
+            : (CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB())
         guard let ctx = CGContext(
             data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
             space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
@@ -202,6 +190,7 @@ extension OverlayView {
         defer { NSGraphicsContext.restoreGraphicsState() }
 
         let sampler = PixelSampler(cgImage: base)
+        let isSingleLine = (observations.count == 1)
         for (i, obs) in observations.enumerated() where translations.indices.contains(i) {
             let text = translations[i].trimmingCharacters(in: .whitespacesAndNewlines)
             guard !text.isEmpty else { continue }
@@ -210,14 +199,13 @@ extension OverlayView {
             let ry = (1.0 - obs.box.maxY) * CGFloat(h)
             let rw = obs.box.width * CGFloat(w)
             let rh = obs.box.height * CGFloat(h)
-            let padX = max(4, rh * 0.18)
-            let padY = max(2, rh * 0.12)
-            let bgRect = CGRect(
-                x: max(2, rx - padX),
-                y: max(2, ry - padY),
-                width: min(CGFloat(w) - 4, rw + padX * 2),
-                height: min(CGFloat(h) - 4, rh + padY * 2)
-            )
+            let padX = max(4, rh * 0.20)
+            let padY = max(2, rh * 0.14)
+            var bx = max(1, rx - padX)
+            let by = max(1, ry - padY)
+            var bx2 = min(CGFloat(w) - 1, rx + rw + padX)
+            let by2 = min(CGFloat(h) - 1, ry + rh + padY)
+            var bgRect = CGRect(x: bx, y: by, width: max(4, bx2 - bx), height: max(4, by2 - by))
 
             // 采样文字框边缘四点推算原界面局部底色与亮暗对比文字色
             let c1 = sampler.sampleRGB(px: Int(bgRect.minX), py: Int(bgRect.midY))
@@ -233,11 +221,28 @@ extension OverlayView {
                 srgbRed: CGFloat(avgR) / 255.0,
                 green: CGFloat(avgG) / 255.0,
                 blue: CGFloat(avgB) / 255.0,
-                alpha: 0.96
+                alpha: 0.98
             )
             let fgColor: NSColor = luma < 138
                 ? NSColor(white: 0.97, alpha: 1.0)
                 : NSColor(srgbRed: 0.08, green: 0.10, blue: 0.14, alpha: 1.0)
+
+            // 单行小截图若译文比原文略宽，优先利用选区内部留白向两侧延展，避免字号被压成极小字或省略号
+            var fontPt = min(max(10, rh * 0.80), 44)
+            if isSingleLine {
+                let targetFont = NSFont.systemFont(ofSize: fontPt, weight: .medium)
+                let neededW = ceil(CGFloat(CTLineGetTypographicBounds(
+                    CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: targetFont])),
+                    nil, nil, nil
+                ))) + 8
+                if neededW > bgRect.width && CGFloat(w) - 2 > bgRect.width {
+                    let expand = min(CGFloat(w) - 2, neededW)
+                    let cx = bgRect.midX
+                    bx = max(1, min(CGFloat(w) - 1 - expand, cx - expand * 0.5))
+                    bx2 = min(CGFloat(w) - 1, bx + expand)
+                    bgRect = CGRect(x: bx, y: by, width: max(4, bx2 - bx), height: max(4, by2 - by))
+                }
+            }
 
             let path = CGPath(roundedRect: bgRect, cornerWidth: min(6, bgRect.height * 0.22), cornerHeight: min(6, bgRect.height * 0.22), transform: nil)
             ctx.saveGState()
@@ -246,29 +251,38 @@ extension OverlayView {
             ctx.fillPath()
             ctx.restoreGState()
 
-            // 自适应缩放字号，保证译文完整落入原位框
-            var fontPt = min(max(11, rh * 0.76), 44)
-            let para = NSMutableParagraphStyle()
-            para.lineBreakMode = .byTruncatingTail
-            var attrs: [NSAttributedString.Key: Any] = [:]
-            let nsStr = text as NSString
-            while fontPt > 9.5 {
-                attrs = [
-                    .font: NSFont.systemFont(ofSize: fontPt, weight: .medium),
-                    .foregroundColor: fgColor,
-                    .paragraphStyle: para
-                ]
-                if nsStr.size(withAttributes: attrs).width <= bgRect.width - 6 { break }
+            // CoreText 精确缩放与光学居中绘制（绝不因框高略紧被 NSString 丢行裁空）
+            let maxW = max(6, bgRect.width - 6)
+            let maxH = max(6, bgRect.height - 2)
+            var chosenFont = NSFont.systemFont(ofSize: fontPt, weight: .medium)
+            var line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: chosenFont, .foregroundColor: fgColor]))
+            while fontPt > 8.5 {
+                chosenFont = NSFont.systemFont(ofSize: fontPt, weight: .medium)
+                let attrs: [NSAttributedString.Key: Any] = [.font: chosenFont, .foregroundColor: fgColor]
+                line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
+                var asc: CGFloat = 0, desc: CGFloat = 0
+                let lw = CGFloat(CTLineGetTypographicBounds(line, &asc, &desc, nil))
+                if lw <= maxW && (asc + desc) <= maxH { break }
                 fontPt -= 1.0
             }
-            let measured = nsStr.size(withAttributes: attrs)
-            let drawRect = CGRect(
-                x: bgRect.minX + 3,
-                y: bgRect.minY + max(0, (bgRect.height - measured.height) * 0.5),
-                width: bgRect.width - 6,
-                height: min(bgRect.height, measured.height + 2)
-            )
-            nsStr.draw(in: drawRect, withAttributes: attrs)
+            let finalAttrs: [NSAttributedString.Key: Any] = [.font: chosenFont, .foregroundColor: fgColor]
+            var finalW = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+            if finalW > maxW {
+                let token = CTLineCreateWithAttributedString(NSAttributedString(string: "…", attributes: finalAttrs))
+                if let trunc = CTLineCreateTruncatedLine(line, Double(maxW), .end, token) {
+                    line = trunc
+                    finalW = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+                }
+            }
+            let drawX = isSingleLine ? max(bgRect.minX + 3, bgRect.midX - finalW * 0.5) : (bgRect.minX + 3)
+            ctx.saveGState()
+            ctx.clip(to: bgRect)
+            ctx.textMatrix = .identity
+            ctx.translateBy(x: 0, y: bgRect.minY + bgRect.maxY)
+            ctx.scaleBy(x: 1, y: -1)
+            ctx.textPosition = CGPoint(x: drawX, y: bgRect.midY - chosenFont.capHeight * 0.5)
+            CTLineDraw(line, ctx)
+            ctx.restoreGState()
         }
         return ctx.makeImage()
     }
