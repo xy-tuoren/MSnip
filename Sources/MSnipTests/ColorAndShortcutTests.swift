@@ -104,8 +104,18 @@ func testShortcutPresetsOverridesAndCanvasSwap() {
     check(defPreset.defaultCombo(for: .longShot)?.displayString == "⌥E", "默认长截图热键应为左手双键 ⌥E")
     check(defPreset.defaultCombo(for: .record)?.displayString == "⌥R", "默认录屏热键应为左手双键 ⌥R")
     check(defPreset.defaultCombo(for: .latex) == nil, "低频公式热键默认留空不占全局键位")
-    check(defPreset.defaultCombo(for: .delayedCapture) == nil, "延时截图热键默认留空由用户自由绑定")
-    check(defPreset.defaultCombo(for: .fullScreenCapture) == nil, "截取当前全屏热键默认留空由用户自由绑定")
+    check(defPreset.defaultCombo(for: .delayedCapture)?.displayString == "⌥W", "默认延时截图热键应为左手双键 ⌥W")
+    check(defPreset.defaultCombo(for: .fullScreenCapture)?.displayString == "⌥F", "默认截取全屏热键应为左手双键 ⌥F")
+    check(HotKeyPreset.ctrl123.defaultCombo(for: .delayedCapture)?.displayString == "⌃7", "数字双键延时截图预设应为 ⌃7")
+    check(HotKeyPreset.ctrl123.defaultCombo(for: .fullScreenCapture)?.displayString == "⌃8", "数字双键截取全屏预设应为 ⌃8")
+    check(HotKeyPreset.fnKeys.defaultCombo(for: .delayedCapture)?.displayString == "F7", "F 键延时截图预设应为 F7")
+    check(HotKeyPreset.fnKeys.defaultCombo(for: .fullScreenCapture)?.displayString == "F8", "F 键截取全屏预设应为 F8")
+    check(HotKeyPreset.ctrlCmd.defaultCombo(for: .delayedCapture)?.displayString == "⌃⌘W", "经典三键延时截图预设应为 ⌃⌘W")
+    check(HotKeyPreset.ctrlCmd.defaultCombo(for: .fullScreenCapture)?.displayString == "⌃⌘G", "经典三键截取全屏预设应避开系统 ⌃⌘F，设为 ⌃⌘G")
+    for preset in HotKeyPreset.allCases {
+        let bound = GlobalHotKeyAction.allCases.compactMap { preset.defaultCombo(for: $0) }
+        check(Set(bound).count == bound.count, "预设 \(preset.rawValue) 内部默认热键不得重复")
+    }
     check(GlobalHotKeyAction.allCases.contains(.delayedCapture) && GlobalHotKeyAction.allCases.contains(.fullScreenCapture), "全局热键列表应包含延时截图与截取当前全屏")
     check(DelayedCaptureSettings.clampedSeconds(0) == 1 && DelayedCaptureSettings.clampedSeconds(99) == 60, "延时秒数应钳位在 1–60 秒")
     check(DelayedCaptureSettings.parseSeconds("8秒") == 8 && DelayedCaptureSettings.parseSeconds("15s") == 15, "应支持解析带单位的自定义延时秒数")
