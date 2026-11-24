@@ -165,6 +165,12 @@ final class PinWindow: NSPanel {
             if handleResizeHover(windowPoint: event.locationInWindow) { return }
             super.sendEvent(event)
 
+        case .cursorUpdate:
+            if let edge = resizeState.activeEdge ?? PinResizeEdge.hitTest(point: event.locationInWindow, in: pinContentView.bounds) {
+                PinResizeCursorFactory.cursor(for: edge).set(); return
+            }
+            super.sendEvent(event)
+
         case .leftMouseDown:
             if !isKeyWindow { makeKeyAndOrderFront(nil) }
             if event.modifierFlags.contains(.command) {
