@@ -61,6 +61,7 @@ final class GeekInputBox: NSView, NSViewToolTipOwner {
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
     let field: NSTextField
+    var hintToolTip: String?
     private var hovered = false { didSet { if oldValue != hovered { refreshBorder() } } }
     private var focused = false { didSet { if oldValue != focused { refreshBorder() } } }
     private var responderObservation: NSKeyValueObservation?
@@ -100,12 +101,14 @@ final class GeekInputBox: NSView, NSViewToolTipOwner {
 
     func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
         guard !(field is NSSecureTextField) else { return "" }
-        let val = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        return val
+        if let hint = hintToolTip, !hint.isEmpty { return hint }
+        return field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        layer?.backgroundColor = GeekTheme.resolvedCGColor(GeekTheme.inputBg, for: self)
+        refreshBorder()
         responderObservation?.invalidate()
         responderObservation = nil
         guard let win = window else { focused = false; return }

@@ -7,8 +7,30 @@ import MSnipCore
 final class GeneralExtraControls {
     var soundSwitch: GeekToggleSwitch?
     var filenameField: NSTextField?
+    var filenamePreviewLabel: NSTextField?
     var backdropRatioSeg: GeekSegmentControl?
     var watermarkField: NSTextField?
+    var fieldDelegates: [InlineGeekFieldDelegate] = []
+}
+
+/// 轻量输入框代理：实时更新预览并在失焦或回车时自动保存（无需手动记着按回车）
+@MainActor
+final class InlineGeekFieldDelegate: NSObject, NSTextFieldDelegate {
+    let onChange: ((String) -> Void)?
+    let onCommit: (String) -> Void
+
+    init(onChange: ((String) -> Void)? = nil, onCommit: @escaping (String) -> Void) {
+        self.onChange = onChange
+        self.onCommit = onCommit
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        if let tf = obj.object as? NSTextField { onChange?(tf.stringValue) }
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        if let tf = obj.object as? NSTextField { onCommit(tf.stringValue) }
+    }
 }
 
 /// 设置「通用」页扩展：录屏参数卡片 + 导出美化/命名/音效卡片 + 配置迁移与诊断卡片
@@ -88,25 +110,51 @@ extension TranslationSettingsWindow {
         modeControls.recordAudioSwitch = audioSw
         recCard.addSubview(audioSw)
 
-        // 2) 导出美化与反馈（4 行：文件名模板、衬底画幅比例、衬底文字水印、轻提示音）
+        // 2) 命名、美化与反馈（4 行，右侧 224pt 统一圆角控件列对齐 + 文件名实时预览）
         let yMid = recCard.frame.maxY + sectionGap
         addSectionHeader("命名、美化与反馈", x: headerX, y: yMid, in: content)
         let extCard = GeekCardView(frame: NSRect(x: cardX, y: yMid + headerToCard, width: cardW, height: rowH * 4))
         content.addSubview(extCard)
 
-        let fnTip = "支持占位符：{date} {time} {yyyy} {MM} {dd} {HH} {mm} {ss} {w} {h}（回车生效，留空恢复默认）"
+        let rightColW: CGFloat = 224
+        let rightColX = cardW - insetX - rightColW
+        modeControls.extra.fieldDelegates.removeAll()
+
+        let fnTip = "支持占位符：{date} {time} {yyyy} {MM} {dd} {HH} {mm} {ss} {w} {h}（留空自动恢复默认）"
         addRowLabel("保存文件名模板", y: 0, height: rowH, in: extCard, toolTip: fnTip)
-        let fnField = makeInlineTextField(placeholder: SaveFilenameTemplate.defaultTemplate, width: 226, y: segY, in: extCard, cardW: cardW, insetX: insetX)
-        fnField.toolTip = fnTip
-        fnField.target = self; fnField.action = #selector(commitFilenameTemplateField(_:))
+        let fnPreview = NSTextField(labelWithString: "")
+        fnPreview.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        fnPreview.textColor = GeekTheme.inkMuted
+        fnPreview.alignment = .right
+        fnPreview.lineBreakMode = .byTruncatingMiddle
+        GeekTheme.placeCentered(fnPreview, x: 146, width: max(40, rightColX - 158), centerY: rowH * 0.5)
+        extCard.addSubview(fnPreview)
+        modeControls.extra.filenamePreviewLabel = fnPreview
+
+        let fnField = NSTextField()
+        let fnBox = GeekInputBox(frame: NSRect(x: rightColX, y: segY, width: rightColW, height: segH), field: fnField, placeholder: SaveFilenameTemplate.defaultTemplate, mono: true)
+        fnBox.hintToolTip = fnTip
+        let fnDel = InlineGeekFieldDelegate(
+            onChange: { [weak self] raw in self?.updateFilenamePreview(template: raw) },
+            onCommit: { [weak self] raw in
+                let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                let val = trimmed.isEmpty ? SaveFilenameTemplate.defaultTemplate : trimmed
+                self?.modeControls.extra.filenameField?.stringValue = val
+                self?.updateFilenamePreview(template: val)
+                self?.onAppConfigMutated? { $0.filenameTemplate = val }
+            }
+        )
+        fnField.delegate = fnDel
+        modeControls.extra.fieldDelegates.append(fnDel)
         modeControls.extra.filenameField = fnField
+        extCard.addSubview(fnBox)
 
         extCard.addHairline(atY: rowH)
         let arTip = "启用渐变衬底（按 G/P）时的画幅比例：自动贴合或固定为 16:9 / 4:3 / 1:1 社交/演示卡片"
         addRowLabel("衬底输出比例", y: rowH, height: rowH, in: extCard, toolTip: arTip)
         let arSeg = GeekSegmentControl(items: BackdropAspectRatio.allCases.map(\.title), selectedIndex: 0, mono: true)
         arSeg.toolTip = arTip
-        arSeg.frame = NSRect(x: cardW - insetX - 224, y: rowH + segY, width: 224, height: segH)
+        arSeg.frame = NSRect(x: rightColX, y: rowH + segY, width: rightColW, height: segH)
         arSeg.onSelect = { [weak self] idx in
             let all = BackdropAspectRatio.allCases
             guard all.indices.contains(idx) else { return }
@@ -116,12 +164,19 @@ extension TranslationSettingsWindow {
         extCard.addSubview(arSeg)
 
         extCard.addHairline(atY: rowH * 2)
-        let wmTip = "启用渐变衬底导出时在右下角叠加轻量文字水印（留空不显示，回车生效）"
+        let wmTip = "启用渐变衬底导出时在右下角叠加轻量文字水印（留空不显示，失焦或回车自动保存）"
         addRowLabel("美化衬底水印", y: rowH * 2, height: rowH, in: extCard, toolTip: wmTip)
-        let wmField = makeInlineTextField(placeholder: "留空不显示，例如 @MSnip", width: 226, y: rowH * 2 + segY, in: extCard, cardW: cardW, insetX: insetX)
-        wmField.toolTip = wmTip
-        wmField.target = self; wmField.action = #selector(commitWatermarkField(_:))
+        let wmField = NSTextField()
+        let wmBox = GeekInputBox(frame: NSRect(x: rightColX, y: rowH * 2 + segY, width: rightColW, height: segH), field: wmField, placeholder: "留空不显示，例如 @MSnip", mono: false)
+        wmBox.hintToolTip = wmTip
+        let wmDel = InlineGeekFieldDelegate(onCommit: { [weak self] raw in
+            let val = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            self?.onAppConfigMutated? { $0.backdropWatermark = val }
+        })
+        wmField.delegate = wmDel
+        modeControls.extra.fieldDelegates.append(wmDel)
         modeControls.extra.watermarkField = wmField
+        extCard.addSubview(wmBox)
 
         extCard.addHairline(atY: rowH * 3)
         addRowLabel("复制与保存轻提示音", y: rowH * 3, height: rowH, in: extCard)
@@ -172,26 +227,11 @@ extension TranslationSettingsWindow {
         return bakCard.frame.maxY
     }
 
-    private func makeInlineTextField(placeholder: String, width: CGFloat, y: CGFloat, in card: GeekCardView, cardW: CGFloat, insetX: CGFloat) -> NSTextField {
-        let tf = NSTextField(frame: NSRect(x: cardW - insetX - width, y: y + 2, width: width, height: 24))
-        tf.placeholderString = placeholder
-        tf.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
-        tf.isBordered = true; tf.bezelStyle = .roundedBezel
-        tf.lineBreakMode = .byTruncatingMiddle
-        card.addSubview(tf)
-        return tf
-    }
-
-    @objc private func commitFilenameTemplateField(_ sender: NSTextField) {
-        let raw = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let val = raw.isEmpty ? SaveFilenameTemplate.defaultTemplate : raw
-        sender.stringValue = val
-        onAppConfigMutated? { $0.filenameTemplate = val }
-    }
-
-    @objc private func commitWatermarkField(_ sender: NSTextField) {
-        let val = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        onAppConfigMutated? { $0.backdropWatermark = val }
+    private func updateFilenamePreview(template: String) {
+        let ext = (appConfigProvider?().exportImageFormat.resolvedForCurrentOS ?? .png).fileExtension
+        let sample = SaveFilenameTemplate.render(template: template, pixelWidth: 1920, pixelHeight: 1080, fileExtension: ext)
+        modeControls.extra.filenamePreviewLabel?.stringValue = "例：\(sample)"
+        modeControls.extra.filenamePreviewLabel?.toolTip = "示例导出文件名：\(sample)"
     }
 
     func refreshRecordingControlsUI(with cfg: AppConfig) {
@@ -202,6 +242,7 @@ extension TranslationSettingsWindow {
         modeControls.recordCursorSwitch?.isOn = ro.showsCursor
         modeControls.recordAudioSwitch?.isOn = ro.captureSystemAudio
         modeControls.extra.filenameField?.stringValue = cfg.filenameTemplate
+        updateFilenamePreview(template: cfg.filenameTemplate)
         if let aIdx = BackdropAspectRatio.allCases.firstIndex(of: cfg.backdropAspectRatio) { modeControls.extra.backdropRatioSeg?.selectedIndex = aIdx }
         modeControls.extra.watermarkField?.stringValue = cfg.backdropWatermark
         modeControls.extra.soundSwitch?.isOn = cfg.soundFeedbackEnabled
