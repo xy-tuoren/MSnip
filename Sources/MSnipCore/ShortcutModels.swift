@@ -2,57 +2,65 @@ import AppKit
 import Carbon
 import Foundation
 
-/// 全局可配置的 9 项系统级热键动作
+/// 全局可配置的 11 项系统级热键动作
 public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
-    case capture       = "capture"
-    case pin           = "pin"
-    case ocr           = "ocr"
-    case translate     = "translate"
-    case longShot      = "longShot"
-    case record        = "record"
-    case latex         = "latex"
-    case togglePins    = "togglePins"
-    case repeatCapture = "repeatCapture"
+    case capture           = "capture"
+    case pin               = "pin"
+    case ocr               = "ocr"
+    case translate         = "translate"
+    case longShot          = "longShot"
+    case record            = "record"
+    case delayedCapture    = "delayedCapture"
+    case fullScreenCapture = "fullScreenCapture"
+    case latex             = "latex"
+    case togglePins        = "togglePins"
+    case repeatCapture     = "repeatCapture"
 
     public var title: String {
         switch self {
-        case .capture:       return "区域截图"
-        case .pin:           return "桌面贴图"
-        case .ocr:           return "快捷识字 (OCR)"
-        case .translate:     return "截图翻译"
-        case .longShot:      return "滚动长截图"
-        case .record:        return "区域录屏 (GIF/MP4)"
-        case .latex:         return "公式识别 (LaTeX)"
-        case .togglePins:    return "显隐全部贴图"
-        case .repeatCapture: return "重截上次选区"
+        case .capture:           return "区域截图"
+        case .pin:               return "桌面贴图"
+        case .ocr:               return "快捷识字 (OCR)"
+        case .translate:         return "截图翻译"
+        case .longShot:          return "滚动长截图"
+        case .record:            return "区域录屏 (GIF/MP4)"
+        case .delayedCapture:    return "延时截图"
+        case .fullScreenCapture: return "截取当前全屏"
+        case .latex:             return "公式识别 (LaTeX)"
+        case .togglePins:        return "显隐全部贴图"
+        case .repeatCapture:     return "重截上次选区"
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .capture:       return "冻结屏幕框选、圈记标注、取色与独立窗口抓拍"
-        case .pin:           return "将剪贴板图片/色值钉在桌面，或在截图中直接贴出"
-        case .ocr:           return "框选屏幕任意区域后立即进入实况划词识字"
-        case .translate:     return "框选屏幕任意区域后立即原位替换译文"
-        case .longShot:      return "框选可滚动区域后直接开始长图自动拼接"
-        case .record:        return "直接进入 GIF / MP4 选区录屏准备状态"
-        case .latex:         return "框选数学公式直接识别并弹出 KaTeX 预览"
-        case .togglePins:    return "一键暂藏或恢复桌面上所有置顶贴图窗口"
-        case .repeatCapture: return "按上一次截图的选区位置静默重截并复制到剪贴板"
+        case .capture:           return "冻结屏幕框选、圈记标注、取色与独立窗口抓拍"
+        case .pin:               return "将剪贴板图片/色值钉在桌面，或在截图中直接贴出"
+        case .ocr:               return "框选屏幕任意区域后立即进入实况划词识字"
+        case .translate:         return "框选屏幕任意区域后立即原位替换译文"
+        case .longShot:          return "框选可滚动区域后直接开始长图自动拼接"
+        case .record:            return "直接进入 GIF / MP4 选区录屏准备状态"
+        case .delayedCapture:    return "按设定的默认秒数启动悬浮倒计时，适合捕获菜单与悬停态"
+        case .fullScreenCapture: return "一键截取鼠标所在显示器整屏，按设定复制或保存到默认目录"
+        case .latex:             return "框选数学公式直接识别并弹出 KaTeX 预览"
+        case .togglePins:        return "一键暂藏或恢复桌面上所有置顶贴图窗口"
+        case .repeatCapture:     return "按上一次截图的选区位置静默重截并复制到剪贴板"
         }
     }
 
     public var symbol: String {
         switch self {
-        case .capture:       return "viewfinder"
-        case .pin:           return "pin"
-        case .ocr:           return "text.viewfinder"
-        case .translate:     return "character.bubble"
-        case .longShot:      return "scissors"
-        case .record:        return "video"
-        case .latex:         return "function"
-        case .togglePins:    return "eye.slash"
-        case .repeatCapture: return "arrow.clockwise"
+        case .capture:           return "viewfinder"
+        case .pin:               return "pin"
+        case .ocr:               return "text.viewfinder"
+        case .translate:         return "character.bubble"
+        case .longShot:          return "scissors"
+        case .record:            return "video"
+        case .delayedCapture:    return "timer"
+        case .fullScreenCapture: return "rectangle.dashed"
+        case .latex:             return "function"
+        case .togglePins:        return "eye.slash"
+        case .repeatCapture:     return "arrow.clockwise"
         }
     }
 }

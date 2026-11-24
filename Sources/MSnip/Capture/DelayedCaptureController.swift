@@ -1,9 +1,10 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 import QuartzCore
 
-/// 延时截图悬浮倒计时控制器（支持 3s / 5s 倒计时捕获菜单与悬停态，Esc 随时取消，点击圆环立即抓屏）
+/// 延时截图悬浮倒计时控制器（支持 1–60s 自定义倒计时捕获菜单与悬停态，Esc 随时取消，点击圆环立即抓屏）
 @MainActor
 final class DelayedCaptureController {
     private var panel: NSPanel?
@@ -19,7 +20,7 @@ final class DelayedCaptureController {
 
     func start(seconds: Int, onFire: @escaping @MainActor () -> Void) {
         cancel()
-        let secs = max(1, min(15, seconds))
+        let secs = DelayedCaptureSettings.clampedSeconds(seconds)
         self.totalSeconds = TimeInterval(secs)
         self.startedAt = CACurrentMediaTime()
         self.onFire = onFire

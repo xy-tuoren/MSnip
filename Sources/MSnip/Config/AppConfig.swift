@@ -30,6 +30,8 @@ struct AppConfig: Codable {
     var soundFeedbackEnabled: Bool = false
     var backdropAspectRatio: BackdropAspectRatio = .auto
     var backdropWatermark: String = ""
+    var delayedCaptureSeconds: Int = DelayedCaptureSettings.defaultSeconds
+    var fullScreenCaptureAction: FullScreenCaptureAction = .copy
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
@@ -39,6 +41,7 @@ struct AppConfig: Codable {
         case ocrAutoOpenDualPane, translateAutoOpenDualPane, ocrAutoCopy
         case exportImageFormat, exportAt1xScale, appearanceMode, terminalPasteAdaptEnabled
         case filenameTemplate, soundFeedbackEnabled, backdropAspectRatio, backdropWatermark
+        case delayedCaptureSeconds, fullScreenCaptureAction
     }
 
     init() {}
@@ -84,6 +87,9 @@ struct AppConfig: Codable {
         soundFeedbackEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundFeedbackEnabled) ?? false
         backdropAspectRatio = try c.decodeIfPresent(BackdropAspectRatio.self, forKey: .backdropAspectRatio) ?? .auto
         backdropWatermark = try c.decodeIfPresent(String.self, forKey: .backdropWatermark) ?? ""
+        let rawDelay = try c.decodeIfPresent(Int.self, forKey: .delayedCaptureSeconds) ?? DelayedCaptureSettings.defaultSeconds
+        delayedCaptureSeconds = DelayedCaptureSettings.clampedSeconds(rawDelay)
+        fullScreenCaptureAction = try c.decodeIfPresent(FullScreenCaptureAction.self, forKey: .fullScreenCaptureAction) ?? .copy
     }
 
     func encode(to encoder: Encoder) throws {
@@ -114,6 +120,8 @@ struct AppConfig: Codable {
         try c.encode(soundFeedbackEnabled, forKey: .soundFeedbackEnabled)
         try c.encode(backdropAspectRatio, forKey: .backdropAspectRatio)
         try c.encode(backdropWatermark, forKey: .backdropWatermark)
+        try c.encode(DelayedCaptureSettings.clampedSeconds(delayedCaptureSeconds), forKey: .delayedCaptureSeconds)
+        try c.encode(fullScreenCaptureAction, forKey: .fullScreenCaptureAction)
     }
 
     func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {

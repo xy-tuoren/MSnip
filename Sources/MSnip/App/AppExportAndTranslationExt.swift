@@ -7,16 +7,27 @@ import MSnipCore
 extension AppController {
     func handleGlobalHotKey(_ action: GlobalHotKeyAction) {
         switch action {
-        case .capture:       startCapture()
-        case .pin:           handlePinHotKey()
-        case .ocr:           startQuickOCR()
-        case .translate:     startQuickTranslate()
-        case .longShot:      startQuickLongShot()
-        case .record:        startQuickRecord()
-        case .latex:         startQuickLatex()
-        case .togglePins:    togglePinsVisibility()
-        case .repeatCapture: repeatLastCapture()
+        case .capture:           startCapture()
+        case .pin:               handlePinHotKey()
+        case .ocr:               startQuickOCR()
+        case .translate:         startQuickTranslate()
+        case .longShot:          startQuickLongShot()
+        case .record:            startQuickRecord()
+        case .delayedCapture:    startDefaultDelayedCapture()
+        case .fullScreenCapture: performFullScreenCapture(fromMenu: false)
+        case .latex:             startQuickLatex()
+        case .togglePins:        togglePinsVisibility()
+        case .repeatCapture:     repeatLastCapture()
         }
+    }
+
+    @objc func startDefaultDelayedCapture() {
+        if delayedCapture.isRunning {
+            delayedCapture.cancel(showToast: true)
+            return
+        }
+        let secs = DelayedCaptureSettings.clampedSeconds(config.delayedCaptureSeconds)
+        delayedCapture.start(seconds: secs) { [weak self] in self?.beginCaptureSession(mode: .standard) }
     }
 
     @objc func startQuickTranslate() { beginCaptureSession(mode: .quickTranslate) }

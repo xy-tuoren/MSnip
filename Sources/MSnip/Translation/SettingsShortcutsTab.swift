@@ -2,7 +2,7 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 设置窗口独立「快捷键」标签页（全局 9 项双键优先热键 + 强制接管一键开关 + 截图内 24 项单键自定义）
+/// 设置窗口独立「快捷键」标签页（全局系统热键 + 强制接管一键开关 + 截图内 24 项单键自定义）
 extension TranslationSettingsWindow {
     func buildShortcutsPage(in page: GeekFlippedView) {
         let cardW = page.bounds.width - 56 // 724

@@ -86,6 +86,7 @@ enum AppConfigPortability {
         \(screens)
         Preferences (Non-Secret):
           - HotKey Preset: \(config.hotKeyPreset.rawValue) (forceTap=\(config.forcePriorityHotKeys))
+          - Quick Capture: delay=\(config.delayedCaptureSeconds)s, fullScreen=\(config.fullScreenCaptureAction.rawValue)
           - Export Format: \(config.exportImageFormat.rawValue) (1xScale=\(config.exportAt1xScale))
           - Recording: \(config.preferredRecordingFormat.rawValue), GIF \(ro.clampedGifFPS)fps/\(ro.clampedGifMaxLongSide)px, MP4 \(ro.mp4Resolution.rawValue)/\(ro.mp4FPSMode.rawValue), cursor=\(ro.showsCursor), audio=\(ro.captureSystemAudio)
           - Translation Active Kind: \(transKind)

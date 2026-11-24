@@ -39,20 +39,31 @@ extension AppController {
         permWarnSepItem = warnSep
 
         menu.addItem(makeHotKeyItem(title: "区域截图", symbol: "viewfinder", action: #selector(startCapture), slot: .capture))
-        let delayRoot = NSMenuItem(title: "延时截图", action: nil, keyEquivalent: "")
+        let defaultSecs = DelayedCaptureSettings.clampedSeconds(config.delayedCaptureSeconds)
+        let delayRoot = NSMenuItem(title: "延时截图（\(defaultSecs) 秒）", action: nil, keyEquivalent: "")
         delayRoot.image = MSnipUITheme.menuSymbol("timer")
         let delaySub = NSMenu()
-        for secs in [3, 5] {
+        delaySub.addItem(makeHotKeyItem(
+            title: "按默认延时截图（\(defaultSecs) 秒）",
+            symbol: "timer",
+            action: #selector(startDefaultDelayedCapture),
+            slot: .delayedCapture
+        ))
+        delaySub.addItem(.separator())
+        for secs in DelayedCaptureSettings.quickPresets {
             let di = NSMenuItem(title: "\(secs) 秒后截图", action: #selector(startDelayedCapture(_:)), keyEquivalent: "")
             di.tag = secs; di.target = self
             delaySub.addItem(di)
         }
+        delaySub.addItem(.separator())
+        let customDelay = NSMenuItem(title: "自定义秒数与快捷键…", action: #selector(openGeneralPreferences), keyEquivalent: "")
+        customDelay.image = MSnipUITheme.menuSymbol("slider.horizontal.3")
+        customDelay.target = self
+        delaySub.addItem(customDelay)
         delayRoot.submenu = delaySub
         menu.addItem(delayRoot)
-        let fullItem = NSMenuItem(title: "截取当前全屏", action: #selector(captureCurrentFullScreen), keyEquivalent: "")
-        fullItem.image = MSnipUITheme.menuSymbol("rectangle.dashed")
-        fullItem.toolTip = "点击直接复制当前屏幕全屏（按住 ⌥ 点击直接保存到默认目录）"
-        fullItem.target = self
+        let fullItem = makeHotKeyItem(title: "截取当前全屏", symbol: "rectangle.dashed", action: #selector(captureCurrentFullScreen), slot: .fullScreenCapture)
+        fullItem.toolTip = "截取鼠标所在屏幕（当前默认：\(config.fullScreenCaptureAction.title)；按住 ⌥ 点击直接保存到默认目录）"
         menu.addItem(fullItem)
         menu.addItem(makeHotKeyItem(title: "桌面贴图", symbol: "pin", action: #selector(handlePinHotKey), slot: .pin))
         menu.addItem(makeHotKeyItem(title: "快捷识字", symbol: "text.viewfinder", action: #selector(startQuickOCR), slot: .ocr))

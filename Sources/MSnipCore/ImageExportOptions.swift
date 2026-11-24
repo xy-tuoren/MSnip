@@ -18,6 +18,43 @@ public enum AppAppearanceMode: String, CaseIterable, Codable, Sendable {
     }
 }
 
+/// 一键截取当前全屏后的默认动作
+public enum FullScreenCaptureAction: String, CaseIterable, Codable, Sendable {
+    case copy = "copy"
+    case save = "save"
+    case copyAndSave = "copyAndSave"
+
+    public var title: String {
+        switch self {
+        case .copy:        return "仅复制"
+        case .save:        return "仅保存"
+        case .copyAndSave: return "复制并保存"
+        }
+    }
+}
+
+/// 延时截图秒数规范与文本解析辅助（支持 1–60 秒自定义，菜单快捷档位 3 / 5 / 10 秒）
+public enum DelayedCaptureSettings {
+    public static let defaultSeconds = 3
+    public static let minSeconds = 1
+    public static let maxSeconds = 60
+    public static let quickPresets = [3, 5, 10]
+
+    public static func clampedSeconds(_ value: Int) -> Int {
+        min(maxSeconds, max(minSeconds, value))
+    }
+
+    public static func parseSeconds(_ raw: String, fallback: Int = defaultSeconds) -> Int {
+        let cleaned = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "秒", with: "")
+            .replacingOccurrences(of: "s", with: "", options: .caseInsensitive)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsed = Int(cleaned) else { return clampedSeconds(fallback) }
+        return clampedSeconds(parsed)
+    }
+}
+
 /// 截图文件保存格式（零第三方依赖，按当前 macOS `ImageIO` 能力运行时动态探测并优雅兜底，100% 兼容 macOS 12.0+）
 public enum CaptureExportFormat: String, CaseIterable, Codable, Sendable {
     case png = "png"

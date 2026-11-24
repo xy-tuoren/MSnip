@@ -10,6 +10,9 @@ final class GeneralExtraControls {
     var filenamePreviewLabel: NSTextField?
     var backdropRatioSeg: GeekSegmentControl?
     var watermarkField: NSTextField?
+    var delayPresetSeg: GeekSegmentControl?
+    var delaySecondsField: NSTextField?
+    var fullScreenActionSeg: GeekSegmentControl?
     var fieldDelegates: [InlineGeekFieldDelegate] = []
 }
 
@@ -40,9 +43,13 @@ extension TranslationSettingsWindow {
         let rowH: CGFloat = 44, segH: CGFloat = 28, segY: CGFloat = 8, switchH: CGFloat = 22, switchY: CGFloat = 11
         let switchX = cardW - insetX - 38, headerToCard: CGFloat = 24, sectionGap: CGFloat = 20
 
+        modeControls.extra.fieldDelegates.removeAll()
+        let afterCaptureModesY = appendCaptureModesCard(in: content, startY: startY, cardX: cardX, cardW: cardW)
+        let recStartY = afterCaptureModesY + sectionGap
+
         // 1) 录屏参数（5 行）
-        addSectionHeader("录屏参数", x: headerX, y: startY, in: content)
-        let recCard = GeekCardView(frame: NSRect(x: cardX, y: startY + headerToCard, width: cardW, height: rowH * 5))
+        addSectionHeader("录屏参数", x: headerX, y: recStartY, in: content)
+        let recCard = GeekCardView(frame: NSRect(x: cardX, y: recStartY + headerToCard, width: cardW, height: rowH * 5))
         content.addSubview(recCard)
 
         let gifTip = "轻巧：10fps · 最长边 ≤720px｜标准：12fps · 最长边 ≤960px（默认）｜高清：15fps · 最长边 ≤1280px"
@@ -118,7 +125,6 @@ extension TranslationSettingsWindow {
 
         let rightColW: CGFloat = 224
         let rightColX = cardW - insetX - rightColW
-        modeControls.extra.fieldDelegates.removeAll()
 
         let fnTip = "支持占位符：{date} {time} {yyyy} {MM} {dd} {HH} {mm} {ss} {w} {h}（留空自动恢复默认）"
         addRowLabel("保存文件名模板", y: 0, height: rowH, in: extCard, toolTip: fnTip)
@@ -246,5 +252,6 @@ extension TranslationSettingsWindow {
         if let aIdx = BackdropAspectRatio.allCases.firstIndex(of: cfg.backdropAspectRatio) { modeControls.extra.backdropRatioSeg?.selectedIndex = aIdx }
         modeControls.extra.watermarkField?.stringValue = cfg.backdropWatermark
         modeControls.extra.soundSwitch?.isOn = cfg.soundFeedbackEnabled
+        refreshCaptureModesUI(with: cfg)
     }
 }

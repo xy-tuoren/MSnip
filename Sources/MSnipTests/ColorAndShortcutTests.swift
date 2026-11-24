@@ -104,6 +104,18 @@ func testShortcutPresetsOverridesAndCanvasSwap() {
     check(defPreset.defaultCombo(for: .longShot)?.displayString == "⌥E", "默认长截图热键应为左手双键 ⌥E")
     check(defPreset.defaultCombo(for: .record)?.displayString == "⌥R", "默认录屏热键应为左手双键 ⌥R")
     check(defPreset.defaultCombo(for: .latex) == nil, "低频公式热键默认留空不占全局键位")
+    check(defPreset.defaultCombo(for: .delayedCapture) == nil, "延时截图热键默认留空由用户自由绑定")
+    check(defPreset.defaultCombo(for: .fullScreenCapture) == nil, "截取当前全屏热键默认留空由用户自由绑定")
+    check(GlobalHotKeyAction.allCases.contains(.delayedCapture) && GlobalHotKeyAction.allCases.contains(.fullScreenCapture), "全局热键列表应包含延时截图与截取当前全屏")
+    check(DelayedCaptureSettings.clampedSeconds(0) == 1 && DelayedCaptureSettings.clampedSeconds(99) == 60, "延时秒数应钳位在 1–60 秒")
+    check(DelayedCaptureSettings.parseSeconds("8秒") == 8 && DelayedCaptureSettings.parseSeconds("15s") == 15, "应支持解析带单位的自定义延时秒数")
+    check(DelayedCaptureSettings.parseSeconds("abc", fallback: 5) == 5, "非法延时文本应回退为当前秒数")
+    if let enc = try? JSONEncoder().encode(FullScreenCaptureAction.copyAndSave),
+       let dec = try? JSONDecoder().decode(FullScreenCaptureAction.self, from: enc) {
+        check(dec == .copyAndSave, "全屏截图默认动作应可正常 Codable 往返")
+    } else {
+        check(false, "全屏截图默认动作 Codable 编码失败")
+    }
 
     // 2) 数字双键预设 ctrl123 与历史旧版配置名兼容解码
     check(HotKeyPreset.ctrl123.defaultCombo(for: .capture)?.displayString == "⌃1", "数字双键预设应为 ⌃1")
