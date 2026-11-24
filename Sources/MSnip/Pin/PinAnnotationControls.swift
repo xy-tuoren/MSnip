@@ -194,7 +194,7 @@ extension PinAnnotationCanvasView {
 
     func startTextField(at pt: CGPoint, existing: Int?) {
         commitTextField()
-        let z = max(0.25, zoomProvider())
+        let z = max(0.05, zoomProvider())
         var origin = pt
         var text = ""
         if let idx = existing, case .text(let o, let c, _) = doc.objects[idx].payload {

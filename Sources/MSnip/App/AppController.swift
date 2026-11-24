@@ -112,9 +112,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         translationSettings.onAppConfigMutated = { [weak self] mutate in
             guard let self else { return }
+            let oldGlow = self.config.pinGlowStrength
             mutate(&self.config)
             self.config.save()
             SmartClipboardProjectionManager.shared.isAdaptiveEnabled = self.config.terminalPasteAdaptEnabled
+            if abs(self.config.pinGlowStrength - oldGlow) > 0.001 {
+                self.pinManager.applyGlowStrengthToAll(self.config.pinGlowStrength)
+            }
             self.hotKeyManager.apply(config: self.config)
             self.rebuildMenu()
         }

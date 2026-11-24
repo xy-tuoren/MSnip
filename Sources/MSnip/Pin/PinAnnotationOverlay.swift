@@ -56,7 +56,7 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
 
     func logicalPoint(for event: NSEvent) -> CGPoint {
         let raw = convert(event.locationInWindow, from: nil)
-        let z = max(0.25, zoomProvider())
+        let z = max(0.05, zoomProvider())
         return CGPoint(
             x: min(max(0, raw.x / z), baseSize.width),
             y: min(max(0, raw.y / z), baseSize.height)
@@ -65,7 +65,7 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let z = max(0.25, zoomProvider())
+        let z = max(0.05, zoomProvider())
         ctx.saveGState()
         ctx.scaleBy(x: z, y: z)
         let canvasRect = CGRect(origin: .zero, size: baseSize)
@@ -131,7 +131,7 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
             return
         }
         if let selIdx = selectedIndex, doc.objects.indices.contains(selIdx),
-           let handle = doc.objects[selIdx].hitEditableHandle(at: p, radius: 9.0 / max(0.25, zoomProvider())) {
+           let handle = doc.objects[selIdx].hitEditableHandle(at: p, radius: 9.0 / max(0.05, zoomProvider())) {
             doc.beginTransaction()
             dragState = .resizing(index: selIdx, handle: handle, initialPayload: doc.objects[selIdx].payload, moved: false)
             return

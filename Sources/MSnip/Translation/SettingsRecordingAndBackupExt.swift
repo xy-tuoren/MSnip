@@ -8,8 +8,7 @@ final class GeneralExtraControls {
     var soundSwitch: GeekToggleSwitch?
     var filenameField: NSTextField?
     var filenamePreviewLabel: NSTextField?
-    var backdropRatioSeg: GeekSegmentControl?
-    var watermarkField: NSTextField?
+    var pinGlowSeg: GeekSegmentControl?
     var delayPresetSeg: GeekSegmentControl?
     var delaySecondsField: NSTextField?
     var fullScreenActionSeg: GeekSegmentControl?
@@ -117,10 +116,10 @@ extension TranslationSettingsWindow {
         modeControls.recordAudioSwitch = audioSw
         recCard.addSubview(audioSw)
 
-        // 2) 命名、美化与反馈（4 行，右侧 224pt 统一圆角控件列对齐 + 文件名实时预览）
+        // 2) 命名、贴图与反馈（3 行，右侧 224pt 统一圆角控件列对齐 + 文件名实时预览）
         let yMid = recCard.frame.maxY + sectionGap
-        addSectionHeader("命名、美化与反馈", x: headerX, y: yMid, in: content)
-        let extCard = GeekCardView(frame: NSRect(x: cardX, y: yMid + headerToCard, width: cardW, height: rowH * 4))
+        addSectionHeader("命名、贴图与反馈", x: headerX, y: yMid, in: content)
+        let extCard = GeekCardView(frame: NSRect(x: cardX, y: yMid + headerToCard, width: cardW, height: rowH * 3))
         content.addSubview(extCard)
 
         let rightColW: CGFloat = 224
@@ -156,38 +155,23 @@ extension TranslationSettingsWindow {
         extCard.addSubview(fnBox)
 
         extCard.addHairline(atY: rowH)
-        let arTip = "启用渐变衬底（按 G/P）时的画幅比例：自动贴合或固定为 16:9 / 4:3 / 1:1 社交/演示卡片"
-        addRowLabel("衬底输出比例", y: rowH, height: rowH, in: extCard, toolTip: arTip)
-        let arSeg = GeekSegmentControl(items: BackdropAspectRatio.allCases.map(\.title), selectedIndex: 0, mono: true)
-        arSeg.toolTip = arTip
-        arSeg.frame = NSRect(x: rightColX, y: rowH + segY, width: rightColW, height: segH)
-        arSeg.onSelect = { [weak self] idx in
-            let all = BackdropAspectRatio.allCases
-            guard all.indices.contains(idx) else { return }
-            self?.onAppConfigMutated? { $0.backdropAspectRatio = all[idx] }
+        let glowTip = "贴图默认呈现淡淡白光外缘、悬浮时亮起柔和蓝边（截图右侧第 2 颗圆钮或贴图上按住 ⌥+滚轮可精细调节 0%–100%）"
+        addRowLabel("贴图默认发光边", y: rowH, height: rowH, in: extCard, toolTip: glowTip)
+        let glowSeg = GeekSegmentControl(items: ["关闭", "柔和 45%", "明亮 80%"], selectedIndex: 1)
+        glowSeg.toolTip = glowTip
+        glowSeg.frame = NSRect(x: rightColX, y: rowH + segY, width: rightColW, height: segH)
+        glowSeg.onSelect = { [weak self] idx in
+            let levels: [CGFloat] = [0.0, 0.45, 0.80]
+            guard levels.indices.contains(idx) else { return }
+            self?.onAppConfigMutated? { $0.pinGlowStrength = levels[idx] }
         }
-        modeControls.extra.backdropRatioSeg = arSeg
-        extCard.addSubview(arSeg)
+        modeControls.extra.pinGlowSeg = glowSeg
+        extCard.addSubview(glowSeg)
 
         extCard.addHairline(atY: rowH * 2)
-        let wmTip = "启用渐变衬底导出时在右下角叠加轻量文字水印（留空不显示，失焦或回车自动保存）"
-        addRowLabel("美化衬底水印", y: rowH * 2, height: rowH, in: extCard, toolTip: wmTip)
-        let wmField = NSTextField()
-        let wmBox = GeekInputBox(frame: NSRect(x: rightColX, y: rowH * 2 + segY, width: rightColW, height: segH), field: wmField, placeholder: "留空不显示，例如 @MSnip", mono: false)
-        wmBox.hintToolTip = wmTip
-        let wmDel = InlineGeekFieldDelegate(onCommit: { [weak self] raw in
-            let val = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            self?.onAppConfigMutated? { $0.backdropWatermark = val }
-        })
-        wmField.delegate = wmDel
-        modeControls.extra.fieldDelegates.append(wmDel)
-        modeControls.extra.watermarkField = wmField
-        extCard.addSubview(wmBox)
-
-        extCard.addHairline(atY: rowH * 3)
-        addRowLabel("复制与保存轻提示音", y: rowH * 3, height: rowH, in: extCard)
+        addRowLabel("复制与保存轻提示音", y: rowH * 2, height: rowH, in: extCard)
         let sndSw = GeekToggleSwitch(isOn: false)
-        sndSw.frame = NSRect(x: switchX, y: rowH * 3 + switchY, width: 38, height: switchH)
+        sndSw.frame = NSRect(x: switchX, y: rowH * 2 + switchY, width: 38, height: switchH)
         sndSw.onToggle = { [weak self] on in
             self?.onAppConfigMutated? { $0.soundFeedbackEnabled = on }
             if on { ClipboardAndSave.playFeedbackSound(enabled: true) }
@@ -249,8 +233,8 @@ extension TranslationSettingsWindow {
         modeControls.recordAudioSwitch?.isOn = ro.captureSystemAudio
         modeControls.extra.filenameField?.stringValue = cfg.filenameTemplate
         updateFilenamePreview(template: cfg.filenameTemplate)
-        if let aIdx = BackdropAspectRatio.allCases.firstIndex(of: cfg.backdropAspectRatio) { modeControls.extra.backdropRatioSeg?.selectedIndex = aIdx }
-        modeControls.extra.watermarkField?.stringValue = cfg.backdropWatermark
+        let g = cfg.pinGlowStrength
+        modeControls.extra.pinGlowSeg?.selectedIndex = g <= 0.01 ? 0 : (abs(g - 0.45) < 0.06 ? 1 : (abs(g - 0.80) < 0.06 ? 2 : -1))
         modeControls.extra.soundSwitch?.isOn = cfg.soundFeedbackEnabled
         refreshCaptureModesUI(with: cfg)
     }

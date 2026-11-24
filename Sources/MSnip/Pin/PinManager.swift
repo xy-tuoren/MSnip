@@ -159,6 +159,12 @@ final class PinManager {
         onCountChanged?(windows.count)
     }
 
+    func applyGlowStrengthToAll(_ strength: CGFloat) {
+        let clamped = min(1.0, max(0.0, strength))
+        defaultGlowStrength = clamped
+        for w in windows { w.glowStrength = clamped; w.syncGlowState() }
+    }
+
     func closeAll() {
         arePinsHidden = false
         let current = windows

@@ -206,7 +206,7 @@ public enum CanvasAction: String, CaseIterable, Codable, Sendable {
         case .eraser: return "橡皮擦 / 恢复上次选区"
         case .textCapsule: return "切换文字胶囊底色"
         case .cornerRadius: return "圆角裁切滑块（配 ⌥ 重置）"
-        case .backdropOrCoord: return "渐变衬底美化 / 切换相对坐标"
+        case .backdropOrCoord: return "发光边强度滑块 / 切换相对坐标"
         case .snapWindow: return "对齐底层窗口（配 ⌥ 抓独立窗口）"
         case .caliper: return "像素卡尺四向测距"
         case .eyedropper: return "画笔吸管取色"
@@ -222,7 +222,7 @@ public enum CanvasAction: String, CaseIterable, Codable, Sendable {
         case .translate: return "character.bubble"; case .longShot: return "scissors";          case .record: return "video";        case .cancel: return "xmark.circle"
         case .rect: return "rectangle";        case .arrow: return "arrow.up.right";            case .pen: return "pencil";          case .text: return "character"
         case .step: return "1.circle";         case .mosaic: return "checkerboard.rectangle";   case .eraser: return "eraser";       case .textCapsule: return "capsule"
-        case .cornerRadius: return "app";      case .backdropOrCoord: return "sparkles.rectangle.stack"; case .snapWindow: return "macwindow"; case .caliper: return "ruler"
+        case .cornerRadius: return "app";      case .backdropOrCoord: return "sun.max"; case .snapWindow: return "macwindow"; case .caliper: return "ruler"
         case .eyedropper: return "eyedropper"; case .copyCoord: return "scope";                 case .toggleMagnifier: return "magnifyingglass"; case .toggleTips: return "questionmark.circle"
         }
     }
