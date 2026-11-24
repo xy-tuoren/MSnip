@@ -101,6 +101,17 @@ func testV031Features() {
 
     let resizedTL = ImageTransform.resizedPinFrame(edge: .topLeft, initialFrame: initFrame, baseSize: CGSize(width: 400, height: 200), delta: CGPoint(x: -200, y: 100))
     check(abs(resizedTL.zoom - 1.5) < 0.01 && abs(resizedTL.frame.maxX - initFrame.maxX) < 1 && abs(resizedTL.frame.minY - initFrame.minY) < 1, "拖拽左上角放大 1.5× 时右下角锚点必须纹丝不动: \(resizedTL)")
+
+    // 7) 历史环拼图标记过滤：拼图入库后不得被再次当作原图递归套娃拼接
+    let tmpDir = FileManager.default.temporaryDirectory.appendingPathComponent("msnip-collage-hist-\(UUID().uuidString)", isDirectory: true)
+    let ring = CaptureHistoryRing(directoryURL: tmpDir, maxCount: 6)
+    ring.record(cgImage: redImg, scaleFactor: 2.0)
+    ring.record(cgImage: blueImg, scaleFactor: 2.0)
+    ring.record(cgImage: redImg, scaleFactor: 2.0, isCollage: true)
+    ring.flushPendingWrites()
+    check(ring.entries.count == 3 && ring.entries[0].isCollage, "生成的拼图应保留在最近历史中并标记 isCollage=true")
+    check(ring.originalEntries.count == 2 && ring.originalEntries.allSatisfy { !$0.isCollage }, "originalEntries 必须自动排除历史拼图防止套娃")
+    try? FileManager.default.removeItem(at: tmpDir)
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

@@ -161,7 +161,8 @@ extension AppController {
         sub.addItem(.separator())
 
         for (idx, entry) in historyRing.entries.enumerated() {
-            let title = "\(Self.historyTimeFormatter.string(from: entry.createdAt))  ·  \(entry.pixelWidth) × \(entry.pixelHeight)"
+            let tag = entry.isCollage ? "拼图 · " : ""
+            let title = "\(Self.historyTimeFormatter.string(from: entry.createdAt))  ·  \(tag)\(entry.pixelWidth) × \(entry.pixelHeight)"
             let item = NSMenuItem(title: title, action: #selector(restoreHistoryItem(_:)), keyEquivalent: "")
             item.tag = idx
             item.target = self
@@ -170,11 +171,12 @@ extension AppController {
         }
 
         sub.addItem(.separator())
-        if historyRing.entries.count >= 2 {
+        let origCount = historyRing.originalEntries.count
+        if origCount >= 2 {
             let collageRoot = NSMenuItem(title: "多图对比拼接", action: nil, keyEquivalent: "")
             collageRoot.image = MSnipUITheme.menuSymbol("rectangle.split.2x1")
             let colSub = NSMenu()
-            let maxN = min(4, historyRing.entries.count)
+            let maxN = min(4, origCount)
             for n in 2...maxN {
                 let hItem = NSMenuItem(title: "最近 \(n) 张 · 横向并排对比", action: #selector(createHistoryCollage(_:)), keyEquivalent: "")
                 hItem.tag = 10 + n; hItem.target = self

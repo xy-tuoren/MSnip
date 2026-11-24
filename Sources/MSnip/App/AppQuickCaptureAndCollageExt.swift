@@ -89,13 +89,13 @@ extension AppController {
         let dirCode = sender.tag / 10
         let count = max(2, sender.tag % 10)
         let direction: CollageDirection = (dirCode == 2) ? .vertical : .horizontal
-        let slice = Array(historyRing.entries.prefix(count)).reversed()
+        let slice = Array(historyRing.originalEntries.prefix(count)).reversed()
         let loaded: [(CGImage, CGFloat)] = slice.compactMap { entry in
             guard let cg = historyRing.loadCGImage(for: entry) else { return nil }
             return (cg, entry.scaleFactor)
         }
         guard loaded.count >= 2 else {
-            ToastHUD.show(message: "至少需要 2 张最近截图才可拼接")
+            ToastHUD.show(message: "至少需要 2 张最近原始截图才可拼接")
             return
         }
         let images = loaded.map(\.0)
@@ -111,7 +111,7 @@ extension AppController {
             }
             ClipboardAndSave.copyToClipboard(cgImage: stitched, scaleFactor: refScale)
             ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
-            self.recordHistoryAndRefresh(img: stitched, scale: refScale)
+            self.recordHistoryAndRefresh(img: stitched, scale: refScale, isCollage: true)
             ToastHUD.show(
                 message: "✓ 已生成 \(loaded.count) 图\(dirLabel)并复制",
                 subtitle: "\(stitched.width) × \(stitched.height) px",

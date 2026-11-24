@@ -286,8 +286,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    func recordHistoryAndRefresh(img: CGImage, scale: CGFloat) {
-        historyRing.record(cgImage: img, scaleFactor: scale)
+    func recordHistoryAndRefresh(img: CGImage, scale: CGFloat, isCollage: Bool = false) {
+        historyRing.record(cgImage: img, scaleFactor: scale, isCollage: isCollage)
         rebuildMenu()
     }
 }

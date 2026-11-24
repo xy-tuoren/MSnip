@@ -12,6 +12,7 @@ public struct CaptureHistoryEntry: Codable, Equatable, Identifiable, Sendable {
     public let pixelHeight: Int
     public let scaleFactor: CGFloat
     public let fileName: String
+    public let isCollage: Bool
 
     var thumbFileName: String { "thumb-\(id.uuidString).png" }
 
@@ -21,14 +22,23 @@ public struct CaptureHistoryEntry: Codable, Equatable, Identifiable, Sendable {
         pixelWidth: Int,
         pixelHeight: Int,
         scaleFactor: CGFloat,
-        fileName: String
+        fileName: String,
+        isCollage: Bool = false
     ) {
-        self.id = id
-        self.createdAt = createdAt
-        self.pixelWidth = pixelWidth
-        self.pixelHeight = pixelHeight
-        self.scaleFactor = scaleFactor
-        self.fileName = fileName
+        self.id = id; self.createdAt = createdAt
+        self.pixelWidth = pixelWidth; self.pixelHeight = pixelHeight
+        self.scaleFactor = scaleFactor; self.fileName = fileName; self.isCollage = isCollage
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        createdAt = try c.decode(Date.self, forKey: .createdAt)
+        pixelWidth = try c.decode(Int.self, forKey: .pixelWidth)
+        pixelHeight = try c.decode(Int.self, forKey: .pixelHeight)
+        scaleFactor = try c.decode(CGFloat.self, forKey: .scaleFactor)
+        fileName = try c.decode(String.self, forKey: .fileName)
+        isCollage = try c.decodeIfPresent(Bool.self, forKey: .isCollage) ?? false
     }
 }
 
@@ -64,19 +74,18 @@ public final class CaptureHistoryRing {
         loadIndex()
     }
 
+    /// 仅返回非拼图原始截图条目（供多图对比拼接选源，彻底杜绝「拼图套拼图」递归套娃）
+    public var originalEntries: [CaptureHistoryEntry] { entries.filter { !$0.isCollage } }
+
     /// 记录一张新完成的截图：主线程仅生成 `56×36` 微缩略图（`<0.3ms`），高清 PNG 压缩与落盘全部交由后台串行队列执行
     @discardableResult
-    public func record(cgImage: CGImage, scaleFactor: CGFloat, date: Date = Date()) -> CaptureHistoryEntry? {
+    public func record(cgImage: CGImage, scaleFactor: CGFloat, date: Date = Date(), isCollage: Bool = false) -> CaptureHistoryEntry? {
         guard cgImage.width > 0, cgImage.height > 0 else { return nil }
         let id = UUID()
         let normScale = max(1.0, scaleFactor)
         let entry = CaptureHistoryEntry(
-            id: id,
-            createdAt: date,
-            pixelWidth: cgImage.width,
-            pixelHeight: cgImage.height,
-            scaleFactor: normScale,
-            fileName: "shot-\(id.uuidString).png"
+            id: id, createdAt: date, pixelWidth: cgImage.width, pixelHeight: cgImage.height,
+            scaleFactor: normScale, fileName: "shot-\(id.uuidString).png", isCollage: isCollage
         )
 
         let thumbCG = Self.makeThumbnailCGImage(from: cgImage)
