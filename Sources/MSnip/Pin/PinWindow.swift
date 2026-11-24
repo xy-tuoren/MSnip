@@ -117,6 +117,7 @@ final class PinWindow: NSPanel {
             case .ocr:       self.openOCRPanel()
             case .translate: self.openTranslatePanel()
             case .copy:      self.copyImage(); ToastHUD.show(message: "已复制贴图图像")
+            case .save:      if NSEvent.modifierFlags.contains(.shift) { self.saveImage() } else { self.quickSaveImage() }
             case .close:     self.closePin()
             }
         }

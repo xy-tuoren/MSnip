@@ -96,11 +96,7 @@ final class PinContentView: NSView, NSDraggingSource {
 /// 贴图外侧顶部独立悬浮控制条窗口（零遮挡贴图内部文字，贴顶时自动翻至贴图下方）
 final class PinHoverBarPanel: NSPanel {
     enum Action {
-        case annotate
-        case ocr
-        case translate
-        case copy
-        case close
+        case annotate, ocr, translate, copy, save, close
     }
 
     let barView = PinHoverBarView()
@@ -139,9 +135,9 @@ final class PinHoverBarPanel: NSPanel {
     }
 }
 
-/// 贴图外侧悬浮微操作胶囊视图：`[ ✥ 拖动 | ✎ 标注 | 识字 | 翻译 | 复制 | ✕ 关闭 ]`
+/// 贴图外侧悬浮微操作胶囊视图：`[ ✥ 拖动 | ✎ 标注 | 识字 | 翻译 | 复制 | ↓ 保存 | ✕ 关闭 ]`
 final class PinHoverBarView: NSView {
-    static let barSize = NSSize(width: 170, height: 28)
+    static let barSize = NSSize(width: 196, height: 28)
 
     var onAction: ((PinHoverBarPanel.Action) -> Void)?
     var onHoverChanged: ((Bool) -> Void)?
@@ -194,7 +190,14 @@ final class PinHoverBarView: NSView {
             action: .copy
         ),
         ActionSlot(
-            rect: CGRect(x: 142, y: 2, width: 24, height: 24),
+            rect: CGRect(x: 142, y: 2, width: 25, height: 24),
+            symbol: "square.and.arrow.down",
+            tip: "保存到默认目录 (⌘S · 按住 ⇧ 点击另存为)",
+            tint: MSnipUITheme.inkPrimary,
+            action: .save
+        ),
+        ActionSlot(
+            rect: CGRect(x: 168, y: 2, width: 24, height: 24),
             symbol: "xmark",
             tip: "关闭贴图 (Esc / 双击空白处)",
             tint: MSnipUITheme.danger,
