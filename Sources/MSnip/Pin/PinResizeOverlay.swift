@@ -61,42 +61,19 @@ enum PinResizeCursorFactory {
     }
 }
 
-/// 贴图悬停微角标与实时缩放胶囊视图（完全鼠标穿透，静止零绘制）
+/// 贴图边角悬停微指示与实时缩放胶囊视图（默认完全隐藏，仅鼠标移至边角或拖拽缩放时显现，完全鼠标穿透）
 final class PinResizeChromeView: NSView {
-    var showsHandles: Bool = false { didSet { if oldValue != showsHandles { needsDisplay = true } } }
     var hoveredEdge: PinResizeEdge? { didSet { if oldValue != hoveredEdge { needsDisplay = true } } }
     var activeResizeBadge: String? { didSet { if oldValue != activeResizeBadge { needsDisplay = true } } }
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard showsHandles || activeResizeBadge != nil,
+        guard hoveredEdge != nil || activeResizeBadge != nil,
               let ctx = NSGraphicsContext.current?.cgContext else { return }
 
-        if showsHandles {
-            let arm: CGFloat = min(8.0, max(4.0, min(bounds.width, bounds.height) * 0.14))
-            let inset: CGFloat = 2.0
-            let corners: [(PinResizeEdge, CGPoint, CGFloat, CGFloat)] = [
-                (.topLeft,     CGPoint(x: inset, y: bounds.height - inset), 1, -1),
-                (.topRight,    CGPoint(x: bounds.width - inset, y: bounds.height - inset), -1, -1),
-                (.bottomLeft,  CGPoint(x: inset, y: inset), 1, 1),
-                (.bottomRight, CGPoint(x: bounds.width - inset, y: inset), -1, 1)
-            ]
-            ctx.setLineCap(.round)
-            ctx.setLineJoin(.round)
-            for (edge, pt, sx, sy) in corners {
-                let hot = (hoveredEdge == edge)
-                let p = CGMutablePath()
-                p.move(to: CGPoint(x: pt.x + sx * arm, y: pt.y))
-                p.addLine(to: pt)
-                p.addLine(to: CGPoint(x: pt.x, y: pt.y + sy * arm))
-                ctx.setStrokeColor(NSColor.white.withAlphaComponent(hot ? 0.95 : 0.72).cgColor)
-                ctx.setLineWidth(hot ? 3.8 : 3.0)
-                ctx.addPath(p); ctx.strokePath()
-                ctx.setStrokeColor(MSnipUITheme.accent.withAlphaComponent(hot ? 1.0 : 0.82).cgColor)
-                ctx.setLineWidth(hot ? 2.2 : 1.5)
-                ctx.addPath(p); ctx.strokePath()
-            }
+        if let edge = hoveredEdge {
+            drawEdgeIndicator(edge, in: ctx)
         }
 
         if let badge = activeResizeBadge, bounds.width >= 96, bounds.height >= 44 {
@@ -115,6 +92,42 @@ final class PinResizeChromeView: NSView {
             ctx.setLineWidth(0.8); ctx.addPath(path); ctx.strokePath()
             ns.draw(at: CGPoint(x: round(pill.midX - sz.width * 0.5), y: round(pill.midY - sz.height * 0.5 - 0.5)), withAttributes: attrs)
         }
+    }
+
+    private func drawEdgeIndicator(_ edge: PinResizeEdge, in ctx: CGContext) {
+        let inset: CGFloat = 2.0
+        let arm: CGFloat = min(10.0, max(5.0, min(bounds.width, bounds.height) * 0.16))
+        let p = CGMutablePath()
+        switch edge {
+        case .topLeft:
+            let pt = CGPoint(x: inset, y: bounds.height - inset)
+            p.move(to: CGPoint(x: pt.x + arm, y: pt.y)); p.addLine(to: pt); p.addLine(to: CGPoint(x: pt.x, y: pt.y - arm))
+        case .topRight:
+            let pt = CGPoint(x: bounds.width - inset, y: bounds.height - inset)
+            p.move(to: CGPoint(x: pt.x - arm, y: pt.y)); p.addLine(to: pt); p.addLine(to: CGPoint(x: pt.x, y: pt.y - arm))
+        case .bottomLeft:
+            let pt = CGPoint(x: inset, y: inset)
+            p.move(to: CGPoint(x: pt.x + arm, y: pt.y)); p.addLine(to: pt); p.addLine(to: CGPoint(x: pt.x, y: pt.y + arm))
+        case .bottomRight:
+            let pt = CGPoint(x: bounds.width - inset, y: inset)
+            p.move(to: CGPoint(x: pt.x - arm, y: pt.y)); p.addLine(to: pt); p.addLine(to: CGPoint(x: pt.x, y: pt.y + arm))
+        case .top, .bottom:
+            let half = min(18.0, max(8.0, bounds.width * 0.12))
+            let y = (edge == .top) ? (bounds.height - inset) : inset
+            p.move(to: CGPoint(x: bounds.midX - half, y: y)); p.addLine(to: CGPoint(x: bounds.midX + half, y: y))
+        case .left, .right:
+            let half = min(18.0, max(8.0, bounds.height * 0.12))
+            let x = (edge == .right) ? (bounds.width - inset) : inset
+            p.move(to: CGPoint(x: x, y: bounds.midY - half)); p.addLine(to: CGPoint(x: x, y: bounds.midY + half))
+        }
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.95).cgColor)
+        ctx.setLineWidth(3.8)
+        ctx.addPath(p); ctx.strokePath()
+        ctx.setStrokeColor(MSnipUITheme.accent.cgColor)
+        ctx.setLineWidth(2.2)
+        ctx.addPath(p); ctx.strokePath()
     }
 }
 
@@ -142,8 +155,6 @@ extension PinWindow {
 
     func syncResizeChromeVisibility() {
         let allow = !isClickThrough && editorCanvas == nil && cropOverlay == nil
-        let show = allow && (isMouseInPin || isKeyWindow || resizeState.activeEdge != nil)
-        resizeState.chromeView?.showsHandles = show
         if !allow {
             resizeState.hoveredEdge = nil
             resizeState.chromeView?.hoveredEdge = nil
