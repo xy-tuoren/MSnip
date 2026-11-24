@@ -76,6 +76,31 @@ func testV031Features() {
     } else {
         check(false, "1:1 比例美化衬底应烘焙成功")
     }
+
+    // 6) 贴图自适应屏幕边界 + 8 向边角拖拽等比缩放算法
+    let screenVF = CGRect(x: 0, y: 40, width: 1440, height: 830)
+    let hugeCollage = CGSize(width: 3600, height: 900)
+    let fitted = ImageTransform.fittedPinRect(baseSize: hugeCollage, visibleBounds: screenVF)
+    check(fitted.zoom < 1.0 && fitted.frame.width <= screenVF.width && fitted.frame.height <= screenVF.height, "超宽多图拼图贴图应自动缩入屏幕可视区: \(fitted)")
+    check(screenVF.contains(fitted.frame), "自适应后的贴图必须完全落在屏幕可见区域内: \(fitted.frame)")
+    check(abs((fitted.frame.width / fitted.frame.height) - (hugeCollage.width / hugeCollage.height)) < 0.05, "自适应缩放必须严格保持原图宽高比")
+
+    let smallPin = CGSize(width: 320, height: 200)
+    let smallFit = ImageTransform.fittedPinRect(baseSize: smallPin, visibleBounds: screenVF)
+    check(abs(smallFit.zoom - 1.0) < 0.001 && smallFit.frame.size == smallPin, "小于屏幕的贴图应保持 100% 原始尺寸")
+
+    let pinBounds = CGRect(x: 0, y: 0, width: 300, height: 200)
+    check(PinResizeEdge.hitTest(point: CGPoint(x: 4, y: 196), in: pinBounds) == .topLeft, "左上角应命中 .topLeft")
+    check(PinResizeEdge.hitTest(point: CGPoint(x: 296, y: 4), in: pinBounds) == .bottomRight, "右下角应命中 .bottomRight")
+    check(PinResizeEdge.hitTest(point: CGPoint(x: 298, y: 100), in: pinBounds) == .right, "右侧边缘应命中 .right")
+    check(PinResizeEdge.hitTest(point: CGPoint(x: 150, y: 100), in: pinBounds) == nil, "贴图中心区域不应命中缩放热区")
+
+    let initFrame = CGRect(x: 100, y: 200, width: 400, height: 200)
+    let resizedBR = ImageTransform.resizedPinFrame(edge: .bottomRight, initialFrame: initFrame, baseSize: CGSize(width: 400, height: 200), delta: CGPoint(x: 200, y: -100))
+    check(abs(resizedBR.zoom - 1.5) < 0.01 && abs(resizedBR.frame.minX - initFrame.minX) < 1 && abs(resizedBR.frame.maxY - initFrame.maxY) < 1, "拖拽右下角放大 1.5× 时左上角锚点必须纹丝不动: \(resizedBR)")
+
+    let resizedTL = ImageTransform.resizedPinFrame(edge: .topLeft, initialFrame: initFrame, baseSize: CGSize(width: 400, height: 200), delta: CGPoint(x: -200, y: 100))
+    check(abs(resizedTL.zoom - 1.5) < 0.01 && abs(resizedTL.frame.maxX - initFrame.maxX) < 1 && abs(resizedTL.frame.minY - initFrame.minY) < 1, "拖拽左上角放大 1.5× 时右下角锚点必须纹丝不动: \(resizedTL)")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

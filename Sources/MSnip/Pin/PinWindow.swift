@@ -40,32 +40,48 @@ final class PinWindow: NSPanel {
     private var isDraggingWindow = false
     private var dragMouseStart: NSPoint = .zero
     private var dragOriginStart: NSPoint = .zero
+    var resizeState = PinResizeDragState()
     let pinContentView: PinContentView
     var highlightMenuItem: NSMenuItem?
 
-    init(cgImage: CGImage, scaleFactor: CGFloat, screenOriginTopLeft: CGPoint?, on screen: NSScreen) {
+    init(
+        cgImage: CGImage,
+        scaleFactor: CGFloat,
+        screenOriginTopLeft: CGPoint?,
+        on screen: NSScreen,
+        cascadeOffset: CGPoint = .zero
+    ) {
         self.baseCGImage = cgImage
         self.currentCGImage = cgImage
         let s = max(1.0, scaleFactor)
         self.imageScale = s
-        self.baseSize = NSSize(
+        let initialBaseSize = NSSize(
             width: max(8, CGFloat(cgImage.width) / s),
             height: max(8, CGFloat(cgImage.height) / s)
         )
-        self.pinContentView = PinContentView(cgImage: cgImage, baseSize: baseSize)
+        self.baseSize = initialBaseSize
 
         let snapPx: (CGFloat) -> CGFloat = { v in (v * s).rounded() / s }
-        let frameOrigin: NSPoint
-        if let topLeft = screenOriginTopLeft {
-            let yBottom = screen.frame.maxY - topLeft.y - baseSize.height
-            frameOrigin = NSPoint(x: snapPx(screen.frame.minX + topLeft.x), y: snapPx(yBottom))
-        } else {
-            let visible = screen.visibleFrame
-            frameOrigin = NSPoint(x: snapPx(visible.midX - baseSize.width * 0.5), y: snapPx(visible.midY - baseSize.height * 0.5))
+        let preferredOrigin: CGPoint? = screenOriginTopLeft.map { topLeft in
+            CGPoint(x: snapPx(screen.frame.minX + topLeft.x), y: snapPx(screen.frame.maxY - topLeft.y - initialBaseSize.height))
         }
+        let fit = ImageTransform.fittedPinRect(
+            baseSize: initialBaseSize,
+            visibleBounds: screen.visibleFrame,
+            preferredOrigin: preferredOrigin,
+            cascadeOffset: cascadeOffset
+        )
+        self.zoomFactor = fit.zoom
+        let initialFrame = NSRect(
+            x: snapPx(fit.frame.origin.x),
+            y: snapPx(fit.frame.origin.y),
+            width: fit.frame.width,
+            height: fit.frame.height
+        )
+        self.pinContentView = PinContentView(cgImage: cgImage, baseSize: initialBaseSize, initialSize: initialFrame.size)
 
         super.init(
-            contentRect: NSRect(origin: frameOrigin, size: baseSize),
+            contentRect: initialFrame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -76,6 +92,7 @@ final class PinWindow: NSPanel {
         self.becomesKeyOnlyIfNeeded = false
         self.isFloatingPanel = true
         self.hidesOnDeactivate = false
+        self.acceptsMouseMovedEvents = true
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         self.isOpaque = false
         self.backgroundColor = .clear
@@ -84,8 +101,11 @@ final class PinWindow: NSPanel {
 
         pinContentView.onHoverChanged = { [weak self] inside in
             self?.isMouseInPin = inside
+            if !inside { self?.clearResizeHoverCursorIfNeeded() }
             self?.syncHoverBarVisibility()
+            self?.syncResizeChromeVisibility()
         }
+        attachResizeChrome()
         hoverBarPanel.barView.onHoverChanged = { [weak self] inside in
             self?.isMouseInHoverBar = inside
             self?.syncHoverBarVisibility()
@@ -140,10 +160,19 @@ final class PinWindow: NSPanel {
             return
         }
         switch event.type {
+        case .mouseMoved:
+            if handleResizeHover(windowPoint: event.locationInWindow) { return }
+            super.sendEvent(event)
+
         case .leftMouseDown:
             if !isKeyWindow { makeKeyAndOrderFront(nil) }
             if event.modifierFlags.contains(.command) {
                 pinContentView.startPNGFileDrag(with: event, cgImage: currentCGImage, scaleFactor: imageScale)
+                return
+            }
+            if let edge = PinResizeEdge.hitTest(point: event.locationInWindow, in: pinContentView.bounds) {
+                isDraggingWindow = false
+                beginResizeDrag(edge: edge)
                 return
             }
             let forceDrag = event.modifierFlags.contains(.option)
@@ -163,6 +192,10 @@ final class PinWindow: NSPanel {
             dragOriginStart = frame.origin
 
         case .leftMouseDragged:
+            if resizeState.activeEdge != nil {
+                updateResizeDrag()
+                return
+            }
             if isDraggingWindow {
                 let now = NSEvent.mouseLocation
                 applyDraggedOrigin(raw: NSPoint(
@@ -177,6 +210,10 @@ final class PinWindow: NSPanel {
             super.sendEvent(event)
 
         case .leftMouseUp:
+            if resizeState.activeEdge != nil {
+                endResizeDrag()
+                return
+            }
             if isDraggingWindow {
                 isDraggingWindow = false
                 return
@@ -198,18 +235,10 @@ final class PinWindow: NSPanel {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
         if (flags == .command || flags == .control) && chars == "c" {
-            if pinContentView.liveTextView.copySelectionIfActive() {
-                ToastHUD.show(message: "已复制贴图划选文字")
-                return true
-            }
-            copyImage()
-            ToastHUD.show(message: "已复制贴图图像")
-            return true
+            if pinContentView.liveTextView.copySelectionIfActive() { ToastHUD.show(message: "已复制贴图划选文字"); return true }
+            copyImage(); ToastHUD.show(message: "已复制贴图图像"); return true
         }
-        if flags == .command && chars == "o" {
-            openOCRPanel()
-            return true
-        }
+        if flags == .command && chars == "o" { openOCRPanel(); return true }
         return super.performKeyEquivalent(with: event)
     }
 
@@ -220,25 +249,21 @@ final class PinWindow: NSPanel {
             let d: CGFloat = delta > 0 ? 1.0 : -1.0
             let nextW = min(ToolbarSubbarView.maxStroke, max(ToolbarSubbarView.minStroke, (canvas.style.lineWidth + d).rounded()))
             canvas.applyStrokeWidth(nextW)
-            toolbarPanel?.barView.lineWidth = nextW
-            toolbarPanel?.subbarView.lineWidth = nextW
+            toolbarPanel?.barView.lineWidth = nextW; toolbarPanel?.subbarView.lineWidth = nextW
             return
         }
         let step: CGFloat = event.hasPreciseScrollingDeltas ? delta * 0.004 : (delta > 0 ? 0.08 : -0.08)
         if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control) {
             alphaValue = min(1.0, max(0.2, alphaValue + step))
         } else {
-            applyZoom(newZoom: min(4.0, max(0.25, zoomFactor * (1.0 + step))))
+            applyZoom(newZoom: min(maxAllowedZoom, max(minAllowedZoom, zoomFactor * (1.0 + step))))
         }
     }
 
     private func handlePinKeyDown(_ event: NSEvent) -> Bool {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
-        if event.keyCode == 53 {
-            closePin()
-            return true
-        }
+        if event.keyCode == 53 { closePin(); return true }
         if flags.contains(.command), chars == "s" {
             if flags.contains(.shift) { saveImage() } else { quickSaveImage() }
             return true
@@ -261,9 +286,6 @@ final class PinWindow: NSPanel {
     func applyDraggedOrigin(raw: NSPoint, disableSnap: Bool) {
         let target = (!disableSnap ? onSnapOrigin?(raw, frame.size, self) : nil) ?? raw
         let s = imageScale
-        setFrameOrigin(NSPoint(
-            x: (target.x * s).rounded() / s,
-            y: (target.y * s).rounded() / s
-        ))
+        setFrameOrigin(NSPoint(x: (target.x * s).rounded() / s, y: (target.y * s).rounded() / s))
     }
 }

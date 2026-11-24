@@ -118,7 +118,9 @@ extension AppController {
                 preview: stitched,
                 actionTitle: "贴到桌面 ›",
                 onAction: { [weak self] in
-                    if let scr = NSScreen.main ?? NSScreen.screens.first {
+                    let mouse = NSEvent.mouseLocation
+                    let scr = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main ?? NSScreen.screens.first
+                    if let scr {
                         self?.pinManager.pin(cgImage: stitched, scaleFactor: refScale, topLeftOnScreen: nil, screen: scr)
                     }
                 }

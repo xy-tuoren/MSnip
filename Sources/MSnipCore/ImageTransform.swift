@@ -93,10 +93,142 @@ public enum ImageTransform {
         return CGPoint(x: proposed.x + bestDx, y: proposed.y + bestDy)
     }
 
+    /// 计算贴图在可视屏幕内的自适应显示框与初始缩放比（原图超宽/超高或居中贴图时自动等比缩小不超出屏幕，保留原始高清像素）
+    public static func fittedPinRect(
+        baseSize: CGSize,
+        visibleBounds: CGRect,
+        preferredOrigin: CGPoint? = nil,
+        cascadeOffset: CGPoint = .zero,
+        marginX: CGFloat = 36,
+        marginY: CGFloat = 52
+    ) -> (frame: CGRect, zoom: CGFloat) {
+        let bw = max(8, baseSize.width)
+        let bh = max(8, baseSize.height)
+        let availW = max(80, visibleBounds.width - marginX * 2)
+        let availH = max(80, visibleBounds.height - marginY * 2)
+        let exceedsVisible = bw > (visibleBounds.width - 24) || bh > (visibleBounds.height - 48)
+        let shouldFit = (preferredOrigin == nil) || exceedsVisible
+
+        let zoom: CGFloat = shouldFit
+            ? min(1.0, min(availW / bw, availH / bh))
+            : 1.0
+        let w = max(24, (bw * zoom).rounded())
+        let h = max(24, (bh * zoom).rounded())
+
+        var ox: CGFloat
+        var oy: CGFloat
+        if let pref = preferredOrigin, zoom >= 0.999 {
+            ox = pref.x
+            oy = pref.y
+        } else {
+            ox = visibleBounds.midX - w * 0.5 + cascadeOffset.x
+            oy = visibleBounds.midY - h * 0.5 + cascadeOffset.y
+            let padX = min(16, max(0, (visibleBounds.width - w) * 0.5))
+            let padY = min(16, max(0, (visibleBounds.height - h) * 0.5))
+            let minX = visibleBounds.minX + padX, maxX = visibleBounds.maxX - w - padX
+            let minY = visibleBounds.minY + padY, maxY = visibleBounds.maxY - h - padY
+            ox = minX <= maxX ? min(max(ox, minX), maxX) : (visibleBounds.midX - w * 0.5)
+            oy = minY <= maxY ? min(max(oy, minY), maxY) : (visibleBounds.midY - h * 0.5)
+        }
+        return (CGRect(x: ox, y: oy, width: w, height: h), zoom)
+    }
+
+    /// 拖动贴图任意 4 角或 4 边时的等比缩放矩形计算（macOS 左下角原点坐标系，严格锁定对角/对边锚点防跳动）
+    public static func resizedPinFrame(
+        edge: PinResizeEdge,
+        initialFrame: CGRect,
+        baseSize: CGSize,
+        delta: CGPoint,
+        minZoom: CGFloat = 0.08,
+        maxZoom: CGFloat = 4.0
+    ) -> (frame: CGRect, zoom: CGFloat) {
+        let bw = max(8, baseSize.width)
+        let bh = max(8, baseSize.height)
+        let initZoom = max(0.01, initialFrame.width / bw)
+
+        let proposedZoom: CGFloat
+        switch edge {
+        case .right:
+            proposedZoom = (initialFrame.width + delta.x) / bw
+        case .left:
+            proposedZoom = (initialFrame.width - delta.x) / bw
+        case .top:
+            proposedZoom = (initialFrame.height + delta.y) / bh
+        case .bottom:
+            proposedZoom = (initialFrame.height - delta.y) / bh
+        case .topRight, .topLeft, .bottomRight, .bottomLeft:
+            let sx: CGFloat = (edge == .topRight || edge == .bottomRight) ? 1.0 : -1.0
+            let sy: CGFloat = (edge == .topRight || edge == .topLeft) ? 1.0 : -1.0
+            let vx = sx * bw
+            let vy = sy * bh
+            let denom = max(1.0, vx * vx + vy * vy)
+            proposedZoom = initZoom + (delta.x * vx + delta.y * vy) / denom
+        }
+
+        let clampedZoom = min(maxZoom, max(minZoom, proposedZoom))
+        let newW = max(24, (bw * clampedZoom).rounded())
+        let newH = max(24, (bh * clampedZoom).rounded())
+
+        let originX: CGFloat
+        switch edge {
+        case .left, .topLeft, .bottomLeft:
+            originX = initialFrame.maxX - newW
+        case .right, .topRight, .bottomRight:
+            originX = initialFrame.minX
+        case .top, .bottom:
+            originX = initialFrame.midX - newW * 0.5
+        }
+
+        let originY: CGFloat
+        switch edge {
+        case .bottom, .bottomLeft, .bottomRight:
+            originY = initialFrame.maxY - newH
+        case .top, .topLeft, .topRight:
+            originY = initialFrame.minY
+        case .left, .right:
+            originY = initialFrame.midY - newH * 0.5
+        }
+
+        return (CGRect(x: originX, y: originY, width: newW, height: newH), clampedZoom)
+    }
+
     private static func resolvedOutputColorSpace(for image: CGImage) -> CGColorSpace {
         if let cs = image.colorSpace, cs.model == .rgb, cs.supportsOutput {
             return cs
         }
         return CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    }
+}
+
+/// 贴图窗口 8 向边角缩放热区枚举（采用 macOS 窗口标准左下角原点坐标系：`+Y` 朝上）
+public enum PinResizeEdge: CaseIterable, Equatable, Sendable {
+    case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
+
+    /// 在窗口局部坐标系中检测是否命中 4 角或 4 边拖拽热区（四角优先，小图自动收窄避免挤占中心拖动区）
+    public static func hitTest(
+        point: CGPoint,
+        in bounds: CGRect,
+        cornerSize: CGFloat = 14,
+        edgeThickness: CGFloat = 7
+    ) -> PinResizeEdge? {
+        guard bounds.contains(point), bounds.width >= 32, bounds.height >= 32 else { return nil }
+        let minDim = min(bounds.width, bounds.height)
+        let c = min(cornerSize, max(6, minDim * 0.28))
+        let e = min(edgeThickness, max(4, minDim * 0.18))
+
+        let dL = point.x - bounds.minX
+        let dR = bounds.maxX - point.x
+        let dB = point.y - bounds.minY
+        let dT = bounds.maxY - point.y
+
+        if dL <= c && dT <= c { return .topLeft }
+        if dR <= c && dT <= c { return .topRight }
+        if dL <= c && dB <= c { return .bottomLeft }
+        if dR <= c && dB <= c { return .bottomRight }
+        if dL <= e { return .left }
+        if dR <= e { return .right }
+        if dT <= e { return .top }
+        if dB <= e { return .bottom }
+        return nil
     }
 }

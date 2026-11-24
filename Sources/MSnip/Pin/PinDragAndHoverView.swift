@@ -7,14 +7,16 @@ import MSnipCore
 final class PinContentView: NSView, NSDraggingSource {
     let liveTextView = LiveTextImageView(scaling: .scaleAxesIndependently)
     var onHoverChanged: ((Bool) -> Void)?
+    var onMouseMoved: ((NSPoint) -> Void)?
+    var onVisualStateChanged: (() -> Void)?
 
     var isGhostMode: Bool = false { didSet { updateBorderStyle() } }
     var isAnnotating: Bool = false { didSet { updateBorderStyle() } }
     var isSelectedKey: Bool = false { didSet { updateBorderStyle() } }
     private var isMouseInside = false { didSet { updateBorderStyle() } }
 
-    init(cgImage: CGImage, baseSize: NSSize) {
-        super.init(frame: NSRect(origin: .zero, size: baseSize))
+    init(cgImage: CGImage, baseSize: NSSize, initialSize: NSSize? = nil) {
+        super.init(frame: NSRect(origin: .zero, size: initialSize ?? baseSize))
         wantsLayer = true
         layer?.cornerRadius = 0
         layer?.masksToBounds = false
@@ -34,21 +36,15 @@ final class PinContentView: NSView, NSDraggingSource {
         trackingAreas.forEach { removeTrackingArea($0) }
         addTrackingArea(NSTrackingArea(
             rect: bounds,
-            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
             owner: self,
             userInfo: nil
         ))
     }
 
-    override func mouseEntered(with event: NSEvent) {
-        isMouseInside = true
-        onHoverChanged?(true)
-    }
-
-    override func mouseExited(with event: NSEvent) {
-        isMouseInside = false
-        onHoverChanged?(false)
-    }
+    override func mouseEntered(with event: NSEvent) { isMouseInside = true; onHoverChanged?(true) }
+    override func mouseMoved(with event: NSEvent) { onMouseMoved?(event.locationInWindow) }
+    override func mouseExited(with event: NSEvent) { isMouseInside = false; onHoverChanged?(false) }
 
     private func updateBorderStyle() {
         if isAnnotating {
@@ -64,6 +60,7 @@ final class PinContentView: NSView, NSDraggingSource {
             layer?.borderWidth = 0
             layer?.borderColor = nil
         }
+        onVisualStateChanged?()
     }
 
     func startPNGFileDrag(with event: NSEvent, cgImage: CGImage, scaleFactor: CGFloat) {

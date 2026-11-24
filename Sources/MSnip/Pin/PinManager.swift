@@ -20,9 +20,15 @@ final class PinManager {
     var count: Int { windows.count }
     var clickThroughCount: Int { windows.filter(\.isClickThrough).count }
 
-    /// 从选区渲染出的高清 `CGImage` 创建贴图并原位钉在屏幕上
+    /// 从选区渲染出的高清 `CGImage` 创建贴图并原位钉在屏幕上（超宽/超高大图自动适配屏幕可见区域不溢出）
     @discardableResult
-    func pin(cgImage: CGImage, scaleFactor: CGFloat, topLeftOnScreen: CGPoint?, screen: NSScreen) -> PinWindow {
+    func pin(
+        cgImage: CGImage,
+        scaleFactor: CGFloat,
+        topLeftOnScreen: CGPoint?,
+        screen: NSScreen,
+        cascadeOffset: CGPoint = .zero
+    ) -> PinWindow {
         if arePinsHidden {
             arePinsHidden = false
             windows.forEach { $0.orderFrontRegardless() }
@@ -35,7 +41,8 @@ final class PinManager {
             cgImage: cgImage,
             scaleFactor: scaleFactor,
             screenOriginTopLeft: topLeftOnScreen,
-            on: screen
+            on: screen,
+            cascadeOffset: cascadeOffset
         )
         win.onClose = { [weak self] closed in
             self?.windows.removeAll { $0 === closed }
@@ -121,14 +128,7 @@ final class PinManager {
         }
 
         let cascade = CGFloat((windows.count % 6) * 22)
-        let visible = screen.visibleFrame
-        let w = CGFloat(cgImage.width) / max(1.0, scale)
-        let h = CGFloat(cgImage.height) / max(1.0, scale)
-        let topLeft = CGPoint(
-            x: (visible.width - w) * 0.5 + (visible.minX - screen.frame.minX) + cascade,
-            y: (screen.frame.maxY - visible.midY) - h * 0.5 + cascade
-        )
-        pin(cgImage: cgImage, scaleFactor: scale, topLeftOnScreen: topLeft, screen: screen)
+        pin(cgImage: cgImage, scaleFactor: scale, topLeftOnScreen: nil, screen: screen, cascadeOffset: CGPoint(x: cascade, y: -cascade))
         if let toastNote { ToastHUD.show(message: toastNote) }
         return true
     }

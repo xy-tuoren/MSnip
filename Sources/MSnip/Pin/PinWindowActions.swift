@@ -200,7 +200,14 @@ extension PinWindow {
             height: max(8, CGFloat(nextCG.height) / imageScale)
         )
         baseSize = nextBase
-        let sz = NSSize(width: round(nextBase.width * zoomFactor), height: round(nextBase.height * zoomFactor))
+        let scr = screen ?? NSScreen.main ?? NSScreen.screens.first
+        let vf = scr?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        var sz = NSSize(width: round(nextBase.width * zoomFactor), height: round(nextBase.height * zoomFactor))
+        if sz.width > vf.width - 24 || sz.height > vf.height - 48 {
+            let fit = ImageTransform.fittedPinRect(baseSize: nextBase, visibleBounds: vf)
+            zoomFactor = fit.zoom
+            sz = fit.frame.size
+        }
         let old = frame
         let nx = ((old.midX - sz.width * 0.5) * imageScale).rounded() / imageScale
         let ny = ((old.midY - sz.height * 0.5) * imageScale).rounded() / imageScale
@@ -262,6 +269,7 @@ extension PinWindow {
         menu.addItem(.separator())
         menu.addItem(withTitle: "顺时针旋转 90° (R)", action: #selector(rotateClockwise90), keyEquivalent: "")
         menu.addItem(withTitle: "水平镜像翻转 (H)", action: #selector(flipHorizontal), keyEquivalent: "")
+        menu.addItem(withTitle: "自适应屏幕大小", action: #selector(fitToScreen), keyEquivalent: "")
         menu.addItem(withTitle: "重置 100% 大小与不透明", action: #selector(resetZoom), keyEquivalent: "0")
         menu.addItem(withTitle: "切换半透明对照 (55%)", action: #selector(toggleHalfOpacity), keyEquivalent: "")
         menu.addItem(.separator())
