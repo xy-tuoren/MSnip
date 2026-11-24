@@ -21,7 +21,10 @@ final class RegionStreamSampler {
         fps: Int = 20,
         showsCursor: Bool = false,
         losslessBGRA: Bool = false,
+        capturesAudio: Bool = false,
         onFrameBackground: @escaping @Sendable (CGImage) -> Void,
+        onPixelBufferBackground: (@Sendable (CVPixelBuffer) -> Void)? = nil,
+        onAudioSampleBackground: (@Sendable (CMSampleBuffer) -> Void)? = nil,
         onError: @escaping @MainActor (String) -> Void
     ) {
         stopped = false
@@ -44,7 +47,7 @@ final class RegionStreamSampler {
         Task { @MainActor [weak self] in
             guard let self, !self.stopped else { return }
             do {
-                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: false)
+                let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
                 guard !self.stopped else { return }
                 guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else {
                     onError("未找到目标屏幕采集源")
@@ -97,11 +100,24 @@ final class RegionStreamSampler {
                 }
                 cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(5, fps)))
                 cfg.showsCursor = showsCursor
-                cfg.capturesAudio = false
+                let wantAudio = capturesAudio && onAudioSampleBackground != nil
+                cfg.capturesAudio = wantAudio
+                if wantAudio {
+                    cfg.excludesCurrentProcessAudio = true
+                    cfg.sampleRate = 48_000
+                    cfg.channelCount = 2
+                }
 
-                let proxy = StreamOutputProxy(onFrame: onFrameBackground)
+                let proxy = StreamOutputProxy(
+                    onFrame: onFrameBackground,
+                    onPixelBuffer: onPixelBufferBackground,
+                    onAudioSample: wantAudio ? onAudioSampleBackground : nil
+                )
                 let stream = SCStream(filter: filter, configuration: cfg, delegate: nil)
                 try stream.addStreamOutput(proxy, type: .screen, sampleHandlerQueue: self.captureQueue)
+                if wantAudio {
+                    try? stream.addStreamOutput(proxy, type: .audio, sampleHandlerQueue: self.captureQueue)
+                }
                 try await stream.startCapture()
 
                 if self.stopped {
@@ -139,13 +155,26 @@ final class RegionStreamSampler {
 @available(macOS 13.0, *)
 private final class StreamOutputProxy: NSObject, SCStreamOutput, @unchecked Sendable {
     private let onFrame: @Sendable (CGImage) -> Void
+    private let onPixelBuffer: (@Sendable (CVPixelBuffer) -> Void)?
+    private let onAudioSample: (@Sendable (CMSampleBuffer) -> Void)?
 
-    init(onFrame: @escaping @Sendable (CGImage) -> Void) {
+    init(
+        onFrame: @escaping @Sendable (CGImage) -> Void,
+        onPixelBuffer: (@Sendable (CVPixelBuffer) -> Void)?,
+        onAudioSample: (@Sendable (CMSampleBuffer) -> Void)?
+    ) {
         self.onFrame = onFrame
+        self.onPixelBuffer = onPixelBuffer
+        self.onAudioSample = onAudioSample
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {
-        guard outputType == .screen, sampleBuffer.isValid else { return }
+        guard sampleBuffer.isValid else { return }
+        if outputType == .audio {
+            onAudioSample?(sampleBuffer)
+            return
+        }
+        guard outputType == .screen else { return }
 
         if let attachments = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
            let statusRaw = attachments.first?[.status] as? Int,
@@ -155,6 +184,10 @@ private final class StreamOutputProxy: NSObject, SCStreamOutput, @unchecked Send
         }
 
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        if let onPixelBuffer {
+            onPixelBuffer(pixelBuffer)
+            return
+        }
         var cgImage: CGImage?
         let err = VTCreateCGImageFromCVPixelBuffer(pixelBuffer, options: nil, imageOut: &cgImage)
         if err == noErr, let img = cgImage {

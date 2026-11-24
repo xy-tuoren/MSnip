@@ -66,7 +66,7 @@ public enum HotKeyBindingOverride: Codable, Equatable, Sendable {
 /// 零冲突、左手顺手优先的全局快捷键预设方案（优先双键/单键，不抢占浏览器 ⌘1 与编辑器 ⌘⇧P）
 public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
     case optASD  = "optASD"
-    case opt123  = "opt123"
+    case ctrl123 = "ctrl123"
     case fnKeys  = "fnKeys"
     case ctrlCmd = "ctrlCmd"
 
@@ -74,7 +74,7 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
         let raw = (try? decoder.singleValueContainer().decode(String.self)) ?? ""
         switch raw {
         case "optASD", "optAP", "cmd12": self = .optASD
-        case "opt123":                   self = .opt123
+        case "ctrl123", "opt123":        self = .ctrl123
         case "fnKeys", "f1f3":           self = .fnKeys
         case "ctrlCmd", "cmdShiftAP":    self = .ctrlCmd
         default:                         self = .optASD
@@ -84,7 +84,7 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
     public var segmentTitle: String {
         switch self {
         case .optASD:  return "⌥A / ⌥S 左手双键"
-        case .opt123:  return "⌥1 / ⌥2 数字双键"
+        case .ctrl123: return "⌃1 / ⌃2 数字双键"
         case .fnKeys:  return "F1 / F2 单键"
         case .ctrlCmd: return "⌃⌘A 经典三键"
         }
@@ -92,6 +92,7 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
 
     public func defaultCombo(for action: GlobalHotKeyAction) -> KeyCombo? {
         let opt = UInt32(optionKey)
+        let ctrl = UInt32(controlKey)
         let cc = UInt32(controlKey | cmdKey)
         switch (self, action) {
         case (.optASD, .capture):    return KeyCombo(keyCode: UInt32(kVK_ANSI_A), carbonModifiers: opt)
@@ -101,12 +102,12 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
         case (.optASD, .longShot):   return KeyCombo(keyCode: UInt32(kVK_ANSI_E), carbonModifiers: opt)
         case (.optASD, .record):     return KeyCombo(keyCode: UInt32(kVK_ANSI_R), carbonModifiers: opt)
 
-        case (.opt123, .capture):    return KeyCombo(keyCode: UInt32(kVK_ANSI_1), carbonModifiers: opt)
-        case (.opt123, .pin):        return KeyCombo(keyCode: UInt32(kVK_ANSI_2), carbonModifiers: opt)
-        case (.opt123, .ocr):        return KeyCombo(keyCode: UInt32(kVK_ANSI_3), carbonModifiers: opt)
-        case (.opt123, .translate):  return KeyCombo(keyCode: UInt32(kVK_ANSI_4), carbonModifiers: opt)
-        case (.opt123, .longShot):   return KeyCombo(keyCode: UInt32(kVK_ANSI_5), carbonModifiers: opt)
-        case (.opt123, .record):     return KeyCombo(keyCode: UInt32(kVK_ANSI_6), carbonModifiers: opt)
+        case (.ctrl123, .capture):   return KeyCombo(keyCode: UInt32(kVK_ANSI_1), carbonModifiers: ctrl)
+        case (.ctrl123, .pin):       return KeyCombo(keyCode: UInt32(kVK_ANSI_2), carbonModifiers: ctrl)
+        case (.ctrl123, .ocr):       return KeyCombo(keyCode: UInt32(kVK_ANSI_3), carbonModifiers: ctrl)
+        case (.ctrl123, .translate): return KeyCombo(keyCode: UInt32(kVK_ANSI_4), carbonModifiers: ctrl)
+        case (.ctrl123, .longShot):  return KeyCombo(keyCode: UInt32(kVK_ANSI_5), carbonModifiers: ctrl)
+        case (.ctrl123, .record):    return KeyCombo(keyCode: UInt32(kVK_ANSI_6), carbonModifiers: ctrl)
 
         case (.fnKeys, .capture):    return KeyCombo(keyCode: UInt32(kVK_F1), carbonModifiers: 0)
         case (.fnKeys, .pin):        return KeyCombo(keyCode: UInt32(kVK_F2), carbonModifiers: 0)

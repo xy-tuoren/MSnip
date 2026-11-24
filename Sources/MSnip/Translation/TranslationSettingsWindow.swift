@@ -164,7 +164,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         win.standardWindowButton(.closeButton)?.isHidden = true
         win.standardWindowButton(.miniaturizeButton)?.isHidden = true
         win.standardWindowButton(.zoomButton)?.isHidden = true
-        win.appearance = NSAppearance(named: .darkAqua)
+        win.appearance = GeekTheme.windowAppearance
         win.backgroundColor = GeekTheme.windowBg
         win.level = .normal
         win.collectionBehavior = [.moveToActiveSpace]
@@ -173,9 +173,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
             self?.handleInlineHotKeyEvent(ev) ?? false
         }
 
-        let root = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: W, height: H))
-        root.wantsLayer = true
-        root.layer?.backgroundColor = GeekTheme.windowBg.cgColor
+        let root = GeekSurfaceView(frame: NSRect(x: 0, y: 0, width: W, height: H), fill: GeekTheme.windowBg)
         win.contentView = root
 
         buildTopBar(in: root, width: W)
@@ -195,9 +193,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     }
 
     private func buildTopBar(in root: GeekFlippedView, width W: CGFloat) {
-        let bar = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: W, height: 58))
-        bar.wantsLayer = true
-        bar.layer?.backgroundColor = GeekTheme.barBg.cgColor
+        let bar = GeekSurfaceView(frame: NSRect(x: 0, y: 0, width: W, height: 58), fill: GeekTheme.barBg)
         root.addSubview(bar)
 
         bar.addSubview(GeekWindowCloseButton(frame: NSRect(x: 20, y: 15, width: 28, height: 28)))
@@ -216,22 +212,19 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         }
         bar.addSubview(tabSegment)
 
-        let sep = NSView(frame: NSRect(x: 0, y: 57, width: W, height: 1))
-        sep.wantsLayer = true
-        sep.layer?.backgroundColor = GeekTheme.border.cgColor
-        bar.addSubview(sep)
+        let themeBtn = GeekButton(title: "明亮", symbol: "sun.max", style: .subtle)
+        themeBtn.frame = NSRect(x: W - 28 - 76, y: 14, width: 76, height: 30)
+        themeBtn.onClick = { [weak self] in self?.toggleDarkLightQuick() }
+        modeControls.themeToggleBtn = themeBtn
+        bar.addSubview(themeBtn)
+
+        bar.addSubview(GeekSurfaceView(frame: NSRect(x: 0, y: 57, width: W, height: 1), fill: GeekTheme.border))
     }
 
     private func buildFooterBar(in root: GeekFlippedView, width W: CGFloat, y: CGFloat) {
-        let foot = GeekFlippedView(frame: NSRect(x: 0, y: y, width: W, height: 42))
-        foot.wantsLayer = true
-        foot.layer?.backgroundColor = GeekTheme.barBg.cgColor
+        let foot = GeekSurfaceView(frame: NSRect(x: 0, y: y, width: W, height: 42), fill: GeekTheme.barBg)
         root.addSubview(foot)
-
-        let sep = NSView(frame: NSRect(x: 0, y: 0, width: W, height: 1))
-        sep.wantsLayer = true
-        sep.layer?.backgroundColor = GeekTheme.border.cgColor
-        foot.addSubview(sep)
+        foot.addSubview(GeekSurfaceView(frame: NSRect(x: 0, y: 0, width: W, height: 1), fill: GeekTheme.border))
 
         let dirBtn = GeekButton(title: "打开配置目录", symbol: "folder", style: .ghost)
         dirBtn.contentAlignment = .left

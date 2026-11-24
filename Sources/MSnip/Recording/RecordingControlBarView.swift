@@ -8,9 +8,13 @@ final class RecordingControlBarView: NSView {
     enum Action {
         case selectFormat(RecordingFormat)
         case toggleInteractionHUD
+        case toggleDrawing
+        case clearDrawings
         case startRecording
         case togglePause
+        case finishTrim
         case finishSave
+        case finishSaveAs
         case finishCopy
         case cancel
     }
@@ -25,6 +29,7 @@ final class RecordingControlBarView: NSView {
     var onAction: ((Action) -> Void)?
     var format: RecordingFormat = .gif { didSet { refreshLayout() } }
     var interactionHUDEnabled: Bool = true { didSet { refreshLayout() } }
+    var isDrawingActive: Bool = false { didSet { refreshLayout() } }
     var countdownNumber: Int? { didSet { refreshLayout() } }
     var isRecording: Bool = false { didSet { refreshLayout() } }
     var isPaused: Bool = false { didSet { refreshLayout() } }
@@ -80,9 +85,10 @@ final class RecordingControlBarView: NSView {
     override func mouseDown(with event: NSEvent) {
         guard !isEncoding else { return }
         let p = convert(event.locationInWindow, from: nil)
-        if let s = slots.first(where: { $0.rect.contains(p) }) {
-            onAction?(s.action)
-        }
+        guard let s = slots.first(where: { $0.rect.contains(p) }) else { return }
+        if case .finishSave = s.action, event.modifierFlags.contains(.option) { onAction?(.finishSaveAs) }
+        else if case .toggleDrawing = s.action, event.modifierFlags.contains(.option) { onAction?(.clearDrawings) }
+        else { onAction?(s.action) }
     }
 
     func refreshLayout() {
@@ -142,10 +148,15 @@ final class RecordingControlBarView: NSView {
             dividerX = divX
             x = divX + 10
             list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? MSnipUITheme.accent : MSnipUITheme.inkPrimary, active: interactionHUDEnabled, action: .toggleInteractionHUD))
+            let drawTip = isDrawingActive ? "画笔标记中（默认激光渐隐，按住 ⇧ 常驻，右键或 ⌥+点此清屏）" : "开启录屏实时画笔标记（按住 ⌥ 点此清屏）"
+            list.append(iconSlot(x: &x, y: y, symbol: "pencil.tip.crop.circle", tip: drawTip, tint: isDrawingActive ? MSnipUITheme.danger : MSnipUITheme.inkPrimary, active: isDrawingActive, action: .toggleDrawing))
             let pauseSym = isPaused ? "play.fill" : "pause.fill"
             let pauseTip = isPaused ? "继续录制 (Space)" : "暂停录制 (Space)"
             list.append(iconSlot(x: &x, y: y, symbol: pauseSym, tip: pauseTip, tint: isPaused ? MSnipUITheme.warning : MSnipUITheme.inkPrimary, action: .togglePause))
-            list.append(iconSlot(x: &x, y: y, symbol: "square.and.arrow.down", tip: "结束并另存为 \(format.badgeTitle)…", tint: MSnipUITheme.inkPrimary, action: .finishSave))
+            if format == .mp4 {
+                list.append(iconSlot(x: &x, y: y, symbol: "scissors", tip: "结束录制并打开首尾裁剪预览 (MP4)", tint: MSnipUITheme.inkPrimary, action: .finishTrim))
+            }
+            list.append(iconSlot(x: &x, y: y, symbol: "square.and.arrow.down", tip: "结束并保存 \(format.badgeTitle) 到默认目录（按住 ⌥ 另存为）", tint: MSnipUITheme.inkPrimary, action: .finishSave))
             list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "放弃录制 (Esc)", tint: MSnipUITheme.danger, action: .cancel))
             x += 2
             let okRect = CGRect(x: x, y: y, width: 68, height: h)

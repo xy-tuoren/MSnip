@@ -33,6 +33,7 @@ enum DragOperation {
     case drawingAnnotation(tool: ToolKind, start: CGPoint)
     case erasing(lastPoint: CGPoint, erased: Bool)
     case movingAnnotation(index: Int, lastPoint: CGPoint, moved: Bool)
+    case resizingAnnotation(index: Int, handle: AnnotationHandle, initialPayload: AnnotationPayload, moved: Bool)
 }
 
 /// 自动矩阵识别预览与平滑过渡内聚状态模型（解耦 OverlayView 零散可变属性）
@@ -40,11 +41,15 @@ struct OverlayAutoSnapState {
     var stack: [CGRect] = []
     var index: Int = 0
     var scrollAccumulator: CGFloat = 0
-    var preferredArea: CGFloat?
+    var tierAnchorPoint: CGPoint?
+    var manualTierOffset: Int = 0
     var displayedRect: CGRect?
+    var activeWindowRect: CGRect?
+    var querySeq: UInt64 = 0
+    var appliedSeq: UInt64 = 0
+    var cancelToken: UInt64 = 0
     var animTimer: Timer?
     var displayLink: AnyObject?
-    var deferredWork: DispatchWorkItem?
 
     func hoveredRect(hasSelection: Bool) -> CGRect? {
         guard !hasSelection, stack.indices.contains(index) else { return nil }
@@ -55,33 +60,53 @@ struct OverlayAutoSnapState {
         stack = []
         index = 0
         scrollAccumulator = 0
-        preferredArea = nil
+        tierAnchorPoint = nil
+        manualTierOffset = 0
         displayedRect = nil
+        activeWindowRect = nil
+        cancelToken &+= 1
     }
 }
 
 /// 覆盖整个物理屏幕的无边框置顶窗口（禁用系统窗口弹出缩放动画与焦点抢占，实现 0ms 无抖动静默冻结）
 final class OverlayWindow: NSPanel {
-    init(screen: NSScreen, contentView: NSView) {
+    init(screen: NSScreen, contentView: OverlayView) {
         super.init(
             contentRect: screen.frame,
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
-        self.level = .screenSaver
         self.animationBehavior = .none
+        self.isFloatingPanel = true
+        // 必须在 isFloatingPanel = true 之后设置 level（AppKit 设置 isFloatingPanel 会把 level 重置为 .floating = 3，导致被程序坞与菜单栏遮挡）
+        self.level = NSWindow.Level(rawValue: max(
+            NSWindow.Level.screenSaver.rawValue,
+            Int(CGShieldingWindowLevel())
+        ))
         self.becomesKeyOnlyIfNeeded = false
         self.setFrame(screen.frame, display: false)
-        self.isFloatingPanel = true
         self.hidesOnDeactivate = false
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
         self.isOpaque = true
         self.hasShadow = false
         self.acceptsMouseMovedEvents = true
-        self.contentView = contentView
+
+        // 静态 GPU 底图层托管冻结整屏 CGImage（WindowServer 合成器零拷贝直出，彻底免除 120Hz CPU 裁图重绘）
+        let host = NSView(frame: NSRect(origin: .zero, size: screen.frame.size))
+        host.wantsLayer = true
+        host.layer?.contents = contentView.snapshot.cgImage
+        host.layer?.contentsGravity = .resize
+        host.layer?.magnificationFilter = .nearest
+        host.layer?.contentsScale = max(1.0, contentView.snapshot.scaleFactor)
+        contentView.frame = host.bounds
+        contentView.wantsLayer = true
+        contentView.layer?.isOpaque = false
+        host.addSubview(contentView)
+        self.contentView = host
     }
 
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
 }

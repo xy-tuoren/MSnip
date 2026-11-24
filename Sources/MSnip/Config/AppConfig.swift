@@ -17,20 +17,23 @@ struct AppConfig: Codable {
     var showShortcutTips: Bool = true
     var preferredRecordingFormat: RecordingFormat = .gif
     var recordInteractionHUD: Bool = true
+    var recordingOptions: RecordingOptions = RecordingOptions()
     var defaultTextCapsule: Bool = false
     var ocrAutoOpenDualPane: Bool = false
     var translateAutoOpenDualPane: Bool = false
     var ocrAutoCopy: Bool = true
     var exportImageFormat: CaptureExportFormat = .png
     var exportAt1xScale: Bool = false
+    var appearanceMode: AppAppearanceMode = .dark
+    var terminalPasteAdaptEnabled: Bool = true
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
         case customCaptureCombo, customPinCombo, customOCRCombo
         case defaultColorIndex, defaultLineWidth, lastSaveDirectory, recentSaveDirectories
-        case colorCopyFormat, showShortcutTips, preferredRecordingFormat, recordInteractionHUD, defaultTextCapsule
+        case colorCopyFormat, showShortcutTips, preferredRecordingFormat, recordInteractionHUD, recordingOptions, defaultTextCapsule
         case ocrAutoOpenDualPane, translateAutoOpenDualPane, ocrAutoCopy
-        case exportImageFormat, exportAt1xScale
+        case exportImageFormat, exportAt1xScale, appearanceMode, terminalPasteAdaptEnabled
     }
 
     init() {}
@@ -63,12 +66,15 @@ struct AppConfig: Codable {
         showShortcutTips = try c.decodeIfPresent(Bool.self, forKey: .showShortcutTips) ?? true
         preferredRecordingFormat = try c.decodeIfPresent(RecordingFormat.self, forKey: .preferredRecordingFormat) ?? .gif
         recordInteractionHUD = try c.decodeIfPresent(Bool.self, forKey: .recordInteractionHUD) ?? true
+        recordingOptions = try c.decodeIfPresent(RecordingOptions.self, forKey: .recordingOptions) ?? RecordingOptions()
         defaultTextCapsule = try c.decodeIfPresent(Bool.self, forKey: .defaultTextCapsule) ?? false
         ocrAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoOpenDualPane) ?? false
         translateAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .translateAutoOpenDualPane) ?? false
         ocrAutoCopy = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoCopy) ?? true
-        exportImageFormat = try c.decodeIfPresent(CaptureExportFormat.self, forKey: .exportImageFormat) ?? .png
+        exportImageFormat = (try? c.decodeIfPresent(CaptureExportFormat.self, forKey: .exportImageFormat)) ?? .png
         exportAt1xScale = try c.decodeIfPresent(Bool.self, forKey: .exportAt1xScale) ?? false
+        appearanceMode = try c.decodeIfPresent(AppAppearanceMode.self, forKey: .appearanceMode) ?? .dark
+        terminalPasteAdaptEnabled = try c.decodeIfPresent(Bool.self, forKey: .terminalPasteAdaptEnabled) ?? true
     }
 
     func encode(to encoder: Encoder) throws {
@@ -86,12 +92,15 @@ struct AppConfig: Codable {
         try c.encode(showShortcutTips, forKey: .showShortcutTips)
         try c.encode(preferredRecordingFormat, forKey: .preferredRecordingFormat)
         try c.encode(recordInteractionHUD, forKey: .recordInteractionHUD)
+        try c.encode(recordingOptions, forKey: .recordingOptions)
         try c.encode(defaultTextCapsule, forKey: .defaultTextCapsule)
         try c.encode(ocrAutoOpenDualPane, forKey: .ocrAutoOpenDualPane)
         try c.encode(translateAutoOpenDualPane, forKey: .translateAutoOpenDualPane)
         try c.encode(ocrAutoCopy, forKey: .ocrAutoCopy)
         try c.encode(exportImageFormat, forKey: .exportImageFormat)
         try c.encode(exportAt1xScale, forKey: .exportAt1xScale)
+        try c.encode(appearanceMode, forKey: .appearanceMode)
+        try c.encode(terminalPasteAdaptEnabled, forKey: .terminalPasteAdaptEnabled)
     }
 
     func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {

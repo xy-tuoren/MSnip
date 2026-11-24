@@ -23,6 +23,7 @@ extension OCRResultController {
         win.delegate = self
         win.onEscape = { [weak win] in win?.close() }
         win.onQuickCopy = { [weak self] in self?.copyPreferredText() }
+        win.onFontZoom = { [weak self] step in self?.adjustEditorFontSize(step: step) }
 
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 840, height: 530))
         root.wantsLayer = true
@@ -55,7 +56,7 @@ extension OCRResultController {
         root.addSubview(translateButton)
 
         highlightButton = OCRPillButton(title: "高亮字块", symbol: "text.viewfinder")
-        highlightButton.isToggledOn = true
+        highlightButton.isToggledOn = false
         highlightButton.onClick = { [weak self] in
             guard let self else { return }
             self.highlightButton.isToggledOn.toggle()
@@ -134,23 +135,14 @@ extension OCRResultController {
         textScrollView.borderType = .noBorder
         textScrollView.hasVerticalScroller = true
         textScrollView.autohidesScrollers = true
-        let contentSz = textScrollView.contentSize
-        let tv = NSTextView(frame: NSRect(x: 0, y: 0, width: contentSz.width, height: contentSz.height))
+        let tv = NSTextView(frame: NSRect(origin: .zero, size: textScrollView.contentSize))
         tv.minSize = NSSize(width: 0, height: 60)
         tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
-        tv.isVerticallyResizable = true
-        tv.isHorizontallyResizable = false
-        tv.autoresizingMask = [.width]
-        tv.textContainer?.widthTracksTextView = true
-        tv.drawsBackground = false
-        tv.isEditable = true
-        tv.isSelectable = true
-        tv.isRichText = false
-        tv.allowsUndo = true
-        tv.font = NSFont.systemFont(ofSize: 13.5)
-        tv.textColor = ResultTheme.inkPrimary
-        tv.insertionPointColor = ResultTheme.accent
-        tv.textContainerInset = NSSize(width: 10, height: 10)
+        tv.isVerticallyResizable = true; tv.isHorizontallyResizable = false; tv.autoresizingMask = [.width]
+        tv.textContainer?.widthTracksTextView = true; tv.drawsBackground = false
+        tv.isEditable = true; tv.isSelectable = true; tv.isRichText = false; tv.allowsUndo = true
+        tv.font = NSFont.systemFont(ofSize: 13.5); tv.textColor = ResultTheme.inkPrimary
+        tv.insertionPointColor = ResultTheme.accent; tv.textContainerInset = NSSize(width: 10, height: 10)
         tv.delegate = self
         let para = NSMutableParagraphStyle()
         para.lineSpacing = 4.5
@@ -170,6 +162,8 @@ extension OCRResultController {
         exactModeButton.isToggledOn = exactCodeMode
         exactModeButton.onClick = { [weak self] in self?.toggleExactCodeMode() }
         root.addSubview(exactModeButton)
+
+        buildTableCopyButton(in: root)
 
         pinButton = OCRPillButton(title: "贴原图到桌面", symbol: "pin")
         pinButton.onClick = { [weak self] in
@@ -280,8 +274,14 @@ extension OCRResultController {
         statsLabel.frame.origin = NSPoint(x: pad + 2, y: round((botH - statsLabel.frame.height) * 0.5))
         let exSz = exactModeButton.intrinsicContentSize
         exactModeButton.frame = NSRect(x: statsLabel.frame.maxX + 10, y: round((botH - exSz.height) * 0.5), width: exSz.width, height: exSz.height)
+        var nextFooterX = exactModeButton.frame.maxX + 8
+        if let tblBtn = tableCopyButton, !tblBtn.isHidden {
+            let tsz = tblBtn.intrinsicContentSize
+            tblBtn.frame = NSRect(x: nextFooterX, y: round((botH - tsz.height) * 0.5), width: tsz.width, height: tsz.height)
+            nextFooterX = tblBtn.frame.maxX + 8
+        }
         let psz = pinButton.intrinsicContentSize
-        pinButton.frame = NSRect(x: exactModeButton.frame.maxX + 8, y: round((botH - psz.height) * 0.5), width: psz.width, height: psz.height)
+        pinButton.frame = NSRect(x: nextFooterX, y: round((botH - psz.height) * 0.5), width: psz.width, height: psz.height)
         let cpSz = copyButton.intrinsicContentSize
         copyButton.frame = NSRect(x: W - pad - cpSz.width, y: round((botH - cpSz.height) * 0.5), width: cpSz.width, height: cpSz.height)
     }

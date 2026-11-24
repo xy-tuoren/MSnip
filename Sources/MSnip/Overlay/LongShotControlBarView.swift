@@ -1,21 +1,28 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 
-/// 长截图底部非抢焦悬浮操作栏（清爽浅色磨砂白底风 + 矢量 SF Symbols + 蓝色主完成胶囊）
+/// 长截图底部非抢焦悬浮操作栏（清爽浅色磨砂白底风 + 纵横切换/撤回上段/直达标注 + 蓝色主完成胶囊）
 final class LongShotControlBarView: NSView {
     enum Action {
         case toggleAutoScroll
+        case toggleAxis
+        case undoLast
+        case annotate
         case extractText
         case translateText
         case pin
         case save
+        case saveAs
         case cancel
         case finishCopy
     }
 
     var onAction: ((Action) -> Void)?
     var isAutoScrolling = false { didSet { needsDisplay = true } }
+    var axis: ScrollStitchAxis = .vertical { didSet { needsDisplay = true } }
+    var canUndoLast = false { didSet { needsDisplay = true } }
     var pinHint: String = "⌘2"
 
     private struct ButtonSlot {
@@ -31,7 +38,7 @@ final class LongShotControlBarView: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    static let barSize = NSSize(width: 354, height: 40)
+    static let barSize = NSSize(width: 447, height: 40)
 
     init() {
         super.init(frame: NSRect(origin: .zero, size: Self.barSize))
@@ -70,7 +77,11 @@ final class LongShotControlBarView: NSView {
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         if let slot = slots.first(where: { $0.rect.contains(p) }) {
-            onAction?(slot.action)
+            if slot.action == .save && event.modifierFlags.contains(.option) {
+                onAction?(.saveAs)
+            } else {
+                onAction?(slot.action)
+            }
         }
     }
 
@@ -115,18 +126,24 @@ final class LongShotControlBarView: NSView {
         ))
         x += autoW + 8
 
-        let iconDefs: [(String, String, NSColor, Action)] = [
-            ("text.viewfinder", "长图识字 (OCR)", MSnipUITheme.inkPrimary, .extractText),
-            ("character.bubble", "长图翻译", MSnipUITheme.inkPrimary, .translateText),
-            ("pin", "长图贴到屏幕 (\(pinHint))", MSnipUITheme.inkPrimary, .pin),
-            ("square.and.arrow.down", "保存长图 PNG", MSnipUITheme.inkPrimary, .save),
-            ("xmark", "取消长截图 (Esc)", MSnipUITheme.danger, .cancel)
+        let axisSym = (axis == .vertical) ? "arrow.up.and.down" : "arrow.left.and.right"
+        let axisTip = (axis == .vertical) ? "当前纵向长截图 · 点击切换为横向向右长截图" : "当前横向长截图 · 点击切换为纵向向下长截图"
+        let undoTint = canUndoLast ? MSnipUITheme.inkPrimary : MSnipUITheme.inkSecondary.withAlphaComponent(0.35)
+        let iconDefs: [(String, String, NSColor, Bool, Action)] = [
+            (axisSym, axisTip, axis == .horizontal ? MSnipUITheme.accent : MSnipUITheme.inkPrimary, axis == .horizontal, .toggleAxis),
+            ("arrow.uturn.backward", "撤回上一段拼接 (⌘Z)", undoTint, false, .undoLast),
+            ("pencil.tip", "完成并直接进入标注编辑", MSnipUITheme.inkPrimary, false, .annotate),
+            ("text.viewfinder", "长图识字 (OCR)", MSnipUITheme.inkPrimary, false, .extractText),
+            ("character.bubble", "长图翻译", MSnipUITheme.inkPrimary, false, .translateText),
+            ("pin", "长图贴到屏幕 (\(pinHint))", MSnipUITheme.inkPrimary, false, .pin),
+            ("square.and.arrow.down", "保存长图到默认目录（按住 ⌥ 另存为）", MSnipUITheme.inkPrimary, false, .save),
+            ("xmark", "取消长截图 (Esc)", MSnipUITheme.danger, false, .cancel)
         ]
-        for (sym, tip, tint, act) in iconDefs {
+        for (sym, tip, tint, active, act) in iconDefs {
             let r = CGRect(x: x, y: y, width: 28, height: h)
             x += 31
             list.append(ButtonSlot(rect: r, tip: tip, action: act) { ctx, rect, hov in
-                ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: false, hovered: hov)
+                ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov)
                 ToolbarView.drawSymbol(sym, in: rect, alpha: 0.95, tint: tint)
             })
         }
@@ -215,8 +232,8 @@ extension LongShotSession {
 
     private func makeLongShotPanel(frame: NSRect, ignoresMouse: Bool) -> NSPanel {
         let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        p.level = .statusBar; p.animationBehavior = .none
-        p.isFloatingPanel = true; p.hidesOnDeactivate = false
+        p.animationBehavior = .none; p.isFloatingPanel = true
+        p.level = .statusBar; p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.isOpaque = false; p.backgroundColor = .clear
         p.hasShadow = !ignoresMouse; p.ignoresMouseEvents = ignoresMouse

@@ -140,8 +140,6 @@ extension HotKeyConflictPopover {
     }
 
     private func addRowDivider(in row: NSView, width W: CGFloat) {
-        let sep = NSView(frame: NSRect(x: 14, y: 0, width: W - 28, height: 1))
-        sep.wantsLayer = true; sep.layer?.backgroundColor = GeekTheme.divider.cgColor
-        row.addSubview(sep)
+        row.addSubview(GeekSurfaceView(frame: NSRect(x: 14, y: 0, width: W - 28, height: 1), fill: GeekTheme.divider))
     }
 }

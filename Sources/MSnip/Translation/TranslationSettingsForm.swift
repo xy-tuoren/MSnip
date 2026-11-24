@@ -13,7 +13,7 @@ extension TranslationSettingsWindow {
         page.addSubview(topCard)
 
         let langLbl = NSTextField(labelWithString: "目标语言")
-        langLbl.font = .systemFont(ofSize: 13.5, weight: .medium)
+        langLbl.font = .systemFont(ofSize: 13.5, weight: .regular)
         langLbl.textColor = GeekTheme.inkPrimary
         GeekTheme.placeCentered(langLbl, x: 16, width: 60, centerY: 25.0)
         topCard.addSubview(langLbl)
@@ -25,7 +25,7 @@ extension TranslationSettingsWindow {
         topCard.addSubview(targetLangPill)
 
         let dualLbl = NSTextField(labelWithString: "默认打开双栏面板")
-        dualLbl.font = .systemFont(ofSize: 13.0, weight: .medium)
+        dualLbl.font = .systemFont(ofSize: 13.0, weight: .regular)
         dualLbl.textColor = GeekTheme.inkPrimary
         dualLbl.alignment = .right
         GeekTheme.placeCentered(dualLbl, x: 332, width: 112, centerY: 25.0)
@@ -42,7 +42,7 @@ extension TranslationSettingsWindow {
         topCard.addSubview(dualSwitch)
 
         let autoLbl = NSTextField(labelWithString: "自动复制译文")
-        autoLbl.font = .systemFont(ofSize: 13.0, weight: .medium)
+        autoLbl.font = .systemFont(ofSize: 13.0, weight: .regular)
         autoLbl.textColor = GeekTheme.inkPrimary
         autoLbl.alignment = .right
         GeekTheme.placeCentered(autoLbl, x: cardW - 154, width: 92, centerY: 25.0)
@@ -248,10 +248,7 @@ extension TranslationSettingsWindow {
     }
 
     private func makeSubCard(frame: NSRect) -> GeekFlippedView {
-        let v = GeekFlippedView(frame: frame); v.wantsLayer = true
-        v.layer?.backgroundColor = GeekTheme.inputBg.cgColor; v.layer?.cornerRadius = 9.0
-        v.layer?.borderWidth = 1.0; v.layer?.borderColor = GeekTheme.border.cgColor
-        return v
+        GeekSurfaceView(frame: frame, fill: GeekTheme.inputBg, border: GeekTheme.border, cornerRadius: 9.0, borderWidth: 1.0)
     }
 
     private func makeDynamicRow(label: String, placeholder: String, mono: Bool, width fw: CGFloat) -> (GeekFlippedView, NSTextField, NSTextField) {

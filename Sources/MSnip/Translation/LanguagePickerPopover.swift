@@ -26,6 +26,10 @@ final class LanguagePickerPopover: NSObject, NSTableViewDataSource, NSTableViewD
         popover.animates = true
     }
 
+    func closeIfShown() {
+        if popover.isShown { popover.performClose(nil) }
+    }
+
     func show(
         anchoredTo anchorView: NSView,
         current: TranslationTargetLang,

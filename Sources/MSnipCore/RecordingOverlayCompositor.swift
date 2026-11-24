@@ -32,12 +32,14 @@ public final class RecordingOverlayCompositor: @unchecked Sendable {
 
     public static let rippleDuration: TimeInterval = 0.46
     public static let keyBadgeDuration: TimeInterval = 1.15
+    public static let laserStrokeDuration: TimeInterval = 2.6
     private static let sRGB = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
     private let lock = NSLock()
     private var _isEnabled: Bool
     private var ripples: [ClickRipple] = []
     private var latestKeyBadge: KeyBadge?
+    private var liveStrokes: [RecordingLiveStroke] = []
 
     public init(isEnabled: Bool = true) {
         self._isEnabled = isEnabled
@@ -79,12 +81,52 @@ public final class RecordingOverlayCompositor: @unchecked Sendable {
         latestKeyBadge = KeyBadge(label: label, timestamp: timestamp)
     }
 
-    /// 将当前活跃的点击波纹与快捷键胶囊合成至帧图像（若无活跃事件则直接返回原图零开销）
+    public func beginLiveStroke(normalizedPoint pt: CGPoint, isLaser: Bool, at timestamp: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        if liveStrokes.count >= 40 { liveStrokes.removeFirst() }
+        liveStrokes.append(RecordingLiveStroke(points: [pt], isLaser: isLaser, updatedAt: timestamp))
+    }
+
+    public func appendLiveStrokePoint(_ pt: CGPoint, at timestamp: TimeInterval) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !liveStrokes.isEmpty else { return }
+        liveStrokes[liveStrokes.count - 1].points.append(pt)
+        liveStrokes[liveStrokes.count - 1].updatedAt = timestamp
+    }
+
+    public func clearLiveStrokes() {
+        lock.lock()
+        liveStrokes.removeAll()
+        lock.unlock()
+    }
+
+    /// 快速探测当前时间点是否存在活跃点击波纹、按键角标或实时画笔笔迹（用于 MP4 无特效帧零拷贝 CVPixelBuffer 直通）
+    public func hasActiveVisuals(at timestamp: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        if liveStrokes.contains(where: { !$0.isLaser || (timestamp >= $0.updatedAt && (timestamp - $0.updatedAt) <= Self.laserStrokeDuration) }) {
+            return true
+        }
+        guard _isEnabled else { return false }
+        if ripples.contains(where: { timestamp >= $0.timestamp && (timestamp - $0.timestamp) <= Self.rippleDuration }) {
+            return true
+        }
+        if let b = latestKeyBadge, timestamp >= b.timestamp, (timestamp - b.timestamp) <= Self.keyBadgeDuration {
+            return true
+        }
+        return false
+    }
+
+    /// 将当前活跃的点击波纹、实时画笔与快捷键胶囊合成至帧图像（若无活跃事件则直接返回原图零开销）
     public func compositeIfNeeded(onto frame: CGImage, at timestamp: TimeInterval) -> CGImage {
-        let snapshot: (ripples: [ClickRipple], badge: KeyBadge?) = {
+        let snapshot: (ripples: [ClickRipple], badge: KeyBadge?, strokes: [RecordingLiveStroke]) = {
             lock.lock()
             defer { lock.unlock() }
-            guard _isEnabled else { return ([], nil) }
+            liveStrokes.removeAll { $0.isLaser && (timestamp - $0.updatedAt > Self.laserStrokeDuration) }
+            let curStrokes = liveStrokes
+            guard _isEnabled else { return ([], nil, curStrokes) }
             ripples.removeAll { timestamp - $0.timestamp > Self.rippleDuration || timestamp < $0.timestamp }
             let validBadge: KeyBadge?
             if let b = latestKeyBadge, timestamp >= b.timestamp, (timestamp - b.timestamp) <= Self.keyBadgeDuration {
@@ -92,10 +134,10 @@ public final class RecordingOverlayCompositor: @unchecked Sendable {
             } else {
                 validBadge = nil
             }
-            return (ripples, validBadge)
+            return (ripples, validBadge, curStrokes)
         }()
 
-        if snapshot.ripples.isEmpty && snapshot.badge == nil {
+        if snapshot.ripples.isEmpty && snapshot.badge == nil && snapshot.strokes.isEmpty {
             return frame
         }
 
@@ -140,7 +182,32 @@ public final class RecordingOverlayCompositor: @unchecked Sendable {
             ctx.restoreGState()
         }
 
-        // 2) 渲染底部居中的修饰快捷键回显胶囊（如 `⌘C` / `⇧⌘P`）
+        // 2) 渲染录屏实时演示画笔/激光笔迹
+        for stroke in snapshot.strokes where stroke.points.count >= 2 {
+            let alpha: CGFloat
+            if stroke.isLaser {
+                let age = max(0, timestamp - stroke.updatedAt)
+                let fadeStart = Self.laserStrokeDuration - 0.75
+                alpha = age > fadeStart ? CGFloat(max(0, (Self.laserStrokeDuration - age) / 0.75)) : 1.0
+            } else {
+                alpha = 1.0
+            }
+            guard alpha > 0.02 else { continue }
+            ctx.saveGState()
+            ctx.setLineCap(.round); ctx.setLineJoin(.round)
+            let path = CGMutablePath()
+            for (idx, p) in stroke.points.enumerated() {
+                let pt = CGPoint(x: p.x * CGFloat(w), y: p.y * CGFloat(h))
+                if idx == 0 { path.move(to: pt) } else { path.addLine(to: pt) }
+            }
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.72 * alpha))
+            ctx.setLineWidth(5.8 * uiScale); ctx.addPath(path); ctx.strokePath()
+            ctx.setStrokeColor(CGColor(srgbRed: 0.96, green: 0.23, blue: 0.35, alpha: alpha))
+            ctx.setLineWidth(3.2 * uiScale); ctx.addPath(path); ctx.strokePath()
+            ctx.restoreGState()
+        }
+
+        // 3) 渲染底部居中的修饰快捷键回显胶囊（如 `⌘C` / `⇧⌘P`）
         if let badge = snapshot.badge {
             let age = timestamp - badge.timestamp
             let fadeStart = Self.keyBadgeDuration - 0.26

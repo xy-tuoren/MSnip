@@ -113,6 +113,7 @@ public enum HotKeyConflictCatalog {
         case 79, 80: return "向左切换桌面空间"
         case 81, 82: return "向右切换桌面空间"
         case 98: return "聚焦帮助菜单"
+        case 118...126: return "切换到桌面 \(id - 117)"
         case 160: return "启动台 (Launchpad)"
         case 184: return "系统截屏与录屏"
         case 190: return "快速备忘录"

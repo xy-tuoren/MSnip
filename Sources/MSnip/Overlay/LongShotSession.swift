@@ -9,8 +9,10 @@ import MSnipCore
 final class LongShotSession {
     enum Outcome {
         case copied(CGImage, CGFloat)
+        case quickSaved(CGImage, CGFloat)
         case saved(CGImage, CGFloat)
         case pinned(CGImage, CGFloat, CGPoint, NSScreen)
+        case pinAndAnnotate(CGImage, CGFloat, CGPoint, NSScreen)
         case extractText(CGImage, CGFloat, NSScreen)
         case translateText(CGImage, CGFloat, NSScreen)
         case cancelled
@@ -114,11 +116,15 @@ final class LongShotSession {
 
     // MARK: - Actions & Stitch Updates
 
-    private enum ExportMode { case copy, save, pin, extractText, translateText }
+    private enum ExportMode { case copy, quickSave, save, pin, pinAndAnnotate, extractText, translateText }
 
     func handleControlAction(_ action: LongShotControlBarView.Action) {
         switch action {
         case .toggleAutoScroll:
+            if stitcher.axis == .horizontal {
+                ToastHUD.show(message: "横向长截图请手动按住 ⇧+滚轮 或双指横向滑动")
+                return
+            }
             let primaryH = NSScreen.screens.first?.frame.height ?? targetScreen.frame.height
             let quartzOriginY = primaryH - targetScreen.frame.maxY + captureLocalRect.minY
             let centerQuartz = CGPoint(
@@ -129,37 +135,75 @@ final class LongShotSession {
                 ToastHUD.show(message: "开启「辅助功能」后可用自动滚动，当前可直接手动滚轮")
                 _ = RegionDetector.checkAccessibilityPermission(prompt: true)
             }
+        case .toggleAxis:
+            autoScroller.stop()
+            let nextAxis: ScrollStitchAxis = (stitcher.axis == .vertical) ? .horizontal : .vertical
+            stitcher.reset(axis: nextAxis)
+            controlView?.axis = nextAxis
+            controlView?.canUndoLast = false
+            borderView?.statusStyle = .ready
+            borderView?.statusText = nextAxis == .horizontal
+                ? "横向长截图 · 在框内向右滑动页面拼接"
+                : "纵向长截图 · 在框内向下滚轮拼接"
+            if let initImg = fallbackInitialFrame {
+                previewView?.previewImage = initImg
+                previewView?.pixelWidth = initImg.width
+                previewView?.pixelHeight = initImg.height
+            }
+        case .undoLast:
+            performUndoLastAppend()
+        case .annotate:      finishWithExport(mode: .pinAndAnnotate)
         case .extractText:   finishWithExport(mode: .extractText)
         case .translateText: finishWithExport(mode: .translateText)
         case .pin:           finishWithExport(mode: .pin)
-        case .save:          finishWithExport(mode: .save)
+        case .save:          finishWithExport(mode: .quickSave)
+        case .saveAs:        finishWithExport(mode: .save)
         case .cancel:        finish(.cancelled)
         case .finishCopy:    finishWithExport(mode: .copy)
         }
     }
 
+    private func performUndoLastAppend() {
+        autoScroller.stop()
+        guard stitcher.undoLastAppend() else {
+            ToastHUD.show(message: "暂无可撤回的上一段拼接")
+            return
+        }
+        let sz = stitcher.outputSizePx
+        previewView?.previewImage = stitcher.renderPreviewImage() ?? fallbackInitialFrame
+        previewView?.pixelWidth = sz.width
+        previewView?.pixelHeight = sz.height
+        controlView?.canUndoLast = stitcher.canUndoAppend
+        borderView?.statusStyle = .ready
+        borderView?.statusText = "已撤回上一段 · \(sz.width) × \(sz.height) px · 可继续滚动"
+    }
+
     private func applyStitchResult(_ step: ScrollStitcher.StepResult, preview: CGImage?) {
         guard !finished else { return }
         if let preview { previewView?.previewImage = preview }
-        previewView?.pixelWidth = stitcher.widthPx
-        previewView?.pixelHeight = stitcher.totalHeightPx
+        let sz = stitcher.outputSizePx
+        previewView?.pixelWidth = sz.width
+        previewView?.pixelHeight = sz.height
+        controlView?.canUndoLast = stitcher.canUndoAppend
 
         switch step {
         case .initialized(let w, let h):
             borderView?.statusStyle = .ready
-            borderView?.statusText = "长截图 · 在框内向下滚轮 (\(w) × \(h))"
-        case .appended(_, let totalH):
+            borderView?.statusText = stitcher.axis == .horizontal
+                ? "横向长截图 · 在框内向右滚动 (\(w) × \(h))"
+                : "长截图 · 在框内向下滚轮 (\(w) × \(h))"
+        case .appended:
             lastAppendTimestamp = ProcessInfo.processInfo.systemUptime
             borderView?.statusStyle = .stitching
-            borderView?.statusText = "正在拼接 · \(stitcher.widthPx) × \(totalH) px · ⌘↩ 完成"
+            borderView?.statusText = "正在拼接 · \(sz.width) × \(sz.height) px · ⌘Z 撤回 · ⌘↩ 完成"
         case .mismatchLostOverlap:
             autoScroller.stop()
             borderView?.statusStyle = .warning
-            borderView?.statusText = "⚠ 跨屏略快：往回滚可对齐，继续下滚自动续接"
+            borderView?.statusText = "⚠ 跨屏略快：往回滚可对齐，继续滚动自动续接"
         case .reachedHeightLimit:
             autoScroller.stop()
             borderView?.statusStyle = .finishedBottom
-            borderView?.statusText = "已达最大拼接高度 (\(stitcher.totalHeightPx) px)，请点击完成"
+            borderView?.statusText = "已达最大拼接长度 (\(sz.width) × \(sz.height) px)，请点击完成"
         case .unchanged, .scrolledBackward:
             break
         }
@@ -184,16 +228,22 @@ final class LongShotSession {
     private func setupKeyboardMonitors() {
         globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] ev in
             let flags = ev.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let ch = ev.charactersIgnoringModifiers?.lowercased() ?? ""
             if ev.keyCode == 53 {
                 Task { @MainActor [weak self] in self?.finish(.cancelled) }
             } else if flags == .command && (ev.keyCode == 36 || ev.keyCode == 76) {
                 Task { @MainActor [weak self] in self?.finishWithExport(mode: .copy) }
+            } else if flags == .command && ch == "z" {
+                Task { @MainActor [weak self] in self?.performUndoLastAppend() }
             }
         }
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] ev in
             guard let self else { return ev }
+            let flags = ev.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let ch = ev.charactersIgnoringModifiers?.lowercased() ?? ""
             if ev.keyCode == 53 { self.finish(.cancelled); return nil }
             if ev.keyCode == 36 || ev.keyCode == 76 { self.finishWithExport(mode: .copy); return nil }
+            if flags == .command && ch == "z" { self.performUndoLastAppend(); return nil }
             return ev
         }
     }
@@ -206,11 +256,13 @@ final class LongShotSession {
             return
         }
         switch mode {
-        case .copy:          finish(.copied(finalImg, scaleFactor))
-        case .save:          finish(.saved(finalImg, scaleFactor))
-        case .pin:           finish(.pinned(finalImg, scaleFactor, captureLocalRect.origin, targetScreen))
-        case .extractText:   finish(.extractText(finalImg, scaleFactor, targetScreen))
-        case .translateText: finish(.translateText(finalImg, scaleFactor, targetScreen))
+        case .copy:           finish(.copied(finalImg, scaleFactor))
+        case .quickSave:      finish(.quickSaved(finalImg, scaleFactor))
+        case .save:           finish(.saved(finalImg, scaleFactor))
+        case .pin:            finish(.pinned(finalImg, scaleFactor, captureLocalRect.origin, targetScreen))
+        case .pinAndAnnotate: finish(.pinAndAnnotate(finalImg, scaleFactor, captureLocalRect.origin, targetScreen))
+        case .extractText:    finish(.extractText(finalImg, scaleFactor, targetScreen))
+        case .translateText:  finish(.translateText(finalImg, scaleFactor, targetScreen))
         }
     }
 

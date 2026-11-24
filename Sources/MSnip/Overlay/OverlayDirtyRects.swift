@@ -11,16 +11,17 @@ extension OverlayView {
         switch op {
         case .creatingSelection, .movingSelection, .resizingSelection:
             return true
-        case .pendingSnapOrCreate, .drawingAnnotation, .erasing, .movingAnnotation:
+        case .pendingSnapOrCreate, .drawingAnnotation, .erasing, .movingAnnotation, .resizingAnnotation:
             return false
         }
     }
 
     func autoSnapDirtyBounds(for rect: CGRect) -> CGRect {
-        CGRect(
-            x: rect.minX - 10,
+        let minX = min(rect.minX - 10, max(0, bounds.width - 390))
+        return CGRect(
+            x: minX,
             y: rect.minY - 38,
-            width: max(rect.width + 20, 310),
+            width: max(rect.maxX - minX + 12, 380),
             height: rect.height + 48
         ).intersection(bounds)
     }
@@ -187,6 +188,7 @@ extension OverlayView {
 
     func clearSelectionFromSibling() {
         cancelTextEditing()
+        barcodeScanTask?.cancel(); barcodeScanTask = nil
         deactivateInPlaceOCR()
         deactivateInPlaceTranslate()
         stopSnapGlide()
@@ -248,32 +250,6 @@ extension OverlayView {
                 options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
             )
         }
-        ctx.restoreGState()
-    }
-
-    func drawFrozenBackgroundSlice(in ctx: CGContext, dirtyRect: CGRect) {
-        let scale = snapshot.scaleFactor
-        let imgW = snapshot.cgImage.width
-        let imgH = snapshot.cgImage.height
-        let pxX0 = max(0, Int(floor(dirtyRect.minX * scale)))
-        let pxY0 = max(0, Int(floor(dirtyRect.minY * scale)))
-        let pxX1 = min(imgW, Int(ceil(dirtyRect.maxX * scale)))
-        let pxY1 = min(imgH, Int(ceil(dirtyRect.maxY * scale)))
-        guard pxX1 > pxX0, pxY1 > pxY0 else { return }
-
-        let pxCrop = CGRect(x: pxX0, y: pxY0, width: pxX1 - pxX0, height: pxY1 - pxY0)
-        guard let sliceCG = snapshot.cgImage.cropping(to: pxCrop) else { return }
-        let dst = CGRect(
-            x: CGFloat(pxX0) / scale,
-            y: CGFloat(pxY0) / scale,
-            width: CGFloat(pxX1 - pxX0) / scale,
-            height: CGFloat(pxY1 - pxY0) / scale
-        )
-        ctx.saveGState()
-        ctx.interpolationQuality = .none
-        ctx.translateBy(x: 0, y: dst.minY + dst.maxY)
-        ctx.scaleBy(x: 1, y: -1)
-        ctx.draw(sliceCG, in: dst)
         ctx.restoreGState()
     }
 }

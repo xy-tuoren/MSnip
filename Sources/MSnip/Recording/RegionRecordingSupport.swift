@@ -61,9 +61,83 @@ extension RegionRecordingSession {
         if let g = globalKeyMonitor { NSEvent.removeMonitor(g); globalKeyMonitor = nil }
         if let gm = globalMouseMonitor { NSEvent.removeMonitor(gm); globalMouseMonitor = nil }
         borderWindow?.orderOut(nil); borderWindow = nil
+        drawWindow?.orderOut(nil); drawWindow = nil
         controlWindow?.orderOut(nil); controlWindow = nil
+        drawOverlayView.clearAll(notify: false)
+        trimController = nil
         initialFrame = nil
         onComplete?(outcome)
+    }
+
+    func setupDrawOverlayCallbacks() {
+        drawOverlayView.onBeginStroke = { [weak self] pt, isLaser in
+            guard let self, self.controlBar.isRecording, !self.paused else { return }
+            self.overlayCompositor.beginLiveStroke(normalizedPoint: pt, isLaser: isLaser, at: self.currentActiveDuration())
+        }
+        drawOverlayView.onAppendStrokePoint = { [weak self] pt in
+            guard let self, self.controlBar.isRecording, !self.paused else { return }
+            self.overlayCompositor.appendLiveStrokePoint(pt, at: self.currentActiveDuration())
+        }
+        drawOverlayView.onClearStrokes = { [weak self] in
+            self?.overlayCompositor.clearLiveStrokes()
+        }
+    }
+
+    func toggleLiveDrawingMode() {
+        let next = !controlBar.isDrawingActive
+        controlBar.isDrawingActive = next
+        drawWindow?.ignoresMouseEvents = !next
+        borderView.statusText = next
+            ? "画笔标记模式 · 拖动绘制激光红线（按住 ⇧ 常驻，右键清屏）"
+            : "正在录制 \(controlBar.format.badgeTitle) · 框内可直接点击操作"
+        if let scr = targetScreen {
+            repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: scr), on: scr)
+        }
+    }
+
+    func presentTrimSheet(videoURL: URL, format: RecordingFormat) {
+        borderWindow?.orderOut(nil); drawWindow?.orderOut(nil); controlWindow?.orderOut(nil)
+        if let m = localKeyMonitor { NSEvent.removeMonitor(m); localKeyMonitor = nil }
+        if let g = globalKeyMonitor { NSEvent.removeMonitor(g); globalKeyMonitor = nil }
+        if let gm = globalMouseMonitor { NSEvent.removeMonitor(gm); globalMouseMonitor = nil }
+        let trimmer = RecordingTrimWindowController()
+        self.trimController = trimmer
+        trimmer.present(videoURL: videoURL, on: targetScreen) { [weak self] res in
+            guard let self else { return }
+            self.trimController = nil
+            switch res {
+            case .copy(let u):
+                ClipboardAndSave.copyMediaFileToClipboard(fileURL: u)
+                self.finishSession(.copiedFile(u, format))
+            case .quickSave(let u):
+                if let saved = self.quickSaveMedia(tempURL: u, format: format) {
+                    self.finishSession(.savedFile(saved.url, format, saved.dir))
+                } else {
+                    ClipboardAndSave.copyMediaFileToClipboard(fileURL: u)
+                    self.finishSession(.copiedFile(u, format))
+                }
+            case .saveAs(let u):
+                if let saved = self.promptSaveMedia(tempURL: u, format: format) {
+                    self.finishSession(.savedFile(saved.url, format, saved.dir))
+                } else {
+                    ClipboardAndSave.copyMediaFileToClipboard(fileURL: u)
+                    self.finishSession(.copiedFile(u, format))
+                }
+            case .cancel:
+                try? FileManager.default.removeItem(at: videoURL)
+                self.finishSession(.cancelled)
+            }
+        }
+    }
+
+    func quickSaveMedia(tempURL: URL, format: RecordingFormat) -> (url: URL, dir: String)? {
+        let dirURL = ClipboardAndSave.resolveQuickSaveDirectory(preferred: saveDirHint)
+        try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
+        let df = DateFormatter(); df.dateFormat = "yyyyMMdd-HHmmss-SSS"
+        let dst = dirURL.appendingPathComponent("MSnip-\(df.string(from: Date())).\(format.rawValue)")
+        guard (try? FileManager.default.copyItem(at: tempURL, to: dst)) != nil else { return nil }
+        try? FileManager.default.removeItem(at: tempURL)
+        return (dst, dirURL.standardizedFileURL.path)
     }
 
     func promptSaveMedia(tempURL: URL, format: RecordingFormat) -> (url: URL, dir: String)? {
@@ -105,7 +179,7 @@ extension RegionRecordingSession {
             if ev.keyCode == 53 { self.cancel(); return nil }
             if ev.keyCode == 49, self.controlBar.isRecording { self.togglePause(); return nil }
             if ev.keyCode == 36 || ev.keyCode == 76 {
-                if self.controlBar.isRecording { self.finalizeRecording(saveInteractive: false) }
+                if self.controlBar.isRecording { self.finalizeRecording(saveMode: .copy) }
                 else if self.countdownTimer != nil { self.skipCountdownAndRecord() }
                 else { self.startCountdownThenRecord() }
                 return nil
@@ -192,16 +266,10 @@ extension RegionRecordingSession {
 
     static func makePanel(frame: NSRect, ignoresMouse: Bool, contentView: NSView) -> NSPanel {
         let p = NSPanel(contentRect: frame, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        p.level = .screenSaver
-        p.animationBehavior = .none
-        p.isFloatingPanel = true
-        p.hidesOnDeactivate = false
-        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        p.isOpaque = false
-        p.backgroundColor = .clear
-        p.hasShadow = false
-        p.ignoresMouseEvents = ignoresMouse
-        p.acceptsMouseMovedEvents = !ignoresMouse
+        p.animationBehavior = .none; p.isFloatingPanel = true; p.level = .screenSaver
+        p.hidesOnDeactivate = false; p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = false
+        p.ignoresMouseEvents = ignoresMouse; p.acceptsMouseMovedEvents = !ignoresMouse
         p.contentView = contentView
         return p
     }

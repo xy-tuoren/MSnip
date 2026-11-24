@@ -20,6 +20,9 @@ private func testGeometry() {
     let sq = Geometry.squareConstrainedEnd(from: CGPoint(x: 10, y: 10), to: CGPoint(x: 50, y: -10))
     check(sq == CGPoint(x: 50, y: -30), "Shift 正方形约束应取较长边并保留象限符号")
 
+    let asp = ResizeHandle.bottomRight.resizedRect(from: CGRect(x: 10, y: 20, width: 100, height: 50), delta: CGPoint(x: 50, y: 10), preserveAspect: true)
+    check(abs(asp.width - 150) < 0.01 && abs(asp.height - 75) < 0.01 && asp.origin == CGPoint(x: 10, y: 20), "Shift 拖拽选区控制柄应锁定原宽高比")
+
     let snapped = Geometry.angleSnappedEnd(from: .zero, to: CGPoint(x: 100, y: 8))
     check(abs(snapped.y) < 0.01 && snapped.x > 99, "接近水平的线段按 Shift 应吸附到 0°")
 
@@ -275,6 +278,7 @@ testRetinaExportOrientationAndAnnotationBaking()
 testFlippedNSViewDrawsCGImageUpright()
 testVisualDetectorFindsNestedCardAndButton()
 testVisualDetectorRejectsPhantomCrosshairsAndFindsOutlinedBox()
+testVisualDetectorRoundedLowContrastAndBoundaryFilter()
 testColorSamplingAndRoundedBake()
 testPixelCaliperMeasurement()
 testShortcutPresetsOverridesAndCanvasSwap()
@@ -286,4 +290,5 @@ testWindowCapsuleAndRecordingHUD()
 testScrollStitcherSidebarFastJumpAndSelfResync()
 testTranslationConfigAndModels()
 testAnnotationEraserAndLatexModels()
+testV030Features()
 print("✅ All \(passedCount) assertions in MSnipTests passed!")

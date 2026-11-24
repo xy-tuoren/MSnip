@@ -13,12 +13,22 @@ final class GeekShortcutIconBadge: NSView {
         self.ptSize = pointSize
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = GeekTheme.controlBg.cgColor
         layer?.cornerRadius = 7.5
         layer?.borderWidth = 1.0
-        layer?.borderColor = GeekTheme.border.cgColor
+        syncLayer()
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        syncLayer()
+        needsDisplay = true
+    }
+
+    private func syncLayer() {
+        layer?.backgroundColor = GeekTheme.resolvedCGColor(GeekTheme.controlBg, for: self)
+        layer?.borderColor = GeekTheme.resolvedCGColor(GeekTheme.border, for: self)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         GeekTheme.drawSymbol(symbol, pointSize: ptSize, weight: .medium, in: bounds, alpha: 0.94, tint: GeekTheme.inkPrimary)

@@ -39,9 +39,10 @@ enum ClipboardAndSave {
         ClipboardImagePromise.encodePNG(cgImage: cgImage, scaleFactor: scaleFactor)
     }
 
-    /// 将 Retina 高清 `CGImage` 零阻塞写入系统剪贴板（延迟 Promise 提供 PNG / TIFF，保留物理像素与逻辑 DPI）
-    static func copyToClipboard(cgImage: CGImage, scaleFactor: CGFloat) {
-        ClipboardImagePromise.write(cgImage: cgImage, scaleFactor: scaleFactor)
+    /// 将 Retina 高清 `CGImage` 零阻塞写入系统剪贴板（切到终端/访达时自动动态适配路径与文件 URL，切回普通应用保持纯净图像）
+    @MainActor
+    static func copyToClipboard(cgImage: CGImage, scaleFactor: CGFloat, forceIncludePath: Bool = false) {
+        SmartClipboardProjectionManager.shared.writeImage(cgImage, scaleFactor: scaleFactor, forceIncludePath: forceIncludePath)
     }
 
     /// 在访达中打开并高亮定位目标文件（先在点击事件上下文内激活应用，再显式置顶 Finder 突破 macOS 14+ 后台焦点拦截）
@@ -158,7 +159,7 @@ enum ClipboardAndSave {
         return result
     }
 
-    /// 免弹窗一键快存高清图片至指定目录（按配置导出 PNG / JPG / HEIC 及可选 1× 倍率），成功返回文件 `URL`
+    /// 免弹窗一键快存高清图片至指定目录（按配置导出 PNG / JPG / HEIC / AVIF / BMP / TIFF 及可选 1× 倍率），成功返回文件 `URL`
     static func quickSavePNG(
         cgImage: CGImage,
         scaleFactor: CGFloat,
@@ -177,23 +178,23 @@ enum ClipboardAndSave {
         format: CaptureExportFormat = .png,
         exportAt1x: Bool = false
     ) -> URL? {
-        guard let imgData = CaptureImageExporter.encode(
+        guard let result = CaptureImageExporter.encodeWithFallback(
             cgImage: cgImage, scaleFactor: scaleFactor, format: format, exportAt1x: exportAt1x
         ) else { return nil }
         try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
 
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-        let outURL = dirURL.appendingPathComponent("MSnip-\(formatter.string(from: Date())).\(format.fileExtension)")
+        let outURL = dirURL.appendingPathComponent("MSnip-\(formatter.string(from: Date())).\(result.actualFormat.fileExtension)")
         do {
-            try imgData.write(to: outURL, options: .atomic)
+            try result.data.write(to: outURL, options: .atomic)
             return outURL
         } catch {
             return nil
         }
     }
 
-    /// 弹出原生保存对话框（支持切换任意目录、修改后缀格式 PNG/JPG/HEIC 或文件名），成功返回保存后的文件 `URL` 与所在目录路径
+    /// 弹出原生保存对话框（支持切换任意目录、修改后缀格式 PNG/JPG/HEIC/AVIF/BMP/TIFF 或文件名），成功返回保存后的文件 `URL` 与所在目录路径
     @MainActor
     static func savePNGInteractive(
         cgImage: CGImage,
@@ -202,14 +203,16 @@ enum ClipboardAndSave {
         format: CaptureExportFormat = .png,
         exportAt1x: Bool = false
     ) -> (url: URL, dir: String)? {
+        let effectiveDefault = format.resolvedForCurrentOS
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let defaultName = "MSnip-\(formatter.string(from: Date())).\(format.fileExtension)"
+        let defaultName = "MSnip-\(formatter.string(from: Date())).\(effectiveDefault.fileExtension)"
 
         let panel = NSSavePanel()
         panel.title = "保存截图"
         panel.nameFieldStringValue = defaultName
-        panel.allowedContentTypes = [format.utType] + CaptureExportFormat.allCases.filter { $0 != format }.map(\.utType)
+        let supported = CaptureExportFormat.supportedFormats
+        panel.allowedContentTypes = [effectiveDefault.utType] + supported.filter { $0 != effectiveDefault }.map(\.utType)
         panel.canCreateDirectories = true
         panel.level = .modalPanel
         panel.directoryURL = resolveQuickSaveDirectory(preferred: initialDirectory)
@@ -218,14 +221,16 @@ enum ClipboardAndSave {
         guard panel.runModal() == .OK, let url = panel.url else {
             return nil
         }
-        let ext = url.pathExtension.lowercased()
-        let resolvedFmt: CaptureExportFormat = (ext == "jpg" || ext == "jpeg") ? .jpeg : (ext == "heic" ? .heic : (ext == "png" ? .png : format))
-        guard let imgData = CaptureImageExporter.encode(
-            cgImage: cgImage, scaleFactor: scaleFactor, format: resolvedFmt, exportAt1x: exportAt1x
+        let requestedFmt = CaptureExportFormat.from(fileExtension: url.pathExtension) ?? effectiveDefault
+        guard let result = CaptureImageExporter.encodeWithFallback(
+            cgImage: cgImage, scaleFactor: scaleFactor, format: requestedFmt, exportAt1x: exportAt1x
         ) else { return nil }
+        let finalURL: URL = (result.actualFormat != requestedFmt)
+            ? url.deletingPathExtension().appendingPathExtension(result.actualFormat.fileExtension)
+            : url
         do {
-            try imgData.write(to: url, options: .atomic)
-            return (url, url.deletingLastPathComponent().standardizedFileURL.path)
+            try result.data.write(to: finalURL, options: .atomic)
+            return (finalURL, finalURL.deletingLastPathComponent().standardizedFileURL.path)
         } catch {
             let alert = NSAlert()
             alert.messageText = "保存图片失败"

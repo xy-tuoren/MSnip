@@ -3,32 +3,101 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 极客简约暗炭黑设置窗设计令牌（Linear / Raycast 风格，高可读层级、柔光边界与像素级对齐）
+/// 设置中心双模动态设计令牌（暗黑 Carbon Dark / 明亮 Daylight Porcelain，随外观实时零闪烁切换）
 enum GeekTheme {
-    static let windowBg     = NSColor(srgbRed: 0.067, green: 0.075, blue: 0.090, alpha: 1.0) // #111317
-    static let barBg        = NSColor(srgbRed: 0.082, green: 0.094, blue: 0.118, alpha: 1.0) // #15181E
-    static let cardBg       = NSColor(srgbRed: 0.106, green: 0.122, blue: 0.149, alpha: 1.0) // #1B1F26
-    static let controlBg    = NSColor(srgbRed: 0.141, green: 0.161, blue: 0.200, alpha: 1.0) // #242933
-    static let controlHover = NSColor(srgbRed: 0.180, green: 0.208, blue: 0.259, alpha: 1.0) // #2E3542
-    static let inputBg      = NSColor(srgbRed: 0.075, green: 0.086, blue: 0.106, alpha: 1.0) // #13161B
-    static let border       = NSColor(white: 1.0, alpha: 0.080)
-    static let borderStrong = NSColor(white: 1.0, alpha: 0.160)
-    static let divider      = NSColor(white: 1.0, alpha: 0.060)
+    @MainActor static var currentMode: AppAppearanceMode = .dark
 
-    static let inkPrimary   = NSColor(srgbRed: 0.949, green: 0.961, blue: 0.980, alpha: 1.0) // #F2F5FA
-    static let inkSecondary = NSColor(srgbRed: 0.624, green: 0.671, blue: 0.749, alpha: 1.0) // #9FABBF
-    static let inkMuted     = NSColor(srgbRed: 0.443, green: 0.490, blue: 0.569, alpha: 1.0) // #717D91
+    @MainActor static var isDark: Bool {
+        switch currentMode {
+        case .dark:   return true
+        case .light:  return false
+        case .system: return NSApp.effectiveAppearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+        }
+    }
 
-    static let accent       = NSColor(srgbRed: 0.310, green: 0.565, blue: 1.000, alpha: 1.0) // #4F90FF
-    static let accentSoft   = NSColor(srgbRed: 0.310, green: 0.565, blue: 1.000, alpha: 0.16)
-    static let emerald      = NSColor(srgbRed: 0.204, green: 0.827, blue: 0.600, alpha: 1.0) // #34D399
-    static let emeraldSoft  = NSColor(srgbRed: 0.204, green: 0.827, blue: 0.600, alpha: 0.15)
-    static let amber        = NSColor(srgbRed: 0.961, green: 0.620, blue: 0.043, alpha: 1.0) // #F59E0B
-    static let danger       = NSColor(srgbRed: 0.973, green: 0.443, blue: 0.443, alpha: 1.0) // #F87171
+    @MainActor static var windowAppearance: NSAppearance? {
+        switch currentMode {
+        case .dark:   return NSAppearance(named: .darkAqua)
+        case .light:  return NSAppearance(named: .aqua)
+        case .system: return nil
+        }
+    }
+
+    @MainActor static var popoverAppearance: NSAppearance? {
+        NSAppearance(named: isDark ? .darkAqua : .aqua)
+    }
+
+    static func resolvedCGColor(_ color: NSColor, for view: NSView) -> CGColor {
+        var resolved = color.cgColor
+        view.effectiveAppearance.performAsCurrentDrawingAppearance { resolved = color.cgColor }
+        return resolved
+    }
+
+    private static func dyn(dark: NSColor, light: NSColor) -> NSColor {
+        NSColor(name: nil) { app in
+            app.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+        }
+    }
+
+    static let windowBg     = dyn(dark: NSColor(srgbRed: 0.067, green: 0.075, blue: 0.090, alpha: 1.0), light: NSColor(srgbRed: 0.953, green: 0.961, blue: 0.976, alpha: 1.0))
+    static let barBg        = dyn(dark: NSColor(srgbRed: 0.082, green: 0.094, blue: 0.118, alpha: 1.0), light: NSColor(srgbRed: 0.980, green: 0.984, blue: 0.992, alpha: 1.0))
+    static let cardBg       = dyn(dark: NSColor(srgbRed: 0.106, green: 0.122, blue: 0.149, alpha: 1.0), light: NSColor.white)
+    static let controlBg    = dyn(dark: NSColor(srgbRed: 0.145, green: 0.165, blue: 0.204, alpha: 1.0), light: NSColor(srgbRed: 0.984, green: 0.988, blue: 0.996, alpha: 1.0))
+    static let controlHover = dyn(dark: NSColor(srgbRed: 0.188, green: 0.216, blue: 0.267, alpha: 1.0), light: NSColor(srgbRed: 0.937, green: 0.949, blue: 0.973, alpha: 1.0))
+    static let segTrackBg   = dyn(dark: NSColor(srgbRed: 0.075, green: 0.086, blue: 0.106, alpha: 1.0), light: NSColor(srgbRed: 0.933, green: 0.945, blue: 0.965, alpha: 1.0))
+    static let segActiveBg  = dyn(dark: NSColor(srgbRed: 0.192, green: 0.220, blue: 0.275, alpha: 1.0), light: NSColor.white)
+    static let switchOffBg  = dyn(dark: NSColor(srgbRed: 0.173, green: 0.196, blue: 0.239, alpha: 1.0), light: NSColor(srgbRed: 0.847, green: 0.871, blue: 0.906, alpha: 1.0))
+    static let inputBg      = dyn(dark: NSColor(srgbRed: 0.075, green: 0.086, blue: 0.106, alpha: 1.0), light: NSColor(srgbRed: 0.961, green: 0.969, blue: 0.980, alpha: 1.0))
+    static let hoverSoft    = dyn(dark: NSColor(white: 1.0, alpha: 0.045), light: NSColor(white: 0.0, alpha: 0.036))
+    static let pillSubtle   = dyn(dark: NSColor(white: 1.0, alpha: 0.055), light: NSColor(white: 0.0, alpha: 0.048))
+    static let inactiveDot  = dyn(dark: NSColor(white: 1.0, alpha: 0.160), light: NSColor(white: 0.0, alpha: 0.180))
+    static let border       = dyn(dark: NSColor(white: 1.0, alpha: 0.080), light: NSColor(srgbRed: 0.06, green: 0.10, blue: 0.18, alpha: 0.095))
+    static let borderStrong = dyn(dark: NSColor(white: 1.0, alpha: 0.160), light: NSColor(srgbRed: 0.06, green: 0.10, blue: 0.18, alpha: 0.165))
+    static let divider      = dyn(dark: NSColor(white: 1.0, alpha: 0.060), light: NSColor(srgbRed: 0.06, green: 0.10, blue: 0.18, alpha: 0.065))
+    static let softShadow   = dyn(dark: NSColor.black.withAlphaComponent(0.30), light: NSColor(srgbRed: 0.06, green: 0.10, blue: 0.18, alpha: 0.09))
+
+    static let inkPrimary   = dyn(dark: NSColor(srgbRed: 0.949, green: 0.961, blue: 0.980, alpha: 1.0), light: NSColor(srgbRed: 0.078, green: 0.098, blue: 0.137, alpha: 1.0))
+    static let inkSecondary = dyn(dark: NSColor(srgbRed: 0.624, green: 0.671, blue: 0.749, alpha: 1.0), light: NSColor(srgbRed: 0.318, green: 0.357, blue: 0.427, alpha: 1.0))
+    static let inkMuted     = dyn(dark: NSColor(srgbRed: 0.443, green: 0.490, blue: 0.569, alpha: 1.0), light: NSColor(srgbRed: 0.475, green: 0.514, blue: 0.584, alpha: 1.0))
+
+    static let accent       = dyn(dark: NSColor(srgbRed: 0.310, green: 0.565, blue: 1.000, alpha: 1.0), light: NSColor(srgbRed: 0.047, green: 0.431, blue: 0.953, alpha: 1.0))
+    static let accentSoft   = dyn(dark: NSColor(srgbRed: 0.310, green: 0.565, blue: 1.000, alpha: 0.16), light: NSColor(srgbRed: 0.047, green: 0.431, blue: 0.953, alpha: 0.13))
+    static let emerald      = dyn(dark: NSColor(srgbRed: 0.204, green: 0.827, blue: 0.600, alpha: 1.0), light: NSColor(srgbRed: 0.051, green: 0.580, blue: 0.408, alpha: 1.0))
+    static let emeraldSoft  = dyn(dark: NSColor(srgbRed: 0.204, green: 0.827, blue: 0.600, alpha: 0.15), light: NSColor(srgbRed: 0.051, green: 0.580, blue: 0.408, alpha: 0.12))
+    static let amber        = dyn(dark: NSColor(srgbRed: 0.961, green: 0.620, blue: 0.043, alpha: 1.0), light: NSColor(srgbRed: 0.847, green: 0.467, blue: 0.024, alpha: 1.0))
+    static let danger       = dyn(dark: NSColor(srgbRed: 0.973, green: 0.443, blue: 0.443, alpha: 1.0), light: NSColor(srgbRed: 0.863, green: 0.149, blue: 0.149, alpha: 1.0))
 }
 
-final class GeekFlippedView: NSView {
+class GeekFlippedView: NSView {
     override var isFlipped: Bool { true }
+}
+
+/// 自动响应深浅外观变化的图层背景/描边容器（消除切换主题时的静态 CGColor 残留）
+final class GeekSurfaceView: GeekFlippedView {
+    var fillColor: NSColor? { didSet { syncLayerColors() } }
+    var borderColor: NSColor? { didSet { syncLayerColors() } }
+
+    init(frame: NSRect, fill: NSColor? = nil, border: NSColor? = nil, cornerRadius: CGFloat = 0, borderWidth: CGFloat = 0, masksToBounds: Bool = false) {
+        self.fillColor = fill
+        self.borderColor = border
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.cornerRadius = cornerRadius
+        layer?.borderWidth = borderWidth
+        layer?.masksToBounds = masksToBounds
+        syncLayerColors()
+    }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        syncLayerColors()
+    }
+
+    private func syncLayerColors() {
+        layer?.backgroundColor = fillColor.map { GeekTheme.resolvedCGColor($0, for: self) }
+        layer?.borderColor = borderColor.map { GeekTheme.resolvedCGColor($0, for: self) }
+    }
 }
 
 final class GeekHoverRowView: NSView {
@@ -45,7 +114,7 @@ final class GeekHoverRowView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard hovered, let ctx = NSGraphicsContext.current?.cgContext else { return }
-        ctx.setFillColor(NSColor(white: 1.0, alpha: 0.032).cgColor)
+        ctx.setFillColor(GeekTheme.hoverSoft.cgColor)
         ctx.fill(bounds)
     }
 }
@@ -55,19 +124,25 @@ final class GeekCardView: NSView {
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = GeekTheme.cardBg.cgColor
         layer?.cornerRadius = 11.5
         layer?.borderWidth = 1.0
-        layer?.borderColor = GeekTheme.border.cgColor
         layer?.masksToBounds = true
+        syncLayerColors()
     }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        syncLayerColors()
+    }
+
+    private func syncLayerColors() {
+        layer?.backgroundColor = GeekTheme.resolvedCGColor(GeekTheme.cardBg, for: self)
+        layer?.borderColor = GeekTheme.resolvedCGColor(GeekTheme.border, for: self)
+    }
+
     func addHairline(atY y: CGFloat, insetX: CGFloat = 16) {
-        let sep = NSView(frame: NSRect(x: insetX, y: y, width: bounds.width - insetX * 2, height: 1))
-        sep.wantsLayer = true
-        sep.layer?.backgroundColor = GeekTheme.divider.cgColor
-        addSubview(sep)
+        addSubview(GeekSurfaceView(frame: NSRect(x: insetX, y: y, width: bounds.width - insetX * 2, height: 1), fill: GeekTheme.divider))
     }
 }
 
@@ -121,10 +196,10 @@ final class GeekToggleSwitch: NSView {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let p = CGPath(roundedRect: r, cornerWidth: r.height * 0.5, cornerHeight: r.height * 0.5, transform: nil)
         ctx.saveGState()
-        let trackFill: NSColor = isOn ? GeekTheme.accent : (hovered ? GeekTheme.controlHover : GeekTheme.controlBg)
+        let trackFill: NSColor = isOn ? GeekTheme.accent : (hovered ? GeekTheme.borderStrong : GeekTheme.switchOffBg)
         ctx.setFillColor(trackFill.cgColor)
         ctx.addPath(p); ctx.fillPath()
-        ctx.setStrokeColor((isOn ? GeekTheme.accent : GeekTheme.borderStrong).cgColor)
+        ctx.setStrokeColor((isOn ? GeekTheme.accent : GeekTheme.border).cgColor)
         ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
 
         let d: CGFloat = 16
@@ -195,7 +270,7 @@ final class GeekHotKeyPill: NSView {
             bgFill = hovered ? tint.withAlphaComponent(0.18) : tint.withAlphaComponent(0.10)
             strokeCol = tint.withAlphaComponent(hovered ? 0.85 : 0.62)
         } else {
-            bgFill = hovered ? GeekTheme.controlHover : (isUnset ? NSColor(white: 1.0, alpha: 0.025) : GeekTheme.inputBg)
+            bgFill = hovered ? GeekTheme.controlHover : (isUnset ? GeekTheme.hoverSoft : GeekTheme.inputBg)
             strokeCol = hovered ? GeekTheme.borderStrong : (isModified ? GeekTheme.accent.withAlphaComponent(0.42) : GeekTheme.border)
         }
         ctx.setFillColor(bgFill.cgColor)
@@ -209,32 +284,5 @@ final class GeekHotKeyPill: NSView {
         let fg: NSColor = isRecording ? GeekTheme.accent : (isUnset ? GeekTheme.inkMuted : GeekTheme.inkPrimary)
         GeekTheme.drawText(text, in: bounds.insetBy(dx: 6, dy: 0), font: font, color: fg, align: .center)
         ctx.restoreGState()
-    }
-}
-
-/// 权限状态行视图（14pt 主标题 + 右侧或紧邻清晰语义状态）
-final class GeekDotLabel: NSView {
-    var dotColor: NSColor = GeekTheme.emerald { didSet { needsDisplay = true } }
-    var text: String = "" { didSet { needsDisplay = true } }
-    var detail: String = "" { didSet { needsDisplay = true } }
-    var alignDetailRight: Bool = true
-    override var isFlipped: Bool { true }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 8, y: bounds.midY), color: dotColor, halo: true)
-
-        let titleFont = NSFont.systemFont(ofSize: 14.0, weight: .medium)
-        let tW = GeekTheme.measureTextWidth(text, font: titleFont)
-        GeekTheme.drawText(text, in: CGRect(x: 22, y: 0, width: max(20, bounds.width - 24), height: bounds.height), font: titleFont, color: GeekTheme.inkPrimary)
-
-        if !detail.isEmpty {
-            let detFont = NSFont.systemFont(ofSize: 13.0, weight: .medium)
-            if alignDetailRight {
-                GeekTheme.drawText(detail, in: CGRect(x: 22 + tW + 8, y: 0, width: max(20, bounds.width - 30 - tW), height: bounds.height), font: detFont, color: dotColor, align: .right)
-            } else {
-                GeekTheme.drawText(detail, in: CGRect(x: 22 + tW + 12, y: 0, width: max(20, bounds.width - 34 - tW), height: bounds.height), font: detFont, color: dotColor)
-            }
-        }
     }
 }

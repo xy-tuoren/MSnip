@@ -55,6 +55,7 @@ extension OverlayView {
         if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
             if isRecordingMode { confirmBeginRegionRecording() }
             else if shift && !cmd && !ctrl { captureCurrentWindowAndFinish(pin: opt) }
+            else if opt && !cmd && !ctrl { exportAndFinish(mode: .copyWithPath) }
             else { exportAndFinish(mode: .copy) }
             return
         }
@@ -71,7 +72,7 @@ extension OverlayView {
                 if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() {
                     ToastHUD.show(message: "已复制划选文字")
                 } else {
-                    exportAndFinish(mode: .copy)
+                    exportAndFinish(mode: shift ? .copyWithPath : .copy)
                 }
                 return
             case "s":
@@ -142,10 +143,14 @@ extension OverlayView {
         }
 
         if key == "[" || key == "-" {
-            if selection != nil { adjustAnnotationSize(by: shift ? -3.0 : -1.0) }; return true
+            if selection != nil { adjustAnnotationSize(by: shift ? -3.0 : -1.0) }
+            else { stepAutoSnapTier(by: -1) }
+            return true
         }
         if key == "]" || key == "=" || key == "+" {
-            if selection != nil { adjustAnnotationSize(by: shift ? 3.0 : 1.0) }; return true
+            if selection != nil { adjustAnnotationSize(by: shift ? 3.0 : 1.0) }
+            else { stepAutoSnapTier(by: 1) }
+            return true
         }
         if key == "`" || key == "~" {
             if !shift && !opt && !isRepeat { magnifierVisibilityOverride = magnifierView.isHidden }; return true

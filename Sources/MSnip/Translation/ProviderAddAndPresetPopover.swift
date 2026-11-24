@@ -69,20 +69,13 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
 
         let W: CGFloat = 416, H: CGFloat = 446
         let vc = NSViewController()
-        let root = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: W, height: H))
-        root.wantsLayer = true
-        root.layer?.backgroundColor = GeekTheme.cardBg.cgColor
+        let root = GeekSurfaceView(frame: NSRect(x: 0, y: 0, width: W, height: H), fill: GeekTheme.cardBg)
         vc.view = root
-        popover.appearance = NSAppearance(named: .darkAqua)
+        popover.appearance = GeekTheme.popoverAppearance
         popover.contentSize = NSSize(width: W, height: H)
         popover.contentViewController = vc
 
-        let searchBox = GeekFlippedView(frame: NSRect(x: 12, y: 12, width: W - 24, height: 34))
-        searchBox.wantsLayer = true
-        searchBox.layer?.backgroundColor = GeekTheme.inputBg.cgColor
-        searchBox.layer?.cornerRadius = 8.0
-        searchBox.layer?.borderWidth = 1.0
-        searchBox.layer?.borderColor = GeekTheme.borderStrong.cgColor
+        let searchBox = GeekSurfaceView(frame: NSRect(x: 12, y: 12, width: W - 24, height: 34), fill: GeekTheme.inputBg, border: GeekTheme.borderStrong, cornerRadius: 8.0, borderWidth: 1.0)
         root.addSubview(searchBox)
 
         let icon = ProviderSearchIconView(frame: NSRect(x: 10, y: 0, width: 16, height: 34))
@@ -114,9 +107,7 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
             self.filterSegment = nil
         }
 
-        let sep = NSView(frame: NSRect(x: 0, y: listTopY - 1, width: W, height: 1))
-        sep.wantsLayer = true; sep.layer?.backgroundColor = GeekTheme.divider.cgColor
-        root.addSubview(sep)
+        root.addSubview(GeekSurfaceView(frame: NSRect(x: 0, y: listTopY - 1, width: W, height: 1), fill: GeekTheme.divider))
 
         let scroll = NSScrollView(frame: NSRect(x: 4, y: listTopY + 2, width: W - 8, height: H - listTopY - 6))
         scroll.drawsBackground = false; scroll.borderType = .noBorder

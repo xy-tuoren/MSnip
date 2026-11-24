@@ -5,17 +5,17 @@ import MSnipCore
 /// 设置窗口「截图内按键」子页面构建与全局/画布双模式按键录入路由扩展
 extension TranslationSettingsWindow {
     func buildCanvasShortcutsSubPage(in container: GeekFlippedView, cardW: CGFloat) {
-        addSectionHeader("截图画布单键映射", x: 30, y: 6, in: container)
+        addSectionHeader("截图画布单键映射", x: 44, y: 8, in: container)
         canvasKeyHintLabel = NSTextField(labelWithString: "点击键帽直接按单键修改（中英文通用 · 冲突自动互换 · ⌫ 恢复默认）")
-        canvasKeyHintLabel.font = .systemFont(ofSize: 12.0, weight: .regular)
+        canvasKeyHintLabel.font = .systemFont(ofSize: 11.5, weight: .regular)
         canvasKeyHintLabel.textColor = GeekTheme.inkMuted
         canvasKeyHintLabel.alignment = .right
         canvasKeyHintLabel.lineBreakMode = .byTruncatingTail
         canvasKeyHintLabel.toolTip = canvasKeyHintLabel.stringValue
-        GeekTheme.placeCentered(canvasKeyHintLabel, x: 164, width: (28 + cardW - 2) - 164, centerY: 15.0)
+        GeekTheme.placeCentered(canvasKeyHintLabel, x: 172, width: (28 + cardW - 16) - 172, centerY: 16.0)
         container.addSubview(canvasKeyHintLabel)
 
-        let listCard = GeekCardView(frame: NSRect(x: 28, y: 30, width: cardW, height: 382))
+        let listCard = GeekCardView(frame: NSRect(x: 28, y: 32, width: cardW, height: 380))
         container.addSubview(listCard)
 
         let scroll = NSScrollView(frame: listCard.bounds.insetBy(dx: 0, dy: 2))
@@ -31,9 +31,7 @@ extension TranslationSettingsWindow {
         for (gIdx, group) in groups.enumerated() {
             let hdrBar = GeekFlippedView(frame: NSRect(x: 0, y: y, width: cardW, height: headerH))
             if gIdx > 0 {
-                let topSep = NSView(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: 1))
-                topSep.wantsLayer = true; topSep.layer?.backgroundColor = GeekTheme.border.cgColor
-                hdrBar.addSubview(topSep)
+                hdrBar.addSubview(GeekSurfaceView(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: 1), fill: GeekTheme.border))
             }
             let hdr = NSTextField(labelWithString: group.title)
             hdr.font = .systemFont(ofSize: 11.5, weight: .semibold)
@@ -47,14 +45,12 @@ extension TranslationSettingsWindow {
             for (i, act) in items.enumerated() {
                 let row = GeekHoverRowView(frame: NSRect(x: 0, y: y, width: cardW, height: rowH))
                 if i > 0 {
-                    let sep = NSView(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: 1))
-                    sep.wantsLayer = true; sep.layer?.backgroundColor = GeekTheme.divider.cgColor
-                    row.addSubview(sep)
+                    row.addSubview(GeekSurfaceView(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: 1), fill: GeekTheme.divider))
                 }
                 row.addSubview(GeekShortcutIconBadge(symbol: act.symbol, pointSize: 12.5, frame: NSRect(x: 16, y: 8, width: 28, height: 28)))
 
                 let titleLbl = NSTextField(labelWithString: act.title)
-                titleLbl.font = .systemFont(ofSize: 13.0, weight: .medium)
+                titleLbl.font = .systemFont(ofSize: 13.5, weight: .regular)
                 titleLbl.textColor = GeekTheme.inkPrimary
                 titleLbl.lineBreakMode = .byTruncatingTail
                 titleLbl.toolTip = act.title

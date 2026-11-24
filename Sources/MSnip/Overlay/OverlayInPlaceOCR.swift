@@ -142,23 +142,35 @@ extension OverlayView {
 
         let liveView = inPlaceOCRView ?? {
             let v = LiveTextImageView(scaling: .scaleAxesIndependently)
+            v.hidesImageContent = true
             addSubview(v, positioned: .below, relativeTo: toolbar)
             inPlaceOCRView = v
             return v
         }()
+        liveView.hidesImageContent = true
         liveView.frame = sel
         liveView.isHidden = false
-        liveView.setPreviewImageOnly(cgImage: baked, logicalSize: sel.size, highlightBlocks: true)
+        liveView.setPreviewImageOnly(cgImage: baked, logicalSize: sel.size, highlightBlocks: false)
 
         VisionTextExtractor.recognizeAsync(from: baked) { [weak self, weak liveView] output in
             guard let self, let liveView, self.toolbar.inPlaceOCRActive else { return }
-            liveView.applyPrecomputedAnalysis(output.liveAnalysisObject, highlightBlocks: true)
+            liveView.applyPrecomputedAnalysis(output.liveAnalysisObject, highlightBlocks: false)
+            if let qr = output.qrPayloads.first, output.preservedText.isEmpty {
+                Self.presentBarcodeToast(qr)
+                return
+            }
             let text = output.initialClipboardText
             if !text.isEmpty {
-                ClipboardAndSave.copyText(text)
                 let count = text.count
+                let msg: String
+                if self.ocrAutoCopy {
+                    ClipboardAndSave.copyText(text)
+                    msg = "已识别 \(count) 字并复制 · 可直接在框内划词或点工具继续标注"
+                } else {
+                    msg = "已识别 \(count) 字 · 可直接在框内划词或按 ⌘C 复制"
+                }
                 ToastHUD.show(
-                    message: "已识别 \(count) 字并复制 · 可直接在框内划词或点工具继续标注",
+                    message: msg,
                     actionTitle: "双栏对照窗 ›",
                     onAction: { [weak self] in
                         self?.exportAndFinish(mode: .extractText)
@@ -170,6 +182,46 @@ extension OverlayView {
         }
         updateToolbarLayout()
         needsDisplay = true
+    }
+
+    /// 选区锁定后静默探测二维码/条码，命中即弹出一键打开链接/复制码值提示（未命中零干扰）
+    func scheduleSilentBarcodeScan(for rect: CGRect) {
+        barcodeScanTask?.cancel()
+        barcodeScanTask = nil
+        guard !isRecordingMode, quickLaunchMode == .standard,
+              rect.width >= 36, rect.height >= 36, rect.width <= 1400, rect.height <= 1400 else { return }
+        let s = max(1.0, snapshot.scaleFactor)
+        let pxRect = CGRect(
+            x: max(0, round(rect.minX * s)),
+            y: max(0, round(rect.minY * s)),
+            width: max(1, round(rect.width * s)),
+            height: max(1, round(rect.height * s))
+        )
+        guard let cropped = snapshot.cgImage.cropping(to: pxRect) else { return }
+        barcodeScanTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            guard let self, !Task.isCancelled, self.selection == rect, !self.isDraggingSelectionBox else { return }
+            let codes = await VisionTextExtractor.detectBarcodesOffMain(cgImage: cropped)
+            guard !Task.isCancelled, self.selection == rect, let first = codes.first else { return }
+            Self.presentBarcodeToast(first)
+        }
+    }
+
+    static func presentBarcodeToast(_ payload: String) {
+        let lower = payload.lowercased()
+        let isURL = (lower.hasPrefix("http://") || lower.hasPrefix("https://")), url = isURL ? URL(string: payload) : nil
+        let preview = payload.count > 44 ? String(payload.prefix(44)) + "…" : payload
+        if let url {
+            ToastHUD.show(message: "识别到二维码链接：\(preview)", actionTitle: "打开链接 ›") {
+                ClipboardAndSave.copyText(payload)
+                NSWorkspace.shared.open(url)
+            }
+        } else {
+            ToastHUD.show(message: "识别到二维码/条码：\(preview)", actionTitle: "复制码值 ›") {
+                ClipboardAndSave.copyText(payload)
+                ToastHUD.show(message: "✓ 已复制二维码/条码内容")
+            }
+        }
     }
 
     func deactivateInPlaceOCR() {

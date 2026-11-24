@@ -21,7 +21,8 @@ final class PinManager {
     var clickThroughCount: Int { windows.filter(\.isClickThrough).count }
 
     /// 从选区渲染出的高清 `CGImage` 创建贴图并原位钉在屏幕上
-    func pin(cgImage: CGImage, scaleFactor: CGFloat, topLeftOnScreen: CGPoint?, screen: NSScreen) {
+    @discardableResult
+    func pin(cgImage: CGImage, scaleFactor: CGFloat, topLeftOnScreen: CGPoint?, screen: NSScreen) -> PinWindow {
         if arePinsHidden {
             arePinsHidden = false
             windows.forEach { $0.orderFrontRegardless() }
@@ -58,10 +59,17 @@ final class PinManager {
         win.onTranslateImage = { [weak self] img, scale, scr in
             self?.onTranslateImage?(img, scale, scr)
         }
+        win.onSnapOrigin = { [weak self] raw, size, movingWin in
+            guard let self else { return raw }
+            let sibFrames = self.windows.filter { $0 !== movingWin && $0.isVisible }.map(\.frame)
+            let vf = (movingWin.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+            return ImageTransform.snapPinOrigin(raw, size: size, siblingFrames: sibFrames, visibleBounds: vf, threshold: 8.0)
+        }
 
         windows.append(win)
         win.orderFrontRegardless()
         onCountChanged?(windows.count)
+        return win
     }
 
     /// 一键解除所有处于幽灵鼠标穿透状态的贴图，恢复正常拖拽与右键交互

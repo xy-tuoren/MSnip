@@ -8,6 +8,7 @@ import MSnipCore
 final class OverlaySession {
     enum Outcome {
         case copied(CGImage, CGFloat)
+        case copiedWithPath(CGImage, CGFloat)
         case saved(CGImage, CGFloat)
         case quickSaved(CGImage, CGFloat)
         case savedToFolder(CGImage, CGFloat, String)
@@ -60,7 +61,8 @@ final class OverlaySession {
         canvasKeyMap: [CanvasAction: String] = CanvasAction.defaultMap,
         activePinCombo: KeyCombo? = nil,
         ocrAutoOpenDualPane: Bool = false,
-        translateAutoOpenDualPane: Bool = false
+        translateAutoOpenDualPane: Bool = false,
+        ocrAutoCopy: Bool = true
     ) {
         let mouse = NSEvent.mouseLocation
         var targetWindowToFocus: OverlayWindow?
@@ -89,6 +91,7 @@ final class OverlaySession {
             view.activePinCombo = activePinCombo
             view.ocrAutoOpenDualPane = ocrAutoOpenDualPane
             view.translateAutoOpenDualPane = translateAutoOpenDualPane
+            view.ocrAutoCopy = ocrAutoCopy
             if launchMode == .quickRecord {
                 view.setRecordingMode(true, notifySiblings: false)
             }
@@ -123,6 +126,10 @@ final class OverlaySession {
             view.onFinishCopy = { [weak self] img, scale, rect in
                 Self.rememberSelection(rect, on: snap.displayID)
                 self?.finish(.copied(img, scale))
+            }
+            view.onFinishCopyWithPath = { [weak self] img, scale, rect in
+                Self.rememberSelection(rect, on: snap.displayID)
+                self?.finish(.copiedWithPath(img, scale))
             }
             view.onFinishSave = { [weak self] img, scale, rect in
                 Self.rememberSelection(rect, on: snap.displayID)
@@ -201,14 +208,15 @@ final class OverlaySession {
         let keyWin = targetWindowToFocus ?? windows.first
         NSAnimationContext.beginGrouping()
         NSAnimationContext.current.duration = 0
-        for win in windows {
-            if let v = win.contentView { win.makeFirstResponder(v) }
+        for (win, view) in zip(windows, views) {
+            win.makeFirstResponder(view)
             win.displayIfNeeded()
             if win !== keyWin {
                 win.orderFrontRegardless()
             }
         }
-        keyWin?.makeKeyAndOrderFront(nil)
+        keyWin?.orderFrontRegardless()
+        keyWin?.makeKey()
         NSAnimationContext.endGrouping()
         NSCursor.crosshair.push()
 
@@ -257,10 +265,13 @@ final class OverlaySession {
 
         for v in views {
             v.stopSnapGlide()
+            v.barcodeScanTask?.cancel(); v.barcodeScanTask = nil
             v.deactivateInPlaceOCR()
             v.deactivateInPlaceTranslate()
+            v.magnifierLegendCache = nil
         }
         for win in windows {
+            win.contentView?.layer?.contents = nil
             win.contentView = nil
             win.orderOut(nil)
         }

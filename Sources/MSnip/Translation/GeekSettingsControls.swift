@@ -50,36 +50,42 @@ final class GeekSegmentControl: NSView {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let bg = CGPath(roundedRect: r, cornerWidth: 8.0, cornerHeight: 8.0, transform: nil)
         ctx.saveGState()
-        ctx.setFillColor(GeekTheme.inputBg.cgColor)
+        ctx.setFillColor(GeekTheme.segTrackBg.cgColor)
         ctx.addPath(bg); ctx.fillPath()
         ctx.setStrokeColor(GeekTheme.border.cgColor)
         ctx.setLineWidth(1.0); ctx.addPath(bg); ctx.strokePath()
 
-        let segW = (bounds.width - 6) / CGFloat(items.count)
+        let pad: CGFloat = 2.5
+        let segW = (bounds.width - pad * 2) / CGFloat(items.count)
         for (i, label) in items.enumerated() {
-            let sr = CGRect(x: 3 + CGFloat(i) * segW, y: 3, width: segW, height: bounds.height - 6)
+            let sr = CGRect(x: pad + CGFloat(i) * segW, y: pad, width: segW, height: bounds.height - pad * 2)
             let active = (i == selectedIndex)
             if active || hoveredIdx == i {
                 let p = CGPath(roundedRect: sr, cornerWidth: 6.0, cornerHeight: 6.0, transform: nil)
-                ctx.setFillColor((active ? GeekTheme.controlHover : NSColor(white: 1.0, alpha: 0.045)).cgColor)
-                ctx.addPath(p); ctx.fillPath()
+                ctx.saveGState()
                 if active {
-                    ctx.setStrokeColor(GeekTheme.borderStrong.cgColor)
-                    ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
+                    ctx.setShadow(offset: CGSize(width: 0, height: 0.8), blur: 2.2, color: GeekTheme.softShadow.cgColor)
+                }
+                ctx.setFillColor((active ? GeekTheme.segActiveBg : GeekTheme.hoverSoft).cgColor)
+                ctx.addPath(p); ctx.fillPath()
+                ctx.restoreGState()
+                if active {
+                    ctx.setStrokeColor(GeekTheme.border.cgColor)
+                    ctx.setLineWidth(0.75); ctx.addPath(p); ctx.strokePath()
                 }
             }
             let font: NSFont = monoFont
-                ? .monospacedSystemFont(ofSize: 12.0, weight: active ? .semibold : .medium)
-                : .systemFont(ofSize: 13.0, weight: active ? .semibold : .medium)
+                ? .monospacedSystemFont(ofSize: 12.0, weight: active ? .semibold : .regular)
+                : .systemFont(ofSize: 12.5, weight: active ? .semibold : .regular)
             let fg = active ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
             if let syms = symbols, syms.indices.contains(i),
-               let entry = GeekTheme.symbolEntry(syms[i], pointSize: 11.5, weight: active ? .semibold : .medium) {
+               let entry = GeekTheme.symbolEntry(syms[i], pointSize: 11.5, weight: active ? .semibold : .regular) {
                 let textW = GeekTheme.measureTextWidth(label, font: font)
-                let gap: CGFloat = 5.5
+                let gap: CGFloat = 5.0
                 let totalW = entry.pointSize.width + gap + textW
                 let sx = GeekTheme.snap(sr.midX - totalW * 0.5)
                 let symTint = active ? GeekTheme.accent : GeekTheme.inkMuted
-                GeekTheme.drawSymbol(syms[i], pointSize: 11.5, weight: active ? .semibold : .medium, in: CGRect(x: sx, y: sr.minY, width: entry.pointSize.width, height: sr.height), alpha: 0.96, tint: symTint)
+                GeekTheme.drawSymbol(syms[i], pointSize: 11.5, weight: active ? .semibold : .regular, in: CGRect(x: sx, y: sr.minY, width: entry.pointSize.width, height: sr.height), alpha: 0.96, tint: symTint)
                 GeekTheme.drawText(label, in: CGRect(x: sx + entry.pointSize.width + gap, y: sr.minY, width: textW + 2, height: sr.height), font: font, color: fg)
             } else {
                 GeekTheme.drawText(label, in: sr.insetBy(dx: 4, dy: 0), font: font, color: fg, align: .center)
@@ -151,14 +157,17 @@ final class GeekButton: NSView {
             ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
             fg = GeekTheme.accent
         case .subtle:
+            ctx.saveGState()
+            ctx.setShadow(offset: CGSize(width: 0, height: 0.6), blur: 1.6, color: GeekTheme.softShadow.cgColor)
             ctx.setFillColor((hovered ? GeekTheme.controlHover : GeekTheme.controlBg).cgColor)
             ctx.addPath(p); ctx.fillPath()
+            ctx.restoreGState()
             ctx.setStrokeColor((hovered ? GeekTheme.borderStrong : GeekTheme.border).cgColor)
             ctx.setLineWidth(1.0); ctx.addPath(p); ctx.strokePath()
             fg = GeekTheme.inkPrimary
         case .ghost:
             if hovered && isEnabled {
-                ctx.setFillColor(NSColor(white: 1.0, alpha: 0.06).cgColor)
+                ctx.setFillColor(GeekTheme.pillSubtle.cgColor)
                 ctx.addPath(p); ctx.fillPath()
             }
             fg = (hovered && isEnabled) ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
@@ -166,7 +175,7 @@ final class GeekButton: NSView {
 
         let font: NSFont = mono
             ? .monospacedSystemFont(ofSize: 12.0, weight: .medium)
-            : .systemFont(ofSize: 13.0, weight: (style == .subtle || style == .ghost) ? .medium : .semibold)
+            : .systemFont(ofSize: 12.5, weight: (style == .subtle || style == .ghost) ? .medium : .semibold)
         let symPt: CGFloat = title.isEmpty ? 12.5 : 11.5
         let symEntry = symbolName.flatMap { GeekTheme.symbolEntry($0, pointSize: symPt, weight: .semibold) }
         let iconW = symEntry?.pointSize.width ?? 0
@@ -245,22 +254,25 @@ final class GeekDropdownPill: NSView {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = CGPath(roundedRect: r, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil)
         ctx.saveGState()
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: 0.6), blur: 1.6, color: GeekTheme.softShadow.cgColor)
         ctx.setFillColor((hovered ? GeekTheme.controlHover : GeekTheme.controlBg).cgColor)
         ctx.addPath(path); ctx.fillPath()
+        ctx.restoreGState()
         ctx.setStrokeColor((hovered ? GeekTheme.borderStrong : GeekTheme.border).cgColor)
         ctx.setLineWidth(1.0); ctx.addPath(path); ctx.strokePath()
 
-        var leftX: CGFloat = 12
+        var leftX: CGFloat = 11
         if let sym = symbolName {
-            let w = max(14, GeekTheme.symbolEntry(sym, pointSize: 12.5, weight: .medium)?.pointSize.width ?? 14)
-            GeekTheme.drawSymbol(sym, pointSize: 12.5, weight: .medium, in: CGRect(x: leftX, y: 0, width: w, height: bounds.height), alpha: 0.88, tint: GeekTheme.inkSecondary)
+            let w = max(14, GeekTheme.symbolEntry(sym, pointSize: 12.0, weight: .medium)?.pointSize.width ?? 14)
+            GeekTheme.drawSymbol(sym, pointSize: 12.0, weight: .medium, in: CGRect(x: leftX, y: 0, width: w, height: bounds.height), alpha: 0.86, tint: GeekTheme.inkSecondary)
             leftX += w + 7
         }
         let text = customDisplayTitle ?? (items.indices.contains(selectedIndex) ? items[selectedIndex] : "—")
         GeekTheme.drawText(
             text,
-            in: CGRect(x: leftX, y: 0, width: max(20, bounds.width - leftX - 26), height: bounds.height),
-            font: .systemFont(ofSize: 13.0, weight: .medium),
+            in: CGRect(x: leftX, y: 0, width: max(20, bounds.width - leftX - 24), height: bounds.height),
+            font: .systemFont(ofSize: 12.5, weight: .medium),
             color: GeekTheme.inkPrimary
         )
         let chevronTint = hovered ? GeekTheme.inkPrimary : GeekTheme.inkSecondary

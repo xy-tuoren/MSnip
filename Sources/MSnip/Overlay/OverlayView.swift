@@ -21,6 +21,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     // 外部会话回调
     var onSelectionActivated: ((OverlayView) -> Void)?
     var onFinishCopy: ((CGImage, CGFloat, CGRect) -> Void)?
+    var onFinishCopyWithPath: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishSave: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishSaveToFolder: ((CGImage, CGFloat, String, CGRect) -> Void)?
     var onQuickSaveInPlace: ((CGImage, CGFloat, CGRect) -> Void)?
@@ -47,6 +48,9 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var activePinCombo: KeyCombo?
     var ocrAutoOpenDualPane: Bool = false
     var translateAutoOpenDualPane: Bool = false
+    var ocrAutoCopy: Bool = true
+    var magnifierLegendCache: (key: String, image: CGImage)?
+    var barcodeScanTask: Task<Void, Never>?
 
     func keyUpper(_ action: CanvasAction) -> String {
         (canvasKeyMap[action] ?? action.defaultKey).uppercased()
@@ -197,7 +201,6 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         ctx.saveGState()
         defer { ctx.restoreGState() }
         ctx.clip(to: clip)
-        drawFrozenBackgroundSlice(in: ctx, dirtyRect: clip)
 
         if selection == nil && caliperActive {
             drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
@@ -250,7 +253,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         if !isRecordingMode {
             drawLiveBackdropFrameIfNeeded(ctx: ctx, sel: sel, cornerRadius: activeRadius)
         }
-        if !isRecordingMode, sel.intersects(clip), inPlaceOCRView == nil, inPlaceTranslateView == nil {
+        if !isRecordingMode, sel.intersects(clip), inPlaceTranslateView == nil {
             ctx.saveGState()
             if activeRadius > 0.5 {
                 ctx.addPath(CGPath(roundedRect: sel, cornerWidth: activeRadius, cornerHeight: activeRadius, transform: nil))
@@ -269,6 +272,12 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             ctx.setLineWidth(1.2)
             ctx.setLineDash(phase: 0, lengths: [4, 3])
             ctx.stroke(doc.objects[idx].bounds)
+            ctx.setLineDash(phase: 0, lengths: [])
+            for hp in doc.objects[idx].editableHandles() {
+                let r = CGRect(x: hp.point.x - 4.5, y: hp.point.y - 4.5, width: 9, height: 9)
+                ctx.setFillColor(NSColor.white.cgColor); ctx.fillEllipse(in: r)
+                ctx.setStrokeColor(MSnipUITheme.accent.cgColor); ctx.setLineWidth(1.6); ctx.strokeEllipse(in: r)
+            }
             ctx.restoreGState()
         }
         drawSelectionChrome(ctx: ctx, sel: sel, cornerRadius: activeRadius)

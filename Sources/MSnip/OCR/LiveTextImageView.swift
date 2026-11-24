@@ -21,6 +21,13 @@ final class LiveTextImageView: NSView {
         }
     }
 
+    /// 原位识字模式开启后隐藏自身 `NSImageView` 绘制（`alphaValue = 0`），仅保留精确坐标追踪与实况划词交互，确保底层冻结截图 0 像素变化
+    var hidesImageContent: Bool = false {
+        didSet {
+            imageView.alphaValue = hidesImageContent ? 0.0 : 1.0
+        }
+    }
+
     var hasSelection: Bool {
         if #available(macOS 13.0, *), let ov = overlayRef as? ImageAnalysisOverlayView {
             return ov.hasActiveTextSelection

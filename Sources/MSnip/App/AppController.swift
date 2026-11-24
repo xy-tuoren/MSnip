@@ -20,12 +20,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let latexController = LatexResultController()
     let translationSettings = TranslationSettingsWindow()
     let permissionGuide = PermissionGuideController()
+    let delayedCapture = DelayedCaptureController()
     var activeSession: OverlaySession?
     var activeLongShot: LongShotSession?
     var activeRecording: RegionRecordingSession?
     var isCapturing = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        GeekTheme.currentMode = config.appearanceMode
+        ResultWindowChrome.prefersDarkAppearance = GeekTheme.isDark
+        SmartClipboardProjectionManager.shared.isAdaptiveEnabled = config.terminalPasteAdaptEnabled
         setupStatusBar()
         setupCallbacks()
         hotKeyManager.apply(config: config)
@@ -115,6 +119,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             guard let self else { return }
             mutate(&self.config)
             self.config.save()
+            SmartClipboardProjectionManager.shared.isAdaptiveEnabled = self.config.terminalPasteAdaptEnabled
             self.hotKeyManager.apply(config: self.config)
             self.rebuildMenu()
         }
@@ -136,14 +141,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc func startQuickOCR() { beginCaptureSession(mode: .quickOCR) }
 
     func beginCaptureSession(mode: OverlayQuickLaunchMode = .standard) {
+        delayedCapture.cancel()
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
         ToastHUD.dismissImmediate()
 
         isCapturing = true
         let primaryH = NSScreen.screens.first?.frame.height ?? 0
+        let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
         Task { @MainActor [weak self] in
             async let detectorTask = Task.detached(priority: .userInitiated) {
-                RegionDetector.captureBeforeOverlay(primaryScreenHeight: primaryH)
+                RegionDetector.captureBeforeOverlay(primaryScreenHeight: primaryH, frontmostPID: frontPID)
             }.value
             async let snapshotsTask = ScreenCapturer.captureAllScreens()
             let (regionDetector, snapshots) = await (detectorTask, snapshotsTask)
@@ -210,7 +217,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 canvasKeyMap: self.config.resolvedCanvasKeyMap,
                 activePinCombo: pinCombo,
                 ocrAutoOpenDualPane: self.config.ocrAutoOpenDualPane,
-                translateAutoOpenDualPane: self.config.translateAutoOpenDualPane
+                translateAutoOpenDualPane: self.config.translateAutoOpenDualPane,
+                ocrAutoCopy: self.config.ocrAutoCopy
             )
         }
     }
@@ -221,6 +229,10 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .copied(let img, let scale):
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
             recordHistoryAndRefresh(img: img, scale: scale)
+        case .copiedWithPath(let img, let scale):
+            ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale, forceIncludePath: true)
+            recordHistoryAndRefresh(img: img, scale: scale)
+            ToastHUD.show(message: "已复制截图与临时 PNG 路径")
         case .saved(let img, let scale):
             recordHistoryAndRefresh(img: img, scale: scale)
             performInteractiveSave(img: img, scale: scale)

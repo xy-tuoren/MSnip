@@ -131,7 +131,7 @@ extension GeekTheme {
     /// 将单行 `NSTextField` 精确垂直居中放置于指定 `centerY`
     static func placeCentered(_ field: NSTextField, x: CGFloat, width: CGFloat, centerY: CGFloat) {
         let naturalH = ceil(field.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 600, height: 40)).height ?? 18)
-        field.frame = NSRect(x: x, y: snap(centerY - naturalH * 0.5 - 0.25), width: width, height: naturalH)
+        field.frame = NSRect(x: x, y: snap(centerY - naturalH * 0.5), width: width, height: naturalH)
     }
 
     /// 将主副标题双行 `NSTextField` 作为整体精确垂直居中于 `centerY`
@@ -192,7 +192,7 @@ final class GeekWindowCloseButton: NSView {
         let d: CGFloat = 12.0
         let circle = CGRect(x: GeekTheme.snap(bounds.midX - d * 0.5), y: GeekTheme.snap(bounds.midY - d * 0.5), width: d, height: d)
         let active = (window?.isKeyWindow ?? true) || hovered
-        let fill = active ? NSColor(srgbRed: 1.0, green: 0.373, blue: 0.341, alpha: 1.0) : NSColor(white: 1.0, alpha: 0.16)
+        let fill = active ? NSColor(srgbRed: 1.0, green: 0.373, blue: 0.341, alpha: 1.0) : GeekTheme.inactiveDot
         ctx.saveGState()
         ctx.setFillColor(fill.cgColor)
         ctx.fillEllipse(in: circle)
@@ -236,7 +236,7 @@ final class GeekBrandTitleView: NSView {
         let pillR = CGRect(x: GeekTheme.snap(bw + 8), y: GeekTheme.snap((bounds.height - pillH) * 0.5), width: pillW, height: pillH)
         let path = CGPath(roundedRect: pillR, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
         ctx.saveGState()
-        ctx.setFillColor(NSColor(white: 1.0, alpha: 0.055).cgColor)
+        ctx.setFillColor(GeekTheme.pillSubtle.cgColor)
         ctx.addPath(path); ctx.fillPath()
         ctx.setStrokeColor(GeekTheme.border.cgColor)
         ctx.setLineWidth(0.75); ctx.addPath(path); ctx.strokePath()

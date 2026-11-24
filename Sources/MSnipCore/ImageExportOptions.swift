@@ -3,11 +3,60 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// 截图文件保存格式（零第三方依赖，全部使用 macOS ImageIO 原生硬件编解码器）
+/// 设置与结果面板的全局外观模式（跟随系统 / 明亮 / 暗黑）
+public enum AppAppearanceMode: String, CaseIterable, Codable, Sendable {
+    case system = "system"
+    case light = "light"
+    case dark = "dark"
+
+    public var title: String {
+        switch self {
+        case .system: return "跟随系统"
+        case .light:  return "明亮"
+        case .dark:   return "暗黑"
+        }
+    }
+}
+
+/// 截图文件保存格式（零第三方依赖，按当前 macOS `ImageIO` 能力运行时动态探测并优雅兜底，100% 兼容 macOS 12.0+）
 public enum CaptureExportFormat: String, CaseIterable, Codable, Sendable {
     case png = "png"
     case jpeg = "jpg"
     case heic = "heic"
+    case avif = "avif"
+    case bmp = "bmp"
+    case tiff = "tiff"
+
+    private static let supportedDestinationUTIs: Set<String> = {
+        let raw = (CGImageDestinationCopyTypeIdentifiers() as? [String]) ?? []
+        return Set(raw.map { $0.lowercased() })
+    }()
+
+    /// 当前运行系统原生 ImageIO 实际支持编码的格式列表（例如 macOS 12 自动隐藏 AVIF，macOS 13/14+ 自动显示）
+    public static var supportedFormats: [CaptureExportFormat] {
+        let available = allCases.filter(\.isSupportedOnCurrentOS)
+        return available.isEmpty ? [.png, .jpeg] : available
+    }
+
+    public var utiIdentifier: String {
+        switch self {
+        case .png:  return "public.png"
+        case .jpeg: return "public.jpeg"
+        case .heic: return "public.heic"
+        case .avif: return "public.avif"
+        case .bmp:  return "com.microsoft.bmp"
+        case .tiff: return "public.tiff"
+        }
+    }
+
+    public var isSupportedOnCurrentOS: Bool {
+        Self.supportedDestinationUTIs.contains(utiIdentifier)
+    }
+
+    /// 若配置文件同步自高版本系统且当前旧版 macOS 不支持该格式，自动回退为 PNG
+    public var resolvedForCurrentOS: CaptureExportFormat {
+        isSupportedOnCurrentOS ? self : .png
+    }
 
     public var fileExtension: String { rawValue }
 
@@ -16,27 +65,54 @@ public enum CaptureExportFormat: String, CaseIterable, Codable, Sendable {
         case .png:  return "PNG"
         case .jpeg: return "JPG"
         case .heic: return "HEIC"
+        case .avif: return "AVIF"
+        case .bmp:  return "BMP"
+        case .tiff: return "TIFF"
+        }
+    }
+
+    public var menuTitle: String {
+        switch self {
+        case .png:  return "PNG · 无损原图"
+        case .jpeg: return "JPG · 通用高压缩"
+        case .heic: return "HEIC · 苹果高压缩"
+        case .avif: return "AVIF · 极致高压缩"
+        case .bmp:  return "BMP · 原始位图"
+        case .tiff: return "TIFF · 印刷无损"
         }
     }
 
     public var utType: UTType {
-        switch self {
-        case .png:  return .png
-        case .jpeg: return .jpeg
-        case .heic: return .heic
-        }
+        UTType(utiIdentifier) ?? .png
     }
 
     public var lossyQuality: CGFloat? {
         switch self {
-        case .png:  return nil
+        case .png, .bmp, .tiff: return nil
         case .jpeg: return 0.90
         case .heic: return 0.86
+        case .avif: return 0.84
+        }
+    }
+
+    public var requiresOpaqueBackground: Bool {
+        self == .jpeg || self == .bmp
+    }
+
+    public static func from(fileExtension ext: String) -> CaptureExportFormat? {
+        switch ext.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "png":         return .png
+        case "jpg", "jpeg": return .jpeg
+        case "heic", "heif": return .heic
+        case "avif":        return .avif
+        case "bmp":         return .bmp
+        case "tif", "tiff": return .tiff
+        default:            return nil
         }
     }
 }
 
-/// 截图文件编码与可选 1× 逻辑倍率缩放管线（全程保留显示器原生 RGB ICC 色彩空间）
+/// 截图文件编码与可选 1× 逻辑倍率缩放管线（全程保留显示器原生 RGB ICC 色彩空间，不支持格式自动安全回退 PNG）
 public enum CaptureImageExporter {
     /// 当开启 `exportAt1x` 且原图倍率 > 1× 时，按高质量采样缩至逻辑点尺寸（72 DPI），否则零拷贝直通原图
     public static func prepareImage(
@@ -60,26 +136,50 @@ public enum CaptureImageExporter {
         return (scaled, 1.0)
     }
 
-    /// 按指定格式编码图像数据（保留原生色域与逻辑 DPI；导出 JPEG 时自动为带透明通道的图片铺白底防黑边）
+    /// 编码图像并返回实际生效的格式（若目标格式在老系统或特定硬件上编码失败，自动安全回退为 PNG）
+    public static func encodeWithFallback(
+        cgImage: CGImage,
+        scaleFactor: CGFloat,
+        format: CaptureExportFormat,
+        exportAt1x: Bool = false
+    ) -> (data: Data, actualFormat: CaptureExportFormat)? {
+        let prepared = prepareImage(cgImage, scaleFactor: scaleFactor, exportAt1x: exportAt1x)
+        let resolved = format.resolvedForCurrentOS
+        if let encoded = encodePrepared(prepared.image, effectiveScale: prepared.effectiveScale, format: resolved) {
+            return (encoded, resolved)
+        }
+        if resolved != .png, let fallback = encodePrepared(prepared.image, effectiveScale: prepared.effectiveScale, format: .png) {
+            return (fallback, .png)
+        }
+        return nil
+    }
+
     public static func encode(
         cgImage: CGImage,
         scaleFactor: CGFloat,
         format: CaptureExportFormat,
         exportAt1x: Bool = false
     ) -> Data? {
-        let prepared = prepareImage(cgImage, scaleFactor: scaleFactor, exportAt1x: exportAt1x)
+        encodeWithFallback(cgImage: cgImage, scaleFactor: scaleFactor, format: format, exportAt1x: exportAt1x)?.data
+    }
+
+    private static func encodePrepared(
+        _ image: CGImage,
+        effectiveScale: CGFloat,
+        format: CaptureExportFormat
+    ) -> Data? {
         let targetImage: CGImage
-        if format == .jpeg, hasAlphaChannel(prepared.image), let flattened = flattenOntoWhite(prepared.image) {
+        if format.requiresOpaqueBackground, hasAlphaChannel(image), let flattened = flattenOntoWhite(image) {
             targetImage = flattened
         } else {
-            targetImage = prepared.image
+            targetImage = image
         }
 
         let out = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(out, format.utType.identifier as CFString, 1, nil) else {
+        guard let dest = CGImageDestinationCreateWithData(out, format.utiIdentifier as CFString, 1, nil) else {
             return nil
         }
-        let dpi = 72.0 * max(1.0, Double(prepared.effectiveScale))
+        let dpi = 72.0 * max(1.0, Double(effectiveScale))
         var props: [CFString: Any] = [
             kCGImagePropertyDPIWidth: dpi,
             kCGImagePropertyDPIHeight: dpi

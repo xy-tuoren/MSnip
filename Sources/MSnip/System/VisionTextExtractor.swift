@@ -6,11 +6,12 @@ import MSnipCore
 import Vision
 import VisionKit
 
-/// 离线识别结构化输出（含多语种文本、二维码载荷、双模式排版文本及可复用的系统实况分析句柄）
+/// 离线识别结构化输出（含多语种文本、二维码/条码载荷、表格结构、双模式排版文本及可复用的系统实况分析句柄）
 struct OCRRecognitionOutput: @unchecked Sendable {
     let qrPayloads: [String]
     let preservedText: String
     let mergedText: String
+    let tableResult: OCRTableResult?
     let liveAnalysisObject: AnyObject?
 
     var isEmpty: Bool {
@@ -58,6 +59,7 @@ enum VisionTextExtractor {
 
             var preserved = OCRTextFormatter.format(observations, mode: .preserveLines)
             var merged = OCRTextFormatter.format(observations, mode: .mergeParagraphs)
+            let table = OCRTableFormatter.extractTable(from: observations)
 
             // 若精确 Vision 未检出（如极度艺术字/竖排海报），回退使用 VisionKit transcript 兜底
             if preserved.isEmpty, #available(macOS 13.0, *), let analysis = liveObj as? ImageAnalysis {
@@ -72,10 +74,41 @@ enum VisionTextExtractor {
                 qrPayloads: qrList,
                 preservedText: preserved,
                 mergedText: merged,
+                tableResult: table,
                 liveAnalysisObject: liveObj
             ))
         }
     }
+
+    /// 轻量后台二维码/条形码快速扫描（供截图选区自动识别与贴图右键菜单即时调用）
+    static func detectBarcodesOffMain(cgImage: CGImage) async -> [String] {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .utility).async {
+                let req = VNDetectBarcodesRequest()
+                req.symbologies = supportedBarcodes
+                let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+                try? handler.perform([req])
+                var payloads: [String] = []
+                for item in req.results ?? [] {
+                    if let s = item.payloadStringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !s.isEmpty, !payloads.contains(s) {
+                        payloads.append(s)
+                    }
+                }
+                cont.resume(returning: payloads)
+            }
+        }
+    }
+
+    /// 提取段落级聚合块（归一化左下角坐标系 `0..1`），供页内段落原位翻译渲染
+    static func recognizeParagraphsOffMain(cgImage: CGImage) async -> [OCRParagraphBlock] {
+        let (observations, _) = await performAccurateVisionOCR(cgImage: cgImage, exactCodeMode: false, detectBarcodes: false)
+        return OCRParagraphGrouper.group(observations)
+    }
+
+    private static let supportedBarcodes: [VNBarcodeSymbology] = [
+        .qr, .ean13, .ean8, .code128, .code39, .upce, .aztec, .pdf417, .dataMatrix
+    ]
 
     /// 提取带精确归一化边界框 (`0..1` 左下角原点) 的视觉合并行，供页内原位覆盖翻译渲染
     static func recognizeVisualLinesOffMain(cgImage: CGImage) async -> [OCRLineObservation] {
@@ -120,7 +153,7 @@ enum VisionTextExtractor {
                 var barcodeReq: VNDetectBarcodesRequest?
                 if detectBarcodes {
                     let bReq = VNDetectBarcodesRequest()
-                    bReq.symbologies = [.qr]
+                    bReq.symbologies = supportedBarcodes
                     barcodeReq = bReq
                     requests.append(bReq)
                 }

@@ -174,7 +174,7 @@ extension AppController {
                 let kb = ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) / 1024
                 ToastHUD.show(message: "\(fmt.badgeTitle) 已复制到剪贴板 (\(max(1, kb)) KB) · 可直接粘贴发送")
             case .savedFile(let url, let fmt, let dir):
-                self.config.lastSaveDirectory = dir
+                self.config.recordSaveDirectory(dir)
                 self.config.save()
                 ToastHUD.show(
                     message: "✓ 已保存 \(fmt.badgeTitle) 录屏文件",
@@ -192,6 +192,7 @@ extension AppController {
             initialCroppedFrame: initialFrame,
             defaultFormat: config.preferredRecordingFormat,
             interactionHUD: config.recordInteractionHUD,
+            recordingOptions: config.recordingOptions,
             initialSaveDirectory: config.lastSaveDirectory,
             autoStartCountdown: true
         )
@@ -208,12 +209,19 @@ extension AppController {
                 ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
                 self.recordHistoryAndRefresh(img: img, scale: scale)
                 ToastHUD.show(message: "长截图已复制 · \(img.width) × \(img.height) px")
+            case .quickSaved(let img, let scale):
+                self.recordHistoryAndRefresh(img: img, scale: scale)
+                self.performQuickSave(img: img, scale: scale)
             case .saved(let img, let scale):
                 self.recordHistoryAndRefresh(img: img, scale: scale)
                 self.performInteractiveSave(img: img, scale: scale)
             case .pinned(let img, let scale, let origin, let targetScreen):
                 self.recordHistoryAndRefresh(img: img, scale: scale)
                 self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: targetScreen)
+            case .pinAndAnnotate(let img, let scale, let origin, let targetScreen):
+                self.recordHistoryAndRefresh(img: img, scale: scale)
+                let pinWin = self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: targetScreen)
+                pinWin.beginAnnotationEditing()
             case .extractText(let img, let scale, let targetScreen):
                 self.recordHistoryAndRefresh(img: img, scale: scale)
                 self.ocrController.present(cgImage: img, scaleFactor: scale, screen: targetScreen, autoTranslate: false)

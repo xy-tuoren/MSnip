@@ -7,6 +7,7 @@ import MSnipCore
 final class OCRFloatingWindow: NSPanel {
     var onEscape: (() -> Void)?
     var onQuickCopy: (() -> Void)?
+    var onFontZoom: ((Int) -> Void)?
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
@@ -20,6 +21,12 @@ final class OCRFloatingWindow: NSPanel {
         if flags == .command && (event.keyCode == 36 || event.keyCode == 76) {
             onQuickCopy?()
             return true
+        }
+        if flags == .command || flags == [.command, .shift] {
+            let ch = event.charactersIgnoringModifiers ?? ""
+            if ch == "=" || ch == "+" { onFontZoom?(1); return true }
+            if ch == "-" || ch == "_" { onFontZoom?(-1); return true }
+            if ch == "0" { onFontZoom?(0); return true }
         }
         return super.performKeyEquivalent(with: event)
     }
@@ -64,6 +71,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
 
     var statsLabel: NSTextField!
     var exactModeButton: OCRPillButton!
+    var tableCopyButton: OCRPillButton!
     var pinButton: OCRPillButton!
     var copyButton: OCRPillButton!
 
@@ -78,6 +86,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var selectedTargetLang: TranslationTargetLang?
     var translationTask: Task<Void, Never>?
     var userEditedManually = false
+    var editorFontSize: CGFloat = 13.5
     private var requestToken: UInt64 = 0
 
     func present(cgImage: CGImage, scaleFactor: CGFloat, screen: NSScreen, autoTranslate: Bool = false) {
@@ -111,6 +120,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         textView.string = ""
         transTextView.string = autoTranslate ? "等待文字识别后立即翻译…" : ""
         qrBannerBox.isHidden = true
+        tableCopyButton?.isHidden = true
         updateStatsLabel()
         relayoutContent()
 
@@ -188,6 +198,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         } else {
             qrBannerBox.isHidden = true
         }
+        tableCopyButton?.isHidden = (output.tableResult == nil)
         updateStatsLabel()
         relayoutContent()
 
@@ -235,6 +246,18 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         statusBadgeLabel.stringValue = "✓ 已复制全文（\(textView.string.count) 字）"
         statusBadgeLabel.textColor = MSnipUITheme.success
         relayoutContent()
+    }
+
+    func adjustEditorFontSize(step: Int) {
+        editorFontSize = (step == 0) ? 13.5 : min(24.0, max(11.0, editorFontSize + CGFloat(step)))
+        let font = NSFont.systemFont(ofSize: editorFontSize)
+        for tv in [textView, transTextView] {
+            guard let tv else { continue }
+            tv.font = font
+            var attrs = tv.typingAttributes
+            attrs[.font] = font
+            tv.typingAttributes = attrs
+        }
     }
 
     func updateStatsLabel() {

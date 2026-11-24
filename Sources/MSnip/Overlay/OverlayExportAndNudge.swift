@@ -5,7 +5,7 @@ import MSnipCore
 
 /// 覆盖层的标注草稿构建、取色/坐标复制、1px 边缘微调与导出烘焙扩展
 extension OverlayView {
-    enum FinishMode: Equatable { case copy, save, quickSave, saveToFolder(String), pin, extractText, recognizeLatex, translateWindow }
+    enum FinishMode: Equatable { case copy, copyWithPath, save, quickSave, saveToFolder(String), pin, extractText, recognizeLatex, translateWindow }
 
     func currentExportableImage(for targetRect: CGRect, plainForOCR: Bool) -> CGImage? {
         if !plainForOCR, let translated = inPlaceTranslateView?.translatedImage {
@@ -72,6 +72,7 @@ extension OverlayView {
 
         switch mode {
         case .copy:            onFinishCopy?(baked, snapshot.scaleFactor, targetRect)
+        case .copyWithPath:    onFinishCopyWithPath?(baked, snapshot.scaleFactor, targetRect)
         case .save:              onFinishSave?(baked, snapshot.scaleFactor, targetRect)
         case .quickSave:         onQuickSaveInPlace?(baked, snapshot.scaleFactor, targetRect)
         case .saveToFolder(let d): onFinishSaveToFolder?(baked, snapshot.scaleFactor, d, targetRect)

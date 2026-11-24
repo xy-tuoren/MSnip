@@ -5,6 +5,10 @@ import MSnipCore
 
 /// 极简极客顶部状态栏菜单（固定 6 项核心入口，权限缺失与贴图清理按需动态显隐）
 extension AppController {
+    private static let historyTimeFormatter: DateFormatter = {
+        let f = DateFormatter(); f.dateFormat = "HH:mm:ss"; return f
+    }()
+
     func rebuildMenu() {
         let menu = NSMenu()
         func makeHotKeyItem(title: String, symbol: String, action: Selector, slot: GlobalHotKeyAction) -> NSMenuItem {
@@ -35,6 +39,16 @@ extension AppController {
         permWarnSepItem = warnSep
 
         menu.addItem(makeHotKeyItem(title: "区域截图", symbol: "viewfinder", action: #selector(startCapture), slot: .capture))
+        let delayRoot = NSMenuItem(title: "延时截图", action: nil, keyEquivalent: "")
+        delayRoot.image = MSnipUITheme.menuSymbol("timer")
+        let delaySub = NSMenu()
+        for secs in [3, 5] {
+            let di = NSMenuItem(title: "\(secs) 秒后截图", action: #selector(startDelayedCapture(_:)), keyEquivalent: "")
+            di.tag = secs; di.target = self
+            delaySub.addItem(di)
+        }
+        delayRoot.submenu = delaySub
+        menu.addItem(delayRoot)
         menu.addItem(makeHotKeyItem(title: "桌面贴图", symbol: "pin", action: #selector(handlePinHotKey), slot: .pin))
         menu.addItem(makeHotKeyItem(title: "快捷识字", symbol: "text.viewfinder", action: #selector(startQuickOCR), slot: .ocr))
         menu.addItem(makeHotKeyItem(title: "截图翻译", symbol: "character.bubble", action: #selector(startQuickTranslate), slot: .translate))
@@ -125,15 +139,13 @@ extension AppController {
             return
         }
 
-        let tip = NSMenuItem(title: "点击复制 · ⌥+点击打开 · ⌘+点击贴图", action: nil, keyEquivalent: "")
+        let tip = NSMenuItem(title: "点击复制 · ⌘贴图 · ⇧识字 · ⌥打开", action: nil, keyEquivalent: "")
         tip.isEnabled = false
         sub.addItem(tip)
         sub.addItem(.separator())
 
-        let fmt = DateFormatter()
-        fmt.dateFormat = "HH:mm:ss"
         for (idx, entry) in historyRing.entries.enumerated() {
-            let title = "\(fmt.string(from: entry.createdAt))  ·  \(entry.pixelWidth) × \(entry.pixelHeight)"
+            let title = "\(Self.historyTimeFormatter.string(from: entry.createdAt))  ·  \(entry.pixelWidth) × \(entry.pixelHeight)"
             let item = NSMenuItem(title: title, action: #selector(restoreHistoryItem(_:)), keyEquivalent: "")
             item.tag = idx
             item.target = self
@@ -192,6 +204,8 @@ extension AppController {
         if mods.contains(.command), let scr = NSScreen.main ?? NSScreen.screens.first {
             pinManager.pin(cgImage: cg, scaleFactor: entry.scaleFactor, topLeftOnScreen: nil, screen: scr)
             ToastHUD.show(message: "已将历史截图贴到屏幕")
+        } else if mods.contains(.shift), let scr = NSScreen.main ?? NSScreen.screens.first {
+            ocrController.present(cgImage: cg, scaleFactor: entry.scaleFactor, screen: scr, autoTranslate: false)
         } else {
             ClipboardAndSave.copyToClipboard(cgImage: cg, scaleFactor: entry.scaleFactor)
             ToastHUD.show(message: "已恢复历史截图到剪贴板 · \(entry.pixelWidth) × \(entry.pixelHeight)")
@@ -202,6 +216,11 @@ extension AppController {
         historyRing.clearAll()
         rebuildMenu()
         ToastHUD.show(message: "已清空最近截图记录")
+    }
+
+    @objc func startDelayedCapture(_ sender: NSMenuItem) {
+        let secs = max(1, sender.tag)
+        delayedCapture.start(seconds: secs) { [weak self] in self?.beginCaptureSession(mode: .standard) }
     }
 
     @objc func restoreClickThroughPins() { pinManager.restoreAllClickThroughPins() }

@@ -64,12 +64,12 @@ extension TranslationSettingsWindow {
         container.addSubview(presetCard)
 
         let pLbl = NSTextField(labelWithString: "快捷预设")
-        pLbl.font = .systemFont(ofSize: 13.5, weight: .medium); pLbl.textColor = GeekTheme.inkPrimary
+        pLbl.font = .systemFont(ofSize: 13.5, weight: .regular); pLbl.textColor = GeekTheme.inkPrimary
         GeekTheme.placeCentered(pLbl, x: 16, width: 68, centerY: 23.0)
         presetCard.addSubview(pLbl)
 
         presetSegment = GeekSegmentControl(items: HotKeyPreset.allCases.map(\.segmentTitle), selectedIndex: 0, mono: true)
-        presetSegment.frame = NSRect(x: 88, y: 7, width: cardW - 96, height: 32)
+        presetSegment.frame = NSRect(x: 88, y: 7, width: cardW - 104, height: 32)
         presetSegment.onSelect = { [weak self] idx in
             guard let self, HotKeyPreset.allCases.indices.contains(idx) else { return }
             self.cancelInlineHotKeyRecording(restoreHotKeys: false)
@@ -81,15 +81,15 @@ extension TranslationSettingsWindow {
         presetCard.addSubview(presetSegment)
         buildPriorityTakeoverCard(in: container, cardW: cardW)
 
-        addSectionHeader("全局触发动作", x: 30, y: 112, in: container)
-        hotKeyHintLabel = NSTextField(labelWithString: "点击键帽录入双键（如 ⌥A、⌥1、F1） · Esc 取消 · ⌫ 停用单项")
-        hotKeyHintLabel.font = .systemFont(ofSize: 12.0, weight: .regular); hotKeyHintLabel.textColor = GeekTheme.inkMuted
+        addSectionHeader("全局触发动作", x: 44, y: 112, in: container)
+        hotKeyHintLabel = NSTextField(labelWithString: "点击键帽录入双键（如 ⌥A、⌃1、F1） · Esc 取消 · ⌫ 停用单项")
+        hotKeyHintLabel.font = .systemFont(ofSize: 11.5, weight: .regular); hotKeyHintLabel.textColor = GeekTheme.inkMuted
         hotKeyHintLabel.alignment = .right; hotKeyHintLabel.lineBreakMode = .byTruncatingTail
         hotKeyHintLabel.toolTip = hotKeyHintLabel.stringValue
-        GeekTheme.placeCentered(hotKeyHintLabel, x: 150, width: (28 + cardW - 2) - 150, centerY: 121.0)
+        GeekTheme.placeCentered(hotKeyHintLabel, x: 164, width: (28 + cardW - 16) - 164, centerY: 120.0)
         container.addSubview(hotKeyHintLabel)
 
-        let listCard = GeekCardView(frame: NSRect(x: 28, y: 134, width: cardW, height: 278))
+        let listCard = GeekCardView(frame: NSRect(x: 28, y: 136, width: cardW, height: 276))
         container.addSubview(listCard)
 
         let scroll = NSScrollView(frame: listCard.bounds.insetBy(dx: 0, dy: 1))
@@ -103,14 +103,12 @@ extension TranslationSettingsWindow {
             let ry = CGFloat(i) * rowH
             let row = GeekHoverRowView(frame: NSRect(x: 0, y: ry, width: cardW, height: rowH))
             if i > 0 {
-                let sep = NSView(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: 1))
-                sep.wantsLayer = true; sep.layer?.backgroundColor = GeekTheme.divider.cgColor
-                row.addSubview(sep)
+                row.addSubview(GeekSurfaceView(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: 1), fill: GeekTheme.divider))
             }
             row.addSubview(GeekShortcutIconBadge(symbol: slot.symbol, frame: NSRect(x: 16, y: 11, width: 32, height: 32)))
 
             let titleLbl = NSTextField(labelWithString: slot.title)
-            titleLbl.font = .systemFont(ofSize: 13.5, weight: .semibold)
+            titleLbl.font = .systemFont(ofSize: 13.5, weight: .medium)
             titleLbl.textColor = GeekTheme.inkPrimary
             row.addSubview(titleLbl)
 
@@ -264,7 +262,7 @@ extension TranslationSettingsWindow {
         activeCanvasRecording = nil
         shortcutAudit.pendingForceCombo = nil
         if hadGlobal && restoreHotKeys { onEndHotKeyRecording?() }
-        hotKeyHintLabel?.setTextWithTooltip("点击键帽录入双键（如 ⌥A、⌥1、F1） · Esc 取消 · ⌫ 停用单项", color: GeekTheme.inkMuted)
+        hotKeyHintLabel?.setTextWithTooltip("点击键帽录入双键（如 ⌥A、⌃1、F1） · Esc 取消 · ⌫ 停用单项", color: GeekTheme.inkMuted)
         canvasKeyHintLabel?.setTextWithTooltip("点击键帽直接按单键修改（中英文通用 · 冲突自动互换 · ⌫ 恢复默认）", color: GeekTheme.inkMuted)
         refreshGeneralAndPermissionsUI()
     }

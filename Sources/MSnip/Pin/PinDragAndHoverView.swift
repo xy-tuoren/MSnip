@@ -115,9 +115,9 @@ final class PinHoverBarPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
-        self.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         self.animationBehavior = .none
         self.isFloatingPanel = true
+        self.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         self.becomesKeyOnlyIfNeeded = true
         self.hidesOnDeactivate = false
         self.isOpaque = false

@@ -32,7 +32,7 @@ final class ProviderRowCellView: NSTableCellView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         if isRowSelected || hovered {
             let bg = CGPath(roundedRect: bounds.insetBy(dx: 4, dy: 2), cornerWidth: 7.5, cornerHeight: 7.5, transform: nil)
-            ctx.setFillColor((isRowSelected ? GeekTheme.controlHover : NSColor(white: 1.0, alpha: 0.045)).cgColor)
+            ctx.setFillColor((isRowSelected ? GeekTheme.controlHover : GeekTheme.hoverSoft).cgColor)
             ctx.addPath(bg); ctx.fillPath()
             if isRowSelected {
                 ctx.setStrokeColor(GeekTheme.borderStrong.cgColor)
@@ -42,7 +42,7 @@ final class ProviderRowCellView: NSTableCellView {
         MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 14, y: bounds.midY), color: dotColor, halo: isPrimary)
 
         let badgeText: String = isPrimary ? "使用中" : (isReady ? "已就绪" : "填 Key")
-        let badgeBg: NSColor = isPrimary ? GeekTheme.emeraldSoft : (isReady ? GeekTheme.accentSoft : NSColor(white: 1.0, alpha: 0.05))
+        let badgeBg: NSColor = isPrimary ? GeekTheme.emeraldSoft : (isReady ? GeekTheme.accentSoft : GeekTheme.pillSubtle)
         let badgeFg: NSColor = isPrimary ? GeekTheme.emerald : (isReady ? GeekTheme.accent : GeekTheme.inkMuted)
         let bw: CGFloat = 44, bh: CGFloat = 20
         let br = CGRect(x: bounds.width - bw - 8, y: GeekTheme.snap((bounds.height - bh) * 0.5), width: bw, height: bh)
@@ -130,11 +130,17 @@ final class GeekInputBox: NSView, NSViewToolTipOwner {
     override func mouseExited(with event: NSEvent) { hovered = false }
     override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = GeekTheme.resolvedCGColor(GeekTheme.inputBg, for: self)
+        refreshBorder()
+        if let ph = field.placeholderAttributedString?.string, !ph.isEmpty { field.setGeekPlaceholder(ph) }
+    }
+
     private func refreshBorder() {
         layer?.borderWidth = focused ? 1.25 : 1.0
-        layer?.borderColor = focused
-            ? GeekTheme.accent.withAlphaComponent(0.80).cgColor
-            : (hovered ? GeekTheme.borderStrong.cgColor : GeekTheme.border.cgColor)
+        let col = focused ? GeekTheme.accent.withAlphaComponent(0.80) : (hovered ? GeekTheme.borderStrong : GeekTheme.border)
+        layer?.borderColor = GeekTheme.resolvedCGColor(col, for: self)
     }
 }
 
@@ -150,5 +156,63 @@ extension NSTextField {
         if let color { textColor = color }
         stringValue = text
         toolTip = text.isEmpty ? nil : text
+    }
+}
+
+/// 权限状态行视图（14pt 主标题 + 右侧或紧邻清晰语义状态）
+final class GeekDotLabel: NSView {
+    var dotColor: NSColor = GeekTheme.emerald { didSet { needsDisplay = true } }
+    var text: String = "" { didSet { needsDisplay = true } }
+    var detail: String = "" { didSet { needsDisplay = true } }
+    var alignDetailRight: Bool = true
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 6, y: bounds.midY), color: dotColor, halo: true)
+
+        let titleFont = NSFont.systemFont(ofSize: 13.5, weight: .regular)
+        let tW = GeekTheme.measureTextWidth(text, font: titleFont)
+        GeekTheme.drawText(text, in: CGRect(x: 20, y: 0, width: max(20, bounds.width - 22), height: bounds.height), font: titleFont, color: GeekTheme.inkPrimary)
+
+        if !detail.isEmpty {
+            let detFont = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+            if alignDetailRight {
+                GeekTheme.drawText(detail, in: CGRect(x: 20 + tW + 8, y: 0, width: max(20, bounds.width - 28 - tW), height: bounds.height), font: detFont, color: dotColor, align: .right)
+            } else {
+                GeekTheme.drawText(detail, in: CGRect(x: 20 + tW + 12, y: 0, width: max(20, bounds.width - 32 - tW), height: bounds.height), font: detFont, color: dotColor)
+            }
+        }
+    }
+}
+
+/// 设置窗口暗黑/明亮/跟随系统外观切换联动扩展
+extension TranslationSettingsWindow {
+    func toggleDarkLightQuick() {
+        applyAppearanceMode(GeekTheme.isDark ? .light : .dark, persist: true)
+    }
+
+    func applyAppearanceMode(_ mode: AppAppearanceMode, persist: Bool) {
+        GeekTheme.currentMode = mode
+        ResultWindowChrome.prefersDarkAppearance = GeekTheme.isDark
+        if persist {
+            onAppConfigMutated? { $0.appearanceMode = mode }
+        }
+        HotKeyConflictPopover.shared.closeIfShown()
+        ProviderAddAndPresetPopover.shared.closeIfShown()
+        LanguagePickerPopover.shared.closeIfShown()
+        if let win = window {
+            win.appearance = GeekTheme.windowAppearance
+            win.backgroundColor = GeekTheme.windowBg
+            if let root = win.contentView { ResultWindowChrome.invalidateSubtree(root) }
+        }
+        tableView?.reloadData()
+        if let idx = AppAppearanceMode.allCases.firstIndex(of: mode) {
+            modeControls.appearanceSegment?.selectedIndex = idx
+        }
+        let dark = GeekTheme.isDark
+        modeControls.themeToggleBtn?.title = dark ? "明亮" : "暗黑"
+        modeControls.themeToggleBtn?.symbolName = dark ? "sun.max" : "moon"
+        modeControls.themeToggleBtn?.toolTip = dark ? "当前暗黑模式 · 点击一键切换明亮模式" : "当前明亮模式 · 点击一键切换暗黑模式"
     }
 }

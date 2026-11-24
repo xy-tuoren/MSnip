@@ -188,8 +188,8 @@ final class ToolbarView: NSView {
             return
         }
         guard let item = items.first(where: { $0.rect.contains(p) && $0.enabled }) else { return }
-        if case .save = item.action, event.modifierFlags.contains(.option) {
-            onAction?(.quickSave)
+        if case .quickSave = item.action, event.modifierFlags.contains(.option) {
+            onAction?(.save)
         } else if case .toggleInPlaceOCR = item.action {
             let openDual = event.modifierFlags.contains(.option) ? !ocrAutoOpenDualPane : (ocrAutoOpenDualPane && !inPlaceOCRActive)
             onAction?(openDual ? .extractTextWindow : .toggleInPlaceOCR)

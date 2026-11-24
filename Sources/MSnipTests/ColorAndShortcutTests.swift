@@ -105,8 +105,11 @@ func testShortcutPresetsOverridesAndCanvasSwap() {
     check(defPreset.defaultCombo(for: .record)?.displayString == "⌥R", "默认录屏热键应为左手双键 ⌥R")
     check(defPreset.defaultCombo(for: .latex) == nil, "低频公式热键默认留空不占全局键位")
 
-    // 2) 数字双键预设 opt123 与历史旧版配置名兼容解码
-    check(HotKeyPreset.opt123.defaultCombo(for: .capture)?.displayString == "⌥1", "数字双键预设应为 ⌥1")
+    // 2) 数字双键预设 ctrl123 与历史旧版配置名兼容解码
+    check(HotKeyPreset.ctrl123.defaultCombo(for: .capture)?.displayString == "⌃1", "数字双键预设应为 ⌃1")
+    check(HotKeyPreset.ctrl123.defaultCombo(for: .pin)?.displayString == "⌃2", "数字双键贴图预设应为 ⌃2")
+    let legacyOpt123 = try? JSONDecoder().decode(HotKeyPreset.self, from: Data("\"opt123\"".utf8))
+    check(legacyOpt123 == .ctrl123, "旧版 opt123 配置解码时应平滑迁移至 ⌃1/⌃2 数字双键 ctrl123")
     check(HotKeyPreset.fnKeys.defaultCombo(for: .pin)?.displayString == "F2", "F 键预设应按 F1/F2 顺序排列")
     let legacyDecoded = try? JSONDecoder().decode(HotKeyPreset.self, from: Data("\"cmd12\"".utf8))
     check(legacyDecoded == .optASD, "旧版抢占浏览器的 cmd12 配置解码时应平滑迁移至推荐双键 optASD")
@@ -174,4 +177,52 @@ func testShortcutPresetsOverridesAndCanvasSwap() {
     check(parsedKS?.displayString == "⌥S", "应精确解析 KeyboardShortcuts 标准 JSON 热键")
     let parsedRaycast = HotKeyConflictProfiles.parseRaycastHotkeyString("Option-49")
     check(parsedRaycast?.displayString == "⌥␣", "应精确解析 Raycast 全局热键配置字符串")
+}
+
+func testVisualDetectorRoundedLowContrastAndBoundaryFilter() {
+    // 1) Retina @2x 下：浅灰底 (#F5F7FA) + 18pt 大圆角纯白卡片 (60, 40, 280, 180) + 卡片内多行文字条纹干扰
+    let scale: CGFloat = 2.0
+    let lw = 400, lh = 260
+    let pw = Int(CGFloat(lw) * scale), ph = Int(CGFloat(lh) * scale)
+    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+    let ctx = CGContext(
+        data: nil, width: pw, height: ph, bitsPerComponent: 8, bytesPerRow: pw * 4,
+        space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    ctx.translateBy(x: 0, y: CGFloat(ph))
+    ctx.scaleBy(x: scale, y: -scale)
+
+    ctx.setFillColor(CGColor(srgbRed: 245.0 / 255.0, green: 247.0 / 255.0, blue: 250.0 / 255.0, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: lw, height: lh))
+
+    let card = CGRect(x: 60, y: 40, width: 280, height: 180)
+    let roundedPath = CGPath(roundedRect: card, cornerWidth: 18, cornerHeight: 18, transform: nil)
+    ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+    ctx.addPath(roundedPath); ctx.fillPath()
+
+    // 在卡片内部画 5 行文字横条（验证不会被旧的 4 条候选上限提前截断而漏掉外层大卡片）
+    ctx.setFillColor(CGColor(srgbRed: 0.25, green: 0.28, blue: 0.34, alpha: 1))
+    for i in 0..<5 {
+        ctx.fill(CGRect(x: 84, y: 66 + i * 24, width: 190, height: 6))
+    }
+
+    let sampler = PixelSampler(cgImage: ctx.makeImage()!)
+    let winBounds = CGRect(x: 0, y: 0, width: lw, height: lh)
+
+    let hits = VisualDetector.detectVisualRects(at: CGPoint(x: 190, y: 130), within: winBounds, sampler: sampler, scale: scale)
+    check(
+        hits.contains(where: { abs($0.minX - card.minX) <= 3 && abs($0.minY - card.minY) <= 3 && abs($0.width - card.width) <= 6 && abs($0.height - card.height) <= 6 }),
+        "应穿透多行文字并精准识别 @2x 低对比度 18pt 大圆角白卡，实际得到: \(hits)"
+    )
+
+    // 2) 验证 hasVisualBoundary：真实白卡返回 true，无边缘透明 AXGroup 包装盒返回 false
+    check(
+        VisualDetector.hasVisualBoundary(card, within: winBounds, sampler: sampler, scale: scale),
+        "真实大圆角白卡应通过视觉边界验证"
+    )
+    let invisibleDiv = CGRect(x: 20, y: 15, width: 350, height: 220)
+    check(
+        !VisualDetector.hasVisualBoundary(invisibleDiv, within: winBounds, sampler: sampler, scale: scale),
+        "无视觉边界的透明 AXGroup 容器应被过滤"
+    )
 }

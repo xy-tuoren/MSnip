@@ -9,75 +9,99 @@ final class GeneralModeControls {
     var translateModeSegment: GeekSegmentControl?
     var ocrAutoCopySwitch: GeekToggleSwitch?
     var transTabDualSwitch: GeekToggleSwitch?
-    var exportFmtSegment: GeekSegmentControl?
+    var exportFmtPill: GeekDropdownPill?
     var export1xSwitch: GeekToggleSwitch?
+    var terminalAdaptSwitch: GeekToggleSwitch?
+    var appearanceSegment: GeekSegmentControl?
+    var themeToggleBtn: GeekButton?
+    var gifPresetSegment: GeekSegmentControl?
+    var mp4FpsSegment: GeekSegmentControl?
+    var recordCursorSwitch: GeekToggleSwitch?
+    var recordAudioSwitch: GeekToggleSwitch?
 }
 
 /// 设置窗口「通用」标签页（基础设置、识字与翻译面板模式、导出格式与钥匙串密钥加密、系统权限状态）
 extension TranslationSettingsWindow {
     func buildGeneralPage(in page: GeekFlippedView) {
-        let cardW = page.bounds.width - 56 // 724
-        let rowH: CGFloat = 38
-        let switchY: CGFloat = 8
-        let segY: CGFloat = 5
-        let segH: CGFloat = 28
+        let cardX: CGFloat = 28, cardW = page.bounds.width - 56, insetX: CGFloat = 16, headerX = cardX + insetX
+        let rowH: CGFloat = 44, segH: CGFloat = 28, segY: CGFloat = 8, switchH: CGFloat = 22, switchY: CGFloat = 11
+        let switchX = cardW - insetX - 38, headerToCard: CGFloat = 24, sectionGap: CGFloat = 20
 
         let scroll = NSScrollView(frame: page.bounds)
         scroll.drawsBackground = false; scroll.borderType = .noBorder
         scroll.hasVerticalScroller = true; scroll.autohidesScrollers = true
-        let content = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: page.bounds.width, height: 594))
-        scroll.documentView = content
-        page.addSubview(scroll)
+        let content = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: page.bounds.width, height: 860))
+        scroll.documentView = content; page.addSubview(scroll)
+        var y: CGFloat = 18
 
-        // 1) 基础（3 行 × 38px）
-        addSectionHeader("基础", x: 30, y: 12, in: content)
-        let baseCard = GeekCardView(frame: NSRect(x: 28, y: 32, width: cardW, height: rowH * 3))
+        // 1) 基础（4 行：外观模式、开机自启、快捷键提示、保存位置）
+        addSectionHeader("基础", x: headerX, y: y, in: content)
+        let baseCard = GeekCardView(frame: NSRect(x: cardX, y: y + headerToCard, width: cardW, height: rowH * 4))
         content.addSubview(baseCard)
 
-        addRowLabel("开机自动启动", y: 0, height: rowH, in: baseCard)
+        addRowLabel("外观模式", y: 0, height: rowH, in: baseCard)
+        let appSeg = GeekSegmentControl(
+            items: AppAppearanceMode.allCases.map(\.title),
+            symbols: ["circle.lefthalf.filled", "sun.max", "moon"],
+            selectedIndex: 2
+        )
+        appSeg.toolTip = "切换设置与识字/翻译窗口的外观主题（也可点击右上角按钮一键切暗黑/明亮）"
+        appSeg.frame = NSRect(x: cardW - insetX - 264, y: segY, width: 264, height: segH)
+        appSeg.onSelect = { [weak self] idx in
+            guard AppAppearanceMode.allCases.indices.contains(idx) else { return }
+            self?.applyAppearanceMode(AppAppearanceMode.allCases[idx], persist: true)
+        }
+        modeControls.appearanceSegment = appSeg
+        baseCard.addSubview(appSeg)
+
+        baseCard.addHairline(atY: rowH)
+        addRowLabel("开机自动启动", y: rowH, height: rowH, in: baseCard)
         loginSwitch = GeekToggleSwitch()
-        loginSwitch.frame = NSRect(x: cardW - 54, y: switchY, width: 38, height: 22)
+        loginSwitch.frame = NSRect(x: switchX, y: rowH + switchY, width: 38, height: switchH)
         loginSwitch.onToggle = { on in _ = LaunchAtLoginManager.setEnabled(on) }
         baseCard.addSubview(loginSwitch)
 
-        baseCard.addHairline(atY: rowH)
-        addRowLabel("截图时显示快捷键提示", y: rowH, height: rowH, in: baseCard)
+        baseCard.addHairline(atY: rowH * 2)
+        addRowLabel("截图时显示快捷键提示", y: rowH * 2, height: rowH, in: baseCard)
         tipsSwitch = GeekToggleSwitch()
-        tipsSwitch.frame = NSRect(x: cardW - 54, y: rowH + switchY, width: 38, height: 22)
+        tipsSwitch.frame = NSRect(x: switchX, y: rowH * 2 + switchY, width: 38, height: switchH)
         tipsSwitch.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.showShortcutTips = on } }
         baseCard.addSubview(tipsSwitch)
 
-        baseCard.addHairline(atY: rowH * 2)
-        addRowLabel("截图保存位置", y: rowH * 2, height: rowH, in: baseCard)
+        baseCard.addHairline(atY: rowH * 3)
+        addRowLabel("截图保存位置", y: rowH * 3, height: rowH, in: baseCard)
+        let openX = cardW - insetX - 56
+        let chooseX = openX - 8 - 56
         saveDirPathLabel = NSTextField(labelWithString: "~/Pictures/MSnip")
-        saveDirPathLabel.font = .monospacedSystemFont(ofSize: 12.5, weight: .regular)
+        saveDirPathLabel.font = .monospacedSystemFont(ofSize: 12.0, weight: .regular)
         saveDirPathLabel.textColor = GeekTheme.inkSecondary
         saveDirPathLabel.lineBreakMode = .byTruncatingMiddle
         saveDirPathLabel.alignment = .right
-        GeekTheme.placeCentered(saveDirPathLabel, x: 164, width: cardW - 314, centerY: rowH * 2 + rowH * 0.5)
+        GeekTheme.placeCentered(saveDirPathLabel, x: 156, width: chooseX - 156 - 12, centerY: rowH * 3 + rowH * 0.5)
         baseCard.addSubview(saveDirPathLabel)
 
         let chooseBtn = GeekButton(title: "更改", style: .subtle)
-        chooseBtn.frame = NSRect(x: cardW - 138, y: rowH * 2 + segY, width: 58, height: segH)
+        chooseBtn.frame = NSRect(x: chooseX, y: rowH * 3 + segY, width: 56, height: segH)
         chooseBtn.onClick = { [weak self] in self?.chooseQuickSaveDirectory() }
         baseCard.addSubview(chooseBtn)
 
         let openDirBtn = GeekButton(title: "打开", style: .subtle)
-        openDirBtn.frame = NSRect(x: cardW - 74, y: rowH * 2 + segY, width: 58, height: segH)
+        openDirBtn.frame = NSRect(x: openX, y: rowH * 3 + segY, width: 56, height: segH)
         openDirBtn.onClick = { [weak self] in
             NSWorkspace.shared.open(ClipboardAndSave.resolveQuickSaveDirectory(preferred: self?.appConfigProvider?().lastSaveDirectory))
         }
         baseCard.addSubview(openDirBtn)
 
-        // 2) 识字与翻译面板（3 行 × 38px：支持各自独立设置原位/双栏，并单独控制 OCR 自动复制）
-        addSectionHeader("识字与翻译面板", x: 30, y: 158, in: content)
-        let panelCard = GeekCardView(frame: NSRect(x: 28, y: 178, width: cardW, height: rowH * 3))
+        // 2) 识字与翻译面板（3 行：独立控制原位/双栏与 OCR 自动复制）
+        y = baseCard.frame.maxY + sectionGap
+        addSectionHeader("识字与翻译面板", x: headerX, y: y, in: content)
+        let panelCard = GeekCardView(frame: NSRect(x: cardX, y: y + headerToCard, width: cardW, height: rowH * 3))
         content.addSubview(panelCard)
 
         addRowLabel("提取文字 (OCR) 默认方式", y: 0, height: rowH, in: panelCard)
         let ocrSeg = GeekSegmentControl(items: ["原位划词", "双栏面板"], selectedIndex: 0)
         ocrSeg.toolTip = "选择提取文字的默认交互方式（按住 ⌥ 触发可临时切换为另一种方式）"
-        ocrSeg.frame = NSRect(x: cardW - 196, y: segY, width: 180, height: segH)
+        ocrSeg.frame = NSRect(x: cardW - insetX - 196, y: segY, width: 196, height: segH)
         ocrSeg.onSelect = { [weak self] idx in
             self?.onAppConfigMutated? { $0.ocrAutoOpenDualPane = (idx == 1) }
         }
@@ -88,7 +112,7 @@ extension TranslationSettingsWindow {
         addRowLabel("截图翻译默认方式", y: rowH, height: rowH, in: panelCard)
         let trSeg = GeekSegmentControl(items: ["原位译文", "双栏面板"], selectedIndex: 0)
         trSeg.toolTip = "选择截图翻译的默认交互方式（按住 ⌥ 触发可临时切换为另一种方式）"
-        trSeg.frame = NSRect(x: cardW - 196, y: rowH + segY, width: 180, height: segH)
+        trSeg.frame = NSRect(x: cardW - insetX - 196, y: rowH + segY, width: 196, height: segH)
         trSeg.onSelect = { [weak self] idx in
             let dual = (idx == 1)
             self?.onAppConfigMutated? { $0.translateAutoOpenDualPane = dual }
@@ -101,99 +125,112 @@ extension TranslationSettingsWindow {
         addRowLabel("识字完成后自动复制文本", y: rowH * 2, height: rowH, in: panelCard)
         let ocrCopySw = GeekToggleSwitch(isOn: true)
         ocrCopySw.toolTip = "关闭后，双栏 OCR 窗口仅展示识别结果，不会自动覆盖你当前剪贴板中的内容"
-        ocrCopySw.frame = NSRect(x: cardW - 54, y: rowH * 2 + switchY, width: 38, height: 22)
+        ocrCopySw.frame = NSRect(x: switchX, y: rowH * 2 + switchY, width: 38, height: switchH)
         ocrCopySw.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.ocrAutoCopy = on } }
         modeControls.ocrAutoCopySwitch = ocrCopySw
         panelCard.addSubview(ocrCopySw)
 
-        // 3) 格式与安全（4 行 × 38px：截图保存格式/1× 尺寸、取色格式、录屏格式、钥匙串加密）
-        addSectionHeader("格式与安全", x: 30, y: 304, in: content)
-        let fmtCard = GeekCardView(frame: NSRect(x: 28, y: 324, width: cardW, height: rowH * 4))
+        // 3) 格式与安全（6 行）
+        y = panelCard.frame.maxY + sectionGap
+        addSectionHeader("格式与安全", x: headerX, y: y, in: content)
+        let fmtCard = GeekCardView(frame: NSRect(x: cardX, y: y + headerToCard, width: cardW, height: rowH * 6))
         content.addSubview(fmtCard)
 
         addRowLabel("截图保存格式", y: 0, height: rowH, in: fmtCard)
-        let scale1xLbl = NSTextField(labelWithString: "1× 尺寸")
-        scale1xLbl.font = .systemFont(ofSize: 12.5, weight: .medium); scale1xLbl.textColor = GeekTheme.inkSecondary
-        scale1xLbl.alignment = .right
-        scale1xLbl.toolTip = "开启后，Retina 高分屏保存截图时将缩放为 1× 逻辑像素尺寸以显著减小文件体积（剪贴板仍保持原图）"
-        GeekTheme.placeCentered(scale1xLbl, x: cardW - 318, width: 58, centerY: rowH * 0.5)
-        fmtCard.addSubview(scale1xLbl)
+        let supportedFmts = CaptureExportFormat.supportedFormats
+        let expPill = GeekDropdownPill(symbol: "photo", items: supportedFmts.map(\.menuTitle), selectedIndex: 0)
+        expPill.toolTip = "快存与另存为的默认图片格式（按当前 macOS 原生硬件编码能力自动列出支持格式，低版本系统安全兼容）"
+        expPill.frame = NSRect(x: cardW - insetX - 212, y: segY, width: 212, height: segH)
+        expPill.onSelect = { [weak self] idx in
+            let list = CaptureExportFormat.supportedFormats
+            guard list.indices.contains(idx) else { return }
+            self?.onAppConfigMutated? { $0.exportImageFormat = list[idx] }
+        }
+        modeControls.exportFmtPill = expPill
+        fmtCard.addSubview(expPill)
 
+        fmtCard.addHairline(atY: rowH)
+        let scaleTip = "仅对保存的图片文件生效：在 Retina 高分屏（2×）上自动缩为 1× 标准尺寸，避免发文档或网页时大一倍并减小体积；普通 1080p 屏与剪贴板原图不受影响"
+        addRowLabel("高分屏保存缩为标准尺寸", y: rowH, height: rowH, in: fmtCard, toolTip: scaleTip)
         let scale1xSw = GeekToggleSwitch(isOn: false)
-        scale1xSw.toolTip = scale1xLbl.toolTip
-        scale1xSw.frame = NSRect(x: cardW - 252, y: switchY, width: 38, height: 22)
+        scale1xSw.toolTip = scaleTip
+        scale1xSw.frame = NSRect(x: switchX, y: rowH + switchY, width: 38, height: switchH)
         scale1xSw.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.exportAt1xScale = on } }
         modeControls.export1xSwitch = scale1xSw
         fmtCard.addSubview(scale1xSw)
 
-        let expSeg = GeekSegmentControl(items: CaptureExportFormat.allCases.map(\.segmentTitle), selectedIndex: 0, mono: true)
-        expSeg.toolTip = "快存与另存为的默认图片格式：PNG 无损、JPG 通用高压缩、HEIC 苹果原生极小体积"
-        expSeg.frame = NSRect(x: cardW - 202, y: segY, width: 186, height: segH)
-        expSeg.onSelect = { [weak self] idx in
-            guard CaptureExportFormat.allCases.indices.contains(idx) else { return }
-            self?.onAppConfigMutated? { $0.exportImageFormat = CaptureExportFormat.allCases[idx] }
-        }
-        modeControls.exportFmtSegment = expSeg
-        fmtCard.addSubview(expSeg)
+        fmtCard.addHairline(atY: rowH * 2)
+        let termTip = "开启后，独立终端自动粘贴临时 PNG 路径，访达自动粘贴文件；主流编辑器内置终端按 ⌘V 自动适配路径，切回 AI 聊天框/Markdown/微信/浏览器自动保持纯净图像（编辑器自动感应需开启辅助功能；截图时也可按 ⇧⌘C 或 ⌥↩ 强制带路径复制）"
+        addRowLabel("终端、编辑器与访达粘贴适配", y: rowH * 2, height: rowH, in: fmtCard, toolTip: termTip)
+        let termSw = GeekToggleSwitch(isOn: true)
+        termSw.toolTip = termTip
+        termSw.frame = NSRect(x: switchX, y: rowH * 2 + switchY, width: 38, height: switchH)
+        termSw.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.terminalPasteAdaptEnabled = on } }
+        modeControls.terminalAdaptSwitch = termSw
+        fmtCard.addSubview(termSw)
 
-        fmtCard.addHairline(atY: rowH)
-        addRowLabel("取色复制格式", y: rowH, height: rowH, in: fmtCard)
+        fmtCard.addHairline(atY: rowH * 3)
+        addRowLabel("取色复制格式", y: rowH * 3, height: rowH, in: fmtCard)
         colorFmtSegment = GeekSegmentControl(items: ColorCopyFormat.allCases.map(\.rawValue), selectedIndex: 0, mono: true)
-        colorFmtSegment.frame = NSRect(x: cardW - 264, y: rowH + segY, width: 248, height: segH)
+        colorFmtSegment.frame = NSRect(x: cardW - insetX - 248, y: rowH * 3 + segY, width: 248, height: segH)
         colorFmtSegment.onSelect = { [weak self] idx in
             guard ColorCopyFormat.allCases.indices.contains(idx) else { return }
             self?.onAppConfigMutated? { $0.colorCopyFormat = ColorCopyFormat.allCases[idx] }
         }
         fmtCard.addSubview(colorFmtSegment)
 
-        fmtCard.addHairline(atY: rowH * 2)
-        addRowLabel("录屏导出格式", y: rowH * 2, height: rowH, in: fmtCard)
+        fmtCard.addHairline(atY: rowH * 4)
+        addRowLabel("录屏导出格式", y: rowH * 4, height: rowH, in: fmtCard)
         recFmtSegment = GeekSegmentControl(items: ["GIF", "MP4"], selectedIndex: 0, mono: true)
-        recFmtSegment.frame = NSRect(x: cardW - 144, y: rowH * 2 + segY, width: 128, height: segH)
+        recFmtSegment.frame = NSRect(x: cardW - insetX - 136, y: rowH * 4 + segY, width: 136, height: segH)
         recFmtSegment.onSelect = { [weak self] idx in
             self?.onAppConfigMutated? { $0.preferredRecordingFormat = (idx == 1) ? .mp4 : .gif }
         }
         fmtCard.addSubview(recFmtSegment)
 
-        fmtCard.addHairline(atY: rowH * 3)
-        addRowLabel("钥匙串加密存储 API 密钥", y: rowH * 3, height: rowH, in: fmtCard)
-        keychainSwitch = GeekToggleSwitch()
-        keychainSwitch.toolTip = CredentialVault.hasStableCodeSignature()
+        fmtCard.addHairline(atY: rowH * 5)
+        let kcTip = CredentialVault.hasStableCodeSignature()
             ? "将翻译与公式 API 密钥存入 macOS 登录钥匙串，本地 JSON 自动脱敏留空"
             : "将密钥转存至系统钥匙串（提示：建议先运行 scripts/setup-cert.sh 配置固定证书以免升级弹窗）"
-        keychainSwitch.frame = NSRect(x: cardW - 54, y: rowH * 3 + switchY, width: 38, height: 22)
+        addRowLabel("钥匙串加密存储 API 密钥", y: rowH * 5, height: rowH, in: fmtCard, toolTip: kcTip)
+        keychainSwitch = GeekToggleSwitch()
+        keychainSwitch.toolTip = kcTip
+        keychainSwitch.frame = NSRect(x: switchX, y: rowH * 5 + switchY, width: 38, height: switchH)
         keychainSwitch.onToggle = { [weak self] on in
             guard let self else { return }
-            self.commitCurrentFormEdits()
-            self.draft.preferKeychainStorage = on
-            self.persistDraft()
+            self.commitCurrentFormEdits(); self.draft.preferKeychainStorage = on; self.persistDraft()
         }
         fmtCard.addSubview(keychainSwitch)
 
-        // 4) 系统权限（2 行 × 38px）
-        addSectionHeader("系统权限", x: 30, y: 488, in: content)
-        let permCard = GeekCardView(frame: NSRect(x: 28, y: 508, width: cardW, height: rowH * 2))
+        // 4) 系统权限（2 行）
+        y = fmtCard.frame.maxY + sectionGap
+        addSectionHeader("系统权限", x: headerX, y: y, in: content)
+        let permCard = GeekCardView(frame: NSRect(x: cardX, y: y + headerToCard, width: cardW, height: rowH * 2))
         content.addSubview(permCard)
 
-        screenPermRow = GeekDotLabel(frame: NSRect(x: 16, y: 0, width: cardW - 32, height: rowH))
+        screenPermRow = GeekDotLabel(frame: NSRect(x: insetX, y: 0, width: cardW - insetX * 2, height: rowH))
         permCard.addSubview(screenPermRow)
         screenPermBtn = GeekButton(title: "前往开启", style: .accent)
-        screenPermBtn.frame = NSRect(x: cardW - 104, y: segY, width: 88, height: segH)
+        screenPermBtn.frame = NSRect(x: cardW - insetX - 84, y: segY, width: 84, height: segH)
         screenPermBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?() }
         permCard.addSubview(screenPermBtn)
 
         permCard.addHairline(atY: rowH)
-        axPermRow = GeekDotLabel(frame: NSRect(x: 16, y: rowH, width: cardW - 32, height: rowH))
+        axPermRow = GeekDotLabel(frame: NSRect(x: insetX, y: rowH, width: cardW - insetX * 2, height: rowH))
         permCard.addSubview(axPermRow)
         axPermBtn = GeekButton(title: "前往开启", style: .subtle)
-        axPermBtn.frame = NSRect(x: cardW - 104, y: rowH + segY, width: 88, height: segH)
+        axPermBtn.frame = NSRect(x: cardW - insetX - 84, y: rowH + segY, width: 84, height: segH)
         axPermBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?() }
         permCard.addSubview(axPermBtn)
+
+        let bottomY = appendRecordingAndBackupCards(in: content, startY: permCard.frame.maxY + sectionGap, cardX: cardX, cardW: cardW)
+        content.frame.size.height = bottomY + 24
     }
 
     func refreshGeneralAndPermissionsUI() {
         guard loginSwitch != nil else { return }
         let cfg = appConfigProvider?() ?? AppConfig()
+        applyAppearanceMode(cfg.appearanceMode, persist: false)
         loginSwitch.isOn = LaunchAtLoginManager.isEnabled
         tipsSwitch.isOn = cfg.showShortcutTips
         keychainSwitch?.isOn = draft.preferKeychainStorage
@@ -201,10 +238,11 @@ extension TranslationSettingsWindow {
         modeControls.translateModeSegment?.selectedIndex = cfg.translateAutoOpenDualPane ? 1 : 0
         modeControls.ocrAutoCopySwitch?.isOn = cfg.ocrAutoCopy
         modeControls.transTabDualSwitch?.isOn = cfg.translateAutoOpenDualPane
-        if let eIdx = CaptureExportFormat.allCases.firstIndex(of: cfg.exportImageFormat) {
-            modeControls.exportFmtSegment?.selectedIndex = eIdx
-        }
+        let supportedFmts = CaptureExportFormat.supportedFormats
+        let resolvedFmt = cfg.exportImageFormat.resolvedForCurrentOS
+        if let eIdx = supportedFmts.firstIndex(of: resolvedFmt) { modeControls.exportFmtPill?.selectedIndex = eIdx }
         modeControls.export1xSwitch?.isOn = cfg.exportAt1xScale
+        modeControls.terminalAdaptSwitch?.isOn = cfg.terminalPasteAdaptEnabled
         if let cIdx = ColorCopyFormat.allCases.firstIndex(of: cfg.colorCopyFormat) { colorFmtSegment.selectedIndex = cIdx }
         recFmtSegment.selectedIndex = (cfg.preferredRecordingFormat == .mp4) ? 1 : 0
         let resolvedDir = ClipboardAndSave.resolveQuickSaveDirectory(preferred: cfg.lastSaveDirectory).path
@@ -213,16 +251,15 @@ extension TranslationSettingsWindow {
 
         let scrOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
         screenPermRow.dotColor = scrOK ? GeekTheme.emerald : GeekTheme.amber
-        screenPermRow.text = "屏幕录制"
-        screenPermRow.detail = scrOK ? "已授权" : ""
+        screenPermRow.text = "屏幕录制"; screenPermRow.detail = scrOK ? "已授权" : ""
         screenPermBtn.isHidden = scrOK
 
         let axOK = RegionDetector.checkAccessibilityPermission(prompt: false)
         axPermRow.dotColor = axOK ? GeekTheme.emerald : GeekTheme.inkMuted
-        axPermRow.text = "辅助功能"
-        axPermRow.detail = axOK ? "已授权" : ""
+        axPermRow.text = "辅助功能"; axPermRow.detail = axOK ? "已授权" : ""
         axPermBtn.isHidden = axOK
 
+        refreshRecordingControlsUI(with: cfg)
         refreshShortcutsPageUI(with: cfg)
     }
 
@@ -238,14 +275,15 @@ extension TranslationSettingsWindow {
 
     func addSectionHeader(_ text: String, x: CGFloat, y: CGFloat, in parent: NSView) {
         let lbl = NSTextField(labelWithString: text)
-        lbl.font = .systemFont(ofSize: 13.0, weight: .semibold); lbl.textColor = GeekTheme.inkSecondary
-        GeekTheme.placeCentered(lbl, x: x, width: 160, centerY: y + 9.0)
+        lbl.font = .systemFont(ofSize: 12.0, weight: .semibold); lbl.textColor = GeekTheme.inkSecondary
+        GeekTheme.placeCentered(lbl, x: x, width: 180, centerY: y + 8.0)
         parent.addSubview(lbl)
     }
 
-    func addRowLabel(_ text: String, y: CGFloat, height: CGFloat, in card: GeekCardView) {
+    func addRowLabel(_ text: String, y: CGFloat, height: CGFloat, in card: GeekCardView, toolTip: String? = nil) {
         let lbl = NSTextField(labelWithString: text)
-        lbl.font = .systemFont(ofSize: 14.0, weight: .medium); lbl.textColor = GeekTheme.inkPrimary; lbl.sizeToFit()
+        lbl.font = .systemFont(ofSize: 13.5, weight: .regular); lbl.textColor = GeekTheme.inkPrimary; lbl.sizeToFit()
+        lbl.toolTip = toolTip
         GeekTheme.placeCentered(lbl, x: 16, width: lbl.frame.width + 6, centerY: y + height * 0.5)
         card.addSubview(lbl)
     }

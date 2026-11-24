@@ -206,20 +206,31 @@ enum ScreenCapturer {
             return [ScreenSnapshot(screen: screens[s.index], displayID: s.displayID, cgImage: img2)]
         }
 
-        let capturedPairs: [(Int, CGDirectDisplayID, CGImage)] = await withTaskGroup(
-            of: (Int, CGDirectDisplayID, CGImage)?.self
-        ) { group in
-            for s in specs {
-                group.addTask {
-                    guard let img = try? await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.cfg) else {
-                        return nil
+        let captureBatch: ([CaptureSpec]) async -> [(Int, CGDirectDisplayID, CGImage)] = { batch in
+            await withTaskGroup(of: (Int, CGDirectDisplayID, CGImage)?.self) { group in
+                for s in batch {
+                    group.addTask {
+                        guard let img = try? await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.cfg) else {
+                            return nil
+                        }
+                        return (s.index, s.displayID, img)
                     }
-                    return (s.index, s.displayID, img)
                 }
+                var out: [(Int, CGDirectDisplayID, CGImage)] = []
+                for await item in group { if let item { out.append(item) } }
+                return out
             }
-            var out: [(Int, CGDirectDisplayID, CGImage)] = []
-            for await item in group { if let item { out.append(item) } }
-            return out
+        }
+        var capturedPairs = await captureBatch(specs)
+        if capturedPairs.count < specs.count {
+            cachedDisplayFilters.removeAll()
+            if let fresh = await ensureDisplayFilters(for: screens) {
+                let refreshedSpecs = specs.compactMap { s -> CaptureSpec? in
+                    guard let f = fresh[s.displayID] else { return nil }
+                    return CaptureSpec(index: s.index, displayID: s.displayID, filter: f, cfg: s.cfg)
+                }
+                if !refreshedSpecs.isEmpty { capturedPairs = await captureBatch(refreshedSpecs) }
+            }
         }
         return capturedPairs.sorted { $0.0 < $1.0 }.map { ScreenSnapshot(screen: screens[$0.0], displayID: $0.1, cgImage: $0.2) }
     }

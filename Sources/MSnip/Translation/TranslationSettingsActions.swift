@@ -12,7 +12,7 @@ extension TranslationSettingsWindow {
     }
 
     func presentTargetLanguagePicker(from anchor: NSView) {
-        LanguagePickerPopover.shared.show(anchoredTo: anchor, current: draft.targetLang, dark: true) { [weak self] picked in
+        LanguagePickerPopover.shared.show(anchoredTo: anchor, current: draft.targetLang, dark: GeekTheme.isDark) { [weak self] picked in
             guard let self else { return }
             self.commitCurrentFormEdits()
             self.draft.targetLang = picked

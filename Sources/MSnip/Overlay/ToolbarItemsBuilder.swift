@@ -155,16 +155,27 @@ extension ToolbarView {
             // 4) 终态输出组：贴图 / 保存 / 关闭 / 醒目蓝色复制主胶囊
             let pinTip = pinHint.isEmpty ? "贴到桌面 (\(keyUpper(.pin)))" : "贴到桌面 (\(keyUpper(.pin)) / \(pinHint))"
             list.append(iconAction(x: &x, y: y, h: h, symbol: "pin", tip: pinTip, enabled: true, action: .pin))
-            let saveRect = CGRect(x: x, y: y, width: 34, height: h)
-            x += 36
+            let saveIconRect = CGRect(x: x, y: y, width: 26, height: h)
+            x += 26
             list.append(HitItem(
-                rect: saveRect,
-                tooltip: "下载保存：点击快速选择目录（\(keyUpper(.quickSave)) 一键快存 · ⌘S 另存为）",
+                rect: saveIconRect,
+                tooltip: "一键保存到默认目录 (\(keyUpper(.quickSave)) · ⌘S 另存为)",
                 enabled: true,
                 draw: { ctx, r, hov in
                     Self.drawButtonBg(ctx: ctx, rect: r, active: false, hovered: hov)
-                    Self.drawSymbol("square.and.arrow.down", in: CGRect(x: r.minX + 1, y: r.minY, width: 23, height: r.height), alpha: 0.94, tint: Self.inkDark)
-                    Self.drawSmallChevron(ctx: ctx, x: r.maxX - 6.0, centerY: r.midY + 0.5, active: hov)
+                    Self.drawSymbol("square.and.arrow.down", in: r, alpha: 0.94, tint: Self.inkDark)
+                },
+                action: .quickSave
+            ))
+            let saveMenuRect = CGRect(x: x, y: y, width: 14, height: h)
+            x += 16
+            list.append(HitItem(
+                rect: saveMenuRect,
+                tooltip: "选择其他保存目录 / 另存为 (⌘S)",
+                enabled: true,
+                draw: { ctx, r, hov in
+                    Self.drawButtonBg(ctx: ctx, rect: r, active: false, hovered: hov)
+                    Self.drawSmallChevron(ctx: ctx, x: r.midX, centerY: r.midY + 0.5, active: hov)
                 },
                 action: .save
             ))

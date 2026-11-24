@@ -15,9 +15,10 @@ final class GIFDiskSpooler {
         let time: TimeInterval
     }
 
-    static let maxLongSide = 880
+    static let defaultMaxLongSide = 880
 
     let spoolFileURL: URL
+    let maxLongSide: Int
     private var metaList: [FrameMeta] = []
     private var scratchRGBA: [UInt8] = []
     private var writeHandle: FileHandle?
@@ -26,8 +27,9 @@ final class GIFDiskSpooler {
     var frameCount: Int { metaList.count }
     var lastFrameTime: TimeInterval? { metaList.last?.time }
 
-    init(spoolFileURL: URL) {
+    init(spoolFileURL: URL, maxLongSide: Int = GIFDiskSpooler.defaultMaxLongSide) {
         self.spoolFileURL = spoolFileURL
+        self.maxLongSide = max(320, maxLongSide)
     }
 
     deinit {
@@ -39,11 +41,11 @@ final class GIFDiskSpooler {
         guard src.width >= 2, src.height >= 2 else { return false }
         let outW: Int
         let outH: Int
-        if longSide <= Self.maxLongSide {
+        if longSide <= maxLongSide {
             outW = src.width
             outH = src.height
         } else {
-            let ratio = Double(Self.maxLongSide) / Double(longSide)
+            let ratio = Double(maxLongSide) / Double(longSide)
             outW = max(16, Int((Double(src.width) * ratio).rounded()) & ~1)
             outH = max(16, Int((Double(src.height) * ratio).rounded()) & ~1)
         }

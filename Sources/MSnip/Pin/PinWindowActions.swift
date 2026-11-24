@@ -144,8 +144,23 @@ extension PinWindow {
     }
 
     @objc func copyImage() { ClipboardAndSave.copyToClipboard(cgImage: currentCGImage, scaleFactor: imageScale) }
+    @objc func copyImageWithPath() {
+        ClipboardAndSave.copyToClipboard(cgImage: currentCGImage, scaleFactor: imageScale, forceIncludePath: true)
+        ToastHUD.show(message: "已复制贴图与临时文件路径 · 可直接粘贴到任意终端")
+    }
     @objc func openOCRPanel() { if let scr = screen ?? NSScreen.main ?? NSScreen.screens.first { onExtractOCR?(currentCGImage, imageScale, scr) } }
     @objc func openTranslatePanel() { if let scr = screen ?? NSScreen.main ?? NSScreen.screens.first { onTranslateImage?(currentCGImage, imageScale, scr) } }
+    @objc func scanBarcodeInPin() {
+        let img = currentCGImage
+        Task { @MainActor in
+            let codes = await VisionTextExtractor.detectBarcodesOffMain(cgImage: img)
+            if let first = codes.first {
+                OverlayView.presentBarcodeToast(first)
+            } else {
+                ToastHUD.show(message: "贴图中未检测到二维码或条形码")
+            }
+        }
+    }
     @objc func toggleTextHighlights() {
         pinContentView.liveTextView.highlightBlocks.toggle()
         highlightMenuItem?.state = pinContentView.liveTextView.highlightBlocks ? .on : .off
@@ -154,6 +169,30 @@ extension PinWindow {
     @objc func quickSaveImage() { onQuickSavePNG?(currentCGImage, imageScale) }
     @objc func resetZoom() { applyZoom(newZoom: 1.0); alphaValue = 1.0 }
     @objc func toggleHalfOpacity() { alphaValue = alphaValue < 0.95 ? 1.0 : 0.55 }
+    @objc func rotateClockwise90() { applyImageTransform(ImageTransform.rotateClockwise90, toast: "已顺时针旋转 90°") }
+    @objc func flipHorizontal() { applyImageTransform(ImageTransform.flipHorizontal, toast: "已水平镜像翻转") }
+
+    private func applyImageTransform(_ transform: (CGImage) -> CGImage?, toast: String) {
+        guard editorCanvas == nil, !isClickThrough else { return }
+        guard let nextCG = transform(currentCGImage) else { return }
+        baseCGImage = nextCG
+        currentCGImage = nextCG
+        activeBaseSampler = nil
+        annotationDoc = AnnotationDocument()
+        let nextBase = NSSize(
+            width: max(8, CGFloat(nextCG.width) / imageScale),
+            height: max(8, CGFloat(nextCG.height) / imageScale)
+        )
+        baseSize = nextBase
+        let sz = NSSize(width: round(nextBase.width * zoomFactor), height: round(nextBase.height * zoomFactor))
+        let old = frame
+        let nx = ((old.midX - sz.width * 0.5) * imageScale).rounded() / imageScale
+        let ny = ((old.midY - sz.height * 0.5) * imageScale).rounded() / imageScale
+        setFrame(NSRect(origin: NSPoint(x: nx, y: ny), size: sz), display: true)
+        pinContentView.liveTextView.configure(cgImage: nextCG, logicalSize: nextBase)
+        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: frame, on: screen) }
+        ToastHUD.show(message: toast)
+    }
 
     @objc func closePin() {
         hideHoverWorkItem?.cancel(); hideHoverWorkItem = nil
@@ -190,16 +229,21 @@ extension PinWindow {
         menu.addItem(.separator())
         menu.addItem(withTitle: "提取图中文字 (T)…", action: #selector(openOCRPanel), keyEquivalent: "o")
         menu.addItem(withTitle: "翻译图中文字 (Y)…", action: #selector(openTranslatePanel), keyEquivalent: "")
+        menu.addItem(withTitle: "扫描二维码 / 条形码", action: #selector(scanBarcodeInPin), keyEquivalent: "")
         let hlItem = NSMenuItem(title: "高亮图中可划选文字块", action: #selector(toggleTextHighlights), keyEquivalent: "")
         self.highlightMenuItem = hlItem
         menu.addItem(hlItem)
         menu.addItem(.separator())
         menu.addItem(withTitle: "复制贴图图像 (按住 ⌘ 可拖拽成文件)", action: #selector(copyImage), keyEquivalent: "c")
-        let quickItem = NSMenuItem(title: "一键快存到图片目录", action: #selector(quickSaveImage), keyEquivalent: "s")
-        quickItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(withTitle: "复制临时文件路径 (供 IDE / 终端粘贴)", action: #selector(copyImageWithPath), keyEquivalent: "")
+        let quickItem = NSMenuItem(title: "一键保存到默认目录", action: #selector(quickSaveImage), keyEquivalent: "s")
         menu.addItem(quickItem)
-        menu.addItem(withTitle: "另存为 PNG...", action: #selector(saveImage), keyEquivalent: "s")
+        let saveAsItem = NSMenuItem(title: "另存为…", action: #selector(saveImage), keyEquivalent: "s")
+        saveAsItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(saveAsItem)
         menu.addItem(.separator())
+        menu.addItem(withTitle: "顺时针旋转 90° (R)", action: #selector(rotateClockwise90), keyEquivalent: "")
+        menu.addItem(withTitle: "水平镜像翻转 (H)", action: #selector(flipHorizontal), keyEquivalent: "")
         menu.addItem(withTitle: "重置 100% 大小与不透明", action: #selector(resetZoom), keyEquivalent: "0")
         menu.addItem(withTitle: "切换半透明对照 (55%)", action: #selector(toggleHalfOpacity), keyEquivalent: "")
         menu.addItem(.separator())

@@ -15,12 +15,13 @@ final class PinWindow: NSPanel {
     var onQuickSavePNG: ((CGImage, CGFloat) -> Void)?
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
     var onTranslateImage: ((CGImage, CGFloat, NSScreen) -> Void)?
+    var onSnapOrigin: ((NSPoint, NSSize, PinWindow) -> NSPoint)?
 
-    let baseCGImage: CGImage
+    var baseCGImage: CGImage
     var activeBaseSampler: PixelSampler?
     var currentCGImage: CGImage
     let imageScale: CGFloat
-    let baseSize: NSSize
+    var baseSize: NSSize
     var zoomFactor: CGFloat = 1.0
     var preGhostAlpha: CGFloat = 1.0
     var isClickThrough: Bool = false
@@ -108,11 +109,10 @@ final class PinWindow: NSPanel {
         hoverBarPanel.barView.onDragMove = { [weak self] in
             guard let self, self.isDraggingFromBar else { return }
             let now = NSEvent.mouseLocation
-            let s = self.imageScale
-            self.setFrameOrigin(NSPoint(
-                x: ((self.dragOriginStart.x + (now.x - self.dragMouseStart.x)) * s).rounded() / s,
-                y: ((self.dragOriginStart.y + (now.y - self.dragMouseStart.y)) * s).rounded() / s
-            ))
+            self.applyDraggedOrigin(raw: NSPoint(
+                x: self.dragOriginStart.x + (now.x - self.dragMouseStart.x),
+                y: self.dragOriginStart.y + (now.y - self.dragMouseStart.y)
+            ), disableSnap: NSEvent.modifierFlags.contains(.option))
             self.hoverBarPanel.reposition(anchoringTo: self.frame, on: self.screen)
         }
         hoverBarPanel.barView.onDragEnd = { [weak self] in
@@ -164,10 +164,10 @@ final class PinWindow: NSPanel {
         case .leftMouseDragged:
             if isDraggingWindow {
                 let now = NSEvent.mouseLocation
-                setFrameOrigin(NSPoint(
-                    x: ((dragOriginStart.x + (now.x - dragMouseStart.x)) * imageScale).rounded() / imageScale,
-                    y: ((dragOriginStart.y + (now.y - dragMouseStart.y)) * imageScale).rounded() / imageScale
-                ))
+                applyDraggedOrigin(raw: NSPoint(
+                    x: dragOriginStart.x + (now.x - dragMouseStart.x),
+                    y: dragOriginStart.y + (now.y - dragMouseStart.y)
+                ), disableSnap: event.modifierFlags.contains(.option))
                 if hoverBarPanel.isVisible {
                     hoverBarPanel.reposition(anchoringTo: frame, on: screen)
                 }
@@ -239,7 +239,7 @@ final class PinWindow: NSPanel {
             return true
         }
         if flags.contains(.command), chars == "s" {
-            if flags.contains(.shift) { quickSaveImage() } else { saveImage() }
+            if flags.contains(.shift) { saveImage() } else { quickSaveImage() }
             return true
         }
         if flags.isEmpty {
@@ -248,9 +248,20 @@ final class PinWindow: NSPanel {
             case "p": enableClickThrough(); return true
             case "t": openOCRPanel(); return true
             case "y": openTranslatePanel(); return true
+            case "r": rotateClockwise90(); return true
+            case "h": flipHorizontal(); return true
             default: break
             }
         }
         return false
+    }
+
+    func applyDraggedOrigin(raw: NSPoint, disableSnap: Bool) {
+        let target = (!disableSnap ? onSnapOrigin?(raw, frame.size, self) : nil) ?? raw
+        let s = imageScale
+        setFrameOrigin(NSPoint(
+            x: (target.x * s).rounded() / s,
+            y: (target.y * s).rounded() / s
+        ))
     }
 }

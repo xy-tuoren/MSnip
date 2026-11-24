@@ -66,11 +66,9 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
 
         let W: CGFloat = 516, H: CGFloat = 524
         let vc = NSViewController()
-        let root = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: W, height: H))
-        root.wantsLayer = true
-        root.layer?.backgroundColor = GeekTheme.cardBg.cgColor
+        let root = GeekSurfaceView(frame: NSRect(x: 0, y: 0, width: W, height: H), fill: GeekTheme.cardBg)
         vc.view = root
-        popover.appearance = NSAppearance(named: .darkAqua)
+        popover.appearance = GeekTheme.popoverAppearance
         popover.contentSize = NSSize(width: W, height: H)
         popover.contentViewController = vc
 
@@ -99,12 +97,7 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         }
         root.addSubview(tabSegment)
 
-        searchContainer = GeekFlippedView(frame: NSRect(x: 14, y: 98, width: W - 28, height: 32))
-        searchContainer.wantsLayer = true
-        searchContainer.layer?.backgroundColor = GeekTheme.inputBg.cgColor
-        searchContainer.layer?.cornerRadius = 7.5
-        searchContainer.layer?.borderWidth = 1.0
-        searchContainer.layer?.borderColor = GeekTheme.border.cgColor
+        searchContainer = GeekSurfaceView(frame: NSRect(x: 14, y: 98, width: W - 28, height: 32), fill: GeekTheme.inputBg, border: GeekTheme.border, cornerRadius: 7.5, borderWidth: 1.0)
         searchContainer.addSubview(ProviderSearchIconView(frame: NSRect(x: 10, y: 0, width: 14, height: 32)))
         searchField = NSTextField()
         searchField.isBordered = false; searchField.drawsBackground = false; searchField.focusRingType = .none
@@ -116,9 +109,7 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         searchContainer.addSubview(searchField)
         root.addSubview(searchContainer)
 
-        let sep = NSView(frame: NSRect(x: 0, y: 97, width: W, height: 1))
-        sep.wantsLayer = true; sep.layer?.backgroundColor = GeekTheme.divider.cgColor
-        root.addSubview(sep)
+        root.addSubview(GeekSurfaceView(frame: NSRect(x: 0, y: 97, width: W, height: 1), fill: GeekTheme.divider))
 
         let sv = NSScrollView(frame: NSRect(x: 0, y: 98, width: W, height: H - 98))
         sv.drawsBackground = false; sv.borderType = .noBorder

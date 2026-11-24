@@ -16,12 +16,12 @@ final class ToastPanel: NSPanel {
             backing: .buffered,
             defer: false
         )
+        self.animationBehavior = .none
+        self.isFloatingPanel = true
         self.level = NSWindow.Level(rawValue: max(
             NSWindow.Level.screenSaver.rawValue + 10,
             Int(CGShieldingWindowLevel()) + 10
         ))
-        self.animationBehavior = .none
-        self.isFloatingPanel = true
         self.becomesKeyOnlyIfNeeded = true
         self.hidesOnDeactivate = false
         self.acceptsMouseMovedEvents = interactive

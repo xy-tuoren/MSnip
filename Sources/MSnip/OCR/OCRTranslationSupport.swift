@@ -5,6 +5,24 @@ import MSnipCore
 /// 双栏对照浮窗流式翻译控制条（自定义清爽胶囊下拉选择器 + 实时流式译文输出）扩展
 @MainActor
 extension OCRResultController {
+    func buildTableCopyButton(in root: NSView) {
+        let btn = OCRPillButton(title: "复制表格", symbol: "tablecells")
+        btn.toolTip = "复制为 Markdown 表格（按住 ⌥ 点击复制 TSV，可直接粘贴进 Excel / Numbers 分列）"
+        btn.isHidden = true
+        btn.onClick = { [weak self] in
+            guard let self, let tbl = self.currentOutput?.tableResult else { return }
+            let useTSV = NSEvent.modifierFlags.contains(.option)
+            ClipboardAndSave.copyText(useTSV ? tbl.tsv : tbl.markdown)
+            self.statusBadgeLabel.stringValue = useTSV
+                ? "✓ 已复制 TSV 表格（\(tbl.rows.count)×\(tbl.columnCount)）"
+                : "✓ 已复制 Markdown 表格（\(tbl.rows.count)×\(tbl.columnCount)）"
+            self.statusBadgeLabel.textColor = MSnipUITheme.success
+            self.relayoutContent()
+        }
+        root.addSubview(btn)
+        self.tableCopyButton = btn
+    }
+
     func applyWindowTheme(dark: Bool) {
         guard let win = window, let root = win.contentView else { return }
         ResultWindowChrome.applyAppearance(to: win, dark: dark)

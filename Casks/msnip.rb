@@ -1,5 +1,5 @@
 cask "msnip" do
-  version "0.2.21"
+  version "0.3.0"
   sha256 :no_check
 
   url "https://github.com/xy-tuoren/MSnip/releases/download/v#{version}/MSnip-v#{version}-macOS.zip"

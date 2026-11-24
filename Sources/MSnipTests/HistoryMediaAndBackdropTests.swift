@@ -150,12 +150,25 @@ func testMilestone3To5Features() {
         check(centerWhite.0 > 250 && centerWhite.1 > 250 && centerWhite.2 > 250, "衬底中心截图卡片区域应保持纯白不偏色: \(centerWhite)")
     }
 
-    // 5) CaptureImageExporter 多格式 (PNG/JPG/HEIC) 与 Retina 1× 缩放回归单测
+    // 5) CaptureImageExporter 多格式 (PNG/JPG/HEIC/AVIF/BMP/TIFF) 运行时探测与 Retina 1× 缩放回归单测
     let src2x = makeSolidFrame(width: 160, height: 120, r: 0.12, g: 0.48, b: 0.92)
-    let pngData = CaptureImageExporter.encode(cgImage: src2x, scaleFactor: 2.0, format: .png, exportAt1x: false)
+    let supportedFmts = CaptureExportFormat.supportedFormats
+    check(
+        supportedFmts.contains(.png) && supportedFmts.contains(.jpeg) && supportedFmts.contains(.bmp) && supportedFmts.contains(.tiff),
+        "所有 macOS 12+ 系统均应原生支持 PNG / JPG / BMP / TIFF 编码"
+    )
+    for fmt in supportedFmts {
+        let encoded = CaptureImageExporter.encodeWithFallback(cgImage: src2x, scaleFactor: 2.0, format: fmt, exportAt1x: false)
+        check(encoded != nil && encoded?.actualFormat == fmt && (encoded?.data.count ?? 0) > 40, "当前系统已声明支持的 \(fmt.segmentTitle) 格式应无依赖编码成功")
+    }
+    check(
+        CaptureExportFormat.from(fileExtension: "jpeg") == .jpeg
+            && CaptureExportFormat.from(fileExtension: "AVIF") == .avif
+            && CaptureExportFormat.from(fileExtension: "tif") == .tiff
+            && CaptureExportFormat.from(fileExtension: "bmp") == .bmp,
+        "扩展名反查应准确识别各图片保存格式"
+    )
     let jpgData = CaptureImageExporter.encode(cgImage: src2x, scaleFactor: 2.0, format: .jpeg, exportAt1x: false)
-    let heicData = CaptureImageExporter.encode(cgImage: src2x, scaleFactor: 2.0, format: .heic, exportAt1x: false)
-    check(pngData != nil && jpgData != nil && heicData != nil, "原生 ImageIO 应支持 PNG / JPG / HEIC 三种格式无依赖编码")
     let scaled1x = CaptureImageExporter.prepareImage(src2x, scaleFactor: 2.0, exportAt1x: true)
     check(
         scaled1x.image.width == 80 && scaled1x.image.height == 60 && scaled1x.effectiveScale == 1.0,
@@ -164,6 +177,98 @@ func testMilestone3To5Features() {
     if let jpg = jpgData, let src = CGImageSourceCreateWithData(jpg as CFData, nil), let dec = CGImageSourceCreateImageAtIndex(src, 0, nil) {
         check(dec.width == 160 && dec.height == 120, "JPEG 编码解码应保持精确像素尺寸")
     }
+
+    // 6) ClipboardTerminalAdapter 终端/访达动态剪贴板投影与惰性临时路径单测
+    check(
+        ClipboardTerminalAdapter.projectionMode(forBundleID: "com.mitchellh.ghostty", adaptiveEnabled: true) == .terminalImageAndPath
+            && ClipboardTerminalAdapter.projectionMode(forBundleID: "com.googlecode.iterm2", adaptiveEnabled: true) == .terminalImageAndPath
+            && ClipboardTerminalAdapter.projectionMode(forBundleID: "com.apple.Terminal", adaptiveEnabled: true) == .terminalImageAndPath
+            && ClipboardTerminalAdapter.projectionMode(forBundleID: "dev.warp.Warp-Stable", adaptiveEnabled: true) == .terminalImageAndPath
+            && ClipboardTerminalAdapter.projectionMode(forBundleID: "com.apple.finder", adaptiveEnabled: true) == .imageAndFileURL
+            && ClipboardTerminalAdapter.projectionMode(forBundleID: "com.google.Chrome", adaptiveEnabled: true) == .imageOnly
+            && ClipboardTerminalAdapter.projectionMode(forBundleID: "com.mitchellh.ghostty", adaptiveEnabled: false) == .imageOnly,
+        "剪贴板投影策略应精准区分终端、访达、普通应用与总开关关闭态"
+    )
+    let termPB = NSPasteboard(name: NSPasteboard.Name("MSnipTermAdaptTest-\(UUID().uuidString)"))
+    _ = ClipboardImagePromise.write(cgImage: src2x, scaleFactor: 2.0, to: termPB, mode: .terminalImageAndPath, transient: true)
+    let termPNG = termPB.data(forType: .png)
+    let termPath = termPB.string(forType: .string)
+    let termURL = (termPB.readObjects(forClasses: [NSURL.self])?.first as? URL)
+    check(
+        (termPNG?.count ?? 0) > 40 && termPath != nil && termURL?.path == termPath && FileManager.default.fileExists(atPath: termPath ?? ""),
+        "终端投影模式应同时提供无损 PNG、fileURL 与真实落盘的无空格临时 PNG 路径"
+    )
+    if let p = termPath { try? FileManager.default.removeItem(atPath: p) }
+
+    // 7) 编辑器 Bundle 识别、AX 焦点语义分类与消费探针单测
+    check(
+        ClipboardTerminalAdapter.isEditorBundleID("com.microsoft.VSCode")
+            && ClipboardTerminalAdapter.isEditorBundleID("com.todesktop.230313mzl4w4u92")
+            && ClipboardTerminalAdapter.isEditorBundleID("dev.zed.Zed")
+            && ClipboardTerminalAdapter.isEditorBundleID("com.jetbrains.intellij")
+            && ClipboardTerminalAdapter.isEditorBundleID("com.google.antigravity")
+            && !ClipboardTerminalAdapter.isEditorBundleID("com.google.Chrome")
+            && !ClipboardTerminalAdapter.isEditorBundleID("com.mitchellh.ghostty"),
+        "编辑器 Bundle ID 识别应覆盖主流 IDE 且绝不误伤浏览器或独立终端"
+    )
+    check(
+        ClipboardTerminalAdapter.projectionMode(forBundleID: "com.microsoft.VSCode", adaptiveEnabled: true, editorFocus: .terminal) == .terminalImageAndPath
+            && ClipboardTerminalAdapter.projectionMode(forBundleID: "com.microsoft.VSCode", adaptiveEnabled: true, editorFocus: .nonTerminalInput) == .imageOnly
+            && ClipboardTerminalAdapter.projectionMode(forBundleID: "com.microsoft.VSCode", adaptiveEnabled: true, editorFocus: .indeterminate) == .imageOnly,
+        "编辑器在焦点明确命中终端时应立即投影路径，编辑区与不透明态应先保持纯净图像"
+    )
+    let xtermChain = [AXNodeSnapshot(role: "AXTextArea", domClasses: ["xterm-helper-textarea"], description: "Terminal 1, zsh")]
+    let zhTermChain = [AXNodeSnapshot(role: "AXTextArea", description: "终端 1, zsh")]
+    let jbTermChain = [
+        AXNodeSnapshot(role: "AXTextArea"),
+        AXNodeSnapshot(role: "AXScrollArea"),
+        AXNodeSnapshot(role: "AXGroup", title: "Terminal")
+    ]
+    let xcodeConsoleChain = [AXNodeSnapshot(role: "AXTextArea", identifier: "IDEConsoleTextView", description: "Debug Console")]
+    let codeFilenameTrap = [AXNodeSnapshot(role: "AXTextArea", domClasses: ["inputarea", "monaco-mouse-cursor-text"], description: "ClipboardTerminalAdapter.swift")]
+    let aiChatChain = [AXNodeSnapshot(role: "AXTextArea", domClasses: ["aislash-editor-input"], description: "Ask anything")]
+    let opaqueWebChain = [AXNodeSnapshot(role: "AXWebArea")]
+    check(
+        EditorTerminalFocusDetector.classifyFocusChain(xtermChain) == .terminal
+            && EditorTerminalFocusDetector.classifyFocusChain(zhTermChain) == .terminal
+            && EditorTerminalFocusDetector.classifyFocusChain(jbTermChain) == .terminal
+            && EditorTerminalFocusDetector.classifyFocusChain(xcodeConsoleChain) == .terminal
+            && EditorTerminalFocusDetector.classifyFocusChain(codeFilenameTrap) == .nonTerminalInput
+            && EditorTerminalFocusDetector.classifyFocusChain(aiChatChain) == .nonTerminalInput
+            && EditorTerminalFocusDetector.classifyFocusChain(opaqueWebChain) == .indeterminate
+            && EditorTerminalFocusDetector.classifyFocusChain([]) == .indeterminate,
+        "编辑器 AX 焦点语义分类应精准区分终端、代码文件名陷阱、AI 聊天框与不透明节点"
+    )
+    let probePB = NSPasteboard(name: NSPasteboard.Name("MSnipProbeTest-\(UUID().uuidString)"))
+    let probeFired = AsyncResultBox<Bool>()
+    let probe = ClipboardConsumptionProbe { probeFired.value = true }
+    _ = ClipboardImagePromise.write(cgImage: src2x, scaleFactor: 2.0, to: probePB, mode: .imageOnly, transient: true, probe: probe)
+    check(!probe.wasImageRequested && probeFired.value == nil, "目标应用未读取图像前消费探针应保持未触发状态")
+    _ = probePB.data(forType: .png)
+    check(probe.wasImageRequested && probeFired.value == true, "目标应用读取 PNG 后消费探针应立即感知并回调")
+
+    // 8) 录屏交互回显快速探测 hasActiveVisuals 与 MP4 零拷贝 CVPixelBuffer 直通单测
+    let comp = RecordingOverlayCompositor(isEnabled: true)
+    check(!comp.hasActiveVisuals(at: 1.0), "无交互事件时 hasActiveVisuals 应返回 false 以启用零拷贝直通")
+    comp.recordClick(normalizedX: 0.5, normalizedY: 0.5, isRightClick: false, at: 1.0)
+    check(comp.hasActiveVisuals(at: 1.1) && !comp.hasActiveVisuals(at: 2.0), "点击波纹应在有效期内返回 true、过期后回落为 false")
+    comp.recordKeyBadge("⌘C", at: 2.5)
+    check(comp.hasActiveVisuals(at: 3.0) && !comp.hasActiveVisuals(at: 4.5), "按键角标应在有效期内返回 true、过期后回落为 false")
+    comp.isEnabled = false
+    check(!comp.hasActiveVisuals(at: 3.0), "关闭交互回显后 hasActiveVisuals 应立即返回 false")
+
+    let zcURL = clipDir.appendingPathComponent("zerocopy.mp4")
+    let zcEnc = MediaClipEncoder(format: .mp4, outputURL: zcURL)
+    var tinyPB: CVPixelBuffer?
+    CVPixelBufferCreate(kCFAllocatorDefault, 33, 33, kCVPixelFormatType_32BGRA, nil, &tinyPB)
+    if let tinyPB { check(!zcEnc.appendPixelBuffer(tinyPB, at: 0.0), "奇数/过小 PixelBuffer 应返回 false 以便回退 CGImage 路径") }
+    var bgraPB: CVPixelBuffer?
+    CVPixelBufferCreate(kCFAllocatorDefault, 160, 120, kCVPixelFormatType_32BGRA, nil, &bgraPB)
+    if let bgraPB {
+        for i in 0..<4 { check(zcEnc.appendPixelBuffer(bgraPB, at: Double(i) * 0.08), "偶数 32BGRA PixelBuffer 应零拷贝直通成功") }
+    }
+    let finishedZC = runAsyncSync { await zcEnc.finish(finalTimestamp: 0.45) }
+    check(finishedZC == zcURL && FileManager.default.fileExists(atPath: zcURL.path), "零拷贝 CVPixelBuffer 直通应成功封装有效 MP4")
 }
 
 private func makeSolidFrame(width: Int, height: Int, r: Double, g: Double, b: Double) -> CGImage {

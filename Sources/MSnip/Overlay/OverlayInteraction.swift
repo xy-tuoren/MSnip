@@ -120,10 +120,14 @@ extension OverlayView {
         }
 
         if spacePressed && sel.contains(p) {
-            dragOp = .movingSelection(initialRect: sel, mouseStart: p)
+            dragOp = .movingSelection(initialRect: sel, mouseStart: p); return
+        }
+        if let selIdx = selectedObjectIndex, doc.objects.indices.contains(selIdx),
+           let handle = doc.objects[selIdx].hitEditableHandle(at: p) {
+            doc.beginTransaction()
+            dragOp = .resizingAnnotation(index: selIdx, handle: handle, initialPayload: doc.objects[selIdx].payload, moved: false)
             return
         }
-
         if sel.contains(p), activeTool != .eraser, let hitIdx = doc.hitIndex(at: p) {
             let directStepHit: Bool = {
                 guard case .step(let c, _, _) = doc.objects[hitIdx].payload else { return false }
@@ -195,7 +199,7 @@ extension OverlayView {
 
         case .resizingSelection(let handle, let initial, let start):
             let delta = CGPoint(x: p.x - start.x, y: p.y - start.y)
-            selection = handle.resizedRect(from: initial, delta: delta, minSize: 8).intersection(bounds)
+            selection = handle.resizedRect(from: initial, delta: delta, minSize: 8, preserveAspect: shift).intersection(bounds)
 
         case .drawingAnnotation(let tool, let start):
             let clampedP = selection.map {
@@ -225,14 +229,21 @@ extension OverlayView {
             continueEraserDrag(from: lastPt, to: p, erased: erased)
 
         case .movingAnnotation(let index, let lastPoint, let moved):
-            let dx = p.x - lastPoint.x
-            let dy = p.y - lastPoint.y
-            let oldBounds = doc.objects[index].bounds.insetBy(dx: -14, dy: -14)
+            let dx = p.x - lastPoint.x, dy = p.y - lastPoint.y
+            let oldB = doc.objects[index].bounds.insetBy(dx: -14, dy: -14)
             doc.updateWithoutHistory(at: index) { $0.translate(dx: dx, dy: dy) }
-            let newBounds = doc.objects[index].bounds.insetBy(dx: -14, dy: -14)
             dragOp = .movingAnnotation(index: index, lastPoint: p, moved: moved || hypot(dx, dy) > 0.5)
-            setNeedsDisplay(oldBounds)
-            setNeedsDisplay(newBounds)
+            setNeedsDisplay(oldB); setNeedsDisplay(doc.objects[index].bounds.insetBy(dx: -14, dy: -14))
+            invalidateMagnifierMove(from: prevPt, to: p)
+
+        case .resizingAnnotation(let index, let handle, let initial, _):
+            let clamped = selection.map { CGPoint(x: min(max(p.x, $0.minX), $0.maxX), y: min(max(p.y, $0.minY), $0.maxY)) } ?? p
+            let oldB = doc.objects[index].bounds.insetBy(dx: -16, dy: -16)
+            doc.updateWithoutHistory(at: index) {
+                $0.payload = Annotation.resizedPayload(from: initial, handle: handle, to: clamped, shift: shift)
+            }
+            dragOp = .resizingAnnotation(index: index, handle: handle, initialPayload: initial, moved: true)
+            setNeedsDisplay(oldB); setNeedsDisplay(doc.objects[index].bounds.insetBy(dx: -16, dy: -16))
             invalidateMagnifierMove(from: prevPt, to: p)
         }
     }
@@ -244,33 +255,21 @@ extension OverlayView {
         switch op {
         case .pendingSnapOrCreate(_, let snapRect):
             if caliperActive { caliperActive = false }
-            if let snap = snapRect, snap.width >= 6, snap.height >= 6 {
-                selection = snap
-                triggerQuickLaunchIfNeeded()
-            }
+            if let snap = snapRect, snap.width >= 6, snap.height >= 6 { selection = snap; triggerQuickLaunchIfNeeded(); scheduleSilentBarcodeScan(for: snap) }
         case .creatingSelection:
             if let sel = selection, (sel.width < 6 || sel.height < 6) {
-                selection = nil
-                updateAutoSnap(at: convert(event.locationInWindow, from: nil), immediate: true)
-            } else if selection != nil {
-                updateToolbarLayout()
-                triggerQuickLaunchIfNeeded()
-            }
+                selection = nil; updateAutoSnap(at: convert(event.locationInWindow, from: nil), immediate: true)
+            } else if let sel = selection { updateToolbarLayout(); triggerQuickLaunchIfNeeded(); scheduleSilentBarcodeScan(for: sel) }
         case .movingSelection, .resizingSelection:
-            updateToolbarLayout()
-            syncMagnifierView()
+            updateToolbarLayout(); syncMagnifierView(); if let sel = selection { scheduleSilentBarcodeScan(for: sel) }
         case .drawingAnnotation(_, let start):
             let end = convert(event.locationInWindow, from: nil)
-            if let draft = draftAnnotation, !draft.isTrivial {
-                doc.append(draft)
-                updateToolbarLayout()
-            } else if hypot(end.x - start.x, end.y - start.y) < 3.5, let hitIdx = doc.hitIndex(at: end) {
-                selectedObjectIndex = hitIdx
-            }
+            if let draft = draftAnnotation, !draft.isTrivial { doc.append(draft); updateToolbarLayout() }
+            else if hypot(end.x - start.x, end.y - start.y) < 3.5, let hitIdx = doc.hitIndex(at: end) { selectedObjectIndex = hitIdx }
             draftAnnotation = nil
         case .erasing(_, let erased):
             doc.commitTransaction(changed: erased); updateToolbarLayout(); if erased { needsDisplay = true }
-        case .movingAnnotation(_, _, let moved):
+        case .movingAnnotation(_, _, let moved), .resizingAnnotation(_, _, _, let moved):
             doc.commitTransaction(changed: moved); updateToolbarLayout()
         }
     }

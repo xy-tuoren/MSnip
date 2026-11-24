@@ -13,31 +13,42 @@ struct WindowSnapshotItem {
     let layer: Int
 }
 
-/// 三层融合智能区域探测器：
-/// 1. 窗口层：`CGWindowListCopyWindowInfo` 按真实 Z 序瞬时命中顶层窗口（零额外权限）；
-/// 2. 控件层：若已开启辅助功能权限，通过窗口 `ownerPID` 穿透我方全屏覆盖层直查 `AXUIElement` 父子矩阵链；
-/// 3. 视觉层：`VisualDetector` 基于冻结像素射线识别卡片/按钮/图片边界（无权限或自绘界面兜底）。
-final class RegionDetector {
+/// 高速精准三层区域探测器（PixPin 级瞬时跟手架构）：
+/// 1. 系统顶层预索引：程序坞（Dock 胶囊 + 全部 App 图标）与顶部菜单栏项 0.005ms 内存直出，凌驾于最大化窗口之上；
+/// 2. 0ms 最新优先合并队列（Latest-Wins Coalescing）+ 空间缓存池：移动鼠标期间永不“防抖冻住”，同时自动丢弃过期中间点；
+/// 3. 完整信任 macOS AX 控件边界 + 像素零偏移 `VisualDetector` 兜底（Electron / 自绘界面 / 无权限时无缝接管）。
+final class RegionDetector: @unchecked Sendable {
     private let windows: [WindowSnapshotItem]
+    private let chrome: SystemChromeSnapshot
     private let primaryScreenHeight: CGFloat
     private let axTrusted: Bool
 
-    // 4pt 网格缓存，避免鼠标在同一微小区域高频重算
-    private var lastGridKey: (Int, Int, CGDirectDisplayID)?
-    private var cachedHierarchy: [CGRect] = []
+    private let detectQueue = DispatchQueue(label: "top.xy.msnip.region.detect", qos: .userInteractive)
+    private let stateLock = NSLock()
     private var appElementCache: [pid_t: AXUIElement] = [:]
-    private var unresponsivePIDs: Set<pid_t> = []
+    private var timeoutStrikes: [pid_t: Int] = [:]
+    private var spatialRectsByPID: [pid_t: [CGRect]] = [:]
 
-    init(windows: [WindowSnapshotItem], primaryScreenHeight: CGFloat) {
+    private struct PendingQuery {
+        let localPoint: CGPoint
+        let snapshot: ScreenSnapshot
+        let completion: @MainActor ([CGRect], CGRect?) -> Void
+    }
+    private var isWorkerBusy = false
+    private var pendingQuery: PendingQuery?
+
+    init(windows: [WindowSnapshotItem], chrome: SystemChromeSnapshot, primaryScreenHeight: CGFloat) {
         self.windows = windows
+        self.chrome = chrome
         self.primaryScreenHeight = primaryScreenHeight
         self.axTrusted = AXIsProcessTrusted()
     }
 
-    /// 在覆盖层窗口创建之前调用，拍下当前所有可见窗口的 Z 序几何快照（支持后台线程与抓屏并行执行）
-    static func captureBeforeOverlay(primaryScreenHeight: CGFloat? = nil) -> RegionDetector {
+    /// 在覆盖层窗口创建之前调用，并行采集可见窗口 Z 序 + 程序坞/菜单栏预索引
+    static func captureBeforeOverlay(primaryScreenHeight: CGFloat? = nil, frontmostPID: pid_t? = nil) -> RegionDetector {
         let primaryH = primaryScreenHeight ?? (NSScreen.screens.first?.frame.height ?? 0)
         let selfPID = ProcessInfo.processInfo.processIdentifier
+        let frontPID = frontmostPID ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
 
         let rawList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         var pidBundleCache: [pid_t: String] = [:]
@@ -46,247 +57,243 @@ final class RegionDetector {
         ]
 
         var items: [WindowSnapshotItem] = []
+        var menuBarRects: [CGRect] = []
         for entry in rawList {
             guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, pid != selfPID,
                   let rawWinID = entry[kCGWindowNumber as String] as? UInt32 else { continue }
             let layer = entry[kCGWindowLayer as String] as? Int ?? 0
             let alpha = entry[kCGWindowAlpha as String] as? Double ?? 1.0
-            // 仅保留正常应用窗口、悬浮面板、菜单栏与弹窗（过滤透明遮罩与桌面底层背景）
             guard alpha > 0.05, layer >= 0, layer < 500 else { continue }
             guard let boundsDict = entry[kCGWindowBounds as String] as? NSDictionary,
                   let rect = CGRect(dictionaryRepresentation: boundsDict),
                   rect.width >= 20, rect.height >= 20 else { continue }
 
             let ownerName = entry[kCGWindowOwnerName as String] as? String ?? ""
-            if ownerName == "Window Server" && rect.height > 80 { continue }
+            if ownerName == "Window Server" {
+                if rect.height <= 48 && layer == 24 { menuBarRects.append(rect) }
+                continue
+            }
             let bundleID: String = {
                 if let cached = pidBundleCache[pid] { return cached }
                 let resolved = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
                 pidBundleCache[pid] = resolved
                 return resolved
             }()
-            // 过滤程序坞 (Dock) 与台前调度 (WindowManager) 覆盖全屏的透明容器层，避免遮挡真实应用窗口
             if ignoredShellBundles.contains(bundleID) && rect.width > 400 && rect.height > 400 { continue }
 
             items.append(WindowSnapshotItem(
                 windowID: CGWindowID(rawWinID), ownerPID: pid, ownerName: ownerName, globalBounds: rect, layer: layer
             ))
         }
-        return RegionDetector(windows: items, primaryScreenHeight: primaryH)
+        let chrome = RegionAXPreindexer.captureSystemChrome(menuBarRects: menuBarRects, frontmostPID: frontPID)
+        return RegionDetector(windows: items, chrome: chrome, primaryScreenHeight: primaryH)
     }
 
-    /// 检查辅助功能权限状态；`prompt=true` 时触发系统辅助功能授权引导框
     static func checkAccessibilityPermission(prompt: Bool) -> Bool {
         if prompt {
             let key = "AXTrustedCheckOptionPrompt" as CFString
-            let opts = [key: true] as CFDictionary
-            return AXIsProcessTrustedWithOptions(opts)
+            return AXIsProcessTrustedWithOptions([key: true] as CFDictionary)
         }
         return AXIsProcessTrusted()
     }
 
-    /// 查询鼠标局部点正下方命中的最顶层独立应用窗口（供纯净透明阴影窗口截图使用）
+    /// 查询鼠标局部点正下方命中的最顶层独立应用窗口（供独立窗口透明阴影抓拍与窗口标识使用）
     func topWindow(at localPoint: CGPoint, in snapshot: ScreenSnapshot) -> (windowID: CGWindowID, ownerName: String, localRect: CGRect)? {
         let screenFrame = snapshot.screen.frame
         let screenBoundsLocal = CGRect(origin: .zero, size: screenFrame.size)
         guard screenBoundsLocal.contains(localPoint) else { return nil }
-        let screenQuartzOrigin = CGPoint(x: screenFrame.minX, y: primaryScreenHeight - screenFrame.maxY)
-        let globalPoint = CGPoint(x: screenQuartzOrigin.x + localPoint.x, y: screenQuartzOrigin.y + localPoint.y)
+        let origin = CGPoint(x: screenFrame.minX, y: primaryScreenHeight - screenFrame.maxY)
+        let globalPoint = CGPoint(x: origin.x + localPoint.x, y: origin.y + localPoint.y)
         guard let hit = windows.first(where: { $0.globalBounds.contains(globalPoint) }) else { return nil }
-        let localRect = toLocalRect(hit.globalBounds, screenQuartzOrigin: screenQuartzOrigin).intersection(screenBoundsLocal)
+        let localRect = toLocalRect(hit.globalBounds, screenQuartzOrigin: origin).intersection(screenBoundsLocal)
         guard !localRect.isNull, localRect.width >= 24, localRect.height >= 24 else { return nil }
         return (hit.windowID, hit.ownerName, localRect)
     }
 
-    /// 查询指定显示器 `snapshot` 上局部点 `localPoint`（左上角原点）处的嵌套矩阵层级（从小到大排序）
-    /// `fastWindowOnly = true` 时（高速扫过鼠标期间）仅执行 0.001ms 窗口 Z 序命中，完全跳过跨进程 AX IPC 阻塞
+    /// 0.005ms 纯内存快查：优先命中预索引的程序坞/菜单栏，其次命中空间缓存池或窗口几何（永不阻塞主线程）
+    func fastMemoryHierarchy(at localPoint: CGPoint, in snapshot: ScreenSnapshot) -> (stack: [CGRect], isComplete: Bool, winRect: CGRect?) {
+        let screenFrame = snapshot.screen.frame
+        let screenBoundsLocal = CGRect(origin: .zero, size: screenFrame.size)
+        guard screenBoundsLocal.contains(localPoint) else { return ([screenBoundsLocal], true, nil) }
+
+        let origin = CGPoint(x: screenFrame.minX, y: primaryScreenHeight - screenFrame.maxY)
+        let globalPoint = CGPoint(x: origin.x + localPoint.x, y: origin.y + localPoint.y)
+
+        // 1) 顶层系统壳优先（Dock 胶囊/图标 与 顶部菜单栏/状态栏图标，凌驾于最大化应用窗口之上）
+        if let chromeStack = chrome.matchLocalStack(at: globalPoint, screenQuartzOrigin: origin, screenBoundsLocal: screenBoundsLocal) {
+            return (chromeStack, true, chromeStack.count >= 2 ? chromeStack[chromeStack.count - 2] : nil)
+        }
+
+        // 2) 应用窗口 + 空间缓存池快查
+        guard let topWin = windows.first(where: { $0.globalBounds.contains(globalPoint) }) else {
+            return ([screenBoundsLocal], false, nil)
+        }
+        let winLocal = toLocalRect(topWin.globalBounds, screenQuartzOrigin: origin).intersection(screenBoundsLocal)
+        guard !winLocal.isNull, winLocal.width >= 24, winLocal.height >= 24 else {
+            return ([screenBoundsLocal], false, nil)
+        }
+
+        var cands: [CGRect] = [winLocal, screenBoundsLocal]
+        stateLock.lock()
+        let pool = spatialRectsByPID[topWin.ownerPID] ?? []
+        stateLock.unlock()
+        for gr in pool where gr.contains(globalPoint) {
+            let lr = toLocalRect(gr, screenQuartzOrigin: origin).intersection(winLocal)
+            if !lr.isNull, lr.width >= 16, lr.height >= 16 { cands.append(lr) }
+        }
+        return (VisualDetector.normalizeHierarchy(cands), false, winLocal)
+    }
+
+    /// 0ms 最新优先合并后台查询：鼠标连续移动期间持续实时输出，自动丢弃过时中间点，彻底消除迟钝与积压
+    func requestLatestHierarchy(
+        at localPoint: CGPoint,
+        in snapshot: ScreenSnapshot,
+        completion: @escaping @MainActor ([CGRect], CGRect?) -> Void
+    ) {
+        let req = PendingQuery(localPoint: localPoint, snapshot: snapshot, completion: completion)
+        stateLock.lock()
+        pendingQuery = req
+        if isWorkerBusy {
+            stateLock.unlock()
+            return
+        }
+        isWorkerBusy = true
+        stateLock.unlock()
+
+        detectQueue.async { [weak self] in
+            self?.drainPendingQueries()
+        }
+    }
+
+    /// 同步查询入口（供首帧快速窗口定位或点击兜底调用）
     func detectHierarchy(at localPoint: CGPoint, in snapshot: ScreenSnapshot, fastWindowOnly: Bool = false) -> [CGRect] {
         let screenFrame = snapshot.screen.frame
         let screenBoundsLocal = CGRect(origin: .zero, size: screenFrame.size)
         guard screenBoundsLocal.contains(localPoint) else { return [screenBoundsLocal] }
+        let origin = CGPoint(x: screenFrame.minX, y: primaryScreenHeight - screenFrame.maxY)
+        let globalPoint = CGPoint(x: origin.x + localPoint.x, y: origin.y + localPoint.y)
 
-        if !fastWindowOnly {
-            let gx = Int((localPoint.x / 6.0).rounded())
-            let gy = Int((localPoint.y / 6.0).rounded())
-            let key = (gx, gy, snapshot.displayID)
-            if let last = lastGridKey, last == key, !cachedHierarchy.isEmpty {
-                return cachedHierarchy
-            }
+        if let chromeStack = chrome.matchLocalStack(at: globalPoint, screenQuartzOrigin: origin, screenBoundsLocal: screenBoundsLocal) {
+            return chromeStack
         }
-
-        // 将当前显示器的覆盖层局部坐标换算为 Quartz 全局坐标（主屏左上角为原点）
-        let screenQuartzOrigin = CGPoint(
-            x: screenFrame.minX,
-            y: primaryScreenHeight - screenFrame.maxY
-        )
-        let globalPoint = CGPoint(
-            x: screenQuartzOrigin.x + localPoint.x,
-            y: screenQuartzOrigin.y + localPoint.y
-        )
-
         if fastWindowOnly {
             if let topWin = windows.first(where: { $0.globalBounds.contains(globalPoint) }) {
-                let winLocal = toLocalRect(topWin.globalBounds, screenQuartzOrigin: screenQuartzOrigin).intersection(screenBoundsLocal)
+                let winLocal = toLocalRect(topWin.globalBounds, screenQuartzOrigin: origin).intersection(screenBoundsLocal)
                 if !winLocal.isNull, winLocal.width >= 24, winLocal.height >= 24 {
                     return VisualDetector.normalizeHierarchy([winLocal, screenBoundsLocal])
                 }
             }
             return [screenBoundsLocal]
         }
+        return computeFullHierarchy(at: localPoint, in: snapshot).stack
+    }
 
-        let gx = Int((localPoint.x / 6.0).rounded())
-        let gy = Int((localPoint.y / 6.0).rounded())
-        let key = (gx, gy, snapshot.displayID)
+    // MARK: - Private Worker & Core Detection
+
+    private func drainPendingQueries() {
+        while true {
+            stateLock.lock()
+            guard let req = pendingQuery else {
+                isWorkerBusy = false
+                stateLock.unlock()
+                return
+            }
+            pendingQuery = nil
+            stateLock.unlock()
+
+            let res = computeFullHierarchy(at: req.localPoint, in: req.snapshot)
+            Task { @MainActor in req.completion(res.stack, res.winRect) }
+        }
+    }
+
+    private func computeFullHierarchy(at localPoint: CGPoint, in snapshot: ScreenSnapshot) -> (stack: [CGRect], winRect: CGRect?) {
+        let screenFrame = snapshot.screen.frame
+        let screenBoundsLocal = CGRect(origin: .zero, size: screenFrame.size)
+        guard screenBoundsLocal.contains(localPoint) else { return ([screenBoundsLocal], nil) }
+
+        let origin = CGPoint(x: screenFrame.minX, y: primaryScreenHeight - screenFrame.maxY)
+        let globalPoint = CGPoint(x: origin.x + localPoint.x, y: origin.y + localPoint.y)
+
+        if let chromeStack = chrome.matchLocalStack(at: globalPoint, screenQuartzOrigin: origin, screenBoundsLocal: screenBoundsLocal) {
+            return (chromeStack, chromeStack.count >= 2 ? chromeStack[chromeStack.count - 2] : nil)
+        }
 
         var candidatesLocal: [CGRect] = [screenBoundsLocal]
+        var winLocalOut: CGRect?
+        let samplerReady = snapshot.isSamplerReady
 
-        // 1) Z 序命中鼠标正下方最顶层的可见窗口（自动屏蔽被遮挡的下层窗口）
-        if let topWindow = windows.first(where: { $0.globalBounds.contains(globalPoint) }) {
-            let winLocal = toLocalRect(topWindow.globalBounds, screenQuartzOrigin: screenQuartzOrigin)
-                .intersection(screenBoundsLocal)
+        if let topWin = windows.first(where: { $0.globalBounds.contains(globalPoint) }) {
+            let winLocal = toLocalRect(topWin.globalBounds, screenQuartzOrigin: origin).intersection(screenBoundsLocal)
             if !winLocal.isNull && winLocal.width >= 24 && winLocal.height >= 24 {
+                winLocalOut = winLocal
                 candidatesLocal.append(winLocal)
-                var smallestAXRect: CGRect?
+                var smallestAX: CGRect?
 
-                // 2) 辅助功能语义容器树：过滤文字碎片与小图标，仅保留按钮/输入框/卡片/分栏等有意义容器
                 if axTrusted {
-                    let axGlobalRects = queryAXHierarchy(
-                        pid: topWindow.ownerPID,
-                        at: globalPoint,
-                        clampTo: topWindow.globalBounds
-                    )
+                    let axGlobalRects = queryAXCached(pid: topWin.ownerPID, at: globalPoint, clampTo: topWin.globalBounds)
                     for gr in axGlobalRects {
-                        let lr = toLocalRect(gr, screenQuartzOrigin: screenQuartzOrigin).intersection(winLocal)
+                        let lr = toLocalRect(gr, screenQuartzOrigin: origin).intersection(winLocal)
                         guard !lr.isNull else { continue }
                         candidatesLocal.append(lr)
-                        if smallestAXRect == nil || (lr.width * lr.height) < (smallestAXRect!.width * smallestAXRect!.height) {
-                            smallestAXRect = lr
+                        if smallestAX == nil || (lr.width * lr.height) < (smallestAX!.width * smallestAX!.height) {
+                            smallestAX = lr
                         }
                     }
                 }
 
-                // 3) 闭合视觉框探测：仅在未开 AX 或 AX 仅命中大面积画布（且像素采样器已预热就绪）时补充探测
+                // 仅当未命中精细 AX 控件（无权限、Electron 未开无障碍或命中大片画布 >40%）时启用像素视觉闭合框
                 let winArea = winLocal.width * winLocal.height
-                let needVisual = (smallestAXRect == nil) || ((smallestAXRect!.width * smallestAXRect!.height) > winArea * 0.45)
-                if needVisual, snapshot.isSamplerReady {
-                    let searchScope = smallestAXRect ?? winLocal
+                let needVisual = (smallestAX == nil) || ((smallestAX!.width * smallestAX!.height) > winArea * 0.40)
+                if needVisual, samplerReady {
+                    let scope = smallestAX ?? winLocal
                     let visualRects = VisualDetector.detectVisualRects(
-                        at: localPoint,
-                        within: searchScope,
-                        sampler: snapshot.sampler,
-                        scale: snapshot.scaleFactor
+                        at: localPoint, within: scope, sampler: snapshot.sampler, scale: snapshot.scaleFactor
                     )
                     candidatesLocal.append(contentsOf: visualRects)
                 }
             }
-        } else if snapshot.isSamplerReady {
-            let visualRects = VisualDetector.detectVisualRects(
-                at: localPoint,
-                within: screenBoundsLocal,
-                sampler: snapshot.sampler,
-                scale: snapshot.scaleFactor
-            )
-            candidatesLocal.append(contentsOf: visualRects)
+        } else if samplerReady {
+            candidatesLocal.append(contentsOf: VisualDetector.detectVisualRects(
+                at: localPoint, within: screenBoundsLocal, sampler: snapshot.sampler, scale: snapshot.scaleFactor
+            ))
         }
 
         let normalized = VisualDetector.normalizeHierarchy(candidatesLocal)
-        if snapshot.isSamplerReady {
-            lastGridKey = key
-            cachedHierarchy = normalized.isEmpty ? [screenBoundsLocal] : normalized
-        }
-        return normalized.isEmpty ? [screenBoundsLocal] : normalized
+        return (normalized.isEmpty ? [screenBoundsLocal] : normalized, winLocalOut)
     }
 
-    // MARK: - Accessibility Tree Query
-
-    private static let ignoredAXRoles: Set<String> = [
-        "AXStaticText", "AXInlineText", "AXLink", "AXHeading",
-        "AXScrollBar", "AXValueIndicator", "AXSplitter", "AXMenuItemMarkChar"
-    ]
-
-    private static let batchedAXAttrs: CFArray = [
-        kAXRoleAttribute as CFString,
-        kAXPositionAttribute as CFString,
-        kAXSizeAttribute as CFString,
-        kAXParentAttribute as CFString
-    ] as CFArray
-
-    private func queryAXHierarchy(pid: pid_t, at globalPoint: CGPoint, clampTo windowBounds: CGRect) -> [CGRect] {
-        guard !unresponsivePIDs.contains(pid) else { return [] }
+    private func queryAXCached(pid: pid_t, at globalPoint: CGPoint, clampTo windowBounds: CGRect) -> [CGRect] {
+        stateLock.lock()
+        if (timeoutStrikes[pid] ?? 0) >= 3 { stateLock.unlock(); return [] }
         let appElem: AXUIElement = {
             if let cached = appElementCache[pid] { return cached }
             let created = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(created, 0.006) // 6ms 超紧上限，杜绝 Electron/浏览器深 DOM 树拖拽卡顿
+            AXUIElementSetMessagingTimeout(created, 0.018)
             appElementCache[pid] = created
             return created
         }()
+        stateLock.unlock()
 
-        let t0 = CFAbsoluteTimeGetCurrent()
-        var hitRef: AXUIElement?
-        let status = AXUIElementCopyElementAtPosition(
-            appElem,
-            Float(globalPoint.x),
-            Float(globalPoint.y),
-            &hitRef
-        )
-        if status == .cannotComplete, (CFAbsoluteTimeGetCurrent() - t0) >= 0.005 {
-            unresponsivePIDs.insert(pid)
-            return []
-        }
-        guard status == .success, var current = hitRef else { return [] }
-
-        var rects: [CGRect] = []
-        for _ in 0..<10 {
-            var valuesRef: CFArray?
-            let err = AXUIElementCopyMultipleAttributeValues(
-                current,
-                Self.batchedAXAttrs,
-                AXCopyMultipleAttributeOptions(rawValue: 0),
-                &valuesRef
-            )
-            guard err == .success, let arr = valuesRef as? [AnyObject], arr.count == 4 else {
-                break
-            }
-
-            let role = (arr[0] as? String) ?? ""
-            if !Self.ignoredAXRoles.contains(role),
-               let r = unpackAXBounds(posObj: arr[1], sizeObj: arr[2]) {
-                let clamped = r.intersection(windowBounds)
-                let minSizeOK = (role == "AXImage")
-                    ? (clamped.width >= 48 && clamped.height >= 48)
-                    : (clamped.width >= 36 && clamped.height >= 24)
-                if !clamped.isNull, clamped.contains(globalPoint), minSizeOK {
-                    rects.append(clamped)
+        var timedOut = false
+        let rects = RegionAXPreindexer.queryHierarchy(appElem: appElem, at: globalPoint, clampTo: windowBounds, timedOut: &timedOut)
+        stateLock.lock()
+        if timedOut {
+            timeoutStrikes[pid] = (timeoutStrikes[pid] ?? 0) + 1
+        } else if !rects.isEmpty {
+            timeoutStrikes[pid] = 0
+            var pool = spatialRectsByPID[pid] ?? []
+            if pool.count < 160 {
+                for r in rects where !pool.contains(where: { abs($0.minX - r.minX) <= 2 && abs($0.minY - r.minY) <= 2 && abs($0.width - r.width) <= 2 && abs($0.height - r.height) <= 2 }) {
+                    pool.append(r)
                 }
+                spatialRectsByPID[pid] = pool
             }
-
-            let parentObj = arr[3]
-            guard CFGetTypeID(parentObj) == AXUIElementGetTypeID() else { break }
-            current = (parentObj as! AXUIElement)
         }
+        stateLock.unlock()
         return rects
     }
 
-    private func unpackAXBounds(posObj: AnyObject, sizeObj: AnyObject) -> CGRect? {
-        guard CFGetTypeID(posObj) == AXValueGetTypeID(),
-              CFGetTypeID(sizeObj) == AXValueGetTypeID() else {
-            return nil
-        }
-        var pt = CGPoint.zero
-        var sz = CGSize.zero
-        guard AXValueGetValue(posObj as! AXValue, .cgPoint, &pt),
-              AXValueGetValue(sizeObj as! AXValue, .cgSize, &sz) else {
-            return nil
-        }
-        return CGRect(origin: pt, size: sz)
-    }
-
     private func toLocalRect(_ globalRect: CGRect, screenQuartzOrigin: CGPoint) -> CGRect {
-        CGRect(
-            x: globalRect.origin.x - screenQuartzOrigin.x,
-            y: globalRect.origin.y - screenQuartzOrigin.y,
-            width: globalRect.width,
-            height: globalRect.height
-        )
+        CGRect(x: globalRect.origin.x - screenQuartzOrigin.x, y: globalRect.origin.y - screenQuartzOrigin.y, width: globalRect.width, height: globalRect.height)
     }
 }

@@ -21,8 +21,32 @@ public enum ResizeHandle: CaseIterable, Sendable {
         }
     }
 
-    /// 根据拖拽增量更新矩形，自动处理反向翻转并支持最小尺寸约束
-    public func resizedRect(from initial: CGRect, delta: CGPoint, minSize: CGFloat = 4) -> CGRect {
+    /// 根据拖拽增量更新矩形，自动处理反向翻转并支持最小尺寸与 Shift 等比缩放约束
+    public func resizedRect(
+        from initial: CGRect,
+        delta: CGPoint,
+        minSize: CGFloat = 4,
+        preserveAspect: Bool = false
+    ) -> CGRect {
+        if preserveAspect, initial.width >= 1, initial.height >= 1 {
+            let ratio = initial.width / initial.height
+            switch self {
+            case .topLeft, .topRight, .bottomRight, .bottomLeft:
+                let anchorX = (self == .topLeft || self == .bottomLeft) ? initial.maxX : initial.minX
+                let anchorY = (self == .topLeft || self == .topRight) ? initial.maxY : initial.minY
+                let dirX: CGFloat = (self == .topLeft || self == .bottomLeft) ? -1 : 1
+                let dirY: CGFloat = (self == .topLeft || self == .topRight) ? -1 : 1
+                let rawW = max(minSize, initial.width + delta.x * dirX)
+                let rawH = max(minSize, initial.height + delta.y * dirY)
+                let scale = max(rawW / initial.width, rawH / initial.height)
+                let w = max(minSize, initial.width * scale)
+                let h = max(minSize, w / ratio)
+                let x = (dirX < 0) ? (anchorX - w) : anchorX
+                let y = (dirY < 0) ? (anchorY - h) : anchorY
+                return CGRect(x: x, y: y, width: w, height: h)
+            default: break
+            }
+        }
         var left = initial.minX
         var right = initial.maxX
         var top = initial.minY

@@ -29,12 +29,13 @@ enum HotKeyConflictProbeStage {
 
         // 1) 互动监听主控卡片
         let heroH: CGFloat = 154
-        let hero = GeekFlippedView(frame: NSRect(x: 14, y: y, width: W - 28, height: heroH))
-        hero.wantsLayer = true
-        hero.layer?.cornerRadius = 11.0
-        hero.layer?.backgroundColor = (isListening ? GeekTheme.accentSoft : GeekTheme.inputBg).cgColor
-        hero.layer?.borderWidth = isListening ? 1.25 : 1.0
-        hero.layer?.borderColor = (isListening ? GeekTheme.accent.withAlphaComponent(0.75) : GeekTheme.border).cgColor
+        let hero = GeekSurfaceView(
+            frame: NSRect(x: 14, y: y, width: W - 28, height: heroH),
+            fill: isListening ? GeekTheme.accentSoft : GeekTheme.inputBg,
+            border: isListening ? GeekTheme.accent.withAlphaComponent(0.75) : GeekTheme.border,
+            cornerRadius: 11.0,
+            borderWidth: isListening ? 1.25 : 1.0
+        )
         container.addSubview(hero)
 
         let badgeColor: NSColor = isListening ? GeekTheme.accent : GeekTheme.inkSecondary
