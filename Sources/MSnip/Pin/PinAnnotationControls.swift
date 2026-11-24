@@ -87,6 +87,10 @@ extension PinAnnotationCanvasView {
                 $0.style.lineWidth = style.lineWidth
                 $0.style.fontSize = style.fontSize
                 $0.style.mosaicBlockSize = style.mosaicBlockSize
+                if case .text(let origin, let content, _) = $0.payload {
+                    let sz = AnnotationRenderer.measureText(content, fontSize: $0.style.fontSize, capsule: $0.style.textCapsule)
+                    $0.payload = .text(origin: origin, content: content, measuredSize: sz)
+                }
             }
             onDocStateChanged?()
             needsDisplay = true
@@ -174,6 +178,7 @@ extension PinAnnotationCanvasView {
         case .ellipse:      payload = .ellipse(Geometry.normalizedRect(from: a, to: boxEnd))
         case .mosaic:       payload = .mosaic(Geometry.normalizedRect(from: a, to: b))
         case .gaussianBlur: payload = .gaussianBlur(Geometry.normalizedRect(from: a, to: b))
+        case .spotlight:    payload = .spotlight(Geometry.normalizedRect(from: a, to: boxEnd))
         case .arrow:        payload = .arrow(from: a, to: lineEnd)
         case .line:         payload = .line(from: a, to: lineEnd)
         case .pen:          payload = .pen(points: [a, b])

@@ -26,6 +26,10 @@ struct AppConfig: Codable {
     var exportAt1xScale: Bool = false
     var appearanceMode: AppAppearanceMode = .dark
     var terminalPasteAdaptEnabled: Bool = true
+    var filenameTemplate: String = SaveFilenameTemplate.defaultTemplate
+    var soundFeedbackEnabled: Bool = false
+    var backdropAspectRatio: BackdropAspectRatio = .auto
+    var backdropWatermark: String = ""
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
@@ -34,6 +38,7 @@ struct AppConfig: Codable {
         case colorCopyFormat, showShortcutTips, preferredRecordingFormat, recordInteractionHUD, recordingOptions, defaultTextCapsule
         case ocrAutoOpenDualPane, translateAutoOpenDualPane, ocrAutoCopy
         case exportImageFormat, exportAt1xScale, appearanceMode, terminalPasteAdaptEnabled
+        case filenameTemplate, soundFeedbackEnabled, backdropAspectRatio, backdropWatermark
     }
 
     init() {}
@@ -75,6 +80,10 @@ struct AppConfig: Codable {
         exportAt1xScale = try c.decodeIfPresent(Bool.self, forKey: .exportAt1xScale) ?? false
         appearanceMode = try c.decodeIfPresent(AppAppearanceMode.self, forKey: .appearanceMode) ?? .dark
         terminalPasteAdaptEnabled = try c.decodeIfPresent(Bool.self, forKey: .terminalPasteAdaptEnabled) ?? true
+        filenameTemplate = try c.decodeIfPresent(String.self, forKey: .filenameTemplate) ?? SaveFilenameTemplate.defaultTemplate
+        soundFeedbackEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundFeedbackEnabled) ?? false
+        backdropAspectRatio = try c.decodeIfPresent(BackdropAspectRatio.self, forKey: .backdropAspectRatio) ?? .auto
+        backdropWatermark = try c.decodeIfPresent(String.self, forKey: .backdropWatermark) ?? ""
     }
 
     func encode(to encoder: Encoder) throws {
@@ -101,6 +110,10 @@ struct AppConfig: Codable {
         try c.encode(exportAt1xScale, forKey: .exportAt1xScale)
         try c.encode(appearanceMode, forKey: .appearanceMode)
         try c.encode(terminalPasteAdaptEnabled, forKey: .terminalPasteAdaptEnabled)
+        try c.encode(filenameTemplate, forKey: .filenameTemplate)
+        try c.encode(soundFeedbackEnabled, forKey: .soundFeedbackEnabled)
+        try c.encode(backdropAspectRatio, forKey: .backdropAspectRatio)
+        try c.encode(backdropWatermark, forKey: .backdropWatermark)
     }
 
     func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {

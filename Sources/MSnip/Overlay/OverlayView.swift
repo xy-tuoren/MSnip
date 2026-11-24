@@ -49,6 +49,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var ocrAutoOpenDualPane: Bool = false
     var translateAutoOpenDualPane: Bool = false
     var ocrAutoCopy: Bool = true
+    var backdropAspectRatio: BackdropAspectRatio = .auto
+    var backdropWatermark: String = ""
     var magnifierLegendCache: (key: String, image: CGImage)?
     var barcodeScanTask: Task<Void, Never>?
 

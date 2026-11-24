@@ -2,14 +2,23 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 设置「通用」页扩展：录屏画质/原刷高帧率/光标/系统音频参数卡片 + 非敏感配置导出导入与系统诊断卡片
+/// 通用页新增导出美化与反馈控件盒（保持主标签页文件 ≤ 300 行）
+@MainActor
+final class GeneralExtraControls {
+    var soundSwitch: GeekToggleSwitch?
+    var filenameField: NSTextField?
+    var backdropRatioSeg: GeekSegmentControl?
+    var watermarkField: NSTextField?
+}
+
+/// 设置「通用」页扩展：录屏参数卡片 + 导出美化/命名/音效卡片 + 配置迁移与诊断卡片
 extension TranslationSettingsWindow {
     func appendRecordingAndBackupCards(in content: GeekFlippedView, startY: CGFloat, cardX: CGFloat, cardW: CGFloat) -> CGFloat {
         let insetX: CGFloat = 16, headerX = cardX + insetX
         let rowH: CGFloat = 44, segH: CGFloat = 28, segY: CGFloat = 8, switchH: CGFloat = 22, switchY: CGFloat = 11
         let switchX = cardW - insetX - 38, headerToCard: CGFloat = 24, sectionGap: CGFloat = 20
 
-        // 1) 录屏参数（5 行：GIF 档位、MP4 清晰度、MP4 帧率、鼠标光标、系统音频）
+        // 1) 录屏参数（5 行）
         addSectionHeader("录屏参数", x: headerX, y: startY, in: content)
         let recCard = GeekCardView(frame: NSRect(x: cardX, y: startY + headerToCard, width: cardW, height: rowH * 5))
         content.addSubview(recCard)
@@ -22,11 +31,7 @@ extension TranslationSettingsWindow {
         gifSeg.onSelect = { [weak self] idx in
             let presets: [(Int, Int)] = [(10, 720), (12, 960), (15, 1280)]
             guard presets.indices.contains(idx) else { return }
-            let (fps, maxSide) = presets[idx]
-            self?.onAppConfigMutated? {
-                $0.recordingOptions.gifFPS = fps
-                $0.recordingOptions.gifMaxLongSide = maxSide
-            }
+            self?.onAppConfigMutated? { $0.recordingOptions.gifFPS = presets[idx].0; $0.recordingOptions.gifMaxLongSide = presets[idx].1 }
         }
         modeControls.gifPresetSegment = gifSeg
         recCard.addSubview(gifSeg)
@@ -48,7 +53,7 @@ extension TranslationSettingsWindow {
         recCard.addHairline(atY: rowH * 2)
         let maxScreenHz = NSScreen.screens.map(\.maximumFramesPerSecond).max() ?? 60
         let nativeBadge = min(120, max(60, maxScreenHz))
-        let fpsTip = "「原刷」自动读取当前显示器刷新率（当前屏最高 \(nativeBadge)fps；原画超 2560px 时自动稳帧 60fps 防硬件编解码掉帧），码率随帧率自适应拉升"
+        let fpsTip = "「原刷」自动读取当前显示器刷新率（当前屏最高 \(nativeBadge)fps；原画超 2560px 时自动稳帧 60fps 防硬件掉帧），码率随帧率自适应拉升"
         addRowLabel("MP4 录制帧率", y: rowH * 2, height: rowH, in: recCard, toolTip: fpsTip)
         let mp4Seg = GeekSegmentControl(items: ["30 fps", "60 fps", "原刷(\(nativeBadge))"], selectedIndex: 0, mono: true)
         mp4Seg.toolTip = fpsTip
@@ -83,8 +88,54 @@ extension TranslationSettingsWindow {
         modeControls.recordAudioSwitch = audioSw
         recCard.addSubview(audioSw)
 
-        // 2) 配置与诊断（2 行）
-        let y2 = recCard.frame.maxY + sectionGap
+        // 2) 导出美化与反馈（4 行：文件名模板、衬底画幅比例、衬底文字水印、轻提示音）
+        let yMid = recCard.frame.maxY + sectionGap
+        addSectionHeader("命名、美化与反馈", x: headerX, y: yMid, in: content)
+        let extCard = GeekCardView(frame: NSRect(x: cardX, y: yMid + headerToCard, width: cardW, height: rowH * 4))
+        content.addSubview(extCard)
+
+        let fnTip = "支持占位符：{date} {time} {yyyy} {MM} {dd} {HH} {mm} {ss} {w} {h}（回车生效，留空恢复默认）"
+        addRowLabel("保存文件名模板", y: 0, height: rowH, in: extCard, toolTip: fnTip)
+        let fnField = makeInlineTextField(placeholder: SaveFilenameTemplate.defaultTemplate, width: 226, y: segY, in: extCard, cardW: cardW, insetX: insetX)
+        fnField.toolTip = fnTip
+        fnField.target = self; fnField.action = #selector(commitFilenameTemplateField(_:))
+        modeControls.extra.filenameField = fnField
+
+        extCard.addHairline(atY: rowH)
+        let arTip = "启用渐变衬底（按 G/P）时的画幅比例：自动贴合或固定为 16:9 / 4:3 / 1:1 社交/演示卡片"
+        addRowLabel("衬底输出比例", y: rowH, height: rowH, in: extCard, toolTip: arTip)
+        let arSeg = GeekSegmentControl(items: BackdropAspectRatio.allCases.map(\.title), selectedIndex: 0, mono: true)
+        arSeg.toolTip = arTip
+        arSeg.frame = NSRect(x: cardW - insetX - 224, y: rowH + segY, width: 224, height: segH)
+        arSeg.onSelect = { [weak self] idx in
+            let all = BackdropAspectRatio.allCases
+            guard all.indices.contains(idx) else { return }
+            self?.onAppConfigMutated? { $0.backdropAspectRatio = all[idx] }
+        }
+        modeControls.extra.backdropRatioSeg = arSeg
+        extCard.addSubview(arSeg)
+
+        extCard.addHairline(atY: rowH * 2)
+        let wmTip = "启用渐变衬底导出时在右下角叠加轻量文字水印（留空不显示，回车生效）"
+        addRowLabel("美化衬底水印", y: rowH * 2, height: rowH, in: extCard, toolTip: wmTip)
+        let wmField = makeInlineTextField(placeholder: "留空不显示，例如 @MSnip", width: 226, y: rowH * 2 + segY, in: extCard, cardW: cardW, insetX: insetX)
+        wmField.toolTip = wmTip
+        wmField.target = self; wmField.action = #selector(commitWatermarkField(_:))
+        modeControls.extra.watermarkField = wmField
+
+        extCard.addHairline(atY: rowH * 3)
+        addRowLabel("复制与保存轻提示音", y: rowH * 3, height: rowH, in: extCard)
+        let sndSw = GeekToggleSwitch(isOn: false)
+        sndSw.frame = NSRect(x: switchX, y: rowH * 3 + switchY, width: 38, height: switchH)
+        sndSw.onToggle = { [weak self] on in
+            self?.onAppConfigMutated? { $0.soundFeedbackEnabled = on }
+            if on { ClipboardAndSave.playFeedbackSound(enabled: true) }
+        }
+        modeControls.extra.soundSwitch = sndSw
+        extCard.addSubview(sndSw)
+
+        // 3) 配置与诊断（2 行）
+        let y2 = extCard.frame.maxY + sectionGap
         addSectionHeader("配置与诊断", x: headerX, y: y2, in: content)
         let bakCard = GeekCardView(frame: NSRect(x: cardX, y: y2 + headerToCard, width: cardW, height: rowH * 2))
         content.addSubview(bakCard)
@@ -103,8 +154,7 @@ extension TranslationSettingsWindow {
         let exportBtn = GeekButton(title: "导出配置", style: .subtle)
         exportBtn.frame = NSRect(x: importBtn.frame.minX - 8 - 78, y: segY, width: 78, height: segH)
         exportBtn.onClick = { [weak self] in
-            let cfg = self?.appConfigProvider?() ?? AppConfig()
-            AppConfigPortability.exportConfigInteractive(cfg)
+            AppConfigPortability.exportConfigInteractive(self?.appConfigProvider?() ?? AppConfig())
         }
         bakCard.addSubview(exportBtn)
 
@@ -114,8 +164,7 @@ extension TranslationSettingsWindow {
         let diagBtn = GeekButton(title: "复制诊断信息", style: .subtle)
         diagBtn.frame = NSRect(x: cardW - insetX - 102, y: rowH + segY, width: 102, height: segH)
         diagBtn.onClick = { [weak self] in
-            let cfg = self?.appConfigProvider?() ?? AppConfig()
-            ClipboardAndSave.copyText(AppConfigPortability.buildDiagnosticReport(config: cfg))
+            ClipboardAndSave.copyText(AppConfigPortability.buildDiagnosticReport(config: self?.appConfigProvider?() ?? AppConfig()))
             ToastHUD.show(message: "✓ 已复制系统环境诊断信息到剪贴板")
         }
         bakCard.addSubview(diagBtn)
@@ -123,17 +172,38 @@ extension TranslationSettingsWindow {
         return bakCard.frame.maxY
     }
 
+    private func makeInlineTextField(placeholder: String, width: CGFloat, y: CGFloat, in card: GeekCardView, cardW: CGFloat, insetX: CGFloat) -> NSTextField {
+        let tf = NSTextField(frame: NSRect(x: cardW - insetX - width, y: y + 2, width: width, height: 24))
+        tf.placeholderString = placeholder
+        tf.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
+        tf.isBordered = true; tf.bezelStyle = .roundedBezel
+        tf.lineBreakMode = .byTruncatingMiddle
+        card.addSubview(tf)
+        return tf
+    }
+
+    @objc private func commitFilenameTemplateField(_ sender: NSTextField) {
+        let raw = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let val = raw.isEmpty ? SaveFilenameTemplate.defaultTemplate : raw
+        sender.stringValue = val
+        onAppConfigMutated? { $0.filenameTemplate = val }
+    }
+
+    @objc private func commitWatermarkField(_ sender: NSTextField) {
+        let val = sender.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        onAppConfigMutated? { $0.backdropWatermark = val }
+    }
+
     func refreshRecordingControlsUI(with cfg: AppConfig) {
         let ro = cfg.recordingOptions
-        let gifIdx = ro.gifMaxLongSide <= 760 ? 0 : (ro.gifMaxLongSide >= 1080 ? 2 : 1)
-        modeControls.gifPresetSegment?.selectedIndex = gifIdx
-        if let rIdx = MP4ResolutionPreset.allCases.firstIndex(of: ro.mp4Resolution) {
-            modeControls.mp4ResSegment?.selectedIndex = rIdx
-        }
-        if let fIdx = MP4FrameRateMode.allCases.firstIndex(of: ro.mp4FPSMode) {
-            modeControls.mp4FpsSegment?.selectedIndex = fIdx
-        }
+        modeControls.gifPresetSegment?.selectedIndex = ro.gifMaxLongSide <= 760 ? 0 : (ro.gifMaxLongSide >= 1080 ? 2 : 1)
+        if let rIdx = MP4ResolutionPreset.allCases.firstIndex(of: ro.mp4Resolution) { modeControls.mp4ResSegment?.selectedIndex = rIdx }
+        if let fIdx = MP4FrameRateMode.allCases.firstIndex(of: ro.mp4FPSMode) { modeControls.mp4FpsSegment?.selectedIndex = fIdx }
         modeControls.recordCursorSwitch?.isOn = ro.showsCursor
         modeControls.recordAudioSwitch?.isOn = ro.captureSystemAudio
+        modeControls.extra.filenameField?.stringValue = cfg.filenameTemplate
+        if let aIdx = BackdropAspectRatio.allCases.firstIndex(of: cfg.backdropAspectRatio) { modeControls.extra.backdropRatioSeg?.selectedIndex = aIdx }
+        modeControls.extra.watermarkField?.stringValue = cfg.backdropWatermark
+        modeControls.extra.soundSwitch?.isOn = cfg.soundFeedbackEnabled
     }
 }

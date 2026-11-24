@@ -159,16 +159,30 @@ enum ClipboardAndSave {
         return result
     }
 
-    /// 免弹窗一键快存高清图片至指定目录（按配置导出 PNG / JPG / HEIC / AVIF / BMP / TIFF 及可选 1× 倍率），成功返回文件 `URL`
+    /// 播放 macOS 系统内置轻量提示音（零外部音频资源文件）
+    @MainActor
+    static func playFeedbackSound(enabled: Bool) {
+        guard enabled else { return }
+        if let snd = NSSound(named: NSSound.Name("Tink")) ?? NSSound(named: NSSound.Name("Pop")) {
+            snd.volume = 0.45
+            snd.play()
+        }
+    }
+
+    /// 免弹窗一键快存高清图片至指定目录（按配置导出 PNG / JPG / HEIC / AVIF / BMP / TIFF、自定义文件名模板及可选 1× 倍率）
     static func quickSavePNG(
         cgImage: CGImage,
         scaleFactor: CGFloat,
         preferredDirectory: String?,
         format: CaptureExportFormat = .png,
-        exportAt1x: Bool = false
+        exportAt1x: Bool = false,
+        filenameTemplate: String = SaveFilenameTemplate.defaultTemplate
     ) -> URL? {
         let dirURL = resolveQuickSaveDirectory(preferred: preferredDirectory)
-        return quickSavePNG(cgImage: cgImage, scaleFactor: scaleFactor, intoDirectory: dirURL, format: format, exportAt1x: exportAt1x)
+        return quickSavePNG(
+            cgImage: cgImage, scaleFactor: scaleFactor, intoDirectory: dirURL,
+            format: format, exportAt1x: exportAt1x, filenameTemplate: filenameTemplate
+        )
     }
 
     static func quickSavePNG(
@@ -176,16 +190,22 @@ enum ClipboardAndSave {
         scaleFactor: CGFloat,
         intoDirectory dirURL: URL,
         format: CaptureExportFormat = .png,
-        exportAt1x: Bool = false
+        exportAt1x: Bool = false,
+        filenameTemplate: String = SaveFilenameTemplate.defaultTemplate
     ) -> URL? {
         guard let result = CaptureImageExporter.encodeWithFallback(
             cgImage: cgImage, scaleFactor: scaleFactor, format: format, exportAt1x: exportAt1x
         ) else { return nil }
         try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
 
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
-        let outURL = dirURL.appendingPathComponent("MSnip-\(formatter.string(from: Date())).\(result.actualFormat.fileExtension)")
+        let fileName = SaveFilenameTemplate.render(
+            template: filenameTemplate,
+            pixelWidth: cgImage.width,
+            pixelHeight: cgImage.height,
+            fileExtension: result.actualFormat.fileExtension,
+            appendMillisIfNoMillis: true
+        )
+        let outURL = dirURL.appendingPathComponent(fileName)
         do {
             try result.data.write(to: outURL, options: .atomic)
             return outURL
@@ -201,12 +221,17 @@ enum ClipboardAndSave {
         scaleFactor: CGFloat,
         initialDirectory: String?,
         format: CaptureExportFormat = .png,
-        exportAt1x: Bool = false
+        exportAt1x: Bool = false,
+        filenameTemplate: String = SaveFilenameTemplate.defaultTemplate
     ) -> (url: URL, dir: String)? {
         let effectiveDefault = format.resolvedForCurrentOS
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
-        let defaultName = "MSnip-\(formatter.string(from: Date())).\(effectiveDefault.fileExtension)"
+        let defaultName = SaveFilenameTemplate.render(
+            template: filenameTemplate,
+            pixelWidth: cgImage.width,
+            pixelHeight: cgImage.height,
+            fileExtension: effectiveDefault.fileExtension,
+            appendMillisIfNoMillis: false
+        )
 
         let panel = NSSavePanel()
         panel.title = "保存截图"

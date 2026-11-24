@@ -218,7 +218,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 activePinCombo: pinCombo,
                 ocrAutoOpenDualPane: self.config.ocrAutoOpenDualPane,
                 translateAutoOpenDualPane: self.config.translateAutoOpenDualPane,
-                ocrAutoCopy: self.config.ocrAutoCopy
+                ocrAutoCopy: self.config.ocrAutoCopy,
+                backdropAspectRatio: self.config.backdropAspectRatio,
+                backdropWatermark: self.config.backdropWatermark
             )
         }
     }
@@ -228,9 +230,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch outcome {
         case .copied(let img, let scale):
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
+            ClipboardAndSave.playFeedbackSound(enabled: config.soundFeedbackEnabled)
             recordHistoryAndRefresh(img: img, scale: scale)
         case .copiedWithPath(let img, let scale):
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale, forceIncludePath: true)
+            ClipboardAndSave.playFeedbackSound(enabled: config.soundFeedbackEnabled)
             recordHistoryAndRefresh(img: img, scale: scale)
             ToastHUD.show(message: "已复制截图与临时 PNG 路径")
         case .saved(let img, let scale):

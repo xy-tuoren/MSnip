@@ -19,6 +19,7 @@ final class GeneralModeControls {
     var mp4FpsSegment: GeekSegmentControl?
     var recordCursorSwitch: GeekToggleSwitch?
     var recordAudioSwitch: GeekToggleSwitch?
+    var extra = GeneralExtraControls()
 }
 
 /// 设置窗口「通用」标签页（基础设置、识字与翻译面板模式、导出格式与钥匙串密钥加密、系统权限状态）

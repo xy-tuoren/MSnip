@@ -49,6 +49,8 @@ extension OverlayView {
             doc.clearAll()
             updateToolbarLayout()
             needsDisplay = true
+        case .autoRedact:
+            performAutoRedactSensitiveText()
         case .cycleCornerRadius:
             toggleCornerRadiusSlider()
         case .cycleBackdrop:
@@ -246,5 +248,47 @@ extension OverlayView {
             height: CGFloat(Int((rect.height * s).rounded()) & ~1)
         )
         onStartRecording?(snapshot.screen, rect, snapshot.cgImage.cropping(to: pxRect))
+    }
+
+    /// 离线一键隐私智能打码：扫描选区敏感字段并合并为单步 Undo 事务批量添加马赛克/毛玻璃遮罩
+    func performAutoRedactSensitiveText() {
+        commitTextEditing()
+        if selection == nil, let snap = hoveredAutoRect { selection = snap }
+        guard let sel = selection, sel.width >= 16, sel.height >= 16 else {
+            ToastHUD.show(message: "请先框选需要智能打码的区域")
+            return
+        }
+        guard let cropped = AnnotationRenderer.bakeExportImage(
+            sampler: snapshot.sampler, selection: sel, imageScale: snapshot.scaleFactor, annotations: []
+        ) else { return }
+        let useBlur = (activeTool == .gaussianBlur)
+        let curStyle = self.style
+        ToastHUD.show(message: "正在离线扫描隐私敏感信息…")
+        Task { @MainActor [weak self] in
+            let normBoxes = await VisionTextExtractor.detectSensitiveBoxesOffMain(cgImage: cropped)
+            guard let self, let activeSel = self.selection, activeSel == sel else { return }
+            guard !normBoxes.isEmpty else {
+                ToastHUD.show(message: "选区内未检测到 API Key、邮箱、手机号、身份证或 IP")
+                return
+            }
+            self.doc.beginTransaction()
+            var nextObjs = self.doc.objects
+            for nb in normBoxes {
+                let rawR = CGRect(
+                    x: activeSel.minX + nb.minX * activeSel.width,
+                    y: activeSel.minY + (1.0 - nb.maxY) * activeSel.height,
+                    width: nb.width * activeSel.width,
+                    height: nb.height * activeSel.height
+                ).insetBy(dx: -3, dy: -2).intersection(activeSel)
+                guard rawR.width >= 4, rawR.height >= 4 else { continue }
+                let payload: AnnotationPayload = useBlur ? .gaussianBlur(rawR) : .mosaic(rawR)
+                nextObjs.append(Annotation(payload: payload, style: curStyle))
+            }
+            self.doc.replaceObjectsWithoutHistory(nextObjs)
+            self.doc.commitTransaction(changed: true)
+            self.updateToolbarLayout()
+            self.needsDisplay = true
+            ToastHUD.show(message: "✓ 已一键遮盖 \(normBoxes.count) 处隐私敏感信息（可按 ⌘Z 撤回）")
+        }
     }
 }

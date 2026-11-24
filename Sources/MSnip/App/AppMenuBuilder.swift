@@ -49,6 +49,11 @@ extension AppController {
         }
         delayRoot.submenu = delaySub
         menu.addItem(delayRoot)
+        let fullItem = NSMenuItem(title: "截取当前全屏", action: #selector(captureCurrentFullScreen), keyEquivalent: "")
+        fullItem.image = MSnipUITheme.menuSymbol("rectangle.dashed")
+        fullItem.toolTip = "点击直接复制当前屏幕全屏（按住 ⌥ 点击直接保存到默认目录）"
+        fullItem.target = self
+        menu.addItem(fullItem)
         menu.addItem(makeHotKeyItem(title: "桌面贴图", symbol: "pin", action: #selector(handlePinHotKey), slot: .pin))
         menu.addItem(makeHotKeyItem(title: "快捷识字", symbol: "text.viewfinder", action: #selector(startQuickOCR), slot: .ocr))
         menu.addItem(makeHotKeyItem(title: "截图翻译", symbol: "character.bubble", action: #selector(startQuickTranslate), slot: .translate))
@@ -154,6 +159,22 @@ extension AppController {
         }
 
         sub.addItem(.separator())
+        if historyRing.entries.count >= 2 {
+            let collageRoot = NSMenuItem(title: "多图对比拼接", action: nil, keyEquivalent: "")
+            collageRoot.image = MSnipUITheme.menuSymbol("rectangle.split.2x1")
+            let colSub = NSMenu()
+            let maxN = min(4, historyRing.entries.count)
+            for n in 2...maxN {
+                let hItem = NSMenuItem(title: "最近 \(n) 张 · 横向并排对比", action: #selector(createHistoryCollage(_:)), keyEquivalent: "")
+                hItem.tag = 10 + n; hItem.target = self
+                colSub.addItem(hItem)
+                let vItem = NSMenuItem(title: "最近 \(n) 张 · 纵向顺序长拼", action: #selector(createHistoryCollage(_:)), keyEquivalent: "")
+                vItem.tag = 20 + n; vItem.target = self
+                colSub.addItem(vItem)
+            }
+            collageRoot.submenu = colSub
+            sub.addItem(collageRoot)
+        }
         let openDir = NSMenuItem(title: "打开最近截图目录…", action: #selector(openHistoryDirectory), keyEquivalent: "")
         openDir.image = MSnipUITheme.menuSymbol("folder")
         openDir.target = self

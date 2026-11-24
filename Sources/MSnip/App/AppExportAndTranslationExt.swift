@@ -74,11 +74,13 @@ extension AppController {
         let dirURL = URL(fileURLWithPath: directoryPath, isDirectory: true)
         guard let url = ClipboardAndSave.quickSavePNG(
             cgImage: img, scaleFactor: scale, intoDirectory: dirURL,
-            format: config.exportImageFormat, exportAt1x: config.exportAt1xScale
+            format: config.exportImageFormat, exportAt1x: config.exportAt1xScale,
+            filenameTemplate: config.filenameTemplate
         ) else {
             ToastHUD.show(message: "保存图片失败")
             return
         }
+        ClipboardAndSave.playFeedbackSound(enabled: config.soundFeedbackEnabled)
         if rememberDirectory {
             config.recordSaveDirectory(directoryPath)
             config.save()
@@ -103,8 +105,10 @@ extension AppController {
             scaleFactor: scale,
             initialDirectory: config.recentSaveDirectories.first ?? config.lastSaveDirectory,
             format: config.exportImageFormat,
-            exportAt1x: config.exportAt1xScale
+            exportAt1x: config.exportAt1xScale,
+            filenameTemplate: config.filenameTemplate
         ) else { return }
+        ClipboardAndSave.playFeedbackSound(enabled: config.soundFeedbackEnabled)
         config.recordSaveDirectory(res.dir)
         config.save()
         rebuildMenu()

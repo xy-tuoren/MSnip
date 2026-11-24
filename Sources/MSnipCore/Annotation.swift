@@ -14,6 +14,7 @@ public enum ToolKind: Int, CaseIterable, Codable, Sendable {
     case gaussianBlur = 9
     case text = 0
     case eraser = 10
+    case spotlight = 11
 
     public var title: String {
         switch self {
@@ -28,6 +29,7 @@ public enum ToolKind: Int, CaseIterable, Codable, Sendable {
         case .gaussianBlur: return "毛玻璃模糊 (9)"
         case .text:         return "文字标注 (0)"
         case .eraser:       return "橡皮擦 (E)"
+        case .spotlight:    return "聚光灯高亮"
         }
     }
 
@@ -44,6 +46,7 @@ public enum ToolKind: Int, CaseIterable, Codable, Sendable {
         case .gaussianBlur: return "drop.circle"
         case .text:         return "textformat"
         case .eraser:       return "eraser"
+        case .spotlight:    return "light.max"
         }
     }
 }
@@ -128,6 +131,7 @@ public enum AnnotationPayload: Equatable, Sendable {
     case step(center: CGPoint, tail: CGPoint?, number: Int)
     case mosaic(CGRect)
     case gaussianBlur(CGRect)
+    case spotlight(CGRect)
     case text(origin: CGPoint, content: String, measuredSize: CGSize)
 }
 
@@ -149,7 +153,7 @@ public struct Annotation: Equatable, Identifiable, Sendable {
         switch payload {
         case .rect(let r), .ellipse(let r):
             return r.insetBy(dx: -pad, dy: -pad)
-        case .mosaic(let r), .gaussianBlur(let r):
+        case .mosaic(let r), .gaussianBlur(let r), .spotlight(let r):
             return r
         case .line(let a, let b):
             return Geometry.normalizedRect(from: a, to: b).insetBy(dx: -pad, dy: -pad)
@@ -189,7 +193,7 @@ public struct Annotation: Equatable, Identifiable, Sendable {
     /// 判断是否过小（防单击误触产生看不见的幽灵图形；步骤序号支持单击即落点故永不退化）
     public var isTrivial: Bool {
         switch payload {
-        case .rect(let r), .ellipse(let r), .mosaic(let r), .gaussianBlur(let r):
+        case .rect(let r), .ellipse(let r), .mosaic(let r), .gaussianBlur(let r), .spotlight(let r):
             return r.width < 3 || r.height < 3
         case .arrow(let a, let b), .line(let a, let b):
             return hypot(b.x - a.x, b.y - a.y) < 4
@@ -215,7 +219,7 @@ public struct Annotation: Equatable, Identifiable, Sendable {
             return outer.contains(p) && !inner.contains(p)
         case .ellipse(let r):
             return Geometry.hitEllipse(point: p, in: r, filled: false, tolerance: halfW)
-        case .mosaic(let r), .gaussianBlur(let r):
+        case .mosaic(let r), .gaussianBlur(let r), .spotlight(let r):
             return r.insetBy(dx: -tolerance, dy: -tolerance).contains(p)
         case .line(let a, let b), .arrow(let a, let b):
             return Geometry.distanceToSegment(point: p, a: a, b: b) <= halfW
@@ -247,6 +251,8 @@ public struct Annotation: Equatable, Identifiable, Sendable {
             payload = .mosaic(r.offsetBy(dx: dx, dy: dy))
         case .gaussianBlur(let r):
             payload = .gaussianBlur(r.offsetBy(dx: dx, dy: dy))
+        case .spotlight(let r):
+            payload = .spotlight(r.offsetBy(dx: dx, dy: dy))
         case .arrow(let a, let b):
             payload = .arrow(from: CGPoint(x: a.x + dx, y: a.y + dy), to: CGPoint(x: b.x + dx, y: b.y + dy))
         case .line(let a, let b):

@@ -23,7 +23,7 @@ public extension Annotation {
     /// 返回当前标注支持的二次编辑控制柄列表（供画布绘制与鼠标命中）
     func editableHandles() -> [AnnotationHandlePoint] {
         switch payload {
-        case .rect(let r), .ellipse(let r), .mosaic(let r), .gaussianBlur(let r):
+        case .rect(let r), .ellipse(let r), .mosaic(let r), .gaussianBlur(let r), .spotlight(let r):
             return [
                 AnnotationHandlePoint(handle: .topLeft, point: CGPoint(x: r.minX, y: r.minY)),
                 AnnotationHandlePoint(handle: .topRight, point: CGPoint(x: r.maxX, y: r.minY)),
@@ -72,6 +72,8 @@ public extension Annotation {
             return .mosaic(resizeBox(r, handle: handle, to: target, shift: shift, minSize: minBoxSize))
         case .gaussianBlur(let r):
             return .gaussianBlur(resizeBox(r, handle: handle, to: target, shift: shift, minSize: minBoxSize))
+        case .spotlight(let r):
+            return .spotlight(resizeBox(r, handle: handle, to: target, shift: shift, minSize: minBoxSize))
         case .arrow(let a, let b):
             if handle == .startPoint {
                 let p = shift ? Geometry.angleSnappedEnd(from: b, to: target) : target

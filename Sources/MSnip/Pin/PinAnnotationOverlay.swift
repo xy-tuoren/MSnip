@@ -24,6 +24,7 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
         case drawing(tool: ToolKind, start: CGPoint)
         case erasing(lastPt: CGPoint, erased: Bool)
         case moving(index: Int, lastPt: CGPoint, moved: Bool)
+        case resizing(index: Int, handle: AnnotationHandle, initialPayload: AnnotationPayload, moved: Bool)
     }
 
     private var dragState: CanvasDrag?
@@ -82,6 +83,13 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
             ctx.setLineWidth(1.2 / z)
             ctx.setLineDash(phase: 0, lengths: [4 / z, 3 / z])
             ctx.stroke(doc.objects[idx].bounds)
+            ctx.setLineDash(phase: 0, lengths: [])
+            let hr = 4.5 / z
+            for hp in doc.objects[idx].editableHandles() {
+                let r = CGRect(x: hp.point.x - hr, y: hp.point.y - hr, width: hr * 2, height: hr * 2)
+                ctx.setFillColor(NSColor.white.cgColor); ctx.fillEllipse(in: r)
+                ctx.setStrokeColor(MSnipUITheme.accent.cgColor); ctx.setLineWidth(1.6 / z); ctx.strokeEllipse(in: r)
+            }
         }
         if activeTool == .eraser, let pt = lastHoverPoint {
             let r = style.eraserRadius
@@ -120,6 +128,12 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
         let p = logicalPoint(for: event)
         if event.clickCount == 2, let hit = doc.hitIndex(at: p), case .text = doc.objects[hit].payload {
             startTextField(at: p, existing: hit)
+            return
+        }
+        if let selIdx = selectedIndex, doc.objects.indices.contains(selIdx),
+           let handle = doc.objects[selIdx].hitEditableHandle(at: p, radius: 9.0 / max(0.25, zoomProvider())) {
+            doc.beginTransaction()
+            dragState = .resizing(index: selIdx, handle: handle, initialPayload: doc.objects[selIdx].payload, moved: false)
             return
         }
 
@@ -182,6 +196,12 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
             doc.updateWithoutHistory(at: index) { $0.translate(dx: dx, dy: dy) }
             dragState = .moving(index: index, lastPt: p, moved: moved || hypot(dx, dy) > 0.5)
             needsDisplay = true
+        case .resizing(let index, let handle, let initial, _):
+            doc.updateWithoutHistory(at: index) {
+                $0.payload = Annotation.resizedPayload(from: initial, handle: handle, to: p, shift: shift)
+            }
+            dragState = .resizing(index: index, handle: handle, initialPayload: initial, moved: true)
+            needsDisplay = true
         }
     }
 
@@ -202,7 +222,7 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
             doc.commitTransaction(changed: erased)
             onDocStateChanged?()
             if erased { needsDisplay = true }
-        case .moving(_, _, let moved):
+        case .moving(_, _, let moved), .resizing(_, _, _, let moved):
             doc.commitTransaction(changed: moved)
             onDocStateChanged?()
         }

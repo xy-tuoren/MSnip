@@ -28,6 +28,7 @@ final class PinWindow: NSPanel {
 
     var annotationDoc = AnnotationDocument()
     var editorCanvas: PinAnnotationCanvasView?
+    var cropOverlay: PinCropOverlayView?
     var toolbarPanel: PinToolbarPanel?
     let hoverBarPanel = PinHoverBarPanel()
 
@@ -134,7 +135,7 @@ final class PinWindow: NSPanel {
     // MARK: - Event Routing (Direct Text Selection + Blank/Handle Drag + Guaranteed Esc)
 
     override func sendEvent(_ event: NSEvent) {
-        if editorCanvas != nil {
+        if editorCanvas != nil || cropOverlay != nil {
             super.sendEvent(event)
             return
         }
@@ -245,6 +246,7 @@ final class PinWindow: NSPanel {
         if flags.isEmpty {
             switch chars {
             case "e": beginAnnotationEditing(); return true
+            case "c": beginCropEditing(); return true
             case "p": enableClickThrough(); return true
             case "t": openOCRPanel(); return true
             case "y": openTranslatePanel(); return true

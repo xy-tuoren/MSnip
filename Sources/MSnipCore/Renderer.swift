@@ -94,12 +94,35 @@ public enum AnnotationRenderer {
         if let clipRect {
             ctx.clip(to: clipRect)
         }
+        // 优先渲染聚光灯压暗遮罩（多块聚光灯同时照亮各自焦点区域，其余标注叠加在其上方保持清晰）
+        var spotlightRects: [CGRect] = []
+        for (idx, item) in annotations.enumerated() where idx != skipIndex {
+            if case .spotlight(let r) = item.payload, r.width >= 3, r.height >= 3 { spotlightRects.append(r) }
+        }
+        if let draft, case .spotlight(let r) = draft.payload, r.width >= 3, r.height >= 3 {
+            spotlightRects.append(r)
+        }
+        if !spotlightRects.isEmpty, let area = clipRect {
+            drawSpotlightMask(in: ctx, area: area, cutouts: spotlightRects)
+        }
         for (idx, item) in annotations.enumerated() where idx != skipIndex {
             drawSingle(item, in: ctx, sampler: sampler, imageScale: imageScale, isDraft: false)
         }
         if let draft {
             drawSingle(draft, in: ctx, sampler: sampler, imageScale: imageScale, isDraft: true)
         }
+        ctx.restoreGState()
+    }
+
+    private static func drawSpotlightMask(in ctx: CGContext, area: CGRect, cutouts: [CGRect]) {
+        ctx.saveGState()
+        ctx.setFillColor(CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.48))
+        ctx.addRect(area.insetBy(dx: -2, dy: -2))
+        for r in cutouts {
+            let cr = min(6.0, min(r.width, r.height) * 0.2)
+            ctx.addPath(CGPath(roundedRect: r, cornerWidth: cr, cornerHeight: cr, transform: nil))
+        }
+        ctx.fillPath(using: .evenOdd)
         ctx.restoreGState()
     }
 
@@ -151,41 +174,18 @@ public enum AnnotationRenderer {
             AnnotationEffectsRenderer.drawSmoothStroke(points: pts, in: ctx)
 
         case .highlighter(let pts):
-            AnnotationEffectsRenderer.drawHighlighter(
-                points: pts,
-                style: item.style,
-                in: ctx,
-                sampler: sampler,
-                scale: imageScale
-            )
-
+            AnnotationEffectsRenderer.drawHighlighter(points: pts, style: item.style, in: ctx, sampler: sampler, scale: imageScale)
         case .step(let center, let tail, let num):
-            AnnotationEffectsRenderer.drawStepBadge(
-                center: center,
-                tail: tail,
-                number: num,
-                style: item.style,
-                in: ctx
-            )
-
+            AnnotationEffectsRenderer.drawStepBadge(center: center, tail: tail, number: num, style: item.style, in: ctx)
         case .mosaic(let rect):
-            AnnotationEffectsRenderer.drawMosaic(
-                rect: rect,
-                blockSize: item.style.mosaicBlockSize,
-                in: ctx,
-                sampler: sampler,
-                scale: imageScale
-            )
-
+            AnnotationEffectsRenderer.drawMosaic(rect: rect, blockSize: item.style.mosaicBlockSize, in: ctx, sampler: sampler, scale: imageScale)
         case .gaussianBlur(let rect):
-            AnnotationEffectsRenderer.drawGaussianBlur(
-                rect: rect,
-                blockSize: item.style.mosaicBlockSize,
-                in: ctx,
-                sampler: sampler,
-                scale: imageScale,
-                isDraft: isDraft
-            )
+            AnnotationEffectsRenderer.drawGaussianBlur(rect: rect, blockSize: item.style.mosaicBlockSize, in: ctx, sampler: sampler, scale: imageScale, isDraft: isDraft)
+        case .spotlight(let rect):
+            let cr = min(6.0, min(rect.width, rect.height) * 0.2)
+            ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.85))
+            ctx.setLineWidth(1.5)
+            ctx.addPath(CGPath(roundedRect: rect, cornerWidth: cr, cornerHeight: cr, transform: nil)); ctx.strokePath()
 
         case .text(let origin, let content, let measured):
             if item.style.textCapsule {
@@ -204,7 +204,9 @@ public enum AnnotationRenderer {
         imageScale: CGFloat,
         annotations: [Annotation],
         cornerRadiusPt: CGFloat = 0,
-        backdropStyle: BackdropStyle = .none
+        backdropStyle: BackdropStyle = .none,
+        backdropAspectRatio: BackdropAspectRatio = .auto,
+        watermarkText: String = ""
     ) -> CGImage? {
         let pxRect = CGRect(
             x: round(selection.minX * imageScale),
@@ -243,7 +245,10 @@ public enum AnnotationRenderer {
         ctx.translateBy(x: -selection.minX, y: -selection.minY)
         drawAnnotations(in: ctx, annotations: annotations, draft: nil, sampler: sampler, imageScale: imageScale, clipRect: selection)
         guard let rawCard = ctx.makeImage() else { return nil }
-        return BackdropBeautifier.apply(to: rawCard, style: backdropStyle, imageScale: imageScale, innerCornerRadiusPt: cornerRadiusPt)
+        return BackdropBeautifier.apply(
+            to: rawCard, style: backdropStyle, imageScale: imageScale,
+            innerCornerRadiusPt: cornerRadiusPt, aspectRatio: backdropAspectRatio, watermarkText: watermarkText
+        )
     }
 
     // MARK: - Private Text Helpers

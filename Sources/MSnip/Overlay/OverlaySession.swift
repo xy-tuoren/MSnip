@@ -62,7 +62,9 @@ final class OverlaySession {
         activePinCombo: KeyCombo? = nil,
         ocrAutoOpenDualPane: Bool = false,
         translateAutoOpenDualPane: Bool = false,
-        ocrAutoCopy: Bool = true
+        ocrAutoCopy: Bool = true,
+        backdropAspectRatio: BackdropAspectRatio = .auto,
+        backdropWatermark: String = ""
     ) {
         let mouse = NSEvent.mouseLocation
         var targetWindowToFocus: OverlayWindow?
@@ -92,6 +94,8 @@ final class OverlaySession {
             view.ocrAutoOpenDualPane = ocrAutoOpenDualPane
             view.translateAutoOpenDualPane = translateAutoOpenDualPane
             view.ocrAutoCopy = ocrAutoCopy
+            view.backdropAspectRatio = backdropAspectRatio
+            view.backdropWatermark = backdropWatermark
             if launchMode == .quickRecord {
                 view.setRecordingMode(true, notifySiblings: false)
             }

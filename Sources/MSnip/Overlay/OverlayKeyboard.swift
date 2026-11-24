@@ -76,7 +76,7 @@ extension OverlayView {
                 }
                 return
             case "s":
-                if shift { quickSaveInPlace() } else { exportAndFinish(mode: .save) }
+                if shift { exportAndFinish(mode: .save) } else { quickSaveInPlace() }
                 return
             case "b": toggleTextCapsuleMode(); return
             case "a": selection = bounds; return

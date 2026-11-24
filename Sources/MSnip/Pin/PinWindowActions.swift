@@ -9,7 +9,7 @@ extension PinWindow {
         hideHoverWorkItem?.cancel()
         hideHoverWorkItem = nil
 
-        if isClickThrough || editorCanvas != nil {
+        if isClickThrough || editorCanvas != nil || cropOverlay != nil {
             hoverBarPanel.orderOut(nil)
             return
         }
@@ -104,6 +104,22 @@ extension PinWindow {
             case .undo: _ = canvas.doc.undo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .redo: _ = canvas.doc.redo(); canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .clearAnnotations: canvas.doc.clearAll(); canvas.selectedIndex = nil; canvas.needsDisplay = true; canvas.onDocStateChanged?()
+            case .autoRedact:
+                let useBlur = (canvas.activeTool == .gaussianBlur), st = canvas.style, img = self.baseCGImage, bSz = self.baseSize
+                ToastHUD.show(message: "正在离线扫描隐私敏感信息…")
+                Task { @MainActor [weak canvas] in
+                    let boxes = await VisionTextExtractor.detectSensitiveBoxesOffMain(cgImage: img)
+                    guard let canvas, !boxes.isEmpty else { ToastHUD.show(message: "未检测到隐私敏感信息"); return }
+                    canvas.doc.beginTransaction()
+                    var objs = canvas.doc.objects
+                    for nb in boxes {
+                        let r = CGRect(x: nb.minX * bSz.width, y: (1 - nb.maxY) * bSz.height, width: nb.width * bSz.width, height: nb.height * bSz.height).insetBy(dx: -3, dy: -2).intersection(CGRect(origin: .zero, size: bSz))
+                        if r.width >= 4, r.height >= 4 { objs.append(Annotation(payload: useBlur ? .gaussianBlur(r) : .mosaic(r), style: st)) }
+                    }
+                    canvas.doc.replaceObjectsWithoutHistory(objs); canvas.doc.commitTransaction(changed: true)
+                    canvas.needsDisplay = true; canvas.onDocStateChanged?()
+                    ToastHUD.show(message: "✓ 已一键遮盖 \(boxes.count) 处隐私敏感信息")
+                }
             case .cancel: self.endAnnotationEditing(commit: false)
             case .confirmCopy: self.annotationDoc = canvas.doc; self.endAnnotationEditing(commit: true)
             default: break
@@ -197,6 +213,7 @@ extension PinWindow {
     @objc func closePin() {
         hideHoverWorkItem?.cancel(); hideHoverWorkItem = nil
         hoverBarPanel.orderOut(nil)
+        endCropEditing()
         endAnnotationEditing(commit: false, reanalyzeLiveText: false)
         activeBaseSampler = nil
         pinContentView.liveTextView.clearAll()
@@ -225,6 +242,7 @@ extension PinWindow {
     func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(withTitle: "编辑 / 二次标注贴图 (E)…", action: #selector(beginAnnotationEditing), keyEquivalent: "")
+        menu.addItem(withTitle: "二次裁剪贴图 (C)…", action: #selector(beginCropEditing), keyEquivalent: "")
         menu.addItem(withTitle: "开启鼠标穿透对照 (P)", action: #selector(enableClickThrough), keyEquivalent: "")
         menu.addItem(.separator())
         menu.addItem(withTitle: "提取图中文字 (T)…", action: #selector(openOCRPanel), keyEquivalent: "o")

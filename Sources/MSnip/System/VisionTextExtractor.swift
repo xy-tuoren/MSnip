@@ -100,6 +100,37 @@ enum VisionTextExtractor {
         }
     }
 
+    /// 离线扫描选区中的隐私敏感子串（API Key / 邮箱 / 手机号 / 身份证 / IP / 银行卡），返回精确局部归一化边界框（左下角 `0..1`）
+    static func detectSensitiveBoxesOffMain(cgImage: CGImage) async -> [CGRect] {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let prepared = OCRImagePreprocessor.prepare(cgImage)
+                let textReq = makeAccurateTextRequest(exactCodeMode: true)
+                let handler = VNImageRequestHandler(cgImage: prepared.cgImage, options: [:])
+                try? handler.perform([textReq])
+
+                var boxes: [CGRect] = []
+                for item in textReq.results ?? [] {
+                    guard let best = item.topCandidates(1).first else { continue }
+                    let raw = best.string
+                    let hits = SensitiveTextDetector.detect(in: raw)
+                    for hit in hits {
+                        let normBox: CGRect
+                        if let subObs = try? best.boundingBox(for: hit.range) {
+                            normBox = prepared.mapBoxBack(subObs.boundingBox)
+                        } else {
+                            normBox = prepared.mapBoxBack(item.boundingBox)
+                        }
+                        if normBox.width > 0.002 && normBox.height > 0.002 {
+                            boxes.append(normBox)
+                        }
+                    }
+                }
+                cont.resume(returning: boxes)
+            }
+        }
+    }
+
     /// 提取段落级聚合块（归一化左下角坐标系 `0..1`），供页内段落原位翻译渲染
     static func recognizeParagraphsOffMain(cgImage: CGImage) async -> [OCRParagraphBlock] {
         let (observations, _) = await performAccurateVisionOCR(cgImage: cgImage, exactCodeMode: false, detectBarcodes: false)

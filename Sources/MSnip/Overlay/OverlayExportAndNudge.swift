@@ -11,10 +11,8 @@ extension OverlayView {
         if !plainForOCR, let translated = inPlaceTranslateView?.translatedImage {
             if backdropStyle != .none {
                 return BackdropBeautifier.apply(
-                    to: translated,
-                    style: backdropStyle,
-                    imageScale: snapshot.scaleFactor,
-                    innerCornerRadiusPt: cornerRadiusPt
+                    to: translated, style: backdropStyle, imageScale: snapshot.scaleFactor,
+                    innerCornerRadiusPt: cornerRadiusPt, aspectRatio: backdropAspectRatio, watermarkText: backdropWatermark
                 )
             }
             if cornerRadiusPt > 0.5 {
@@ -37,12 +35,11 @@ extension OverlayView {
             return translated
         }
         return AnnotationRenderer.bakeExportImage(
-            sampler: snapshot.sampler,
-            selection: targetRect,
-            imageScale: snapshot.scaleFactor,
-            annotations: doc.objects,
-            cornerRadiusPt: plainForOCR ? 0 : cornerRadiusPt,
-            backdropStyle: plainForOCR ? .none : backdropStyle
+            sampler: snapshot.sampler, selection: targetRect, imageScale: snapshot.scaleFactor,
+            annotations: doc.objects, cornerRadiusPt: plainForOCR ? 0 : cornerRadiusPt,
+            backdropStyle: plainForOCR ? .none : backdropStyle,
+            backdropAspectRatio: plainForOCR ? .auto : backdropAspectRatio,
+            watermarkText: plainForOCR ? "" : backdropWatermark
         )
     }
 
@@ -119,6 +116,8 @@ extension OverlayView {
             payload = .mosaic(Geometry.normalizedRect(from: a, to: b))
         case .gaussianBlur:
             payload = .gaussianBlur(Geometry.normalizedRect(from: a, to: b))
+        case .spotlight:
+            payload = .spotlight(Geometry.normalizedRect(from: a, to: endForBox))
         case .arrow:
             payload = .arrow(from: a, to: endForLine)
         case .line:
@@ -180,6 +179,10 @@ extension OverlayView {
                 $0.style.lineWidth = style.lineWidth
                 $0.style.fontSize = style.fontSize
                 $0.style.mosaicBlockSize = style.mosaicBlockSize
+                if case .text(let origin, let content, _) = $0.payload {
+                    let newSz = AnnotationRenderer.measureText(content, fontSize: $0.style.fontSize, capsule: $0.style.textCapsule)
+                    $0.payload = .text(origin: origin, content: content, measuredSize: newSz)
+                }
             }
         }
         onStyleChanged?(colorIndex, style.lineWidth)

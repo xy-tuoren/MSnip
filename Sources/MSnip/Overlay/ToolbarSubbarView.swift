@@ -90,11 +90,7 @@ final class ToolbarSubbarView: NSView {
         }
     }
 
-    override func mouseExited(with event: NSEvent) {
-        hoveredIndex = nil
-        hoveredSlider = false
-        needsDisplay = true
-    }
+    override func mouseExited(with event: NSEvent) { hoveredIndex = nil; hoveredSlider = false; needsDisplay = true }
 
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
@@ -150,8 +146,8 @@ final class ToolbarSubbarView: NSView {
         if let tool = activeTool {
             let variants: [(ToolKind, String, String)] = {
                 switch tool {
-                case .rect, .ellipse:
-                    return [(.rect, "rectangle", "矩形框 (R)"), (.ellipse, "circle", "椭圆圈记 (⇧R)")]
+                case .rect, .ellipse, .spotlight:
+                    return [(.rect, "rectangle", "矩形框 (R)"), (.ellipse, "circle", "椭圆圈记 (⇧R)"), (.spotlight, "light.max", "聚光灯高亮（框内清晰、框外柔和压暗）")]
                 case .pen, .highlighter, .line:
                     return [(.pen, "pencil", "自由画笔 (D)"), (.highlighter, "highlighter", "荧光马克笔 (⇧D)"), (.line, "line.diagonal", "直线 (4)")]
                 case .mosaic, .gaussianBlur:
@@ -214,9 +210,20 @@ final class ToolbarSubbarView: NSView {
         sliderLabelX = x + 84
         x += sliderW
 
-        // 马赛克/毛玻璃/橡皮擦无需选颜色；橡皮擦右侧提供一键清空全部标注
-        let usesColor = (activeTool != .mosaic && activeTool != .gaussianBlur && activeTool != .eraser)
-        if activeTool == .eraser {
+        // 马赛克/毛玻璃/橡皮擦/聚光灯无需选颜色；马赛克/毛玻璃右侧提供「一键隐码」，橡皮擦右侧提供「清空」
+        let usesColor = (activeTool != .mosaic && activeTool != .gaussianBlur && activeTool != .eraser && activeTool != .spotlight)
+        if activeTool == .mosaic || activeTool == .gaussianBlur {
+            x = addSeparator(at: x)
+            let redRect = CGRect(x: x, y: y, width: 78, height: h); x += 80
+            list.append(Slot(rect: redRect, tip: "一键智能隐私打码：自动识别并遮盖 API Key、邮箱、手机号、身份证与 IP", action: .autoRedact) { ctx, rect, hov in
+                ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: false, hovered: hov)
+                ToolbarView.drawSymbol("eye.slash", in: CGRect(x: rect.minX + 4, y: rect.minY, width: 16, height: rect.height), alpha: 0.92, tint: ToolbarView.accentBlue)
+                let s = "一键隐码" as NSString
+                let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: ToolbarView.accentBlue]
+                let sz = s.size(withAttributes: a)
+                s.draw(at: CGPoint(x: round(rect.minX + 23), y: round(rect.midY - sz.height * 0.5 - 0.5)), withAttributes: a)
+            })
+        } else if activeTool == .eraser {
             x = addSeparator(at: x)
             let clrRect = CGRect(x: x, y: y, width: 66, height: h)
             x += 68

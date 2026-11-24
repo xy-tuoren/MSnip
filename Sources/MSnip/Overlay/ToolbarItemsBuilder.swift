@@ -20,14 +20,14 @@ extension ToolbarView {
         }
 
         // 1) 6 组精简核心标注工具（形状▾ / 画笔▾ / 箭头 / 文字▾ / 序号① / 打码▾）
-        let shapeActive = (activeTool == .rect || activeTool == .ellipse)
+        let shapeActive = (activeTool == .rect || activeTool == .ellipse || activeTool == .spotlight)
         let curShape = shapeActive ? activeTool! : lastShapeTool
         list.append(groupedToolItem(
             x: &x, y: y, h: h,
             symbol: curShape.sfSymbolName,
             hasChevron: true,
             active: shapeActive,
-            tip: "形状：矩形 (\(keyUpper(.rect))) / 椭圆 (⇧\(keyUpper(.rect)))",
+            tip: "形状：矩形 (\(keyUpper(.rect))) / 椭圆 (⇧\(keyUpper(.rect))) / 聚光灯高亮",
             targetTool: shapeActive ? nil : curShape
         ))
 

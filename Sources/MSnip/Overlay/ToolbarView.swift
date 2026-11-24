@@ -14,6 +14,7 @@ final class ToolbarView: NSView {
         case undo
         case redo
         case clearAnnotations
+        case autoRedact
         case cycleCornerRadius
         case cycleBackdrop
         case captureWindow
@@ -112,7 +113,7 @@ final class ToolbarView: NSView {
 
     private func rememberGroupChoice(_ tool: ToolKind) {
         switch tool {
-        case .rect, .ellipse: lastShapeTool = tool
+        case .rect, .ellipse, .spotlight: lastShapeTool = tool
         case .pen, .highlighter, .line: lastBrushTool = tool
         case .mosaic, .gaussianBlur: lastRedactTool = tool
         default: break
