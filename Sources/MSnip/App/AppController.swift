@@ -25,6 +25,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var activeLongShot: LongShotSession?
     var activeRecording: RegionRecordingSession?
     var isCapturing = false
+    var isStatusMenuOpen = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         GeekTheme.currentMode = config.appearanceMode
@@ -137,10 +138,16 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: - Core Capture & LongShot Actions
 
-    @objc func startCapture() { beginCaptureSession(mode: .standard) }
-    @objc func startQuickOCR() { beginCaptureSession(mode: .quickOCR) }
+    @objc func startCapture(_ sender: Any? = nil) { beginCaptureSession(mode: .standard, fromMenuClick: sender is NSMenuItem) }
+    @objc func startQuickOCR(_ sender: Any? = nil) { beginCaptureSession(mode: .quickOCR, fromMenuClick: sender is NSMenuItem) }
 
-    func beginCaptureSession(mode: OverlayQuickLaunchMode = .standard) {
+    func beginCaptureSession(mode: OverlayQuickLaunchMode = .standard, fromMenuClick: Bool = false) {
+        if isStatusMenuOpen || fromMenuClick {
+            runAfterStatusMenuDismissed(fromMenuClick: fromMenuClick) { [weak self] in
+                self?.beginCaptureSession(mode: mode, fromMenuClick: false)
+            }
+            return
+        }
         delayedCapture.cancel()
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
         ToastHUD.dismissImmediate()

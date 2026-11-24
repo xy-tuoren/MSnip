@@ -65,13 +65,18 @@ enum RegionAXPreindexer {
         kAXSizeAttribute as CFString
     ] as CFArray
 
-    /// 在冻结抓屏并行阶段预扫描程序坞与顶部状态栏（全量缓存，鼠标扫过 0.005ms 零延迟命中）
-    static func captureSystemChrome(menuBarRects: [CGRect], frontmostPID: pid_t?) -> SystemChromeSnapshot {
+    /// 在冻结抓屏并行阶段预扫描程序坞与顶部状态栏（全量缓存 + 严格 45ms 总预算 + 逐元素 15ms 超时，绝不因外部菜单阻塞）
+    static func captureSystemChrome(
+        menuBarRects: [CGRect],
+        frontmostPID: pid_t?,
+        skipMenuBarScan: Bool = false
+    ) -> SystemChromeSnapshot {
         guard AXIsProcessTrusted() else {
             return SystemChromeSnapshot(dockBarRect: nil, dockItemRects: [], menuBarRects: menuBarRects, menuBarItemRects: [])
         }
-        let (dockBar, dockItems) = scanDock()
-        let menuItems = scanMenuBarItems(frontmostPID: frontmostPID)
+        let deadline = CFAbsoluteTimeGetCurrent() + 0.045
+        let (dockBar, dockItems) = scanDock(deadline: deadline)
+        let menuItems = skipMenuBarScan ? [] : scanMenuBarItems(frontmostPID: frontmostPID, deadline: deadline)
         return SystemChromeSnapshot(
             dockBarRect: dockBar,
             dockItemRects: dockItems,
@@ -97,9 +102,13 @@ enum RegionAXPreindexer {
         guard status == .success, var current = hitRef else { return [] }
 
         var rects: [CGRect] = []
+        let deadline = t0 + 0.035
         for _ in 0..<12 {
+            if CFAbsoluteTimeGetCurrent() >= deadline { timedOut = true; break }
+            setFastTimeout(current, 0.015)
             var valuesRef: CFArray?
             let err = AXUIElementCopyMultipleAttributeValues(current, batchedAttrs, AXCopyMultipleAttributeOptions(rawValue: 0), &valuesRef)
+            if err == .cannotComplete, CFAbsoluteTimeGetCurrent() >= deadline { timedOut = true; break }
             guard err == .success, let arr = valuesRef as? [AnyObject], arr.count == 4 else { break }
 
             let role = (arr[0] as? String) ?? ""
@@ -122,12 +131,13 @@ enum RegionAXPreindexer {
 
     // MARK: - Dock & Menu Bar Pre-Scan
 
-    private static func scanDock() -> (CGRect?, [CGRect]) {
-        guard let dockApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
+    private static func scanDock(deadline: CFAbsoluteTime) -> (CGRect?, [CGRect]) {
+        guard CFAbsoluteTimeGetCurrent() < deadline,
+              let dockApp = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first else {
             return (nil, [])
         }
         let appEl = AXUIElementCreateApplication(dockApp.processIdentifier)
-        AXUIElementSetMessagingTimeout(appEl, 0.025)
+        setFastTimeout(appEl, 0.020)
 
         var childrenRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appEl, kAXChildrenAttribute as CFString, &childrenRef) == .success,
@@ -136,22 +146,25 @@ enum RegionAXPreindexer {
         }
 
         for child in children {
+            if CFAbsoluteTimeGetCurrent() >= deadline { break }
+            setFastTimeout(child, 0.015)
             var roleRef: CFTypeRef?
             guard AXUIElementCopyAttributeValue(child, kAXRoleAttribute as CFString, &roleRef) == .success,
                   (roleRef as? String) == "AXList" else { continue }
             let barRect = readBounds(of: child)
             var itemRefs: CFTypeRef?
             var itemRects: [CGRect] = []
-            if AXUIElementCopyAttributeValue(child, kAXChildrenAttribute as CFString, &itemRefs) == .success,
+            if CFAbsoluteTimeGetCurrent() < deadline,
+               AXUIElementCopyAttributeValue(child, kAXChildrenAttribute as CFString, &itemRefs) == .success,
                let items = itemRefs as? [AXUIElement] {
                 itemRects.reserveCapacity(items.count)
                 for item in items {
+                    if CFAbsoluteTimeGetCurrent() >= deadline { break }
                     if let r = readBounds(of: item), r.width >= 16, r.height >= 16 {
                         itemRects.append(r)
                     }
                 }
             }
-            // 若 AXList 返回的自身边界有效则直接使用，否则取全部图标外包盒扩边作为程序坞胶囊边界
             let resolvedBar: CGRect? = {
                 if let b = barRect, b.width >= 60, b.height >= 24, b.width < 4000, b.height < 260 { return b }
                 guard let first = itemRects.first else { return nil }
@@ -163,41 +176,57 @@ enum RegionAXPreindexer {
         return (nil, [])
     }
 
-    private static func scanMenuBarItems(frontmostPID: pid_t?) -> [CGRect] {
+    private static func scanMenuBarItems(frontmostPID: pid_t?, deadline: CFAbsoluteTime) -> [CGRect] {
         var rects: [CGRect] = []
-        if let pid = frontmostPID, pid > 0 {
+        let selfPID = ProcessInfo.processInfo.processIdentifier
+        if CFAbsoluteTimeGetCurrent() < deadline, let pid = frontmostPID, pid > 0, pid != selfPID {
             let appEl = AXUIElementCreateApplication(pid)
-            AXUIElementSetMessagingTimeout(appEl, 0.015)
-            appendMenuBarChildren(from: appEl, attr: kAXMenuBarAttribute, into: &rects)
+            setFastTimeout(appEl, 0.015)
+            appendMenuBarChildren(from: appEl, attr: kAXMenuBarAttribute, deadline: deadline, into: &rects)
         }
         let statusBundles = ["com.apple.controlcenter", "com.apple.systemuiserver"]
         for bid in statusBundles {
+            if CFAbsoluteTimeGetCurrent() >= deadline { break }
             for app in NSRunningApplication.runningApplications(withBundleIdentifier: bid) {
+                if CFAbsoluteTimeGetCurrent() >= deadline { break }
                 let el = AXUIElementCreateApplication(app.processIdentifier)
-                AXUIElementSetMessagingTimeout(el, 0.015)
-                appendMenuBarChildren(from: el, attr: "AXExtrasMenuBar", into: &rects)
-                appendMenuBarChildren(from: el, attr: kAXMenuBarAttribute, into: &rects)
+                setFastTimeout(el, 0.015)
+                appendMenuBarChildren(from: el, attr: "AXExtrasMenuBar", deadline: deadline, into: &rects)
+                appendMenuBarChildren(from: el, attr: kAXMenuBarAttribute, deadline: deadline, into: &rects)
             }
         }
         return rects
     }
 
-    private static func appendMenuBarChildren(from appEl: AXUIElement, attr: String, into out: inout [CGRect]) {
+    private static func appendMenuBarChildren(
+        from appEl: AXUIElement,
+        attr: String,
+        deadline: CFAbsoluteTime,
+        into out: inout [CGRect]
+    ) {
+        guard CFAbsoluteTimeGetCurrent() < deadline else { return }
         var barRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appEl, attr as CFString, &barRef) == .success,
               let rawBar = barRef, CFGetTypeID(rawBar) == AXUIElementGetTypeID() else { return }
         let barEl = unsafeBitCast(rawBar, to: AXUIElement.self)
+        setFastTimeout(barEl, 0.015)
         var kidsRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(barEl, kAXChildrenAttribute as CFString, &kidsRef) == .success,
               let kids = kidsRef as? [AXUIElement] else { return }
         for kid in kids {
+            if CFAbsoluteTimeGetCurrent() >= deadline { break }
             if let r = readBounds(of: kid), r.width >= 14, r.height >= 14, r.height <= 48 {
                 out.append(r)
             }
         }
     }
 
+    private static func setFastTimeout(_ el: AXUIElement, _ seconds: Float = 0.015) {
+        AXUIElementSetMessagingTimeout(el, seconds)
+    }
+
     private static func readBounds(of el: AXUIElement) -> CGRect? {
+        setFastTimeout(el, 0.015)
         var valuesRef: CFArray?
         guard AXUIElementCopyMultipleAttributeValues(el, boundsAttrs, AXCopyMultipleAttributeOptions(rawValue: 0), &valuesRef) == .success,
               let arr = valuesRef as? [AnyObject], arr.count == 2 else { return nil }

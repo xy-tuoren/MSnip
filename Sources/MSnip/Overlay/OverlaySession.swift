@@ -43,6 +43,7 @@ final class OverlaySession {
     private var windows: [OverlayWindow] = []
     private var views: [OverlayView] = []
     private weak var activeView: OverlayView?
+    private let focusGuard = OverlayMenuFocusGuard()
     private var finished = false
 
     func start(
@@ -187,7 +188,7 @@ final class OverlaySession {
                 self?.finish(.cancelled)
             }
 
-            let win = OverlayWindow(screen: snap.screen, contentView: view)
+            let win = OverlayWindow(screen: snap.screen, contentView: view, activateForMenu: regionDetector.hasOpenPopupMenu)
             windows.append(win)
             views.append(view)
             if snap.screen.frame.contains(mouse) {
@@ -222,6 +223,11 @@ final class OverlaySession {
         keyWin?.orderFrontRegardless()
         keyWin?.makeKey()
         NSAnimationContext.endGrouping()
+        focusGuard.activateOverlayIfNeeded(
+            hasOpenPopupMenu: regionDetector.hasOpenPopupMenu,
+            keyWindow: keyWin,
+            initialView: initialView
+        ) { [weak self] in self?.cancel() }
         NSCursor.crosshair.push()
 
         // 3) 冻结窗口已上屏后再在后台预热主屏 PixelSampler，就绪后自动补齐视觉子框、放大镜与副屏采样器
@@ -282,6 +288,11 @@ final class OverlaySession {
         views.removeAll()
         windows.removeAll()
         AnnotationRenderer.purgeCaches()
+        let shouldRestorePrev: Bool = switch outcome {
+        case .copied, .copiedWithPath, .quickSaved, .savedToFolder, .copiedColor, .copiedCoordinate, .cancelled: true
+        default: false
+        }
+        focusGuard.teardown(restorePreviousApp: shouldRestorePrev)
 
         onComplete?(outcome)
     }

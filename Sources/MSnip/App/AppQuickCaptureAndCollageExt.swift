@@ -11,6 +11,12 @@ extension AppController {
     }
 
     func performFullScreenCapture(fromMenu: Bool) {
+        if isStatusMenuOpen {
+            runAfterStatusMenuDismissed(fromMenuClick: fromMenu) { [weak self] in
+                self?.performFullScreenCapture(fromMenu: false)
+            }
+            return
+        }
         delayedCapture.cancel()
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
         let effectiveAction: FullScreenCaptureAction = (fromMenu && NSEvent.modifierFlags.contains(.option))

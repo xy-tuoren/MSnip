@@ -49,6 +49,7 @@ extension OverlayView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        if let win = window, !win.isKeyWindow { NSApp.activate(ignoringOtherApps: true); win.makeKeyAndOrderFront(nil) }
         window?.makeFirstResponder(self)
         let p = convert(event.locationInWindow, from: nil)
         lastMousePoint = p

@@ -22,6 +22,7 @@ final class RegionDetector: @unchecked Sendable {
     private let chrome: SystemChromeSnapshot
     private let primaryScreenHeight: CGFloat
     private let axTrusted: Bool
+    let hasOpenPopupMenu: Bool
 
     private let detectQueue = DispatchQueue(label: "top.xy.msnip.region.detect", qos: .userInteractive)
     private let stateLock = NSLock()
@@ -37,11 +38,10 @@ final class RegionDetector: @unchecked Sendable {
     private var isWorkerBusy = false
     private var pendingQuery: PendingQuery?
 
-    init(windows: [WindowSnapshotItem], chrome: SystemChromeSnapshot, primaryScreenHeight: CGFloat) {
-        self.windows = windows
-        self.chrome = chrome
-        self.primaryScreenHeight = primaryScreenHeight
-        self.axTrusted = AXIsProcessTrusted()
+    init(windows: [WindowSnapshotItem], chrome: SystemChromeSnapshot, primaryScreenHeight: CGFloat, hasOpenPopupMenu: Bool = false) {
+        self.windows = windows; self.chrome = chrome
+        self.primaryScreenHeight = primaryScreenHeight; self.axTrusted = AXIsProcessTrusted()
+        self.hasOpenPopupMenu = hasOpenPopupMenu
     }
 
     /// 在覆盖层窗口创建之前调用，并行采集可见窗口 Z 序 + 程序坞/菜单栏预索引
@@ -49,7 +49,6 @@ final class RegionDetector: @unchecked Sendable {
         let primaryH = primaryScreenHeight ?? (NSScreen.screens.first?.frame.height ?? 0)
         let selfPID = ProcessInfo.processInfo.processIdentifier
         let frontPID = frontmostPID ?? NSWorkspace.shared.frontmostApplication?.processIdentifier
-
         let rawList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
         var pidBundleCache: [pid_t: String] = [:]
         let ignoredShellBundles: Set<String> = [
@@ -58,6 +57,7 @@ final class RegionDetector: @unchecked Sendable {
 
         var items: [WindowSnapshotItem] = []
         var menuBarRects: [CGRect] = []
+        var hasOpenPopupMenu = false
         for entry in rawList {
             guard let pid = entry[kCGWindowOwnerPID as String] as? pid_t, pid != selfPID,
                   let rawWinID = entry[kCGWindowNumber as String] as? UInt32 else { continue }
@@ -69,24 +69,20 @@ final class RegionDetector: @unchecked Sendable {
                   rect.width >= 20, rect.height >= 20 else { continue }
 
             let ownerName = entry[kCGWindowOwnerName as String] as? String ?? ""
+            if OverlayMenuFocusGuard.isPopupMenuWindow(layer: layer, rect: rect, ownerName: ownerName) { hasOpenPopupMenu = true }
             if ownerName == "Window Server" {
                 if rect.height <= 48 && layer == 24 { menuBarRects.append(rect) }
                 continue
             }
-            let bundleID: String = {
-                if let cached = pidBundleCache[pid] { return cached }
-                let resolved = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
-                pidBundleCache[pid] = resolved
-                return resolved
+            let bundleID = pidBundleCache[pid] ?? {
+                let r = NSRunningApplication(processIdentifier: pid)?.bundleIdentifier ?? ""
+                pidBundleCache[pid] = r; return r
             }()
             if ignoredShellBundles.contains(bundleID) && rect.width > 400 && rect.height > 400 { continue }
-
-            items.append(WindowSnapshotItem(
-                windowID: CGWindowID(rawWinID), ownerPID: pid, ownerName: ownerName, globalBounds: rect, layer: layer
-            ))
+            items.append(WindowSnapshotItem(windowID: CGWindowID(rawWinID), ownerPID: pid, ownerName: ownerName, globalBounds: rect, layer: layer))
         }
-        let chrome = RegionAXPreindexer.captureSystemChrome(menuBarRects: menuBarRects, frontmostPID: frontPID)
-        return RegionDetector(windows: items, chrome: chrome, primaryScreenHeight: primaryH)
+        let chrome = RegionAXPreindexer.captureSystemChrome(menuBarRects: menuBarRects, frontmostPID: frontPID, skipMenuBarScan: hasOpenPopupMenu)
+        return RegionDetector(windows: items, chrome: chrome, primaryScreenHeight: primaryH, hasOpenPopupMenu: hasOpenPopupMenu)
     }
 
     static func checkAccessibilityPermission(prompt: Bool) -> Bool {

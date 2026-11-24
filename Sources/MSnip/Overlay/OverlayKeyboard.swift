@@ -50,7 +50,10 @@ extension OverlayView {
             if dragOp != nil { spacePressed = true }
             return
         }
-        if event.keyCode == 53 { handleEscapeStepBack(); return } // Esc
+        if event.keyCode == 53 {
+            if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == OverlayMenuFocusGuard.syntheticEscMagic { return }
+            handleEscapeStepBack(); return
+        } // Esc
         if event.keyCode == 48 { cycleColorFormat(); return } // Tab
         if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
             if isRecordingMode { confirmBeginRegionRecording() }

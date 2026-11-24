@@ -22,6 +22,10 @@ extension AppController {
     }
 
     @objc func startDefaultDelayedCapture() {
+        if isStatusMenuOpen {
+            statusItem.menu?.cancelTrackingWithoutAnimation()
+            isStatusMenuOpen = false
+        }
         if delayedCapture.isRunning {
             delayedCapture.cancel(showToast: true)
             return
@@ -30,10 +34,10 @@ extension AppController {
         delayedCapture.start(seconds: secs) { [weak self] in self?.beginCaptureSession(mode: .standard) }
     }
 
-    @objc func startQuickTranslate() { beginCaptureSession(mode: .quickTranslate) }
-    @objc func startQuickLongShot() { beginCaptureSession(mode: .quickLongShot) }
-    @objc func startQuickRecord() { beginCaptureSession(mode: .quickRecord) }
-    @objc func startQuickLatex() { beginCaptureSession(mode: .quickLatex) }
+    @objc func startQuickTranslate(_ sender: Any? = nil) { beginCaptureSession(mode: .quickTranslate, fromMenuClick: sender is NSMenuItem) }
+    @objc func startQuickLongShot(_ sender: Any? = nil) { beginCaptureSession(mode: .quickLongShot, fromMenuClick: sender is NSMenuItem) }
+    @objc func startQuickRecord(_ sender: Any? = nil) { beginCaptureSession(mode: .quickRecord, fromMenuClick: sender is NSMenuItem) }
+    @objc func startQuickLatex(_ sender: Any? = nil) { beginCaptureSession(mode: .quickLatex, fromMenuClick: sender is NSMenuItem) }
     @objc func togglePinsVisibility() { pinManager.toggleAllVisibility() }
 
     @objc func repeatLastCapture() {

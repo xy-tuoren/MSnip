@@ -70,10 +70,10 @@ struct OverlayAutoSnapState {
 
 /// 覆盖整个物理屏幕的无边框置顶窗口（禁用系统窗口弹出缩放动画与焦点抢占，实现 0ms 无抖动静默冻结）
 final class OverlayWindow: NSPanel {
-    init(screen: NSScreen, contentView: OverlayView) {
+    init(screen: NSScreen, contentView: OverlayView, activateForMenu: Bool = false) {
         super.init(
             contentRect: screen.frame,
-            styleMask: [.borderless, .nonactivatingPanel],
+            styleMask: activateForMenu ? [.borderless] : [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )

@@ -205,11 +205,30 @@ extension AppController {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu !== historySubmenu else { return }
+        if menu === statusItem.menu { isStatusMenuOpen = true }
         let screenOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
         axMenuItem?.isHidden = screenOK
         permWarnSepItem?.isHidden = screenOK
         loginMenuItem?.state = LaunchAtLoginManager.isEnabled ? .on : .off
         historyRootItem?.title = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        if menu === statusItem.menu { isStatusMenuOpen = false }
+    }
+
+    /// 退出自身状态栏菜单模态追踪循环（`NSEventTrackingRunLoopMode`）并待菜单淡出后再执行抓屏，彻底避免自锁与截进自身菜单
+    func runAfterStatusMenuDismissed(fromMenuClick: Bool = false, _ work: @escaping @MainActor () -> Void) {
+        if isStatusMenuOpen {
+            statusItem.menu?.cancelTrackingWithoutAnimation()
+            isStatusMenuOpen = false
+        }
+        let delay: TimeInterval = fromMenuClick ? 0.065 : 0.08
+        RunLoop.main.perform(inModes: [.default]) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                MainActor.assumeIsolated { work() }
+            }
+        }
     }
 
     @objc func openHistoryDirectory() {
