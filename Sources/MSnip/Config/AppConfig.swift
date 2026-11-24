@@ -20,13 +20,17 @@ struct AppConfig: Codable {
     var defaultTextCapsule: Bool = false
     var ocrAutoOpenDualPane: Bool = false
     var translateAutoOpenDualPane: Bool = false
+    var ocrAutoCopy: Bool = true
+    var exportImageFormat: CaptureExportFormat = .png
+    var exportAt1xScale: Bool = false
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
         case customCaptureCombo, customPinCombo, customOCRCombo
         case defaultColorIndex, defaultLineWidth, lastSaveDirectory, recentSaveDirectories
         case colorCopyFormat, showShortcutTips, preferredRecordingFormat, recordInteractionHUD, defaultTextCapsule
-        case ocrAutoOpenDualPane, translateAutoOpenDualPane
+        case ocrAutoOpenDualPane, translateAutoOpenDualPane, ocrAutoCopy
+        case exportImageFormat, exportAt1xScale
     }
 
     init() {}
@@ -62,6 +66,9 @@ struct AppConfig: Codable {
         defaultTextCapsule = try c.decodeIfPresent(Bool.self, forKey: .defaultTextCapsule) ?? false
         ocrAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoOpenDualPane) ?? false
         translateAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .translateAutoOpenDualPane) ?? false
+        ocrAutoCopy = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoCopy) ?? true
+        exportImageFormat = try c.decodeIfPresent(CaptureExportFormat.self, forKey: .exportImageFormat) ?? .png
+        exportAt1xScale = try c.decodeIfPresent(Bool.self, forKey: .exportAt1xScale) ?? false
     }
 
     func encode(to encoder: Encoder) throws {
@@ -82,6 +89,9 @@ struct AppConfig: Codable {
         try c.encode(defaultTextCapsule, forKey: .defaultTextCapsule)
         try c.encode(ocrAutoOpenDualPane, forKey: .ocrAutoOpenDualPane)
         try c.encode(translateAutoOpenDualPane, forKey: .translateAutoOpenDualPane)
+        try c.encode(ocrAutoCopy, forKey: .ocrAutoCopy)
+        try c.encode(exportImageFormat, forKey: .exportImageFormat)
+        try c.encode(exportAt1xScale, forKey: .exportAt1xScale)
     }
 
     func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {

@@ -220,10 +220,10 @@ final class LightDropdownPill: NSView {
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
         let path = CGPath(roundedRect: r, cornerWidth: 6.5, cornerHeight: 6.5, transform: nil)
         ctx.saveGState()
-        ctx.setFillColor((hovered ? MSnipUITheme.subtleFill : MSnipUITheme.cardSolid).cgColor)
+        ctx.setFillColor((hovered ? ResultTheme.subtleFill : ResultTheme.cardSolid).cgColor)
         ctx.addPath(path)
         ctx.fillPath()
-        ctx.setStrokeColor((hovered ? MSnipUITheme.accent.withAlphaComponent(0.45) : MSnipUITheme.borderStrong).cgColor)
+        ctx.setStrokeColor((hovered ? ResultTheme.accent.withAlphaComponent(0.45) : ResultTheme.borderStrong).cgColor)
         ctx.setLineWidth(1.0)
         ctx.addPath(path)
         ctx.strokePath()
@@ -231,7 +231,7 @@ final class LightDropdownPill: NSView {
         var leftX: CGFloat = 9
         if let sym = symbolName {
             let iconRect = CGRect(x: leftX, y: 0, width: 14, height: bounds.height)
-            ToolbarView.drawSymbol(sym, in: iconRect, alpha: 0.92, tint: MSnipUITheme.accent)
+            ToolbarView.drawSymbol(sym, in: iconRect, alpha: 0.92, tint: ResultTheme.accent)
             leftX += 18
         }
 
@@ -240,7 +240,7 @@ final class LightDropdownPill: NSView {
         para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 12, weight: .medium),
-            .foregroundColor: MSnipUITheme.inkPrimary,
+            .foregroundColor: ResultTheme.inkPrimary,
             .paragraphStyle: para
         ]
         let textMaxW = max(24, bounds.width - leftX - 20)

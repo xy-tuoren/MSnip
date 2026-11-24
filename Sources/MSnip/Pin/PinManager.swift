@@ -12,6 +12,7 @@ final class PinManager {
     var onSaveImage: ((CGImage, CGFloat) -> Void)?
     var onQuickSaveImage: ((CGImage, CGFloat) -> Void)?
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
+    var onTranslateImage: ((CGImage, CGFloat, NSScreen) -> Void)?
 
     private var windows: [PinWindow] = []
     private(set) var arePinsHidden = false
@@ -54,6 +55,9 @@ final class PinManager {
         win.onExtractOCR = { [weak self] img, scale, scr in
             self?.onExtractOCR?(img, scale, scr)
         }
+        win.onTranslateImage = { [weak self] img, scale, scr in
+            self?.onTranslateImage?(img, scale, scr)
+        }
 
         windows.append(win)
         win.orderFrontRegardless()
@@ -73,7 +77,7 @@ final class PinManager {
         }
     }
 
-    /// 从剪贴板读取图片或色值文本（如 `#3388FF`）并居中贴在鼠标当前所在的显示器上
+    /// 从剪贴板读取图片、色值（如 `#3388FF`）或纯文本便签，居中贴在鼠标当前所在的显示器上
     @discardableResult
     func pinFromClipboard() -> Bool {
         let mouse = NSEvent.mouseLocation
@@ -84,6 +88,7 @@ final class PinManager {
 
         let cgImage: CGImage
         let scale: CGFloat
+        var toastNote: String?
         if let nsImage = ClipboardAndSave.readImageFromClipboard() {
             var proposedRect = NSRect(origin: .zero, size: nsImage.size)
             guard let img = nsImage.cgImage(forProposedRect: &proposedRect, context: nil, hints: nil) else {
@@ -96,9 +101,14 @@ final class PinManager {
                   let card = RGBAColor.renderColorPinCard(color, scale: screen.backingScaleFactor) {
             cgImage = card
             scale = max(1.0, screen.backingScaleFactor)
+        } else if let text = ClipboardAndSave.readTextFromClipboard(),
+                  let card = TextPinCardRenderer.render(text: text, scale: screen.backingScaleFactor) {
+            cgImage = card
+            scale = max(1.0, screen.backingScaleFactor)
+            toastNote = "已将剪贴板文本贴为桌面便签"
         } else {
             NSSound.beep()
-            ToastHUD.show(message: "剪贴板暂无图片或色值 · 可先复制图片再贴图")
+            ToastHUD.show(message: "剪贴板暂无图片、色值或文本 · 复制后再按快捷键贴图")
             return false
         }
 
@@ -111,6 +121,7 @@ final class PinManager {
             y: (screen.frame.maxY - visible.midY) - h * 0.5 + cascade
         )
         pin(cgImage: cgImage, scaleFactor: scale, topLeftOnScreen: topLeft, screen: screen)
+        if let toastNote { ToastHUD.show(message: toastNote) }
         return true
     }
 

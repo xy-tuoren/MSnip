@@ -102,6 +102,7 @@ final class ShortcutConflictUIState {
     var priorityPermBtn: GeekButton?
     var snapshot: HotKeyConflictSnapshot = .empty
     var pendingForceCombo: KeyCombo?
+    var failedHotKeyActionsProvider: (() -> Set<GlobalHotKeyAction>)?
     let liveDetective = HotKeyLiveDetective()
 }
 

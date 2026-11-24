@@ -132,6 +132,7 @@ final class RegionRecordingSession {
         let fmt = controlBar.format
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("MSnipClips", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        Self.pruneStaleTempClips(in: dir)
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
         let outURL = dir.appendingPathComponent("MSnip-\(stamp).\(fmt.rawValue)")
 

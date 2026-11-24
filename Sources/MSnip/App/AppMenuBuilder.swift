@@ -43,11 +43,15 @@ extension AppController {
 
         menu.addItem(.separator())
 
-        // 最近截图
+        // 最近截图（按需懒加载缩略图子菜单，避免每次配置变更/开关贴图都重复解码全部历史缩略图）
         let histTitle = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
         let histRoot = NSMenuItem(title: histTitle, action: nil, keyEquivalent: "")
         histRoot.image = MSnipUITheme.menuSymbol("clock")
-        histRoot.submenu = buildHistorySubmenu()
+        let lazyHistoryMenu = NSMenu()
+        lazyHistoryMenu.delegate = self
+        histRoot.submenu = lazyHistoryMenu
+        historyRootItem = histRoot
+        historySubmenu = lazyHistoryMenu
         menu.addItem(histRoot)
 
         // 动态贴图管理项（仅在桌面存在贴图时出现）
@@ -107,8 +111,8 @@ extension AppController {
         statusItem.menu = menu
     }
 
-    private func buildHistorySubmenu() -> NSMenu {
-        let sub = NSMenu()
+    private func populateHistorySubmenu(_ sub: NSMenu) {
+        sub.removeAllItems()
         if historyRing.entries.isEmpty {
             let empty = NSMenuItem(title: "暂无截图记录", action: nil, keyEquivalent: "")
             empty.isEnabled = false
@@ -118,7 +122,7 @@ extension AppController {
             openDir.image = MSnipUITheme.menuSymbol("folder")
             openDir.target = self
             sub.addItem(openDir)
-            return sub
+            return
         }
 
         let tip = NSMenuItem(title: "点击复制 · ⌥+点击打开 · ⌘+点击贴图", action: nil, keyEquivalent: "")
@@ -147,14 +151,21 @@ extension AppController {
         clear.image = MSnipUITheme.menuSymbol("trash")
         clear.target = self
         sub.addItem(clear)
-        return sub
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        if menu === historySubmenu {
+            populateHistorySubmenu(menu)
+        }
     }
 
     func menuWillOpen(_ menu: NSMenu) {
+        guard menu !== historySubmenu else { return }
         let screenOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
         axMenuItem?.isHidden = screenOK
         permWarnSepItem?.isHidden = screenOK
         loginMenuItem?.state = LaunchAtLoginManager.isEnabled ? .on : .off
+        historyRootItem?.title = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
     }
 
     @objc func openHistoryDirectory() {

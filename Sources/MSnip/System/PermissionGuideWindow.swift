@@ -77,78 +77,42 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
         let w: CGFloat = 342
         let h: CGFloat = 244
-        let p = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: w, height: h),
-            styleMask: [.titled, .closable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        p.title = "开启 MSnip 权限"
-        p.titleVisibility = .hidden
-        p.titlebarAppearsTransparent = true
+        let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: w, height: h), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
+        p.title = "开启 MSnip 权限"; p.titleVisibility = .hidden; p.titlebarAppearsTransparent = true
         p.isMovableByWindowBackground = true
         p.standardWindowButton(.miniaturizeButton)?.isHidden = true
         p.standardWindowButton(.zoomButton)?.isHidden = true
-        p.level = .floating
-        p.isFloatingPanel = true
-        p.hidesOnDeactivate = false
-        p.isReleasedWhenClosed = false
-        p.backgroundColor = .clear
-        p.delegate = self
+        p.level = .floating; p.isFloatingPanel = true; p.hidesOnDeactivate = false
+        p.isReleasedWhenClosed = false; p.backgroundColor = .clear; p.delegate = self
 
         let root = NSVisualEffectView(frame: NSRect(x: 0, y: 0, width: w, height: h))
-        root.material = .popover
-        root.blendingMode = .behindWindow
-        root.state = .active
+        root.material = .popover; root.blendingMode = .behindWindow; root.state = .active
         p.contentView = root
 
         let header = buildHeaderView()
-        screenRow = PermissionRowView(
-            kind: .screenRecording,
-            title: "屏幕录制",
-            subtitle: "捕获屏幕画面与像素级放大取色"
-        ) { [weak self] in self?.openPane(.screenRecording) }
-
-        axRow = PermissionRowView(
-            kind: .accessibility,
-            title: "辅助功能",
-            subtitle: "智能识别窗口与多层控件矩阵边界"
-        ) { [weak self] in self?.openPane(.accessibility) }
-
-        relaunchPill = PillControl(title: "重启生效", style: .subtleButton) { [weak self] in
-            self?.relaunchApp()
-        }
-        donePill = PillControl(title: "完成", style: .subtleButton) { [weak self] in
-            self?.closeAll()
-        }
-
-        root.addSubview(header)
-        root.addSubview(screenRow)
-        root.addSubview(axRow)
-        root.addSubview(relaunchPill)
-        root.addSubview(donePill)
+        screenRow = PermissionRowView(kind: .screenRecording, title: "屏幕录制", subtitle: "捕获屏幕画面与像素级放大取色") { [weak self] in self?.openPane(.screenRecording) }
+        axRow = PermissionRowView(kind: .accessibility, title: "辅助功能", subtitle: "智能识别窗口与多层控件矩阵边界") { [weak self] in self?.openPane(.accessibility) }
+        relaunchPill = PillControl(title: "重启生效", style: .subtleButton) { [weak self] in self?.relaunchApp() }
+        donePill = PillControl(title: "完成", style: .subtleButton) { [weak self] in self?.closeAll() }
+        [header, screenRow, axRow, relaunchPill, donePill].forEach { root.addSubview($0) }
 
         NSLayoutConstraint.activate([
             header.topAnchor.constraint(equalTo: root.topAnchor, constant: 28),
             header.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: 18),
             header.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -18),
             header.heightAnchor.constraint(equalToConstant: 36),
-
             screenRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14),
             screenRow.leadingAnchor.constraint(equalTo: header.leadingAnchor),
             screenRow.trailingAnchor.constraint(equalTo: header.trailingAnchor),
             screenRow.heightAnchor.constraint(equalToConstant: 54),
-
             axRow.topAnchor.constraint(equalTo: screenRow.bottomAnchor, constant: 8),
             axRow.leadingAnchor.constraint(equalTo: header.leadingAnchor),
             axRow.trailingAnchor.constraint(equalTo: header.trailingAnchor),
             axRow.heightAnchor.constraint(equalToConstant: 54),
-
             relaunchPill.leadingAnchor.constraint(equalTo: header.leadingAnchor),
             relaunchPill.topAnchor.constraint(equalTo: axRow.bottomAnchor, constant: 12),
             relaunchPill.widthAnchor.constraint(equalToConstant: 68),
             relaunchPill.heightAnchor.constraint(equalToConstant: 24),
-
             donePill.trailingAnchor.constraint(equalTo: header.trailingAnchor),
             donePill.centerYAnchor.constraint(equalTo: relaunchPill.centerYAnchor),
             donePill.widthAnchor.constraint(equalToConstant: 62),
@@ -160,38 +124,23 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
     }
 
     private func buildHeaderView() -> NSView {
-        let container = NSView()
-        container.translatesAutoresizingMaskIntoConstraints = false
-
-        let iconView = NSImageView()
-        iconView.translatesAutoresizingMaskIntoConstraints = false
+        let container = NSView(); container.translatesAutoresizingMaskIntoConstraints = false
+        let iconView = NSImageView(); iconView.translatesAutoresizingMaskIntoConstraints = false
         let icon = (NSApp.applicationIconImage?.copy() as? NSImage) ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
-        icon.size = NSSize(width: 34, height: 34)
-        iconView.image = icon
+        icon.size = NSSize(width: 34, height: 34); iconView.image = icon
 
         let title = NSTextField(labelWithString: "开启 MSnip 权限")
-        title.font = .systemFont(ofSize: 14.5, weight: .semibold)
-        title.textColor = .labelColor
-
+        title.font = .systemFont(ofSize: 14.5, weight: .semibold); title.textColor = .labelColor
         let sub = NSTextField(labelWithString: "点击允许后，从系统设置底部将图标拖入列表")
-        sub.font = .systemFont(ofSize: 11.5, weight: .regular)
-        sub.textColor = .secondaryLabelColor
-
+        sub.font = .systemFont(ofSize: 11.5, weight: .regular); sub.textColor = .secondaryLabelColor
         let stack = NSStackView(views: [title, sub])
-        stack.orientation = .vertical
-        stack.alignment = .leading
-        stack.spacing = 1.5
+        stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 1.5
         stack.translatesAutoresizingMaskIntoConstraints = false
-
-        container.addSubview(iconView)
-        container.addSubview(stack)
-
+        container.addSubview(iconView); container.addSubview(stack)
         NSLayoutConstraint.activate([
             iconView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
             iconView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            iconView.widthAnchor.constraint(equalToConstant: 34),
-            iconView.heightAnchor.constraint(equalToConstant: 34),
-
+            iconView.widthAnchor.constraint(equalToConstant: 34), iconView.heightAnchor.constraint(equalToConstant: 34),
             stack.leadingAnchor.constraint(equalTo: iconView.trailingAnchor, constant: 10),
             stack.centerYAnchor.constraint(equalTo: container.centerYAnchor),
             stack.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor)

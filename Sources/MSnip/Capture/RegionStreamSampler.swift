@@ -64,7 +64,7 @@ final class RegionStreamSampler {
 
                 let cfg = SCStreamConfiguration()
                 if losslessBGRA {
-                    // 长截图模式：严格对齐物理整数像素并使用无损 32BGRA + sRGB，杜绝奇偶宽高二次缩放与色度抽样失真
+                    // 长截图模式：严格对齐物理整数像素并使用无损 32BGRA + 显示器原生 ICC，杜绝二次缩放与色差
                     let pxX = round(clampedRect.minX * scale)
                     let pxY = round(clampedRect.minY * scale)
                     let pxW = max(24, Int((clampedRect.width * scale).rounded()))
@@ -78,7 +78,6 @@ final class RegionStreamSampler {
                     cfg.width = pxW
                     cfg.height = pxH
                     cfg.pixelFormat = kCVPixelFormatType_32BGRA
-                    cfg.colorSpaceName = CGColorSpace.sRGB
                     cfg.queueDepth = 8
                 } else {
                     // 视频编码模式：保持偶数像素尺寸以满足 H.264 4:2:0 要求

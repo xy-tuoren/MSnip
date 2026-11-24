@@ -80,7 +80,23 @@ extension RegionRecordingSession {
         guard panel.runModal() == .OK, let dst = panel.url else { return nil }
         try? FileManager.default.removeItem(at: dst)
         guard (try? FileManager.default.copyItem(at: tempURL, to: dst)) != nil else { return nil }
+        try? FileManager.default.removeItem(at: tempURL)
         return (dst, dst.deletingLastPathComponent().path)
+    }
+
+    /// 清理超过 2 小时的历史临时录屏文件，避免仅复制不另存的 GIF/MP4 长期堆积
+    static func pruneStaleTempClips(in dir: URL, maxAgeSeconds: TimeInterval = 7200) {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else {
+            return
+        }
+        let cutoff = Date().addingTimeInterval(-maxAgeSeconds)
+        for u in urls {
+            if let mtime = (try? u.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate,
+               mtime < cutoff {
+                try? fm.removeItem(at: u)
+            }
+        }
     }
 
     func installKeyMonitors() {

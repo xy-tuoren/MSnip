@@ -14,9 +14,10 @@ final class PinWindow: NSPanel {
     var onSavePNG: ((CGImage, CGFloat) -> Void)?
     var onQuickSavePNG: ((CGImage, CGFloat) -> Void)?
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
+    var onTranslateImage: ((CGImage, CGFloat, NSScreen) -> Void)?
 
     let baseCGImage: CGImage
-    lazy var baseSampler: PixelSampler = PixelSampler(cgImage: baseCGImage)
+    var activeBaseSampler: PixelSampler?
     var currentCGImage: CGImage
     let imageScale: CGFloat
     let baseSize: NSSize
@@ -90,9 +91,11 @@ final class PinWindow: NSPanel {
         hoverBarPanel.barView.onAction = { [weak self] act in
             guard let self else { return }
             switch act {
-            case .annotate: self.beginAnnotationEditing()
-            case .ocr:      self.openOCRPanel()
-            case .close:    self.closePin()
+            case .annotate:  self.beginAnnotationEditing()
+            case .ocr:       self.openOCRPanel()
+            case .translate: self.openTranslatePanel()
+            case .copy:      self.copyImage(); ToastHUD.show(message: "已复制贴图图像")
+            case .close:     self.closePin()
             }
         }
         hoverBarPanel.barView.onDragStart = { [weak self] in
@@ -244,6 +247,7 @@ final class PinWindow: NSPanel {
             case "e": beginAnnotationEditing(); return true
             case "p": enableClickThrough(); return true
             case "t": openOCRPanel(); return true
+            case "y": openTranslatePanel(); return true
             default: break
             }
         }

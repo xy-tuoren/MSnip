@@ -101,6 +101,8 @@ final class PinHoverBarPanel: NSPanel {
     enum Action {
         case annotate
         case ocr
+        case translate
+        case copy
         case close
     }
 
@@ -140,9 +142,9 @@ final class PinHoverBarPanel: NSPanel {
     }
 }
 
-/// 贴图外侧悬浮微操作胶囊视图：`[ ✥ 按住拖动 | ✎ | 识字 | ✕ ]`
+/// 贴图外侧悬浮微操作胶囊视图：`[ ✥ 拖动 | ✎ 标注 | 识字 | 翻译 | 复制 | ✕ 关闭 ]`
 final class PinHoverBarView: NSView {
-    static let barSize = NSSize(width: 118, height: 28)
+    static let barSize = NSSize(width: 170, height: 28)
 
     var onAction: ((PinHoverBarPanel.Action) -> Void)?
     var onHoverChanged: ((Bool) -> Void)?
@@ -176,12 +178,26 @@ final class PinHoverBarView: NSView {
         ActionSlot(
             rect: CGRect(x: 64, y: 2, width: 25, height: 24),
             symbol: "text.viewfinder",
-            tip: "提取文字与对照翻译窗 (T)",
+            tip: "提取图中文字 (T)",
             tint: MSnipUITheme.inkPrimary,
             action: .ocr
         ),
         ActionSlot(
-            rect: CGRect(x: 90, y: 2, width: 24, height: 24),
+            rect: CGRect(x: 90, y: 2, width: 25, height: 24),
+            symbol: "character.bubble",
+            tip: "翻译图中文字 (Y)",
+            tint: MSnipUITheme.inkPrimary,
+            action: .translate
+        ),
+        ActionSlot(
+            rect: CGRect(x: 116, y: 2, width: 25, height: 24),
+            symbol: "doc.on.doc",
+            tip: "复制贴图图像 (⌘C)",
+            tint: MSnipUITheme.inkPrimary,
+            action: .copy
+        ),
+        ActionSlot(
+            rect: CGRect(x: 142, y: 2, width: 24, height: 24),
             symbol: "xmark",
             tip: "关闭贴图 (Esc / 双击空白处)",
             tint: MSnipUITheme.danger,

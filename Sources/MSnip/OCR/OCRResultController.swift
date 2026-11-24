@@ -31,6 +31,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var onPinImage: ((CGImage, CGFloat, NSScreen) -> Void)?
     var onRecognizeLatex: ((CGImage, CGFloat, NSScreen) -> Void)?
     var onOpenSettings: (() -> Void)?
+    var ocrAutoCopyProvider: (() -> Bool)?
 
     var window: OCRFloatingWindow?
     var titleLabel: NSTextField!
@@ -42,6 +43,8 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var translateButton: OCRPillButton!
     var highlightButton: OCRPillButton!
     var modeSwitch: OCRModeSegmentView!
+    var themeButton: OCRPillButton!
+    var pinTopButton: OCRPillButton!
     var rightCard: NSView!
     var qrBannerBox: NSView!
     var qrValueLabel: NSTextField!
@@ -112,10 +115,17 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         relayoutContent()
 
         if !win.isVisible {
-            let vf = screen.visibleFrame
-            let w: CGFloat = 810, h: CGFloat = 510
-            win.setFrame(NSRect(x: round(vf.midX - w * 0.5), y: round(vf.midY - h * 0.5), width: w, height: h), display: true)
+            let frame = ResultWindowKind.ocr.resolveInitialFrame(
+                defaultSize: NSSize(width: 810, height: 510),
+                minSize: win.minSize,
+                on: screen
+            )
+            win.setFrame(frame, display: true)
         }
+        let pinned = ResultWindowKind.ocr.isAlwaysOnTop
+        ResultWindowChrome.applyWindowLevel(to: win, alwaysOnTop: pinned)
+        if let pinTopButton { ResultWindowChrome.syncPinButton(pinTopButton, alwaysOnTop: pinned) }
+        applyWindowTheme(dark: ResultWindowChrome.prefersDarkAppearance)
         NSApp.activate(ignoringOtherApps: true)
         win.makeKeyAndOrderFront(nil)
 
@@ -161,8 +171,12 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
 
         if !isTranslationActive {
             let autoClip = output.initialClipboardText
-            ClipboardAndSave.copyText(autoClip)
-            statusBadgeLabel.stringValue = "✓ 已自动复制 · \(autoClip.count) 字"
+            if ocrAutoCopyProvider?() ?? true {
+                ClipboardAndSave.copyText(autoClip)
+                statusBadgeLabel.stringValue = "✓ 已自动复制 · \(autoClip.count) 字"
+            } else {
+                statusBadgeLabel.stringValue = "✓ 识别完成 · \(autoClip.count) 字"
+            }
             statusBadgeLabel.textColor = MSnipUITheme.success
         }
 
@@ -231,7 +245,16 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
 
     func windowDidResize(_ notification: Notification) { relayoutContent() }
 
+    func windowDidEndLiveResize(_ notification: Notification) {
+        if let f = window?.frame { ResultWindowKind.ocr.saveFrame(f) }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        if let f = window?.frame { ResultWindowKind.ocr.saveFrame(f) }
+    }
+
     func windowWillClose(_ notification: Notification) {
+        if let f = window?.frame { ResultWindowKind.ocr.saveFrame(f) }
         requestToken &+= 1
         translationTask?.cancel()
         translationTask = nil

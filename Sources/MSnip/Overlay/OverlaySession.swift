@@ -3,32 +3,6 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 覆盖整个物理屏幕的无边框置顶窗口（禁用系统窗口弹出缩放动画与焦点抢占，实现 0ms 无抖动静默冻结）
-private final class OverlayWindow: NSPanel {
-    init(screen: NSScreen, contentView: NSView) {
-        super.init(
-            contentRect: screen.frame,
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        self.level = .screenSaver
-        self.animationBehavior = .none
-        self.becomesKeyOnlyIfNeeded = false
-        self.setFrame(screen.frame, display: false)
-        self.isFloatingPanel = true
-        self.hidesOnDeactivate = false
-        self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
-        self.isOpaque = true
-        self.hasShadow = false
-        self.acceptsMouseMovedEvents = true
-        self.contentView = contentView
-    }
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-}
-
 /// 一次完整的截图会话控制器：管理多显示器覆盖层窗口、历史选区记忆，会话结束后立即销毁缓冲
 @MainActor
 final class OverlaySession {
@@ -211,13 +185,14 @@ final class OverlaySession {
             }
         }
 
-        // 1) 在窗口上屏前预先计算好首帧自动吸附矩阵与放大镜坐标，并完成离屏栅格化，杜绝两帧闪烁
-        if let initialView = activeView ?? views.first {
+        // 1) 上屏前以 0.001ms 窗口级命中完成首帧冻结布局，不等待整屏像素解包
+        let initialView = activeView ?? views.first
+        if let initialView {
             let sf = initialView.snapshot.screen.frame
             let localPt = CGPoint(x: mouse.x - sf.minX, y: sf.maxY - mouse.y)
             if initialView.bounds.contains(localPt) {
                 initialView.lastMousePoint = localPt
-                initialView.updateAutoSnap(at: localPt, immediate: true)
+                initialView.updateAutoSnap(at: localPt, immediate: true, fastWindowOnly: !initialView.snapshot.isSamplerReady)
                 initialView.syncMagnifierView()
             }
         }
@@ -236,6 +211,18 @@ final class OverlaySession {
         keyWin?.makeKeyAndOrderFront(nil)
         NSAnimationContext.endGrouping()
         NSCursor.crosshair.push()
+
+        // 3) 冻结窗口已上屏后再在后台预热主屏 PixelSampler，就绪后自动补齐视觉子框、放大镜与副屏采样器
+        if let initialView {
+            initialView.snapshot.preheatSamplerInBackground { [weak self, weak initialView] in
+                guard let self, !self.finished, let v = initialView else { return }
+                if v.selection == nil { v.refreshAutoSnapAtCurrentMouse() }
+                v.syncMagnifierView()
+                for sibling in self.views where sibling !== v {
+                    sibling.snapshot.preheatSamplerInBackground { [weak sibling] in sibling?.syncMagnifierView() }
+                }
+            }
+        }
     }
 
     func pinCurrentSelectionIfPossible() -> Bool {

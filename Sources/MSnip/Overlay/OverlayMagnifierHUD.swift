@@ -4,35 +4,7 @@ import Foundation
 import MSnipCore
 import QuartzCore
 
-/// 独立 GPU 图层承载的 120fps 零全屏重绘光标放大镜视图（彻底隔离放大镜移动与全屏主画布脏区）
-final class OverlayMagnifierLayerView: NSView {
-    weak var ownerOverlay: OverlayView?
-    override var isFlipped: Bool { true }
-
-    init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: OverlayView.loupeCardW, height: OverlayView.loupeCardH))
-        wantsLayer = true
-        layer?.masksToBounds = false
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.22
-        layer?.shadowRadius = 10
-        layer?.shadowOffset = CGSize(width: 0, height: 4)
-        isHidden = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext,
-              let owner = ownerOverlay else { return }
-        owner.renderMagnifierContent(in: ctx, cardRect: bounds)
-    }
-}
-
-/// PixPin 极简风格跟随光标取色放大镜逻辑与局部绘制扩展
+/// 极简风格跟随光标取色放大镜逻辑与局部绘制扩展（图层宿主视图位于 `OverlayStateModels.swift`）
 extension OverlayView {
     static let loupeCols = 15
     static let loupeRows = 9
@@ -67,7 +39,7 @@ extension OverlayView {
     }
 
     func isMagnifierVisible(at point: CGPoint?) -> Bool {
-        guard let pt = point, bounds.contains(pt), !isEditingText else { return false }
+        guard let pt = point, snapshot.isSamplerReady, bounds.contains(pt), !isEditingText else { return false }
         if !toolbar.isHidden && toolbar.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if !subbar.isHidden && subbar.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }
         if !sidePills.isHidden && sidePills.frame.insetBy(dx: -4, dy: -4).contains(pt) { return false }

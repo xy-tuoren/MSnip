@@ -149,6 +149,21 @@ func testMilestone3To5Features() {
         check(cornerGrad.2 > 150 && cornerGrad.1 < 120, "外圈画布角部应呈现极光蓝紫渐变色: \(cornerGrad)")
         check(centerWhite.0 > 250 && centerWhite.1 > 250 && centerWhite.2 > 250, "衬底中心截图卡片区域应保持纯白不偏色: \(centerWhite)")
     }
+
+    // 5) CaptureImageExporter 多格式 (PNG/JPG/HEIC) 与 Retina 1× 缩放回归单测
+    let src2x = makeSolidFrame(width: 160, height: 120, r: 0.12, g: 0.48, b: 0.92)
+    let pngData = CaptureImageExporter.encode(cgImage: src2x, scaleFactor: 2.0, format: .png, exportAt1x: false)
+    let jpgData = CaptureImageExporter.encode(cgImage: src2x, scaleFactor: 2.0, format: .jpeg, exportAt1x: false)
+    let heicData = CaptureImageExporter.encode(cgImage: src2x, scaleFactor: 2.0, format: .heic, exportAt1x: false)
+    check(pngData != nil && jpgData != nil && heicData != nil, "原生 ImageIO 应支持 PNG / JPG / HEIC 三种格式无依赖编码")
+    let scaled1x = CaptureImageExporter.prepareImage(src2x, scaleFactor: 2.0, exportAt1x: true)
+    check(
+        scaled1x.image.width == 80 && scaled1x.image.height == 60 && scaled1x.effectiveScale == 1.0,
+        "开启 1× 导出后 2x Retina 图像应精准缩放至逻辑点尺寸 (80×60 @1x)"
+    )
+    if let jpg = jpgData, let src = CGImageSourceCreateWithData(jpg as CFData, nil), let dec = CGImageSourceCreateImageAtIndex(src, 0, nil) {
+        check(dec.width == 160 && dec.height == 120, "JPEG 编码解码应保持精确像素尺寸")
+    }
 }
 
 private func makeSolidFrame(width: Int, height: Int, r: Double, g: Double, b: Double) -> CGImage {

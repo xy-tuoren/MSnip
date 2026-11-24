@@ -50,6 +50,13 @@ extension PinWindow {
         onStateChanged?()
     }
 
+    private func acquireBaseSampler() -> PixelSampler {
+        if let existing = activeBaseSampler { return existing }
+        let created = PixelSampler(cgImage: baseCGImage)
+        activeBaseSampler = created
+        return created
+    }
+
     @objc func beginAnnotationEditing() {
         guard editorCanvas == nil, !isClickThrough else { return }
         pinContentView.liveTextView.clearSelection()
@@ -57,7 +64,7 @@ extension PinWindow {
         pinContentView.isAnnotating = true
         syncHoverBarVisibility()
 
-        let canvas = PinAnnotationCanvasView(baseSampler: baseSampler, baseSize: baseSize, imageScale: imageScale)
+        let canvas = PinAnnotationCanvasView(baseSampler: acquireBaseSampler(), baseSize: baseSize, imageScale: imageScale)
         canvas.frame = pinContentView.bounds
         canvas.autoresizingMask = [.width, .height]
         canvas.doc = annotationDoc
@@ -119,7 +126,7 @@ extension PinWindow {
         guard editorCanvas != nil || toolbarPanel != nil else { return }
         editorCanvas?.commitTextField()
         if commit, let baked = AnnotationRenderer.bakeExportImage(
-            sampler: baseSampler, selection: CGRect(origin: .zero, size: baseSize),
+            sampler: acquireBaseSampler(), selection: CGRect(origin: .zero, size: baseSize),
             imageScale: imageScale, annotations: annotationDoc.objects
         ) {
             currentCGImage = baked
@@ -127,6 +134,7 @@ extension PinWindow {
         }
         editorCanvas?.removeFromSuperview(); editorCanvas = nil
         toolbarPanel?.orderOut(nil); toolbarPanel = nil
+        activeBaseSampler = nil
         pinContentView.isAnnotating = false
         if reanalyzeLiveText {
             pinContentView.liveTextView.configure(cgImage: currentCGImage, logicalSize: baseSize)
@@ -137,6 +145,7 @@ extension PinWindow {
 
     @objc func copyImage() { ClipboardAndSave.copyToClipboard(cgImage: currentCGImage, scaleFactor: imageScale) }
     @objc func openOCRPanel() { if let scr = screen ?? NSScreen.main ?? NSScreen.screens.first { onExtractOCR?(currentCGImage, imageScale, scr) } }
+    @objc func openTranslatePanel() { if let scr = screen ?? NSScreen.main ?? NSScreen.screens.first { onTranslateImage?(currentCGImage, imageScale, scr) } }
     @objc func toggleTextHighlights() {
         pinContentView.liveTextView.highlightBlocks.toggle()
         highlightMenuItem?.state = pinContentView.liveTextView.highlightBlocks ? .on : .off
@@ -150,6 +159,7 @@ extension PinWindow {
         hideHoverWorkItem?.cancel(); hideHoverWorkItem = nil
         hoverBarPanel.orderOut(nil)
         endAnnotationEditing(commit: false, reanalyzeLiveText: false)
+        activeBaseSampler = nil
         pinContentView.liveTextView.clearAll()
         pinContentView.menu = nil
         pinContentView.liveTextView.menu = nil
@@ -178,7 +188,8 @@ extension PinWindow {
         menu.addItem(withTitle: "编辑 / 二次标注贴图 (E)…", action: #selector(beginAnnotationEditing), keyEquivalent: "")
         menu.addItem(withTitle: "开启鼠标穿透对照 (P)", action: #selector(enableClickThrough), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "提取图中文字 (OCR 对照窗)…", action: #selector(openOCRPanel), keyEquivalent: "o")
+        menu.addItem(withTitle: "提取图中文字 (T)…", action: #selector(openOCRPanel), keyEquivalent: "o")
+        menu.addItem(withTitle: "翻译图中文字 (Y)…", action: #selector(openTranslatePanel), keyEquivalent: "")
         let hlItem = NSMenuItem(title: "高亮图中可划选文字块", action: #selector(toggleTextHighlights), keyEquivalent: "")
         self.highlightMenuItem = hlItem
         menu.addItem(hlItem)

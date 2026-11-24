@@ -38,20 +38,16 @@ enum LLMTranslator {
         switch profile.kind {
         case .openAICompatible:
             return try await callOpenAICompatible(
-                system: sys,
-                user: userPrompt,
-                profile: profile,
-                stream: onChunk != nil,
-                onChunk: onChunk
+                system: sys, user: userPrompt, profile: profile, stream: onChunk != nil, onChunk: onChunk
             )
         case .anthropicCompatible:
-            let res = try await callAnthropic(system: sys, user: userPrompt, profile: profile)
-            onChunk?(res)
-            return res
+            return try await callAnthropic(
+                system: sys, user: userPrompt, profile: profile, stream: onChunk != nil, onChunk: onChunk
+            )
         case .geminiNative:
-            let res = try await callGemini(system: sys, user: userPrompt, profile: profile)
-            onChunk?(res)
-            return res
+            return try await callGemini(
+                system: sys, user: userPrompt, profile: profile, stream: onChunk != nil, onChunk: onChunk
+            )
         default:
             throw LLMError.invalidEndpoint(profile.endpoint)
         }
@@ -80,35 +76,13 @@ enum LLMTranslator {
         case .openAICompatible:
             raw = try await callOpenAICompatible(system: sys, user: packed, profile: profile, stream: false, onChunk: nil)
         case .anthropicCompatible:
-            raw = try await callAnthropic(system: sys, user: packed, profile: profile)
+            raw = try await callAnthropic(system: sys, user: packed, profile: profile, stream: false, onChunk: nil)
         case .geminiNative:
-            raw = try await callGemini(system: sys, user: packed, profile: profile)
+            raw = try await callGemini(system: sys, user: packed, profile: profile, stream: false, onChunk: nil)
         default:
             throw LLMError.invalidEndpoint(profile.endpoint)
         }
-        return unpackNumberedLines(raw, original: lines)
-    }
-
-    private static func unpackNumberedLines(_ raw: String, original: [String]) -> [String] {
-        var result = original
-        var matched = 0
-        for line in raw.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("⟦"), let closeIdx = trimmed.firstIndex(of: "⟧") else { continue }
-            let numStr = trimmed[trimmed.index(after: trimmed.startIndex)..<closeIdx]
-            if let n = Int(numStr), n >= 1, n <= result.count {
-                let content = trimmed[trimmed.index(after: closeIdx)...].trimmingCharacters(in: .whitespaces)
-                if !content.isEmpty {
-                    result[n - 1] = content
-                    matched += 1
-                }
-            }
-        }
-        if matched == 0 {
-            let fallbackLines = raw.components(separatedBy: .newlines).map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
-            for i in 0..<min(result.count, fallbackLines.count) { result[i] = fallbackLines[i] }
-        }
-        return result
+        return LLMProtocolHelpers.unpackNumberedLines(raw, original: lines)
     }
 
     private static func callOpenAICompatible(
@@ -145,30 +119,11 @@ enum LLMTranslator {
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         if stream {
-            let (bytes, resp) = try await URLSession.shared.bytes(for: req)
-            if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-                var errTxt = ""
-                for try await line in bytes.lines { errTxt += line; if errTxt.count > 400 { break } }
-                throw LLMError.httpError(http.statusCode, errTxt)
-            }
-            var full = ""
-            for try await line in bytes.lines {
-                let t = line.trimmingCharacters(in: .whitespaces)
-                guard t.hasPrefix("data:") else { continue }
-                let payload = t.dropFirst(5).trimmingCharacters(in: .whitespaces)
-                if payload == "[DONE]" { break }
-                guard let data = payload.data(using: .utf8),
-                      let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let choices = obj["choices"] as? [[String: Any]],
-                      let delta = choices.first?["delta"] as? [String: Any],
-                      let content = delta["content"] as? String, !content.isEmpty else { continue }
-                full += content
-                let visible = LLMProtocolHelpers.stripThinkingTags(full)
-                if !visible.isEmpty { onChunk?(visible) }
-            }
-            let cleaned = LLMProtocolHelpers.stripThinkingTags(full)
-            if cleaned.isEmpty { throw LLMError.emptyResponse }
-            return cleaned
+            return try await consumeSSEStream(
+                request: req,
+                extractDelta: LLMProtocolHelpers.parseOpenAISSEChunk,
+                onChunk: onChunk
+            )
         } else {
             let (data, resp) = try await URLSession.shared.data(for: req)
             try validateHTTP(resp, data: data)
@@ -187,7 +142,9 @@ enum LLMTranslator {
     private static func callAnthropic(
         system: String,
         user: String,
-        profile: TranslationProviderProfile
+        profile: TranslationProviderProfile,
+        stream: Bool,
+        onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         guard let url = LLMProtocolHelpers.resolveAnthropicMessagesURL(profile.endpoint) else {
             throw LLMError.invalidEndpoint(profile.endpoint)
@@ -207,10 +164,18 @@ enum LLMTranslator {
         let body: [String: Any] = [
             "model": modelName,
             "max_tokens": 2048,
+            "stream": stream,
             "system": system,
             "messages": [["role": "user", "content": user]]
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        if stream {
+            return try await consumeSSEStream(
+                request: req,
+                extractDelta: LLMProtocolHelpers.parseAnthropicSSEChunk,
+                onChunk: onChunk
+            )
+        }
         let (data, resp) = try await URLSession.shared.data(for: req)
         try validateHTTP(resp, data: data)
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -218,13 +183,17 @@ enum LLMTranslator {
               let text = contentArr.first?["text"] as? String else {
             throw LLMError.emptyResponse
         }
-        return LLMProtocolHelpers.stripThinkingTags(text)
+        let cleaned = LLMProtocolHelpers.stripThinkingTags(text)
+        if cleaned.isEmpty { throw LLMError.emptyResponse }
+        return cleaned
     }
 
     private static func callGemini(
         system: String,
         user: String,
-        profile: TranslationProviderProfile
+        profile: TranslationProviderProfile,
+        stream: Bool,
+        onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
         let base = profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "https://generativelanguage.googleapis.com/v1beta"
@@ -233,8 +202,8 @@ enum LLMTranslator {
             ? "gemini-2.0-flash"
             : profile.model.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let urlStr = "\(base)/models/\(model):generateContent?key=\(key)"
-        guard let url = URL(string: urlStr) else { throw LLMError.invalidEndpoint(base) }
+        let action = stream ? "streamGenerateContent?alt=sse&key=\(key)" : "generateContent?key=\(key)"
+        guard let url = URL(string: "\(base)/models/\(model):\(action)") else { throw LLMError.invalidEndpoint(base) }
 
         var req = URLRequest(url: url, timeoutInterval: 35)
         req.httpMethod = "POST"
@@ -246,6 +215,13 @@ enum LLMTranslator {
             "contents": [["parts": [["text": user]]]]
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        if stream {
+            return try await consumeSSEStream(
+                request: req,
+                extractDelta: LLMProtocolHelpers.parseGeminiSSEChunk,
+                onChunk: onChunk
+            )
+        }
         let (data, resp) = try await URLSession.shared.data(for: req)
         try validateHTTP(resp, data: data)
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -255,7 +231,44 @@ enum LLMTranslator {
               let text = parts.first?["text"] as? String else {
             throw LLMError.emptyResponse
         }
-        return LLMProtocolHelpers.stripThinkingTags(text)
+        let cleaned = LLMProtocolHelpers.stripThinkingTags(text)
+        if cleaned.isEmpty { throw LLMError.emptyResponse }
+        return cleaned
+    }
+
+    /// 通用 SSE 流式消费器（40ms 合并节流，避免高频 token 触发主线程全量 NSTextStorage 重排）
+    private static func consumeSSEStream(
+        request: URLRequest,
+        extractDelta: (String) -> String?,
+        onChunk: (@Sendable (String) -> Void)?
+    ) async throws -> String {
+        let (bytes, resp) = try await URLSession.shared.bytes(for: request)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            var errTxt = ""
+            for try await line in bytes.lines { errTxt += line; if errTxt.count > 400 { break } }
+            throw LLMError.httpError(http.statusCode, errTxt)
+        }
+        var full = ""
+        var lastEmitAt: TimeInterval = 0
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            let t = line.trimmingCharacters(in: .whitespaces)
+            guard t.hasPrefix("data:") else { continue }
+            let payload = t.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            if payload == "[DONE]" { break }
+            guard let delta = extractDelta(payload), !delta.isEmpty else { continue }
+            full += delta
+            let now = ProcessInfo.processInfo.systemUptime
+            if now - lastEmitAt >= 0.04 {
+                lastEmitAt = now
+                let visible = LLMProtocolHelpers.stripThinkingTags(full)
+                if !visible.isEmpty { onChunk?(visible) }
+            }
+        }
+        let cleaned = LLMProtocolHelpers.stripThinkingTags(full)
+        if cleaned.isEmpty { throw LLMError.emptyResponse }
+        onChunk?(cleaned)
+        return cleaned
     }
 
     private static func applyCustomHeaders(_ rawJSON: String, to req: inout URLRequest) {

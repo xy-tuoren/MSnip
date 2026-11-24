@@ -180,14 +180,24 @@ extension TranslationSettingsWindow {
         presetSegment.selectedIndex = cfg.hasCustomHotKeys
             ? -1
             : (HotKeyPreset.allCases.firstIndex(of: cfg.hotKeyPreset) ?? 0)
+        let failedRegs = (cfg.hotKeysEnabled && !priorityActive) ? (shortcutAudit.failedHotKeyActionsProvider?() ?? []) : []
         var blockingCount = 0
         var warningCount = 0
         for slot in GlobalHotKeyAction.allCases {
             let active = cfg.activeCombo(for: slot)
             let isMod = cfg.globalHotKeyOverrides[slot.rawValue] != nil
-            let conflicts = (cfg.hotKeysEnabled && active != nil)
+            var conflicts = (cfg.hotKeysEnabled && active != nil)
                 ? HotKeyConflictScanner.evaluate(combo: active!, for: slot, config: cfg, snapshot: shortcutAudit.snapshot)
                 : []
+            if active != nil && failedRegs.contains(slot) && !conflicts.contains(where: { $0.severity == .blocking }) {
+                conflicts.insert(HotKeyConflict(
+                    severity: .blocking,
+                    owner: "系统热键注册",
+                    shortBadge: "注册失败",
+                    detailMessage: "常规 Carbon 热键注册被系统拒绝（已被独占），请更换键位或开启上方「冲突时强制优先接管」",
+                    requiresDoublePressConfirm: true
+                ), at: 0)
+            }
             let top = conflicts.first
             if let sev = top?.severity {
                 if sev == .blocking { blockingCount += 1 } else { warningCount += 1 }

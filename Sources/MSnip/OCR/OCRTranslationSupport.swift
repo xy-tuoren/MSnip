@@ -5,6 +5,22 @@ import MSnipCore
 /// 双栏对照浮窗流式翻译控制条（自定义清爽胶囊下拉选择器 + 实时流式译文输出）扩展
 @MainActor
 extension OCRResultController {
+    func applyWindowTheme(dark: Bool) {
+        guard let win = window, let root = win.contentView else { return }
+        ResultWindowChrome.applyAppearance(to: win, dark: dark)
+        if let themeButton { ResultWindowChrome.syncThemeButton(themeButton, dark: dark) }
+        ResultWindowChrome.styleCardLayer(leftCard, dark: dark)
+        ResultWindowChrome.styleCardLayer(rightCard, dark: dark)
+        if let well = leftCard?.subviews.first(where: { $0.identifier?.rawValue == "ImgWell" }) {
+            well.layer?.backgroundColor = ResultTheme.cgColor(ResultTheme.subtleFill, dark: dark)
+        }
+        qrBannerBox?.layer?.backgroundColor = ResultTheme.cgColor(ResultTheme.activeSoftFill, dark: dark)
+        transControlStrip?.layer?.backgroundColor = ResultTheme.cgColor(ResultTheme.subtleFill, dark: dark)
+        transControlStrip?.layer?.borderColor = ResultTheme.cgColor(ResultTheme.borderHairline, dark: dark)
+        transScrollView?.layer?.backgroundColor = ResultTheme.cgColor(ResultTheme.transWellFill, dark: dark)
+        ResultWindowChrome.invalidateSubtree(root)
+    }
+
     func buildTranslationSubtree(in rightCard: NSView) {
         let strip = NSView()
         strip.wantsLayer = true
@@ -15,7 +31,7 @@ extension OCRResultController {
 
         let badge = NSTextField(labelWithString: "实时译文")
         badge.font = .systemFont(ofSize: 11.5, weight: .semibold)
-        badge.textColor = MSnipUITheme.accent
+        badge.textColor = ResultTheme.accent
         strip.addSubview(badge)
         self.transHeaderLabel = badge
 
@@ -37,7 +53,7 @@ extension OCRResultController {
         langPill.onCustomClick = { [weak self] anchor in
             guard let self else { return }
             let cur = self.selectedTargetLang ?? TranslationService.shared.settings.targetLang
-            LanguagePickerPopover.shared.show(anchoredTo: anchor, current: cur, dark: false) { [weak self] picked in
+            LanguagePickerPopover.shared.show(anchoredTo: anchor, current: cur, dark: ResultWindowChrome.prefersDarkAppearance) { [weak self] picked in
                 guard let self else { return }
                 self.selectedTargetLang = picked
                 self.targetLangPill?.customDisplayTitle = picked.displayName
@@ -77,8 +93,8 @@ extension OCRResultController {
         tv.isSelectable = true
         tv.isRichText = false
         tv.font = .systemFont(ofSize: 13.5, weight: .regular)
-        tv.textColor = MSnipUITheme.inkTrans
-        tv.insertionPointColor = MSnipUITheme.accent
+        tv.textColor = ResultTheme.inkTrans
+        tv.insertionPointColor = ResultTheme.accent
         tv.textContainerInset = NSSize(width: 10, height: 9)
         let para = NSMutableParagraphStyle()
         para.lineSpacing = 5.0

@@ -10,6 +10,7 @@ final class HotKeyManager {
 
     var onTrigger: ((GlobalHotKeyAction) -> Void)?
     private(set) var isPriorityTapActive: Bool = false
+    private(set) var failedActions: Set<GlobalHotKeyAction> = []
 
     private var eventHandlerRef: EventHandlerRef?
     private var hotKeyRefs: [UInt32: EventHotKeyRef] = [:]
@@ -60,6 +61,8 @@ final class HotKeyManager {
             )
             if status == noErr, let ref {
                 hotKeyRefs[hotKeyID] = ref
+            } else {
+                failedActions.insert(action)
             }
         }
     }
@@ -67,6 +70,7 @@ final class HotKeyManager {
     func unregisterAll() {
         priorityTap.stop()
         isPriorityTapActive = false
+        failedActions.removeAll()
         for (_, ref) in hotKeyRefs {
             UnregisterEventHotKey(ref)
         }

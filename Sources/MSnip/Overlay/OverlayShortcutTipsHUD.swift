@@ -7,10 +7,6 @@ import MSnipCore
 /// - 自动根据显示器 `visibleFrame` 避开底部程序坞 (Dock)、顶部菜单栏与屏幕物理边缘；
 /// - 采用高对比悬浮深蓝灰卡片 + 高亮描边 + 纯白立体键帽 + 全整数像素对齐排版，在 `@1x` (1080p) 与 `@2x` 暗色/亮色背景下均清晰醒目。
 extension OverlayView {
-    private static let hudPillAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .semibold),
-        .foregroundColor: MSnipUITheme.inkPrimary
-    ]
     private static let headerTitleAttrs: [NSAttributedString.Key: Any] = [
         .font: NSFont.systemFont(ofSize: 12.0, weight: .bold),
         .foregroundColor: MSnipUITheme.accent
@@ -217,38 +213,6 @@ extension OverlayView {
                 withAttributes: Self.keycapDescAttrs
             )
         }
-        ctx.restoreGState()
-    }
-
-    func drawHUDPill(ctx: CGContext, anchorRect: CGRect, text: String) {
-        let nsText = text as NSString
-        let textSize = nsText.size(withAttributes: Self.hudPillAttrs)
-        let badgeW = ceil(textSize.width + 16)
-        let badgeH: CGFloat = 24
-        let badgeX = round(min(max(8, anchorRect.minX), bounds.width - badgeW - 8))
-        let badgeY = round(anchorRect.minY >= (badgeH + 10) ? (anchorRect.minY - badgeH - 7) : (anchorRect.minY + 7))
-        let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeW, height: badgeH)
-
-        ctx.saveGState()
-        let pill = CGPath(roundedRect: badgeRect, cornerWidth: 6.0, cornerHeight: 6.0, transform: nil)
-        ctx.setShadow(offset: CGSize(width: 0, height: 2), blur: 6, color: NSColor.black.withAlphaComponent(0.18).cgColor)
-        ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
-        ctx.addPath(pill)
-        ctx.fillPath()
-        ctx.restoreGState()
-
-        ctx.saveGState()
-        ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.addPath(pill)
-        ctx.strokePath()
-        nsText.draw(
-            at: CGPoint(
-                x: round(badgeRect.minX + 8),
-                y: round(badgeRect.minY + (badgeH - textSize.height) * 0.5)
-            ),
-            withAttributes: Self.hudPillAttrs
-        )
         ctx.restoreGState()
     }
 

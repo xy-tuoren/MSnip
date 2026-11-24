@@ -18,27 +18,24 @@ extension OCRResultController {
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
         win.isMovableByWindowBackground = true
-        win.level = .floating
-        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        win.minSize = NSSize(width: 680, height: 400)
-        win.appearance = NSAppearance(named: .aqua)
-        win.backgroundColor = MSnipUITheme.canvasBg
+        ResultWindowChrome.applyWindowLevel(to: win, alwaysOnTop: ResultWindowKind.ocr.isAlwaysOnTop)
+        win.minSize = NSSize(width: 700, height: 400)
         win.delegate = self
         win.onEscape = { [weak win] in win?.close() }
         win.onQuickCopy = { [weak self] in self?.copyPreferredText() }
 
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 840, height: 530))
         root.wantsLayer = true
-        root.layer?.backgroundColor = MSnipUITheme.canvasBg.cgColor
         root.autoresizingMask = [.width, .height]
         win.contentView = root
 
         buildSubtree(in: root)
         self.window = win
+        applyWindowTheme(dark: ResultWindowChrome.prefersDarkAppearance)
     }
 
     private func buildSubtree(in root: NSView) {
-        titleLabel = makeLabel("截图提取文字", size: 14, weight: .bold, color: MSnipUITheme.inkPrimary)
+        titleLabel = makeLabel("截图提取文字", size: 14, weight: .bold, color: ResultTheme.inkPrimary)
         root.addSubview(titleLabel)
 
         statusBadgeLabel = makeLabel("", size: 11.5, weight: .medium, color: MSnipUITheme.success)
@@ -87,26 +84,30 @@ extension OCRResultController {
         }
         root.addSubview(modeSwitch)
 
-        leftCard = makeCardContainer()
+        themeButton = ResultWindowChrome.makeThemeButton { [weak self] dark in self?.applyWindowTheme(dark: dark) }
+        root.addSubview(themeButton)
+
+        pinTopButton = ResultWindowChrome.makePinButton(kind: .ocr) { [weak self] in self?.window }
+        root.addSubview(pinTopButton)
+
+        leftCard = ResultWindowChrome.makeCardContainer()
         let imgWell = NSView()
         imgWell.wantsLayer = true
-        imgWell.layer?.backgroundColor = MSnipUITheme.subtleFill.cgColor
         imgWell.layer?.cornerRadius = 8
         imgWell.identifier = NSUserInterfaceItemIdentifier("ImgWell")
         leftCard.addSubview(imgWell)
 
         liveImageView = LiveTextImageView(scaling: .scaleProportionallyUpOrDown)
         leftCard.addSubview(liveImageView)
-        leftTipLabel = makeLabel("原图支持直接划选局部词句 (⌘C)", size: 11, weight: .medium, color: MSnipUITheme.inkMuted)
+        leftTipLabel = makeLabel("原图支持直接划选局部词句 (⌘C)", size: 11, weight: .medium, color: ResultTheme.inkMuted)
         leftCard.addSubview(leftTipLabel)
         root.addSubview(leftCard)
 
-        rightCard = makeCardContainer()
+        rightCard = ResultWindowChrome.makeCardContainer()
         qrBannerBox = NSView()
         qrBannerBox.wantsLayer = true
-        qrBannerBox.layer?.backgroundColor = MSnipUITheme.activeSoftFill.cgColor
         qrBannerBox.layer?.cornerRadius = 8
-        qrValueLabel = makeLabel("", size: 11.5, weight: .semibold, color: MSnipUITheme.inkPrimary)
+        qrValueLabel = makeLabel("", size: 11.5, weight: .semibold, color: ResultTheme.inkPrimary)
         qrValueLabel.lineBreakMode = .byTruncatingMiddle
         qrBannerBox.addSubview(qrValueLabel)
 
@@ -147,14 +148,14 @@ extension OCRResultController {
         tv.isRichText = false
         tv.allowsUndo = true
         tv.font = NSFont.systemFont(ofSize: 13.5)
-        tv.textColor = MSnipUITheme.inkPrimary
-        tv.insertionPointColor = MSnipUITheme.accent
+        tv.textColor = ResultTheme.inkPrimary
+        tv.insertionPointColor = ResultTheme.accent
         tv.textContainerInset = NSSize(width: 10, height: 10)
         tv.delegate = self
         let para = NSMutableParagraphStyle()
         para.lineSpacing = 4.5
         tv.defaultParagraphStyle = para
-        tv.typingAttributes = [.font: NSFont.systemFont(ofSize: 13.5), .foregroundColor: MSnipUITheme.inkPrimary, .paragraphStyle: para]
+        tv.typingAttributes = [.font: NSFont.systemFont(ofSize: 13.5), .foregroundColor: ResultTheme.inkPrimary, .paragraphStyle: para]
         textScrollView.documentView = tv
         self.textView = tv
         rightCard.addSubview(textScrollView)
@@ -162,7 +163,7 @@ extension OCRResultController {
         buildTranslationSubtree(in: rightCard)
         root.addSubview(rightCard)
 
-        statsLabel = makeLabel("0 行 · 0 字", size: 11.5, weight: .medium, color: MSnipUITheme.inkSecondary)
+        statsLabel = makeLabel("0 行 · 0 字", size: 11.5, weight: .medium, color: ResultTheme.inkSecondary)
         root.addSubview(statsLabel)
 
         exactModeButton = OCRPillButton(title: "代码防纠错", symbol: "curlybraces")
@@ -189,8 +190,13 @@ extension OCRResultController {
         let pad: CGFloat = 14
         let topH: CGFloat = 48, botH: CGFloat = 48
 
+        let topY = round(H - topH + (topH - 28) * 0.5)
+        let pinTopSz = pinTopButton.intrinsicContentSize
+        pinTopButton.frame = NSRect(x: W - pad - pinTopSz.width, y: topY, width: pinTopSz.width, height: pinTopSz.height)
+        let thSz = themeButton.intrinsicContentSize
+        themeButton.frame = NSRect(x: pinTopButton.frame.minX - thSz.width - 6, y: topY, width: thSz.width, height: thSz.height)
         let modeSz = modeSwitch.intrinsicContentSize
-        modeSwitch.frame = NSRect(x: W - pad - modeSz.width, y: round(H - topH + (topH - modeSz.height) * 0.5), width: modeSz.width, height: modeSz.height)
+        modeSwitch.frame = NSRect(x: themeButton.frame.minX - modeSz.width - 8, y: round(H - topH + (topH - modeSz.height) * 0.5), width: modeSz.width, height: modeSz.height)
         let hlSz = highlightButton.intrinsicContentSize
         highlightButton.frame = NSRect(x: modeSwitch.frame.minX - hlSz.width - 8, y: modeSwitch.frame.minY, width: hlSz.width, height: hlSz.height)
         let trSz = translateButton.intrinsicContentSize
@@ -281,19 +287,6 @@ extension OCRResultController {
     }
 
     private func makeLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {
-        let lbl = NSTextField(labelWithString: text)
-        lbl.font = NSFont.systemFont(ofSize: size, weight: weight)
-        lbl.textColor = color
-        return lbl
-    }
-
-    private func makeCardContainer() -> NSView {
-        let v = NSView()
-        v.wantsLayer = true
-        v.layer?.backgroundColor = MSnipUITheme.cardSolid.cgColor
-        v.layer?.cornerRadius = 11
-        v.layer?.borderWidth = 1.0
-        v.layer?.borderColor = MSnipUITheme.borderHairline.cgColor
-        return v
+        ResultWindowChrome.makeLabel(text, size: size, weight: weight, color: color)
     }
 }

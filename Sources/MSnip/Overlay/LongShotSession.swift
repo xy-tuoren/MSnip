@@ -11,6 +11,8 @@ final class LongShotSession {
         case copied(CGImage, CGFloat)
         case saved(CGImage, CGFloat)
         case pinned(CGImage, CGFloat, CGPoint, NSScreen)
+        case extractText(CGImage, CGFloat, NSScreen)
+        case translateText(CGImage, CGFloat, NSScreen)
         case cancelled
     }
 
@@ -112,7 +114,7 @@ final class LongShotSession {
 
     // MARK: - Actions & Stitch Updates
 
-    private enum ExportMode { case copy, save, pin }
+    private enum ExportMode { case copy, save, pin, extractText, translateText }
 
     func handleControlAction(_ action: LongShotControlBarView.Action) {
         switch action {
@@ -127,10 +129,12 @@ final class LongShotSession {
                 ToastHUD.show(message: "开启「辅助功能」后可用自动滚动，当前可直接手动滚轮")
                 _ = RegionDetector.checkAccessibilityPermission(prompt: true)
             }
-        case .pin:        finishWithExport(mode: .pin)
-        case .save:       finishWithExport(mode: .save)
-        case .cancel:     finish(.cancelled)
-        case .finishCopy: finishWithExport(mode: .copy)
+        case .extractText:   finishWithExport(mode: .extractText)
+        case .translateText: finishWithExport(mode: .translateText)
+        case .pin:           finishWithExport(mode: .pin)
+        case .save:          finishWithExport(mode: .save)
+        case .cancel:        finish(.cancelled)
+        case .finishCopy:    finishWithExport(mode: .copy)
         }
     }
 
@@ -147,7 +151,7 @@ final class LongShotSession {
         case .appended(_, let totalH):
             lastAppendTimestamp = ProcessInfo.processInfo.systemUptime
             borderView?.statusStyle = .stitching
-            borderView?.statusText = "正在拼接 · \(stitcher.widthPx) × \(totalH) px"
+            borderView?.statusText = "正在拼接 · \(stitcher.widthPx) × \(totalH) px · ⌘↩ 完成"
         case .mismatchLostOverlap:
             autoScroller.stop()
             borderView?.statusStyle = .warning
@@ -179,8 +183,11 @@ final class LongShotSession {
 
     private func setupKeyboardMonitors() {
         globalKeyMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] ev in
+            let flags = ev.modifierFlags.intersection(.deviceIndependentFlagsMask)
             if ev.keyCode == 53 {
                 Task { @MainActor [weak self] in self?.finish(.cancelled) }
+            } else if flags == .command && (ev.keyCode == 36 || ev.keyCode == 76) {
+                Task { @MainActor [weak self] in self?.finishWithExport(mode: .copy) }
             }
         }
         localKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] ev in
@@ -199,9 +206,11 @@ final class LongShotSession {
             return
         }
         switch mode {
-        case .copy: finish(.copied(finalImg, scaleFactor))
-        case .save: finish(.saved(finalImg, scaleFactor))
-        case .pin:  finish(.pinned(finalImg, scaleFactor, captureLocalRect.origin, targetScreen))
+        case .copy:          finish(.copied(finalImg, scaleFactor))
+        case .save:          finish(.saved(finalImg, scaleFactor))
+        case .pin:           finish(.pinned(finalImg, scaleFactor, captureLocalRect.origin, targetScreen))
+        case .extractText:   finish(.extractText(finalImg, scaleFactor, targetScreen))
+        case .translateText: finish(.translateText(finalImg, scaleFactor, targetScreen))
         }
     }
 

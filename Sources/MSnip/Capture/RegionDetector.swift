@@ -34,9 +34,9 @@ final class RegionDetector {
         self.axTrusted = AXIsProcessTrusted()
     }
 
-    /// 在覆盖层窗口创建之前调用，拍下当前所有可见窗口的 Z 序几何快照
-    static func captureBeforeOverlay() -> RegionDetector {
-        let primaryH = NSScreen.screens.first?.frame.height ?? 0
+    /// 在覆盖层窗口创建之前调用，拍下当前所有可见窗口的 Z 序几何快照（支持后台线程与抓屏并行执行）
+    static func captureBeforeOverlay(primaryScreenHeight: CGFloat? = nil) -> RegionDetector {
+        let primaryH = primaryScreenHeight ?? (NSScreen.screens.first?.frame.height ?? 0)
         let selfPID = ProcessInfo.processInfo.processIdentifier
 
         let rawList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
@@ -165,10 +165,10 @@ final class RegionDetector {
                     }
                 }
 
-                // 3) 闭合视觉框探测：仅在未开 AX 或 AX 仅命中大面积画布（如终端/画布/网页内嵌图）时补充探测
+                // 3) 闭合视觉框探测：仅在未开 AX 或 AX 仅命中大面积画布（且像素采样器已预热就绪）时补充探测
                 let winArea = winLocal.width * winLocal.height
                 let needVisual = (smallestAXRect == nil) || ((smallestAXRect!.width * smallestAXRect!.height) > winArea * 0.45)
-                if needVisual {
+                if needVisual, snapshot.isSamplerReady {
                     let searchScope = smallestAXRect ?? winLocal
                     let visualRects = VisualDetector.detectVisualRects(
                         at: localPoint,
@@ -179,7 +179,7 @@ final class RegionDetector {
                     candidatesLocal.append(contentsOf: visualRects)
                 }
             }
-        } else {
+        } else if snapshot.isSamplerReady {
             let visualRects = VisualDetector.detectVisualRects(
                 at: localPoint,
                 within: screenBoundsLocal,
@@ -190,9 +190,11 @@ final class RegionDetector {
         }
 
         let normalized = VisualDetector.normalizeHierarchy(candidatesLocal)
-        lastGridKey = key
-        cachedHierarchy = normalized.isEmpty ? [screenBoundsLocal] : normalized
-        return cachedHierarchy
+        if snapshot.isSamplerReady {
+            lastGridKey = key
+            cachedHierarchy = normalized.isEmpty ? [screenBoundsLocal] : normalized
+        }
+        return normalized.isEmpty ? [screenBoundsLocal] : normalized
     }
 
     // MARK: - Accessibility Tree Query

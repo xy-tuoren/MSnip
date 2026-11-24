@@ -199,4 +199,38 @@ func testTranslationConfigAndModels() {
             && LLMQuickPreset.match(endpoint: "http://127.0.0.1:1234/v1") == .lmStudioLocal,
         "根据官网端点地址应准确反查对应的官方预设与密钥控制台链接"
     )
+
+    // 长截图原生广色域 ICC 透传验证（Display P3 帧经拼接导出后仍保持 Display P3，不强制降级为 sRGB）
+    if let p3 = CGColorSpace(name: CGColorSpace.displayP3),
+       let ctx = CGContext(data: nil, width: 64, height: 96, bitsPerComponent: 8, bytesPerRow: 0, space: p3, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+        ctx.setFillColor(CGColor(colorSpace: p3, components: [0.95, 0.2, 0.1, 1.0])!)
+        ctx.fill(CGRect(x: 0, y: 0, width: 64, height: 96))
+        if let f1 = ctx.makeImage() {
+            let p3Stitcher = ScrollStitcher()
+            _ = p3Stitcher.ingest(frame: f1)
+            let finalP3 = p3Stitcher.renderFinalImage()
+            check(
+                finalP3?.colorSpace?.name == CGColorSpace.displayP3,
+                "长截图拼接导出应保留源帧 Display P3 原生 ICC 色彩空间而非强制降级 sRGB"
+            )
+        }
+    }
+
+    // 三协议 SSE 增量块解析、批量编号行解包与剪贴板文本便签卡渲染回归单测
+    check(
+        LLMProtocolHelpers.parseOpenAISSEChunk("{\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}") == "你好"
+            && LLMProtocolHelpers.parseAnthropicSSEChunk("{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"世界\"}}") == "世界"
+            && LLMProtocolHelpers.parseGeminiSSEChunk("{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"MSnip\"}]}}]}") == "MSnip",
+        "OpenAI / Anthropic / Gemini 三协议 SSE 增量文本解析应全部准确提取"
+    )
+    let unpacked = LLMProtocolHelpers.unpackNumberedLines("⟦2⟧ 第二行\n⟦1⟧ 第一行", original: ["Line 1", "Line 2"])
+    check(unpacked == ["第一行", "第二行"], "批量多行译文解包应按 ⟦N⟧ 编号严格还原顺序")
+
+    check(
+        TextPinCardRenderer.looksLikeCode("{\"status\": 200, \"ok\": true}")
+            && !TextPinCardRenderer.looksLikeCode("这是一段普通的中文备忘便签"),
+        "文本便签渲染器应准确区分代码片段与普通文本"
+    )
+    let noteImg = TextPinCardRenderer.render(text: "Hello MSnip\n第二行便签内容", scale: 2.0)
+    check(noteImg != nil && (noteImg?.width ?? 0) >= 480 && (noteImg?.height ?? 0) >= 120, "剪贴板纯文本应生成清晰 Retina 便签贴图")
 }

@@ -60,8 +60,6 @@ public enum ClipboardImagePromise {
     private final class Provider: NSObject, NSPasteboardItemDataProvider {
         let cgImage: CGImage
         let scaleFactor: CGFloat
-        private var cachedPNG: Data?
-        private var cachedTIFF: Data?
 
         init(cgImage: CGImage, scaleFactor: CGFloat) {
             self.cgImage = cgImage
@@ -73,18 +71,13 @@ public enum ClipboardImagePromise {
             item: NSPasteboardItem,
             provideDataForType type: NSPasteboard.PasteboardType
         ) {
+            // AppKit 将 setData 数据交给系统剪贴板服务托管且每种类型至多回调一次，无需在进程堆内双份驻留 PNG/TIFF 字节
             if type == .png {
-                if cachedPNG == nil {
-                    cachedPNG = ClipboardImagePromise.encodePNG(cgImage: cgImage, scaleFactor: scaleFactor)
-                }
-                if let data = cachedPNG {
+                if let data = ClipboardImagePromise.encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) {
                     item.setData(data, forType: .png)
                 }
             } else if type == .tiff {
-                if cachedTIFF == nil {
-                    cachedTIFF = ClipboardImagePromise.encodeTIFF(cgImage: cgImage, scaleFactor: scaleFactor)
-                }
-                if let data = cachedTIFF {
+                if let data = ClipboardImagePromise.encodeTIFF(cgImage: cgImage, scaleFactor: scaleFactor) {
                     item.setData(data, forType: .tiff)
                 }
             }

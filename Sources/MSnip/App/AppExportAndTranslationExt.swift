@@ -33,10 +33,10 @@ extension AppController {
         }
         isCapturing = true
         Task { @MainActor [weak self] in
-            let snapshots = await ScreenCapturer.captureAllScreens()
+            let snap = await ScreenCapturer.captureScreen(displayID: target.displayID)
             guard let self else { return }
             self.isCapturing = false
-            guard let snap = snapshots.first(where: { $0.displayID == target.displayID }) ?? snapshots.first else {
+            guard let snap else {
                 self.permissionGuide.show(opening: .screenRecording)
                 return
             }
@@ -72,7 +72,10 @@ extension AppController {
 
     func performSaveToDirectory(img: CGImage, scale: CGFloat, directoryPath: String, rememberDirectory: Bool = true) {
         let dirURL = URL(fileURLWithPath: directoryPath, isDirectory: true)
-        guard let url = ClipboardAndSave.quickSavePNG(cgImage: img, scaleFactor: scale, intoDirectory: dirURL) else {
+        guard let url = ClipboardAndSave.quickSavePNG(
+            cgImage: img, scaleFactor: scale, intoDirectory: dirURL,
+            format: config.exportImageFormat, exportAt1x: config.exportAt1xScale
+        ) else {
             ToastHUD.show(message: "保存图片失败")
             return
         }
@@ -98,7 +101,9 @@ extension AppController {
         guard let res = ClipboardAndSave.savePNGInteractive(
             cgImage: img,
             scaleFactor: scale,
-            initialDirectory: config.recentSaveDirectories.first ?? config.lastSaveDirectory
+            initialDirectory: config.recentSaveDirectories.first ?? config.lastSaveDirectory,
+            format: config.exportImageFormat,
+            exportAt1x: config.exportAt1xScale
         ) else { return }
         config.recordSaveDirectory(res.dir)
         config.save()
@@ -209,6 +214,12 @@ extension AppController {
             case .pinned(let img, let scale, let origin, let targetScreen):
                 self.recordHistoryAndRefresh(img: img, scale: scale)
                 self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: targetScreen)
+            case .extractText(let img, let scale, let targetScreen):
+                self.recordHistoryAndRefresh(img: img, scale: scale)
+                self.ocrController.present(cgImage: img, scaleFactor: scale, screen: targetScreen, autoTranslate: false)
+            case .translateText(let img, let scale, let targetScreen):
+                self.recordHistoryAndRefresh(img: img, scale: scale)
+                self.ocrController.present(cgImage: img, scaleFactor: scale, screen: targetScreen, autoTranslate: true)
             case .cancelled:
                 break
             }

@@ -15,11 +15,8 @@ extension LatexResultController {
         win.titleVisibility = .hidden
         win.titlebarAppearsTransparent = true
         win.isMovableByWindowBackground = true
-        win.level = .floating
-        win.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        win.minSize = NSSize(width: 700, height: 440)
-        win.appearance = NSAppearance(named: .aqua)
-        win.backgroundColor = MSnipUITheme.canvasBg
+        ResultWindowChrome.applyWindowLevel(to: win, alwaysOnTop: ResultWindowKind.latex.isAlwaysOnTop)
+        win.minSize = NSSize(width: 720, height: 440)
         win.delegate = self
         win.onEscape = { [weak win] in win?.close() }
         win.onQuickCopy = { [weak self] in
@@ -29,11 +26,11 @@ extension LatexResultController {
 
         let root = NSView(frame: NSRect(x: 0, y: 0, width: 840, height: 540))
         root.wantsLayer = true
-        root.layer?.backgroundColor = MSnipUITheme.canvasBg.cgColor
         root.autoresizingMask = [.width, .height]
         win.contentView = root
         buildUI(in: root)
         self.window = win
+        applyWindowTheme(dark: ResultWindowChrome.prefersDarkAppearance)
 
         configPanel.onSaved = { [weak self] updated in
             guard let self else { return }
@@ -44,8 +41,21 @@ extension LatexResultController {
         configPanel.onOpenMainAISettings = { [weak self] in self?.onOpenMainAISettings?() }
     }
 
+    func applyWindowTheme(dark: Bool) {
+        guard let win = window, let root = win.contentView else { return }
+        ResultWindowChrome.applyAppearance(to: win, dark: dark)
+        if let themeButton { ResultWindowChrome.syncThemeButton(themeButton, dark: dark) }
+        ResultWindowChrome.styleCardLayer(leftCard, dark: dark)
+        ResultWindowChrome.styleCardLayer(rightCard, dark: dark)
+        imgWell?.layer?.backgroundColor = ResultTheme.cgColor(ResultTheme.subtleFill, dark: dark)
+        noticeBanner?.layer?.backgroundColor = ResultTheme.cgColor(ResultTheme.activeSoftFill, dark: dark)
+        codeScrollView?.layer?.backgroundColor = ResultTheme.cgColor(ResultTheme.subtleFill, dark: dark)
+        previewView?.setDarkMode(dark)
+        ResultWindowChrome.invalidateSubtree(root)
+    }
+
     private func buildUI(in root: NSView) {
-        titleLabel = makeLabel("LaTeX 公式识别", size: 14, weight: .bold, color: MSnipUITheme.inkPrimary)
+        titleLabel = makeLabel("LaTeX 公式识别", size: 14, weight: .bold, color: ResultTheme.inkPrimary)
         root.addSubview(titleLabel)
         statusBadgeLabel = makeLabel("", size: 11.5, weight: .medium, color: MSnipUITheme.success)
         statusBadgeLabel.lineBreakMode = .byTruncatingTail
@@ -68,25 +78,31 @@ extension LatexResultController {
         configButton.onClick = { [weak self] in self?.configPanel.show(relativeTo: self?.window) }
         root.addSubview(configButton)
 
+        themeButton = ResultWindowChrome.makeThemeButton { [weak self] dark in self?.applyWindowTheme(dark: dark) }
+        root.addSubview(themeButton)
+
+        pinTopButton = ResultWindowChrome.makePinButton(kind: .latex) { [weak self] in self?.window }
+        root.addSubview(pinTopButton)
+
         leftCard = makeCard()
         imgWell = NSView(); imgWell.wantsLayer = true
-        imgWell.layer?.backgroundColor = MSnipUITheme.subtleFill.cgColor; imgWell.layer?.cornerRadius = 8
+        imgWell.layer?.cornerRadius = 8
         leftCard.addSubview(imgWell)
         imageView = NSImageView(); imageView.imageScaling = .scaleProportionallyDown
         leftCard.addSubview(imageView)
-        leftTipLabel = makeLabel("左侧原图对照 · 右侧源码实时联动预览", size: 11, weight: .medium, color: MSnipUITheme.inkMuted)
+        leftTipLabel = makeLabel("左侧原图对照 · 右侧源码实时联动预览", size: 11, weight: .medium, color: ResultTheme.inkMuted)
         leftCard.addSubview(leftTipLabel)
         root.addSubview(leftCard)
 
         rightCard = makeCard()
-        previewTitleLabel = makeLabel("公式渲染预览", size: 11.5, weight: .semibold, color: MSnipUITheme.inkSecondary)
+        previewTitleLabel = makeLabel("公式渲染预览", size: 11.5, weight: .semibold, color: ResultTheme.inkSecondary)
         rightCard.addSubview(previewTitleLabel)
         previewView = LatexPreviewWebView(frame: .zero)
         rightCard.addSubview(previewView)
 
         noticeBanner = NSView(); noticeBanner.wantsLayer = true
-        noticeBanner.layer?.backgroundColor = MSnipUITheme.activeSoftFill.cgColor; noticeBanner.layer?.cornerRadius = 7
-        noticeLabel = makeLabel("", size: 11, weight: .medium, color: MSnipUITheme.inkPrimary)
+        noticeBanner.layer?.cornerRadius = 7
+        noticeLabel = makeLabel("", size: 11, weight: .medium, color: ResultTheme.inkPrimary)
         noticeLabel.lineBreakMode = .byTruncatingTail
         noticeBanner.addSubview(noticeLabel)
         noticeActionBtn = OCRPillButton(title: "去配置")
@@ -110,13 +126,13 @@ extension LatexResultController {
         tv.textContainer?.widthTracksTextView = true; tv.drawsBackground = false
         tv.isRichText = false; tv.allowsUndo = true; tv.delegate = self
         tv.font = .monospacedSystemFont(ofSize: 13.5, weight: .regular)
-        tv.textColor = MSnipUITheme.inkPrimary; tv.insertionPointColor = MSnipUITheme.accent
+        tv.textColor = ResultTheme.inkPrimary; tv.insertionPointColor = ResultTheme.accent
         tv.textContainerInset = NSSize(width: 10, height: 10)
         codeScrollView.documentView = tv; self.codeTextView = tv
         rightCard.addSubview(codeScrollView)
         root.addSubview(rightCard)
 
-        statsLabel = makeLabel("0 字符", size: 11.5, weight: .medium, color: MSnipUITheme.inkSecondary)
+        statsLabel = makeLabel("0 字符", size: 11.5, weight: .medium, color: ResultTheme.inkSecondary)
         root.addSubview(statsLabel)
         pinButton = OCRPillButton(title: "贴原图到桌面", symbol: "pin")
         pinButton.onClick = { [weak self] in
@@ -136,8 +152,13 @@ extension LatexResultController {
         guard let root = window?.contentView else { return }
         let W = root.bounds.width, H = root.bounds.height, pad: CGFloat = 14, topH: CGFloat = 48, botH: CGFloat = 48
 
+        let pinTopSz = pinTopButton.intrinsicContentSize
+        let topY = round(H - topH + (topH - pinTopSz.height) * 0.5)
+        pinTopButton.frame = NSRect(x: W - pad - pinTopSz.width, y: topY, width: pinTopSz.width, height: pinTopSz.height)
+        let thSz = themeButton.intrinsicContentSize
+        themeButton.frame = NSRect(x: pinTopButton.frame.minX - thSz.width - 6, y: topY, width: thSz.width, height: thSz.height)
         let cfgSz = configButton.intrinsicContentSize
-        configButton.frame = NSRect(x: W - pad - cfgSz.width, y: round(H - topH + (topH - cfgSz.height) * 0.5), width: cfgSz.width, height: cfgSz.height)
+        configButton.frame = NSRect(x: themeButton.frame.minX - cfgSz.width - 8, y: round(H - topH + (topH - cfgSz.height) * 0.5), width: cfgSz.width, height: cfgSz.height)
         let rSz = retryButton.intrinsicContentSize
         retryButton.frame = NSRect(x: configButton.frame.minX - rSz.width - 8, y: configButton.frame.minY, width: rSz.width, height: rSz.height)
         enginePill.frame = NSRect(x: retryButton.frame.minX - 122 - 8, y: configButton.frame.minY, width: 122, height: cfgSz.height)
@@ -204,13 +225,10 @@ extension LatexResultController {
     }
 
     private func makeLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {
-        let l = NSTextField(labelWithString: text); l.font = .systemFont(ofSize: size, weight: weight); l.textColor = color; return l
+        ResultWindowChrome.makeLabel(text, size: size, weight: weight, color: color)
     }
 
     private func makeCard() -> NSView {
-        let v = NSView(); v.wantsLayer = true
-        v.layer?.backgroundColor = MSnipUITheme.cardSolid.cgColor; v.layer?.cornerRadius = 10
-        v.layer?.borderWidth = 1; v.layer?.borderColor = MSnipUITheme.borderHairline.cgColor
-        return v
+        ResultWindowChrome.makeCardContainer(cornerRadius: 10)
     }
 }

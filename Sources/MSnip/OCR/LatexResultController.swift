@@ -15,6 +15,8 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
     var enginePill: LightDropdownPill!
     var retryButton: OCRPillButton!
     var configButton: OCRPillButton!
+    var themeButton: OCRPillButton!
+    var pinTopButton: OCRPillButton!
 
     var leftCard: NSView!
     var imgWell: NSView!
@@ -62,10 +64,17 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
         relayout()
 
         if !win.isVisible {
-            let vf = screen.visibleFrame
-            let w: CGFloat = 840, h: CGFloat = 540
-            win.setFrame(NSRect(x: round(vf.midX - w * 0.5), y: round(vf.midY - h * 0.5), width: w, height: h), display: true)
+            let frame = ResultWindowKind.latex.resolveInitialFrame(
+                defaultSize: NSSize(width: 840, height: 540),
+                minSize: win.minSize,
+                on: screen
+            )
+            win.setFrame(frame, display: true)
         }
+        let pinned = ResultWindowKind.latex.isAlwaysOnTop
+        ResultWindowChrome.applyWindowLevel(to: win, alwaysOnTop: pinned)
+        if let pinTopButton { ResultWindowChrome.syncPinButton(pinTopButton, alwaysOnTop: pinned) }
+        applyWindowTheme(dark: ResultWindowChrome.prefersDarkAppearance)
         NSApp.activate(ignoringOtherApps: true)
         win.makeKeyAndOrderFront(nil)
         runRecognition()
@@ -146,7 +155,16 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
 
     func windowDidResize(_ notification: Notification) { relayout() }
 
+    func windowDidEndLiveResize(_ notification: Notification) {
+        if let f = window?.frame { ResultWindowKind.latex.saveFrame(f) }
+    }
+
+    func windowDidMove(_ notification: Notification) {
+        if let f = window?.frame { ResultWindowKind.latex.saveFrame(f) }
+    }
+
     func windowWillClose(_ notification: Notification) {
+        if let f = window?.frame { ResultWindowKind.latex.saveFrame(f) }
         recognitionTask?.cancel()
         recognitionTask = nil
         renderDebounceWork?.cancel()

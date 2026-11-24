@@ -6,13 +6,51 @@ import Foundation
 import MSnipCore
 import ScreenCaptureKit
 
-/// 单块显示器的冻结快照数据（主活动屏幕提前后台预热采样器，副屏按需惰性解包）
+/// 单块显示器的冻结快照数据（线程安全惰性解包采样器，窗口瞬时冻结后再后台预热）
 final class ScreenSnapshot: @unchecked Sendable {
     let screen: NSScreen
     let displayID: CGDirectDisplayID
     let cgImage: CGImage
-    lazy var sampler: PixelSampler = PixelSampler(cgImage: cgImage)
     let scaleFactor: CGFloat
+
+    private let samplerLock = NSLock()
+    private var _sampler: PixelSampler?
+
+    var isSamplerReady: Bool {
+        samplerLock.lock()
+        defer { samplerLock.unlock() }
+        return _sampler != nil
+    }
+
+    var sampler: PixelSampler {
+        samplerLock.lock()
+        if let existing = _sampler {
+            samplerLock.unlock()
+            return existing
+        }
+        samplerLock.unlock()
+        let created = PixelSampler(cgImage: cgImage)
+        samplerLock.lock()
+        if let existing = _sampler {
+            samplerLock.unlock()
+            return existing
+        }
+        _sampler = created
+        samplerLock.unlock()
+        return created
+    }
+
+    func preheatSamplerInBackground(completion: @escaping @MainActor () -> Void) {
+        if isSamplerReady {
+            Task { @MainActor in completion() }
+            return
+        }
+        Task.detached(priority: .high) { [weak self] in
+            guard let self else { return }
+            _ = self.sampler
+            await MainActor.run { completion() }
+        }
+    }
 
     init(screen: NSScreen, displayID: CGDirectDisplayID, cgImage: CGImage) {
         self.screen = screen
@@ -24,7 +62,7 @@ final class ScreenSnapshot: @unchecked Sendable {
 }
 
 /// 跨 macOS 版本极速零色差屏幕抓取引擎：
-/// - 缓存显示器 `SCContentFilter` 免除每次热键枚举窗口 IPC（延迟立降 50%），并强制 `32BGRA + sRGB` 无损像素格式防画面发虚抖动；
+/// - 缓存显示器 `SCContentFilter` 免除每次热键枚举窗口 IPC（延迟立降 50%），保留显示器原生 ICC 色彩空间实现 100% 原图零色差；
 /// - 显示器热插拔或分辨率变化时自动失效重建缓存。
 enum ScreenCapturer {
     @MainActor static var runtimeVerifiedAccess = false
@@ -78,27 +116,31 @@ enum ScreenCapturer {
         registerScreenObserverIfNeeded()
         let screens = NSScreen.screens
         guard !screens.isEmpty else { return [] }
-        let mouse = NSEvent.mouseLocation
+        return await captureScreens(screens)
+    }
 
-        var snapshots: [ScreenSnapshot] = []
+    /// 仅抓取指定单块显示器（供「重截上次区域」直通使用，跳过副屏抓拍与整屏位图解包）
+    @MainActor
+    static func captureScreen(displayID: CGDirectDisplayID) async -> ScreenSnapshot? {
+        registerScreenObserverIfNeeded()
+        let screens = NSScreen.screens
+        guard let target = screens.first(where: { screenDisplayID($0) == displayID }) ?? screens.first else {
+            return nil
+        }
+        return await captureScreens([target]).first
+    }
+
+    @MainActor
+    private static func captureScreens(_ screens: [NSScreen]) async -> [ScreenSnapshot] {
         if #available(macOS 14.0, *) {
             if let sck = await captureViaScreenCaptureKit(screens: screens), !sck.isEmpty {
                 runtimeVerifiedAccess = true
-                snapshots = sck
+                return sck
             }
         }
-        if snapshots.isEmpty {
-            snapshots = captureViaLegacyCoreGraphics(screens: screens)
-            if !snapshots.isEmpty { runtimeVerifiedAccess = true }
-        }
-
-        // 在后台线程预热鼠标所在主屏幕的 PixelSampler，消除覆盖层首帧与首次移动卡顿
-        if let activeSnap = snapshots.first(where: { $0.screen.frame.contains(mouse) }) ?? snapshots.first {
-            await Task.detached(priority: .high) {
-                _ = activeSnap.sampler
-            }.value
-        }
-        return snapshots
+        let legacy = captureViaLegacyCoreGraphics(screens: screens)
+        if !legacy.isEmpty { runtimeVerifiedAccess = true }
+        return legacy
     }
 
     @available(macOS 14.0, *)

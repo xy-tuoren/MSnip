@@ -6,6 +6,8 @@ import Foundation
 final class LongShotControlBarView: NSView {
     enum Action {
         case toggleAutoScroll
+        case extractText
+        case translateText
         case pin
         case save
         case cancel
@@ -29,7 +31,7 @@ final class LongShotControlBarView: NSView {
     override var isFlipped: Bool { true }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
-    static let barSize = NSSize(width: 292, height: 40)
+    static let barSize = NSSize(width: 354, height: 40)
 
     init() {
         super.init(frame: NSRect(origin: .zero, size: Self.barSize))
@@ -114,6 +116,8 @@ final class LongShotControlBarView: NSView {
         x += autoW + 8
 
         let iconDefs: [(String, String, NSColor, Action)] = [
+            ("text.viewfinder", "长图识字 (OCR)", MSnipUITheme.inkPrimary, .extractText),
+            ("character.bubble", "长图翻译", MSnipUITheme.inkPrimary, .translateText),
             ("pin", "长图贴到屏幕 (\(pinHint))", MSnipUITheme.inkPrimary, .pin),
             ("square.and.arrow.down", "保存长图 PNG", MSnipUITheme.inkPrimary, .save),
             ("xmark", "取消长截图 (Esc)", MSnipUITheme.danger, .cancel)
@@ -128,7 +132,7 @@ final class LongShotControlBarView: NSView {
         }
 
         let okRect = CGRect(x: x + 2, y: y, width: 76, height: h)
-        list.append(ButtonSlot(rect: okRect, tip: "完成并复制长图到剪贴板 (↩)", action: .finishCopy) { ctx, r, hov in
+        list.append(ButtonSlot(rect: okRect, tip: "完成并复制长图到剪贴板 (⌘↩ / ↩)", action: .finishCopy) { ctx, r, hov in
             MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 6.5, hovered: hov)
             let iconR = CGRect(x: r.minX + 10, y: r.minY, width: 14, height: r.height)
             ToolbarView.drawSymbol("checkmark", in: iconR, alpha: 1.0, tint: .white)

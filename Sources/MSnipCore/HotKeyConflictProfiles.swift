@@ -107,6 +107,40 @@ public enum HotKeyConflictProfiles {
         return KeyCombo(keyCode: UInt32(code), carbonModifiers: mask)
     }
 
+    /// 所有 macOS 应用通用的高频菜单快捷键（设为全局热键会拦截前台所有应用）
+    public static func commonAppShortcut(for combo: KeyCombo) -> (short: String, detail: String, requiresConfirm: Bool)? {
+        let code = Int(combo.keyCode)
+        if combo.carbonModifiers == cmd {
+            let map: [Int: (String, String, Bool)] = [
+                kVK_ANSI_C: ("拦截复制", "通用「复制 (⌘C)」", true),
+                kVK_ANSI_V: ("拦截粘贴", "通用「粘贴 (⌘V)」", true),
+                kVK_ANSI_X: ("拦截剪切", "通用「剪切 (⌘X)」", true),
+                kVK_ANSI_Z: ("拦截撤销", "通用「撤销 (⌘Z)」", true),
+                kVK_ANSI_A: ("拦截全选", "通用「全选 (⌘A)」", true),
+                kVK_ANSI_S: ("拦截保存", "通用「保存 (⌘S)」", true),
+                kVK_ANSI_W: ("拦截关闭", "通用「关闭窗口 (⌘W)」", true),
+                kVK_ANSI_Q: ("拦截退出", "通用「退出应用 (⌘Q)」", true),
+                kVK_ANSI_H: ("拦截隐藏", "通用「隐藏应用 (⌘H)」", true),
+                kVK_ANSI_M: ("拦截最小化", "通用「最小化 (⌘M)」", true),
+                kVK_ANSI_N: ("拦截新建", "通用「新建 (⌘N)」", false),
+                kVK_ANSI_T: ("拦截新标签", "通用「新标签页 (⌘T)」", false),
+                kVK_ANSI_R: ("拦截刷新", "通用「刷新 (⌘R)」", false),
+                kVK_ANSI_F: ("拦截查找", "通用「查找 (⌘F)」", false),
+                kVK_ANSI_P: ("拦截打印", "通用「打印 (⌘P)」", false),
+                kVK_ANSI_Comma: ("拦截偏好", "通用「应用设置 (⌘,)」", false),
+                kVK_ANSI_1: ("拦截标签 1", "浏览器/编辑器「标签 1 (⌘1)」", false),
+                kVK_ANSI_2: ("拦截标签 2", "浏览器/编辑器「标签 2 (⌘2)」", false),
+                kVK_ANSI_3: ("拦截标签 3", "浏览器/编辑器「标签 3 (⌘3)」", false)
+            ]
+            if let hit = map[code] { return hit }
+        }
+        if combo.carbonModifiers == (cmd | shift) {
+            if code == kVK_ANSI_Z { return ("拦截重做", "通用「重做 (⇧⌘Z)」", false) }
+            if code == kVK_ANSI_P { return ("拦截命令板", "编辑器「命令面板 (⇧⌘P)」", false) }
+        }
+        return nil
+    }
+
     /// 将 `KeyboardShortcuts_<feature>` 键名清洗为可读标签
     public static func humanizeShortcutKeyName(_ key: String) -> String {
         let trimmed = key.hasPrefix("KeyboardShortcuts_")

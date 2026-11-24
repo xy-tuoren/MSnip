@@ -119,6 +119,63 @@ public enum LLMProtocolHelpers {
         return Array(Set(ids)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
+    /// 解析 OpenAI 兼容 SSE `data:` 负载中的增量文本
+    public static func parseOpenAISSEChunk(_ payload: String) -> String? {
+        guard let data = payload.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = obj["choices"] as? [[String: Any]],
+              let delta = choices.first?["delta"] as? [String: Any],
+              let content = delta["content"] as? String, !content.isEmpty else { return nil }
+        return content
+    }
+
+    /// 解析 Anthropic `/v1/messages` SSE `data:` 负载中的增量文本 (`content_block_delta` / `text_delta`)
+    public static func parseAnthropicSSEChunk(_ payload: String) -> String? {
+        guard let data = payload.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              (obj["type"] as? String) == "content_block_delta",
+              let delta = obj["delta"] as? [String: Any],
+              (delta["type"] as? String) == "text_delta",
+              let text = delta["text"] as? String, !text.isEmpty else { return nil }
+        return text
+    }
+
+    /// 解析 Google Gemini `:streamGenerateContent?alt=sse` `data:` 负载中的增量文本
+    public static func parseGeminiSSEChunk(_ payload: String) -> String? {
+        guard let data = payload.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let cands = obj["candidates"] as? [[String: Any]],
+              let content = cands.first?["content"] as? [String: Any],
+              let parts = content["parts"] as? [[String: Any]] else { return nil }
+        let joined = parts.compactMap { $0["text"] as? String }.joined()
+        return joined.isEmpty ? nil : joined
+    }
+
+    /// 解包批量多行翻译的 `⟦1⟧ ...` 编号行（保证返回数组长度与原文逐行严格对齐）
+    public static func unpackNumberedLines(_ raw: String, original: [String]) -> [String] {
+        var result = original
+        var matched = 0
+        for line in raw.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            guard trimmed.hasPrefix("⟦"), let closeIdx = trimmed.firstIndex(of: "⟧") else { continue }
+            let numStr = trimmed[trimmed.index(after: trimmed.startIndex)..<closeIdx]
+            if let n = Int(numStr), n >= 1, n <= result.count {
+                let content = trimmed[trimmed.index(after: closeIdx)...].trimmingCharacters(in: .whitespaces)
+                if !content.isEmpty {
+                    result[n - 1] = content
+                    matched += 1
+                }
+            }
+        }
+        if matched == 0 {
+            let fallback = raw.components(separatedBy: .newlines)
+                .map { $0.trimmingCharacters(in: .whitespaces) }
+                .filter { !$0.isEmpty }
+            for i in 0..<min(result.count, fallback.count) { result[i] = fallback[i] }
+        }
+        return result
+    }
+
     private static func stripTrailingSlashes(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         while s.hasSuffix("/") { s.removeLast() }

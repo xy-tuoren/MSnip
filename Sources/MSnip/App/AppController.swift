@@ -10,6 +10,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var axMenuItem: NSMenuItem?
     var permWarnSepItem: NSMenuItem?
     var loginMenuItem: NSMenuItem?
+    var historyRootItem: NSMenuItem?
+    var historySubmenu: NSMenu?
     var config = AppConfig.load()
     let hotKeyManager = HotKeyManager()
     let historyRing = CaptureHistoryRing(maxCount: 15)
@@ -75,6 +77,12 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pinManager.onExtractOCR = { [weak self] img, scale, scr in
             self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr)
         }
+        pinManager.onTranslateImage = { [weak self] img, scale, scr in
+            self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: true)
+        }
+        ocrController.ocrAutoCopyProvider = { [weak self] in
+            self?.config.ocrAutoCopy ?? true
+        }
         ocrController.onPinImage = { [weak self] img, scale, scr in
             self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
         }
@@ -95,6 +103,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         translationSettings.isPriorityTapActiveProvider = { [weak self] in
             self?.hotKeyManager.isPriorityTapActive ?? false
+        }
+        translationSettings.shortcutAudit.failedHotKeyActionsProvider = { [weak self] in
+            self?.hotKeyManager.failedActions ?? []
         }
         translationSettings.onReapplyHotKeys = { [weak self] in
             guard let self else { return }
@@ -129,9 +140,13 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ToastHUD.dismissImmediate()
 
         isCapturing = true
-        let regionDetector = RegionDetector.captureBeforeOverlay()
+        let primaryH = NSScreen.screens.first?.frame.height ?? 0
         Task { @MainActor [weak self] in
-            let snapshots = await ScreenCapturer.captureAllScreens()
+            async let detectorTask = Task.detached(priority: .userInitiated) {
+                RegionDetector.captureBeforeOverlay(primaryScreenHeight: primaryH)
+            }.value
+            async let snapshotsTask = ScreenCapturer.captureAllScreens()
+            let (regionDetector, snapshots) = await (detectorTask, snapshotsTask)
             guard let self else { return }
             self.isCapturing = false
             guard !snapshots.isEmpty else {

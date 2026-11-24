@@ -16,17 +16,17 @@ extension OverlayView {
     }
 
     /// 刷新局部坐标处的自动识别矩阵栈（高速移动时先瞬时对齐窗口，停顿 22ms 后无感补齐子控件）
-    func updateAutoSnap(at localPoint: CGPoint, previousPoint: CGPoint? = nil, immediate: Bool = false) {
+    func updateAutoSnap(at localPoint: CGPoint, previousPoint: CGPoint? = nil, immediate: Bool = false, fastWindowOnly: Bool? = nil) {
         guard selection == nil else { return }
         autoSnap.deferredWork?.cancel()
 
         let stepDist = previousPoint.map { hypot(localPoint.x - $0.x, localPoint.y - $0.y) } ?? 0
-        let fastSweep = !immediate && stepDist > 18.0
+        let fastSweep = fastWindowOnly ?? (!immediate && stepDist > 18.0)
 
         let newStack = regionDetector.detectHierarchy(at: localPoint, in: snapshot, fastWindowOnly: fastSweep)
         applyDetectedSnapStack(newStack, at: localPoint, immediate: immediate)
 
-        if fastSweep {
+        if fastSweep && fastWindowOnly == nil {
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, self.selection == nil, let curPt = self.lastMousePoint else { return }

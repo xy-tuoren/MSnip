@@ -222,13 +222,17 @@ struct ScrollFrameDigest {
         return (totalErr / Double(samples)) <= 16.0
     }
 
+    private static func resolvedColorSpace(for image: CGImage?) -> CGColorSpace {
+        if let cs = image?.colorSpace, cs.model == .rgb { return cs }
+        return CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    }
+
     static func detachCopy(_ src: CGImage, rect: CGRect) -> CGImage? {
         guard let cropped = src.cropping(to: rect), cropped.width > 0, cropped.height > 0 else { return nil }
         let w = cropped.width, h = cropped.height
-        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         guard let ctx = CGContext(
             data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
-            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: resolvedColorSpace(for: src), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
         ctx.interpolationQuality = .none
         ctx.draw(cropped, in: CGRect(x: 0, y: 0, width: w, height: h))
@@ -239,10 +243,9 @@ struct ScrollFrameDigest {
         guard src.width > maxWidthPx else { return src }
         let ratio = CGFloat(maxWidthPx) / CGFloat(src.width)
         let ph = max(1, Int((CGFloat(src.height) * ratio).rounded()))
-        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         guard let ctx = CGContext(
             data: nil, width: maxWidthPx, height: ph, bitsPerComponent: 8, bytesPerRow: 0,
-            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: resolvedColorSpace(for: src), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return src }
         ctx.interpolationQuality = .medium
         ctx.draw(src, in: CGRect(x: 0, y: 0, width: maxWidthPx, height: ph))
@@ -266,10 +269,9 @@ struct ScrollFrameDigest {
         }
         let outW = max(1, Int((CGFloat(fullW) * scale).rounded()))
         let outH = max(1, Int((CGFloat(fullH) * scale).rounded()))
-        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         guard let ctx = CGContext(
             data: nil, width: outW, height: outH, bitsPerComponent: 8, bytesPerRow: 0,
-            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            space: resolvedColorSpace(for: strips.first ?? footer), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return nil }
 
         ctx.interpolationQuality = scale < 1.0 ? .medium : .none

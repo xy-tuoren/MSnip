@@ -26,6 +26,9 @@ final class OCRPillButton: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override var intrinsicContentSize: NSSize {
+        if title.isEmpty, symbolName != nil {
+            return NSSize(width: 28, height: 28)
+        }
         let attrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12, weight: .medium)]
         let tw = (title as NSString).size(withAttributes: attrs).width
         let iconW: CGFloat = symbolName != nil ? 17 : 0
@@ -60,23 +63,30 @@ final class OCRPillButton: NSView {
             MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 7.0, hovered: hovered)
             fg = .white
         } else if isToggledOn {
-            ctx.setFillColor(MSnipUITheme.activeSoftFill.cgColor)
+            ctx.setFillColor(ResultTheme.activeSoftFill.cgColor)
             ctx.addPath(path)
             ctx.fillPath()
-            ctx.setStrokeColor(MSnipUITheme.accent.withAlphaComponent(0.55).cgColor)
+            ctx.setStrokeColor(ResultTheme.accent.withAlphaComponent(0.55).cgColor)
             ctx.setLineWidth(1.0)
             ctx.addPath(path)
             ctx.strokePath()
-            fg = MSnipUITheme.accent
+            fg = ResultTheme.accent
         } else {
-            ctx.setFillColor((hovered ? MSnipUITheme.subtleFill : MSnipUITheme.cardSolid).cgColor)
+            ctx.setFillColor((hovered ? ResultTheme.subtleFill : ResultTheme.cardSolid).cgColor)
             ctx.addPath(path)
             ctx.fillPath()
-            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
+            ctx.setStrokeColor(ResultTheme.borderStrong.cgColor)
             ctx.setLineWidth(1.0)
             ctx.addPath(path)
             ctx.strokePath()
-            fg = MSnipUITheme.inkPrimary
+            fg = ResultTheme.inkPrimary
+        }
+
+        if title.isEmpty, let sym = symbolName {
+            let ir = CGRect(x: round((bounds.width - 14) * 0.5), y: 0, width: 14, height: bounds.height)
+            ToolbarView.drawSymbol(sym, in: ir, alpha: 0.96, tint: fg)
+            ctx.restoreGState()
+            return
         }
 
         let attrs: [NSAttributedString.Key: Any] = [
@@ -121,10 +131,10 @@ final class OCRModeSegmentView: NSView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let outer = bounds.insetBy(dx: 0.5, dy: 0.5)
         ctx.saveGState()
-        ctx.setFillColor(MSnipUITheme.sidebarBg.cgColor)
+        ctx.setFillColor(ResultTheme.sidebarBg.cgColor)
         ctx.addPath(CGPath(roundedRect: outer, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil))
         ctx.fillPath()
-        ctx.setStrokeColor(MSnipUITheme.borderHairline.cgColor)
+        ctx.setStrokeColor(ResultTheme.borderHairline.cgColor)
         ctx.setLineWidth(1.0)
         ctx.addPath(CGPath(roundedRect: outer, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil))
         ctx.strokePath()
@@ -133,10 +143,10 @@ final class OCRModeSegmentView: NSView {
         let selX: CGFloat = mode == .preserveLines ? 2 : (2 + halfW)
         let selRect = CGRect(x: selX, y: 2, width: halfW, height: bounds.height - 4)
         let thumbPath = CGPath(roundedRect: selRect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
-        ctx.setFillColor(MSnipUITheme.cardSolid.cgColor)
+        ctx.setFillColor(ResultTheme.cardSolid.cgColor)
         ctx.addPath(thumbPath)
         ctx.fillPath()
-        ctx.setStrokeColor(MSnipUITheme.borderHairline.cgColor)
+        ctx.setStrokeColor(ResultTheme.borderHairline.cgColor)
         ctx.addPath(thumbPath)
         ctx.strokePath()
 
@@ -147,7 +157,7 @@ final class OCRModeSegmentView: NSView {
         for (txt, rect, active) in labels {
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 11.5, weight: active ? .semibold : .medium),
-                .foregroundColor: active ? MSnipUITheme.inkPrimary : MSnipUITheme.inkSecondary
+                .foregroundColor: active ? ResultTheme.inkPrimary : ResultTheme.inkSecondary
             ]
             let sz = (txt as NSString).size(withAttributes: attrs)
             (txt as NSString).draw(
