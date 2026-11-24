@@ -3,8 +3,15 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 选区右侧圆角比例进度条悬浮胶囊（支持点击跳转、丝滑拖拽 0%~100%、滚轮微调与一键归零）
+/// 选区右侧滑块模式（圆角比例 / 发光边强度）
+enum OverlaySideSliderMode: Equatable {
+    case corner
+    case glow
+}
+
+/// 选区右侧进度条悬浮胶囊（供圆角比例与发光边强度共用：支持点击跳转、丝滑拖拽 0%~100%、滚轮微调与一键归零）
 final class OverlayCornerSliderView: NSView {
+    var mode: OverlaySideSliderMode = .corner { didSet { needsDisplay = true } }
     var ratio: CGFloat = 0 {
         didSet {
             let clamped = min(1.0, max(0.0, ratio))
@@ -61,7 +68,11 @@ final class OverlayCornerSliderView: NSView {
         NSCursor.pointingHand.set()
         hoveredReset = resetRect.contains(p)
         hoveredTrack = !hoveredReset && bounds.contains(p)
-        toolTip = hoveredReset ? "归零圆角 (0%)" : "左右拖拽调节圆角比例（100% 为胶囊/正圆）"
+        if mode == .glow {
+            toolTip = hoveredReset ? "关闭发光边 (0%)" : "左右拖拽或滚轮调节发光边强度（0%–100%）"
+        } else {
+            toolTip = hoveredReset ? "归零圆角 (0%)" : "左右拖拽或滚轮调节圆角比例（100% 为胶囊/正圆）"
+        }
     }
 
     override func mouseExited(with event: NSEvent) {
@@ -200,16 +211,33 @@ extension OverlayView {
             guard let self else { return }
             switch act {
             case .cycleCorner(let opt): self.toggleCornerRadiusSlider(resetOnly: opt)
-            case .cycleBackdrop:        self.cycleBackdropStyle()
+            case .toggleGlow(let opt):  self.toggleGlowSlider(resetOnly: opt)
             case .snapWindow(let opt):
                 if opt { self.captureCurrentWindowAndFinish(pin: false) }
                 else { self.snapSelectionToUnderlyingWindow() }
             }
         }
+        sidePills.onScrollAdjust = { [weak self] slotIdx, delta in
+            guard let self else { return }
+            if slotIdx == 0 {
+                if self.selection == nil, let snap = self.hoveredAutoRect { self.selection = snap }
+                self.activeSideSlider = .corner
+                self.cornerRadiusRatio = min(1.0, max(0.0, self.cornerRadiusRatio + delta))
+                self.updateToolbarLayout()
+            } else if slotIdx == 1 {
+                if self.selection == nil, let snap = self.hoveredAutoRect { self.selection = snap }
+                self.activeSideSlider = .glow
+                let base = self.didAdjustGlow ? self.glowStrength : self.defaultPinGlowStrength
+                self.applyGlowStrength(min(1.0, max(0.0, base + delta)))
+                self.updateToolbarLayout()
+            }
+        }
 
         cornerSlider.isHidden = true
         cornerSlider.onRatioChanged = { [weak self] r in
-            self?.cornerRadiusRatio = r
+            guard let self else { return }
+            if self.activeSideSlider == .glow { self.applyGlowStrength(r) }
+            else { self.cornerRadiusRatio = r }
         }
 
         saveMenu.isHidden = true
@@ -234,5 +262,29 @@ extension OverlayView {
         addSubview(saveMenu)
         addSubview(caliperView)
         addSubview(magnifierView)
+    }
+
+    func toggleCornerRadiusSlider(resetOnly: Bool = false) {
+        if selection == nil, let snap = hoveredAutoRect { selection = snap }
+        if resetOnly { cornerRadiusRatio = 0; if activeSideSlider == .corner { activeSideSlider = nil }; updateToolbarLayout(); return }
+        if activeSideSlider != .corner { activeSideSlider = .corner; if cornerRadiusRatio < 0.01 { cornerRadiusRatio = 0.16 } }
+        else { activeSideSlider = nil }
+        updateToolbarLayout()
+    }
+
+    func toggleGlowSlider(resetOnly: Bool = false) {
+        if selection == nil, let snap = hoveredAutoRect { selection = snap }
+        if resetOnly { applyGlowStrength(0); if activeSideSlider == .glow { activeSideSlider = nil }; updateToolbarLayout(); return }
+        if activeSideSlider != .glow {
+            activeSideSlider = .glow
+            if !didAdjustGlow && glowStrength < 0.01 { applyGlowStrength(max(0.20, defaultPinGlowStrength)) }
+        } else { activeSideSlider = nil }
+        updateToolbarLayout()
+    }
+
+    func applyGlowStrength(_ raw: CGFloat) {
+        let clamped = min(1.0, max(0.0, raw))
+        didAdjustGlow = true; glowStrength = clamped; defaultPinGlowStrength = clamped
+        onGlowStrengthChanged?(clamped)
     }
 }

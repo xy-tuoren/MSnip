@@ -208,7 +208,7 @@ extension OverlayView {
             if selection != nil { toggleToolShortcut(.eraser) }
             else if let prev = lastHistorySelection { selection = Geometry.clampRect(prev, within: bounds) }
         case .backdropOrCoord:
-            if selection == nil || shouldShowMagnifier { useRelativeCoordinates.toggle() } else { cycleBackdropStyle() }
+            if selection == nil || shouldShowMagnifier { useRelativeCoordinates.toggle() } else { toggleGlowSlider() }
         case .textCapsule: toggleTextCapsuleMode()
         case .eyedropper:
             if selection == nil, let snap = hoveredAutoRect { selection = snap }
@@ -251,13 +251,13 @@ extension OverlayView {
         if isSaveMenuVisible { isSaveMenuVisible = false; updateToolbarLayout() }
         else if caliperActive { caliperActive = false }
         else if eyedropperActive { eyedropperActive = false }
-        else if isCornerSliderVisible { isCornerSliderVisible = false; updateToolbarLayout() }
+        else if activeSideSlider != nil { activeSideSlider = nil; updateToolbarLayout() }
         else if toolbar.inPlaceTranslateActive { deactivateInPlaceTranslate() }
         else if toolbar.inPlaceOCRActive { deactivateInPlaceOCR() }
         else if selectedObjectIndex != nil { selectedObjectIndex = nil }
         else if activeTool != nil { activeTool = nil; updateToolbarLayout() }
         else if selection != nil && (doc.isEmpty || isRecordingMode) {
-            selection = nil; cornerRadiusRatio = 0; backdropStyle = .none
+            selection = nil; cornerRadiusRatio = 0; glowStrength = 0; didAdjustGlow = false
             refreshAutoSnapAtCurrentMouse()
         } else {
             onCancel?()
@@ -289,7 +289,7 @@ extension OverlayView {
         if selection != nil || dragOp != nil {
             dragOp = nil; draftAnnotation = nil; activeTool = nil; selectedObjectIndex = nil
             deactivateInPlaceOCR(); deactivateInPlaceTranslate()
-            isCornerSliderVisible = false; cornerRadiusRatio = 0; backdropStyle = .none
+            activeSideSlider = nil; cornerRadiusRatio = 0; glowStrength = 0; didAdjustGlow = false
             doc = AnnotationDocument(); selection = nil
             lastMousePoint = convert(event.locationInWindow, from: nil)
             refreshAutoSnapAtCurrentMouse(); syncMagnifierView()

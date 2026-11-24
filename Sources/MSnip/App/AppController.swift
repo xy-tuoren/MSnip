@@ -31,6 +31,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         GeekTheme.currentMode = config.appearanceMode
         ResultWindowChrome.prefersDarkAppearance = GeekTheme.isDark
         SmartClipboardProjectionManager.shared.isAdaptiveEnabled = config.terminalPasteAdaptEnabled
+        pinManager.defaultGlowStrength = config.pinGlowStrength
         setupStatusBar()
         setupCallbacks()
         hotKeyManager.apply(config: config)
@@ -73,18 +74,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self.hotKeyManager.apply(config: self.config)
             self.rebuildMenu()
         }
-        pinManager.onSaveImage = { [weak self] img, scale in
-            self?.performInteractiveSave(img: img, scale: scale)
-        }
-        pinManager.onQuickSaveImage = { [weak self] img, scale in
-            self?.performQuickSave(img: img, scale: scale)
-        }
-        pinManager.onExtractOCR = { [weak self] img, scale, scr in
-            self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr)
-        }
-        pinManager.onTranslateImage = { [weak self] img, scale, scr in
-            self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: true)
-        }
+        pinManager.onSaveImage = { [weak self] img, scale in self?.performInteractiveSave(img: img, scale: scale) }
+        pinManager.onQuickSaveImage = { [weak self] img, scale in self?.performQuickSave(img: img, scale: scale) }
+        pinManager.onExtractOCR = { [weak self] img, scale, scr in self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr) }
+        pinManager.onTranslateImage = { [weak self] img, scale, scr in self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: true) }
+        pinManager.onGlowStrengthChanged = { [weak self] g in guard let self else { return }; self.config.pinGlowStrength = g; self.config.save() }
         ocrController.ocrAutoCopyProvider = { [weak self] in
             self?.config.ocrAutoCopy ?? true
         }
@@ -191,9 +185,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             session.onRecordingPrefsUpdated = { [weak self] fmt, hud in
                 guard let self else { return }
-                self.config.preferredRecordingFormat = fmt
-                self.config.recordInteractionHUD = hud
-                self.config.save()
+                self.config.preferredRecordingFormat = fmt; self.config.recordInteractionHUD = hud; self.config.save()
+            }
+            session.onGlowStrengthUpdated = { [weak self] g in
+                guard let self else { return }
+                self.config.pinGlowStrength = g; self.pinManager.defaultGlowStrength = g; self.config.save()
             }
             session.onQuickSaveInPlace = { [weak self] img, scale in
                 guard let self else { return }
@@ -227,7 +223,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 translateAutoOpenDualPane: self.config.translateAutoOpenDualPane,
                 ocrAutoCopy: self.config.ocrAutoCopy,
                 backdropAspectRatio: self.config.backdropAspectRatio,
-                backdropWatermark: self.config.backdropWatermark
+                backdropWatermark: self.config.backdropWatermark,
+                pinGlowStrength: self.config.pinGlowStrength
             )
         }
     }

@@ -41,6 +41,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onPrefsChanged: ((ColorCopyFormat, Bool) -> Void)?
     var onRecordingPrefsChanged: ((RecordingFormat, Bool) -> Void)?
     var onRecordingModeChanged: ((Bool) -> Void)?
+    var onGlowStrengthChanged: ((CGFloat) -> Void)?
 
     var isRecordingMode: Bool { toolbar.isRecordingMode }
     var quickLaunchMode: OverlayQuickLaunchMode = .standard
@@ -51,6 +52,8 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var ocrAutoCopy: Bool = true
     var backdropAspectRatio: BackdropAspectRatio = .auto
     var backdropWatermark: String = ""
+    var defaultPinGlowStrength: CGFloat = 0.45
+    var didAdjustGlow: Bool = false
     var magnifierLegendCache: (key: String, image: CGImage)?
     var barcodeScanTask: Task<Void, Never>?
 
@@ -67,14 +70,22 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var colorCopyFormat: ColorCopyFormat { didSet { syncMagnifierView() } }
     var showShortcutTips: Bool { didSet { needsDisplay = true } }
     var lastHistorySelection: CGRect?
-    var isCornerSliderVisible = false
+    var activeSideSlider: OverlaySideSliderMode?
     var isSaveMenuVisible = false
     var saveFolderOptions: [QuickSaveFolder] = []
     var cornerRadiusRatio: CGFloat = 0 {
         didSet {
             toolbar.cornerRadiusPt = cornerRadiusPt
-            sidePills.hasCorner = (cornerRadiusRatio > 0.005 || isCornerSliderVisible)
-            cornerSlider.ratio = cornerRadiusRatio
+            sidePills.hasCorner = (cornerRadiusRatio > 0.005 || activeSideSlider == .corner)
+            if activeSideSlider == .corner { cornerSlider.ratio = cornerRadiusRatio }
+            if let sel = selection { setNeedsDisplay(selectionDirtyBounds(for: sel)) }
+            else { needsDisplay = true }
+        }
+    }
+    var glowStrength: CGFloat = 0 {
+        didSet {
+            sidePills.hasGlow = (glowStrength > 0.005 || activeSideSlider == .glow)
+            if activeSideSlider == .glow { cornerSlider.ratio = glowStrength }
             if let sel = selection { setNeedsDisplay(selectionDirtyBounds(for: sel)) }
             else { needsDisplay = true }
         }
@@ -253,7 +264,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
     private func drawLockedSelectionBody(ctx: CGContext, clip: CGRect, sel: CGRect, activeRadius: CGFloat) {
         if !isRecordingMode {
-            drawLiveBackdropFrameIfNeeded(ctx: ctx, sel: sel, cornerRadius: activeRadius)
+            drawLiveGlowFrameIfNeeded(ctx: ctx, sel: sel, cornerRadius: activeRadius)
         }
         if !isRecordingMode, sel.intersects(clip), inPlaceTranslateView == nil {
             ctx.saveGState()

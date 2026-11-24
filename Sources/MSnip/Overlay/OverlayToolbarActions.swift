@@ -54,7 +54,7 @@ extension OverlayView {
         case .cycleCornerRadius:
             toggleCornerRadiusSlider()
         case .cycleBackdrop:
-            cycleBackdropStyle()
+            toggleGlowSlider()
         case .captureWindow:
             if NSEvent.modifierFlags.contains(.option) {
                 captureCurrentWindowAndFinish(pin: false)
@@ -145,31 +145,6 @@ extension OverlayView {
         updateToolbarLayout()
     }
 
-    func toggleCornerRadiusSlider(resetOnly: Bool = false) {
-        if selection == nil, let snap = hoveredAutoRect { selection = snap }
-        if resetOnly {
-            cornerRadiusRatio = 0
-            isCornerSliderVisible = false
-            updateToolbarLayout()
-            return
-        }
-        if !isCornerSliderVisible {
-            isCornerSliderVisible = true
-            if cornerRadiusRatio < 0.01 {
-                cornerRadiusRatio = 0.16
-            }
-        } else {
-            isCornerSliderVisible = false
-        }
-        updateToolbarLayout()
-    }
-
-    func cycleBackdropStyle() {
-        if selection == nil, let snap = hoveredAutoRect { selection = snap }
-        backdropStyle = backdropStyle.next
-        updateToolbarLayout()
-    }
-
     func toggleTextCapsuleMode() {
         style.textCapsule.toggle()
         toolbar.textCapsule = style.textCapsule
@@ -202,9 +177,11 @@ extension OverlayView {
             eyedropperActive = false
             activeTool = nil
             selectedObjectIndex = nil
-            isCornerSliderVisible = false
+            activeSideSlider = nil
             isSaveMenuVisible = false
             cornerRadiusRatio = 0
+            glowStrength = 0
+            didAdjustGlow = false
             backdropStyle = .none
         }
         toolbar.isRecordingMode = enabled

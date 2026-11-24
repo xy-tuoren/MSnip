@@ -27,7 +27,7 @@ extension OverlayView {
     }
 
     func selectionDirtyBounds(for rect: CGRect) -> CGRect {
-        let pad: CGFloat = (backdropStyle != .none) ? 28 : 14
+        let pad: CGFloat = (glowStrength > 0.005) ? ceil(14.0 + 22.0 * glowStrength) : 14.0
         return CGRect(
             x: rect.minX - pad,
             y: rect.minY - 40 - pad,
@@ -108,14 +108,14 @@ extension OverlayView {
         subbar.eyedropperActive = eyedropperActive
         subbar.textCapsule = style.textCapsule
 
-        sidePills.hasCorner = (cornerRadiusRatio > 0.005 || isCornerSliderVisible)
-        sidePills.hasBackdrop = backdropStyle != .none
+        sidePills.hasCorner = (cornerRadiusRatio > 0.005 || activeSideSlider == .corner)
+        sidePills.hasGlow = (glowStrength > 0.005 || activeSideSlider == .glow)
 
         guard let sel = selection, sel.width >= 6, sel.height >= 6 else {
             toolbar.isHidden = true
             subbar.isHidden = true
             sidePills.isHidden = true
-            isCornerSliderVisible = false
+            activeSideSlider = nil
             cornerSlider.isHidden = true
             isSaveMenuVisible = false
             saveMenu.isHidden = true
@@ -141,7 +141,7 @@ extension OverlayView {
 
         if isRecordingMode {
             sidePills.isHidden = true
-            isCornerSliderVisible = false; cornerSlider.isHidden = true
+            activeSideSlider = nil; cornerSlider.isHidden = true
             isSaveMenuVisible = false; saveMenu.isHidden = true
             return
         }
@@ -154,8 +154,9 @@ extension OverlayView {
         let py = min(max(8, sel.minY + 2), bounds.height - pillSz.height - 8)
         sidePills.setFrameOrigin(NSPoint(x: round(px), y: round(py)))
 
-        if isCornerSliderVisible {
-            cornerSlider.ratio = cornerRadiusRatio
+        if let sliderMode = activeSideSlider {
+            cornerSlider.mode = sliderMode
+            cornerSlider.ratio = (sliderMode == .glow) ? glowStrength : cornerRadiusRatio
             cornerSlider.isHidden = false
             let sSz = OverlayCornerSliderView.barSize
             let preferRightX = sidePills.frame.maxX + 8
@@ -163,7 +164,8 @@ extension OverlayView {
             let sx = (preferRightX + sSz.width + 6 <= bounds.width)
                 ? preferRightX
                 : max(6, min(altLeftX, bounds.width - sSz.width - 6))
-            let sy = min(max(6, sidePills.frame.minY - 1), bounds.height - sSz.height - 6)
+            let anchorOffsetY: CGFloat = (sliderMode == .glow) ? (OverlaySidePillsView.pillSize + OverlaySidePillsView.gap) : 0
+            let sy = min(max(6, sidePills.frame.minY + anchorOffsetY - 1), bounds.height - sSz.height - 6)
             cornerSlider.setFrameOrigin(NSPoint(x: round(sx), y: round(sy)))
         } else {
             cornerSlider.isHidden = true
@@ -192,8 +194,10 @@ extension OverlayView {
         deactivateInPlaceOCR()
         deactivateInPlaceTranslate()
         stopSnapGlide()
-        isCornerSliderVisible = false
+        activeSideSlider = nil
         cornerRadiusRatio = 0
+        glowStrength = 0
+        didAdjustGlow = false
         cornerSlider.isHidden = true
         isSaveMenuVisible = false
         saveMenu.isHidden = true
@@ -225,31 +229,31 @@ extension OverlayView {
         subbar.setFrameOrigin(NSPoint(x: round(sx), y: round(sy)))
     }
 
-    func drawLiveBackdropFrameIfNeeded(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
-        guard backdropStyle != .none else { return }
-        let stops = backdropStyle.gradientStops
-        guard stops.count >= 2 else { return }
-        let pad: CGFloat = 18
+    func drawLiveGlowFrameIfNeeded(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
+        let s = min(1.0, max(0.0, glowStrength))
+        guard s > 0.005 else { return }
+        let pad: CGFloat = ceil(10.0 + 18.0 * s)
         let outer = sel.insetBy(dx: -pad, dy: -pad)
-        let innerR = cornerRadius > 0.5 ? cornerRadius : 10
-        let outerPath = CGPath(roundedRect: outer, cornerWidth: innerR + 8, cornerHeight: innerR + 8, transform: nil)
-        let innerPath = CGPath(roundedRect: sel, cornerWidth: innerR, cornerHeight: innerR, transform: nil)
+        let innerPath = cornerRadius > 0.5
+            ? CGPath(roundedRect: sel, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil)
+            : CGPath(rect: sel, transform: nil)
+        let blur: CGFloat = 3.0 + 10.0 * s
 
         ctx.saveGState()
-        ctx.addPath(outerPath)
+        ctx.addRect(outer)
         ctx.addPath(innerPath)
         ctx.clip(using: .evenOdd)
-        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-        let cgColors = stops.map(\.cgColor) as CFArray
-        let locs: [CGFloat] = stops.enumerated().map { CGFloat($0.offset) / CGFloat(max(1, stops.count - 1)) }
-        if let grad = CGGradient(colorsSpace: cs, colors: cgColors, locations: locs) {
-            ctx.drawLinearGradient(
-                grad,
-                start: CGPoint(x: outer.minX, y: outer.minY),
-                end: CGPoint(x: outer.maxX, y: outer.maxY),
-                options: [.drawsBeforeStartLocation, .drawsAfterEndLocation]
-            )
-        }
+        ctx.setShadow(offset: .zero, blur: blur, color: NSColor.white.withAlphaComponent(0.45 + 0.45 * s).cgColor)
+        ctx.setFillColor(NSColor.white.cgColor)
+        ctx.addPath(innerPath)
+        ctx.fillPath()
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.32 + 0.42 * s).cgColor)
+        ctx.setLineWidth(1.0)
+        ctx.addPath(innerPath)
+        ctx.strokePath()
         ctx.restoreGState()
     }
 }

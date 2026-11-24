@@ -32,6 +32,7 @@ struct AppConfig: Codable {
     var backdropWatermark: String = ""
     var delayedCaptureSeconds: Int = DelayedCaptureSettings.defaultSeconds
     var fullScreenCaptureAction: FullScreenCaptureAction = .copy
+    var pinGlowStrength: CGFloat = 0.45
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
@@ -41,7 +42,7 @@ struct AppConfig: Codable {
         case ocrAutoOpenDualPane, translateAutoOpenDualPane, ocrAutoCopy
         case exportImageFormat, exportAt1xScale, appearanceMode, terminalPasteAdaptEnabled
         case filenameTemplate, soundFeedbackEnabled, backdropAspectRatio, backdropWatermark
-        case delayedCaptureSeconds, fullScreenCaptureAction
+        case delayedCaptureSeconds, fullScreenCaptureAction, pinGlowStrength
     }
 
     init() {}
@@ -90,6 +91,8 @@ struct AppConfig: Codable {
         let rawDelay = try c.decodeIfPresent(Int.self, forKey: .delayedCaptureSeconds) ?? DelayedCaptureSettings.defaultSeconds
         delayedCaptureSeconds = DelayedCaptureSettings.clampedSeconds(rawDelay)
         fullScreenCaptureAction = try c.decodeIfPresent(FullScreenCaptureAction.self, forKey: .fullScreenCaptureAction) ?? .copy
+        let rawGlow = try c.decodeIfPresent(CGFloat.self, forKey: .pinGlowStrength) ?? 0.45
+        pinGlowStrength = min(1.0, max(0.0, rawGlow))
     }
 
     func encode(to encoder: Encoder) throws {
@@ -122,6 +125,7 @@ struct AppConfig: Codable {
         try c.encode(backdropWatermark, forKey: .backdropWatermark)
         try c.encode(DelayedCaptureSettings.clampedSeconds(delayedCaptureSeconds), forKey: .delayedCaptureSeconds)
         try c.encode(fullScreenCaptureAction, forKey: .fullScreenCaptureAction)
+        try c.encode(min(1.0, max(0.0, pinGlowStrength)), forKey: .pinGlowStrength)
     }
 
     func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {

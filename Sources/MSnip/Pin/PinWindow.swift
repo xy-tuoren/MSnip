@@ -16,6 +16,7 @@ final class PinWindow: NSPanel {
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
     var onTranslateImage: ((CGImage, CGFloat, NSScreen) -> Void)?
     var onSnapOrigin: ((NSPoint, NSSize, PinWindow) -> NSPoint)?
+    var onGlowStrengthChanged: ((CGFloat) -> Void)?
 
     var baseCGImage: CGImage
     var activeBaseSampler: PixelSampler?
@@ -23,6 +24,7 @@ final class PinWindow: NSPanel {
     let imageScale: CGFloat
     var baseSize: NSSize
     var zoomFactor: CGFloat = 1.0
+    var glowStrength: CGFloat = 0.45
     var preGhostAlpha: CGFloat = 1.0
     var isClickThrough: Bool = false
 
@@ -42,17 +44,23 @@ final class PinWindow: NSPanel {
     private var dragOriginStart: NSPoint = .zero
     var resizeState = PinResizeDragState()
     let pinContentView: PinContentView
+    let glowContainer: PinGlowContainerView
     var highlightMenuItem: NSMenuItem?
+
+    var imageScreenFrame: NSRect { frame.insetBy(dx: PinGlowContainerView.glowPadding, dy: PinGlowContainerView.glowPadding) }
+    func setImageScreenFrame(_ imgFrame: NSRect) { let p = PinGlowContainerView.glowPadding; setFrame(imgFrame.insetBy(dx: -p, dy: -p), display: true) }
 
     init(
         cgImage: CGImage,
         scaleFactor: CGFloat,
         screenOriginTopLeft: CGPoint?,
         on screen: NSScreen,
-        cascadeOffset: CGPoint = .zero
+        cascadeOffset: CGPoint = .zero,
+        glowStrength: CGFloat = 0.45
     ) {
         self.baseCGImage = cgImage
         self.currentCGImage = cgImage
+        self.glowStrength = min(1.0, max(0.0, glowStrength))
         let s = max(1.0, scaleFactor)
         self.imageScale = s
         let initialBaseSize = NSSize(
@@ -72,16 +80,14 @@ final class PinWindow: NSPanel {
             cascadeOffset: cascadeOffset
         )
         self.zoomFactor = fit.zoom
-        let initialFrame = NSRect(
-            x: snapPx(fit.frame.origin.x),
-            y: snapPx(fit.frame.origin.y),
-            width: fit.frame.width,
-            height: fit.frame.height
-        )
-        self.pinContentView = PinContentView(cgImage: cgImage, baseSize: initialBaseSize, initialSize: initialFrame.size)
+        let initialImgFrame = NSRect(x: snapPx(fit.frame.origin.x), y: snapPx(fit.frame.origin.y), width: fit.frame.width, height: fit.frame.height)
+        let pad = PinGlowContainerView.glowPadding
+        let content = PinContentView(cgImage: cgImage, baseSize: initialBaseSize, initialSize: initialImgFrame.size)
+        self.pinContentView = content
+        self.glowContainer = PinGlowContainerView(contentView: content, glowStrength: self.glowStrength)
 
         super.init(
-            contentRect: initialFrame,
+            contentRect: initialImgFrame.insetBy(dx: -pad, dy: -pad),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -96,18 +102,20 @@ final class PinWindow: NSPanel {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         self.isOpaque = false
         self.backgroundColor = .clear
-        self.hasShadow = true
-        self.contentView = pinContentView
+        self.hasShadow = false
+        self.contentView = glowContainer
 
         pinContentView.onHoverChanged = { [weak self] inside in
             self?.isMouseInPin = inside
             if !inside { self?.clearResizeHoverCursorIfNeeded() }
+            self?.syncGlowState()
             self?.syncHoverBarVisibility()
             self?.syncResizeChromeVisibility()
         }
         attachResizeChrome()
         hoverBarPanel.barView.onHoverChanged = { [weak self] inside in
             self?.isMouseInHoverBar = inside
+            self?.syncGlowState()
             self?.syncHoverBarVisibility()
         }
         hoverBarPanel.barView.onAction = { [weak self] act in
@@ -126,7 +134,7 @@ final class PinWindow: NSPanel {
             self.makeKeyAndOrderFront(nil)
             self.isDraggingFromBar = true
             self.dragMouseStart = NSEvent.mouseLocation
-            self.dragOriginStart = self.frame.origin
+            self.dragOriginStart = self.imageScreenFrame.origin
         }
         hoverBarPanel.barView.onDragMove = { [weak self] in
             guard let self, self.isDraggingFromBar else { return }
@@ -135,7 +143,7 @@ final class PinWindow: NSPanel {
                 x: self.dragOriginStart.x + (now.x - self.dragMouseStart.x),
                 y: self.dragOriginStart.y + (now.y - self.dragMouseStart.y)
             ), disableSnap: NSEvent.modifierFlags.contains(.option))
-            self.hoverBarPanel.reposition(anchoringTo: self.frame, on: self.screen)
+            self.hoverBarPanel.reposition(anchoringTo: self.imageScreenFrame, on: self.screen)
         }
         hoverBarPanel.barView.onDragEnd = { [weak self] in
             guard let self else { return }
@@ -150,85 +158,69 @@ final class PinWindow: NSPanel {
 
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-    override func becomeKey() { super.becomeKey(); pinContentView.isSelectedKey = true }
-    override func resignKey() { super.resignKey(); pinContentView.isSelectedKey = false }
+    override func becomeKey() { super.becomeKey(); pinContentView.isSelectedKey = true; syncGlowState() }
+    override func resignKey() { super.resignKey(); pinContentView.isSelectedKey = false; syncGlowState() }
+
+    func syncGlowState() {
+        glowContainer.glowStrength = glowStrength
+        glowContainer.isHoveredOrFocused = isMouseInPin || isMouseInHoverBar || isKeyWindow || resizeState.activeEdge != nil
+        glowContainer.isAnnotating = (editorCanvas != nil || cropOverlay != nil)
+        glowContainer.isGhostMode = isClickThrough
+    }
 
     // MARK: - Event Routing (Direct Text Selection + Blank/Handle Drag + Guaranteed Esc)
 
     override func sendEvent(_ event: NSEvent) {
-        if editorCanvas != nil || cropOverlay != nil {
-            super.sendEvent(event)
-            return
-        }
+        if editorCanvas != nil || cropOverlay != nil { super.sendEvent(event); return }
         switch event.type {
         case .mouseMoved:
-            if handleResizeHover(windowPoint: event.locationInWindow) { return }
+            let cp = pinContentView.convert(event.locationInWindow, from: nil)
+            if handleResizeHover(contentPoint: cp) { return }
             super.sendEvent(event)
 
         case .cursorUpdate:
-            if let edge = resizeState.activeEdge ?? PinResizeEdge.hitTest(point: event.locationInWindow, in: pinContentView.bounds) {
+            let cp = pinContentView.convert(event.locationInWindow, from: nil)
+            if let edge = resizeState.activeEdge ?? PinResizeEdge.hitTest(point: cp, in: pinContentView.bounds) {
                 PinResizeCursorFactory.cursor(for: edge).set(); return
             }
             super.sendEvent(event)
 
         case .leftMouseDown:
+            let cp = pinContentView.convert(event.locationInWindow, from: nil)
+            guard pinContentView.bounds.contains(cp) else { return }
             if !isKeyWindow { makeKeyAndOrderFront(nil) }
             if event.modifierFlags.contains(.command) {
-                pinContentView.startPNGFileDrag(with: event, cgImage: currentCGImage, scaleFactor: imageScale)
-                return
+                pinContentView.startPNGFileDrag(with: event, cgImage: currentCGImage, scaleFactor: imageScale); return
             }
-            if let edge = PinResizeEdge.hitTest(point: event.locationInWindow, in: pinContentView.bounds) {
-                isDraggingWindow = false
-                beginResizeDrag(edge: edge)
-                return
+            if let edge = PinResizeEdge.hitTest(point: cp, in: pinContentView.bounds) {
+                isDraggingWindow = false; beginResizeDrag(edge: edge); return
             }
             let forceDrag = event.modifierFlags.contains(.option)
-            let hitLiveText = !forceDrag && pinContentView.liveTextView.hasInteractiveItem(atWindowPoint: event.locationInWindow)
-            if hitLiveText {
-                isDraggingWindow = false
-                super.sendEvent(event)
-                return
+            if !forceDrag && pinContentView.liveTextView.hasInteractiveItem(atWindowPoint: event.locationInWindow) {
+                isDraggingWindow = false; super.sendEvent(event); return
             }
             pinContentView.liveTextView.clearSelection()
-            if event.clickCount == 2 {
-                closePin()
-                return
-            }
+            if event.clickCount == 2 { closePin(); return }
             isDraggingWindow = true
             dragMouseStart = NSEvent.mouseLocation
-            dragOriginStart = frame.origin
+            dragOriginStart = imageScreenFrame.origin
 
         case .leftMouseDragged:
-            if resizeState.activeEdge != nil {
-                updateResizeDrag()
-                return
-            }
+            if resizeState.activeEdge != nil { updateResizeDrag(); return }
             if isDraggingWindow {
                 let now = NSEvent.mouseLocation
-                applyDraggedOrigin(raw: NSPoint(
-                    x: dragOriginStart.x + (now.x - dragMouseStart.x),
-                    y: dragOriginStart.y + (now.y - dragMouseStart.y)
-                ), disableSnap: event.modifierFlags.contains(.option))
-                if hoverBarPanel.isVisible {
-                    hoverBarPanel.reposition(anchoringTo: frame, on: screen)
-                }
+                applyDraggedOrigin(raw: NSPoint(x: dragOriginStart.x + (now.x - dragMouseStart.x), y: dragOriginStart.y + (now.y - dragMouseStart.y)), disableSnap: event.modifierFlags.contains(.option))
+                if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
                 return
             }
             super.sendEvent(event)
 
         case .leftMouseUp:
-            if resizeState.activeEdge != nil {
-                endResizeDrag()
-                return
-            }
-            if isDraggingWindow {
-                isDraggingWindow = false
-                return
-            }
+            if resizeState.activeEdge != nil { endResizeDrag(); return }
+            if isDraggingWindow { isDraggingWindow = false; return }
             super.sendEvent(event)
 
         case .keyDown:
-            // 在窗口分发入口直接拦截 Esc 与单键快捷操作，防止 VisionKit 子视图吞噬按键导致 Esc 不响应
             if handlePinKeyDown(event) { return }
             super.sendEvent(event)
 
@@ -262,6 +254,10 @@ final class PinWindow: NSPanel {
         let step: CGFloat = event.hasPreciseScrollingDeltas ? delta * 0.004 : (delta > 0 ? 0.08 : -0.08)
         if event.modifierFlags.contains(.command) || event.modifierFlags.contains(.control) {
             alphaValue = min(1.0, max(0.2, alphaValue + step))
+        } else if event.modifierFlags.contains(.option) {
+            glowStrength = min(1.0, max(0.0, glowStrength + step))
+            syncGlowState()
+            onGlowStrengthChanged?(glowStrength)
         } else {
             applyZoom(newZoom: min(maxAllowedZoom, max(minAllowedZoom, zoomFactor * (1.0 + step))))
         }
@@ -291,8 +287,10 @@ final class PinWindow: NSPanel {
     }
 
     func applyDraggedOrigin(raw: NSPoint, disableSnap: Bool) {
-        let target = (!disableSnap ? onSnapOrigin?(raw, frame.size, self) : nil) ?? raw
+        let imgSz = imageScreenFrame.size
+        let target = (!disableSnap ? onSnapOrigin?(raw, imgSz, self) : nil) ?? raw
         let s = imageScale
-        setFrameOrigin(NSPoint(x: (target.x * s).rounded() / s, y: (target.y * s).rounded() / s))
+        let pad = PinGlowContainerView.glowPadding
+        setFrameOrigin(NSPoint(x: (target.x * s).rounded() / s - pad, y: (target.y * s).rounded() / s - pad))
     }
 }

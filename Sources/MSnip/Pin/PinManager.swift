@@ -13,6 +13,8 @@ final class PinManager {
     var onQuickSaveImage: ((CGImage, CGFloat) -> Void)?
     var onExtractOCR: ((CGImage, CGFloat, NSScreen) -> Void)?
     var onTranslateImage: ((CGImage, CGFloat, NSScreen) -> Void)?
+    var onGlowStrengthChanged: ((CGFloat) -> Void)?
+    var defaultGlowStrength: CGFloat = 0.45
 
     private var windows: [PinWindow] = []
     private(set) var arePinsHidden = false
@@ -27,7 +29,8 @@ final class PinManager {
         scaleFactor: CGFloat,
         topLeftOnScreen: CGPoint?,
         screen: NSScreen,
-        cascadeOffset: CGPoint = .zero
+        cascadeOffset: CGPoint = .zero,
+        glowStrength: CGFloat? = nil
     ) -> PinWindow {
         if arePinsHidden {
             arePinsHidden = false
@@ -42,8 +45,13 @@ final class PinManager {
             scaleFactor: scaleFactor,
             screenOriginTopLeft: topLeftOnScreen,
             on: screen,
-            cascadeOffset: cascadeOffset
+            cascadeOffset: cascadeOffset,
+            glowStrength: glowStrength ?? defaultGlowStrength
         )
+        win.onGlowStrengthChanged = { [weak self] g in
+            self?.defaultGlowStrength = g
+            self?.onGlowStrengthChanged?(g)
+        }
         win.onClose = { [weak self] closed in
             self?.windows.removeAll { $0 === closed }
             if let self { self.onCountChanged?(self.windows.count) }
@@ -68,7 +76,7 @@ final class PinManager {
         }
         win.onSnapOrigin = { [weak self] raw, size, movingWin in
             guard let self else { return raw }
-            let sibFrames = self.windows.filter { $0 !== movingWin && $0.isVisible }.map(\.frame)
+            let sibFrames = self.windows.filter { $0 !== movingWin && $0.isVisible }.map(\.imageScreenFrame)
             let vf = (movingWin.screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
             return ImageTransform.snapPinOrigin(raw, size: size, siblingFrames: sibFrames, visibleBounds: vf, threshold: 8.0)
         }

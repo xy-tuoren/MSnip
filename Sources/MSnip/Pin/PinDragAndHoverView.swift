@@ -43,23 +43,12 @@ final class PinContentView: NSView, NSDraggingSource {
     }
 
     override func mouseEntered(with event: NSEvent) { isMouseInside = true; onHoverChanged?(true) }
-    override func mouseMoved(with event: NSEvent) { onMouseMoved?(event.locationInWindow) }
+    override func mouseMoved(with event: NSEvent) { onMouseMoved?(convert(event.locationInWindow, from: nil)) }
     override func mouseExited(with event: NSEvent) { isMouseInside = false; onHoverChanged?(false) }
 
     private func updateBorderStyle() {
-        if isAnnotating {
-            layer?.borderWidth = 1.8
-            layer?.borderColor = MSnipUITheme.accent.cgColor
-        } else if isGhostMode {
-            layer?.borderWidth = 1.2
-            layer?.borderColor = MSnipUITheme.accent.withAlphaComponent(0.55).cgColor
-        } else if isSelectedKey || isMouseInside {
-            layer?.borderWidth = 1.0
-            layer?.borderColor = MSnipUITheme.accent.withAlphaComponent(isSelectedKey ? 0.90 : 0.72).cgColor
-        } else {
-            layer?.borderWidth = 0
-            layer?.borderColor = nil
-        }
+        layer?.borderWidth = 0
+        layer?.borderColor = nil
         onVisualStateChanged?()
     }
 

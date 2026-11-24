@@ -255,7 +255,7 @@ extension OverlayView {
             parts.append(toolbar.recordingFormat.badgeTitle)
         } else {
             if cornerRadius > 0.5 { parts.append("圆角 \(Int((cornerRadiusRatio * 100).rounded()))%") }
-            if backdropStyle != .none { parts.append(backdropStyle.title) }
+            if glowStrength > 0.005 { parts.append("发光边 \(Int((glowStrength * 100).rounded()))%") }
             if let trTag = inPlaceTranslateHUDTag { parts.append(trTag) }
         }
         drawHUDPill(ctx: ctx, anchorRect: sel, text: parts.joined(separator: "  ·  "))

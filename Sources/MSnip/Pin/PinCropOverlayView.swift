@@ -161,7 +161,7 @@ extension PinWindow {
         guard let cropped = img.cropping(to: CGRect(x: pxX, y: pxY, width: pxW, height: pxH)) else {
             endCropEditing(); return
         }
-        let oldFrame = frame
+        let oldFrame = imageScreenFrame
         endCropEditing()
 
         baseCGImage = cropped
@@ -175,9 +175,9 @@ extension PinWindow {
         // 保持裁剪区域在屏幕上的原位不动
         let newX = ((oldFrame.minX + norm.minX * oldFrame.width) * imageScale).rounded() / imageScale
         let newY = ((oldFrame.maxY - norm.maxY * oldFrame.height) * imageScale).rounded() / imageScale
-        setFrame(NSRect(x: newX, y: newY, width: newW, height: newH), display: true)
+        setImageScreenFrame(NSRect(x: newX, y: newY, width: newW, height: newH))
         pinContentView.liveTextView.configure(cgImage: cropped, logicalSize: nextBase)
-        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: frame, on: screen) }
+        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
         ToastHUD.show(message: "已裁剪贴图 · \(cropped.width) × \(cropped.height) px")
     }
 }

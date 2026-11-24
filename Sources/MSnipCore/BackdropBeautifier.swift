@@ -219,4 +219,66 @@ public enum BackdropBeautifier {
         ctx.restoreGState()
         return ctx.makeImage() ?? windowImage
     }
+
+    /// 为截图导出套上柔和的发光外缘（透明外边距 + 柔和白色发光晕 + 轻盈环境立体分离，无霓虹色块）
+    public static func applyLuminousGlow(
+        to cardImage: CGImage,
+        imageScale: CGFloat,
+        glowIntensity: CGFloat,
+        innerCornerRadiusPt: CGFloat = 0
+    ) -> CGImage? {
+        let strength = min(1.0, max(0.0, glowIntensity))
+        guard strength > 0.005 else { return cardImage }
+        let scale = max(1.0, imageScale)
+        let padPt = round(8.0 + 18.0 * strength)
+        let padPx = max(8, Int((padPt * scale).rounded()))
+        let canvasW = cardImage.width + padPx * 2
+        let canvasH = cardImage.height + padPx * 2
+
+        let cs: CGColorSpace = (cardImage.colorSpace?.model == .rgb && cardImage.colorSpace?.supportsOutput == true)
+            ? cardImage.colorSpace!
+            : (CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB())
+        guard let ctx = CGContext(
+            data: nil, width: canvasW, height: canvasH, bitsPerComponent: 8, bytesPerRow: 0,
+            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return cardImage }
+
+        ctx.clear(CGRect(x: 0, y: 0, width: canvasW, height: canvasH))
+        let cardRect = CGRect(x: padPx, y: padPx, width: cardImage.width, height: cardImage.height)
+        let rPx = innerCornerRadiusPt > 0.5
+            ? min(innerCornerRadiusPt * scale, CGFloat(min(cardImage.width, cardImage.height)) * 0.5)
+            : 0
+        let cardPath = rPx > 0.5
+            ? CGPath(roundedRect: cardRect, cornerWidth: rPx, cornerHeight: rPx, transform: nil)
+            : CGPath(rect: cardRect, transform: nil)
+        let blurPx = (3.5 + 10.5 * strength) * scale
+
+        // 1) 轻柔深色环境分离影（确保浅色背景下边缘依然清晰）
+        ctx.saveGState()
+        ctx.addRect(CGRect(x: 0, y: 0, width: canvasW, height: canvasH))
+        ctx.addPath(cardPath)
+        ctx.clip(using: .evenOdd)
+        ctx.setShadow(offset: .zero, blur: blurPx * 0.85, color: CGColor(srgbRed: 0, green: 0, blue: 0, alpha: 0.16 + 0.14 * strength))
+        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        ctx.addPath(cardPath); ctx.fillPath()
+        // 2) 柔和淡淡白光外晕（深色背景下呈现通透微光）
+        ctx.setShadow(offset: .zero, blur: blurPx, color: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.42 + 0.48 * strength))
+        ctx.addPath(cardPath); ctx.fillPath()
+        ctx.restoreGState()
+
+        // 3) 裁剪绘制原分辨率清晰图像
+        ctx.saveGState()
+        if rPx > 0.5 { ctx.addPath(cardPath); ctx.clip() }
+        ctx.interpolationQuality = .high
+        ctx.draw(cardImage, in: cardRect)
+        ctx.restoreGState()
+
+        // 4) 细微高光描边
+        ctx.saveGState()
+        ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.28 + 0.34 * strength))
+        ctx.setLineWidth(max(1.0, 0.85 * scale))
+        ctx.addPath(cardPath); ctx.strokePath()
+        ctx.restoreGState()
+        return ctx.makeImage() ?? cardImage
+    }
 }

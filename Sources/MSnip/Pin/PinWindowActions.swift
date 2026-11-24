@@ -15,7 +15,7 @@ extension PinWindow {
         }
 
         if isMouseInPin || isMouseInHoverBar || isDraggingFromBar {
-            hoverBarPanel.reposition(anchoringTo: frame, on: screen)
+            hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen)
             if !hoverBarPanel.isVisible {
                 hoverBarPanel.orderFrontRegardless()
             }
@@ -60,8 +60,9 @@ extension PinWindow {
     @objc func beginAnnotationEditing() {
         guard editorCanvas == nil, !isClickThrough else { return }
         pinContentView.liveTextView.clearSelection()
-        pinContentView.liveTextView.configure(cgImage: baseCGImage, logicalSize: frame.size)
+        pinContentView.liveTextView.configure(cgImage: baseCGImage, logicalSize: imageScreenFrame.size)
         pinContentView.isAnnotating = true
+        syncGlowState()
         syncHoverBarVisibility()
 
         let canvas = PinAnnotationCanvasView(baseSampler: acquireBaseSampler(), baseSize: baseSize, imageScale: imageScale)
@@ -87,7 +88,7 @@ extension PinWindow {
             panel.subbarView.lineWidth = canvas.style.lineWidth
             panel.subbarView.colorIndex = canvas.colorIndex
             panel.subbarView.textCapsule = canvas.style.textCapsule
-            panel.reposition(anchoringTo: self.frame, on: self.screen)
+            panel.reposition(anchoringTo: self.imageScreenFrame, on: self.screen)
         }
         let handleBarAct: (ToolbarView.Action) -> Void = { [weak self, weak canvas, weak panel] act in
             guard let self, let canvas, let panel else { return }
@@ -95,7 +96,7 @@ extension PinWindow {
             switch act {
             case .selectTool(let t):
                 canvas.activeTool = t; panel.barView.activeTool = t; panel.subbarView.activeTool = t
-                panel.reposition(anchoringTo: self.frame, on: self.screen)
+                panel.reposition(anchoringTo: self.imageScreenFrame, on: self.screen)
             case .toggleTextCapsule: canvas.togglePinTextCapsule()
             case .selectColor(let c):
                 canvas.applyStyleColor(c); panel.barView.colorIndex = c; panel.subbarView.colorIndex = c
@@ -131,7 +132,7 @@ extension PinWindow {
         pinContentView.addSubview(canvas)
         editorCanvas = canvas
         toolbarPanel = panel
-        panel.reposition(anchoringTo: frame, on: screen)
+        panel.reposition(anchoringTo: imageScreenFrame, on: screen)
         panel.orderFrontRegardless()
         makeKeyAndOrderFront(nil)
         makeFirstResponder(canvas)
@@ -208,12 +209,12 @@ extension PinWindow {
             zoomFactor = fit.zoom
             sz = fit.frame.size
         }
-        let old = frame
+        let old = imageScreenFrame
         let nx = ((old.midX - sz.width * 0.5) * imageScale).rounded() / imageScale
         let ny = ((old.midY - sz.height * 0.5) * imageScale).rounded() / imageScale
-        setFrame(NSRect(origin: NSPoint(x: nx, y: ny), size: sz), display: true)
+        setImageScreenFrame(NSRect(origin: NSPoint(x: nx, y: ny), size: sz))
         pinContentView.liveTextView.configure(cgImage: nextCG, logicalSize: nextBase)
-        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: frame, on: screen) }
+        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
         ToastHUD.show(message: toast)
     }
 
@@ -234,16 +235,16 @@ extension PinWindow {
 
     func applyZoom(newZoom: CGFloat) {
         guard abs(newZoom - zoomFactor) > 0.001 else { return }
-        let mouse = NSEvent.mouseLocation, old = frame
+        let mouse = NSEvent.mouseLocation, old = imageScreenFrame
         let rx = old.width > 0 ? (mouse.x - old.minX) / old.width : 0.5
         let ry = old.height > 0 ? (mouse.y - old.minY) / old.height : 0.5
         zoomFactor = newZoom
         let sz = NSSize(width: round(baseSize.width * zoomFactor), height: round(baseSize.height * zoomFactor))
         let ax = ((old.contains(mouse) ? mouse.x - sz.width * rx : old.midX - sz.width * 0.5) * imageScale).rounded() / imageScale
         let ay = ((old.contains(mouse) ? mouse.y - sz.height * ry : old.midY - sz.height * 0.5) * imageScale).rounded() / imageScale
-        setFrame(NSRect(origin: NSPoint(x: ax, y: ay), size: sz), display: true)
-        toolbarPanel?.reposition(anchoringTo: frame, on: screen)
-        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: frame, on: screen) }
+        setImageScreenFrame(NSRect(origin: NSPoint(x: ax, y: ay), size: sz))
+        toolbarPanel?.reposition(anchoringTo: imageScreenFrame, on: screen)
+        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
     }
 
     func buildContextMenu() -> NSMenu {

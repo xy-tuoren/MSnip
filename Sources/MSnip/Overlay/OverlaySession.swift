@@ -37,6 +37,7 @@ final class OverlaySession {
     var onCapsuleUpdated: ((Bool) -> Void)?
     var onPrefsUpdated: ((ColorCopyFormat, Bool) -> Void)?
     var onRecordingPrefsUpdated: ((RecordingFormat, Bool) -> Void)?
+    var onGlowStrengthUpdated: ((CGFloat) -> Void)?
     var onQuickSaveInPlace: ((CGImage, CGFloat) -> Void)?
     var onComplete: ((Outcome) -> Void)?
 
@@ -65,7 +66,8 @@ final class OverlaySession {
         translateAutoOpenDualPane: Bool = false,
         ocrAutoCopy: Bool = true,
         backdropAspectRatio: BackdropAspectRatio = .auto,
-        backdropWatermark: String = ""
+        backdropWatermark: String = "",
+        pinGlowStrength: CGFloat = 0.45
     ) {
         let mouse = NSEvent.mouseLocation
         var targetWindowToFocus: OverlayWindow?
@@ -97,9 +99,9 @@ final class OverlaySession {
             view.ocrAutoCopy = ocrAutoCopy
             view.backdropAspectRatio = backdropAspectRatio
             view.backdropWatermark = backdropWatermark
-            if launchMode == .quickRecord {
-                view.setRecordingMode(true, notifySiblings: false)
-            }
+            view.defaultPinGlowStrength = pinGlowStrength
+            view.onGlowStrengthChanged = { [weak self] g in self?.onGlowStrengthUpdated?(g) }
+            if launchMode == .quickRecord { view.setRecordingMode(true, notifySiblings: false) }
             view.onSelectionActivated = { [weak self] sender in
                 self?.activateView(sender)
             }
@@ -169,24 +171,11 @@ final class OverlaySession {
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.recognizeLatex(img, scale, scr))
             }
-            view.onFinishTranslateWindow = { [weak self] img, scale, scr, rect in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
-                self?.finish(.translateText(img, scale, scr))
-            }
-            view.onOpenTranslationSettings = { [weak self] in
-                self?.finish(.openTranslationSettings)
-            }
-            view.onStartLongShot = { [weak self] screen, rect, initialImg in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
-                self?.finish(.startLongShot(screen, rect, initialImg))
-            }
-            view.onStartRecording = { [weak self] screen, rect, initialImg in
-                Self.lastSelectionByDisplay[snap.displayID] = rect
-                self?.finish(.startRecording(screen, rect, initialImg))
-            }
-            view.onCancel = { [weak self] in
-                self?.finish(.cancelled)
-            }
+            view.onFinishTranslateWindow = { [weak self] img, scale, scr, rect in Self.lastSelectionByDisplay[snap.displayID] = rect; self?.finish(.translateText(img, scale, scr)) }
+            view.onOpenTranslationSettings = { [weak self] in self?.finish(.openTranslationSettings) }
+            view.onStartLongShot = { [weak self] screen, rect, initialImg in Self.lastSelectionByDisplay[snap.displayID] = rect; self?.finish(.startLongShot(screen, rect, initialImg)) }
+            view.onStartRecording = { [weak self] screen, rect, initialImg in Self.lastSelectionByDisplay[snap.displayID] = rect; self?.finish(.startRecording(screen, rect, initialImg)) }
+            view.onCancel = { [weak self] in self?.finish(.cancelled) }
 
             let win = OverlayWindow(screen: snap.screen, contentView: view, activateForMenu: regionDetector.hasOpenPopupMenu)
             windows.append(win)
@@ -292,8 +281,6 @@ final class OverlaySession {
         case .copied, .copiedWithPath, .quickSaved, .savedToFolder, .copiedColor, .copiedCoordinate, .cancelled: true
         default: false
         }
-        focusGuard.teardown(restorePreviousApp: shouldRestorePrev)
-
-        onComplete?(outcome)
+        focusGuard.teardown(restorePreviousApp: shouldRestorePrev); onComplete?(outcome)
     }
 }

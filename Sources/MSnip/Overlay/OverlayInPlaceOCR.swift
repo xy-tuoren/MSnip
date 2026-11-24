@@ -3,17 +3,18 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 选区右侧悬浮三联快捷圆钮（复刻参考图选区右缘圆钮：停留在当前页面实时切换圆角、渐变衬底与整窗对齐）
+/// 选区右侧悬浮三联快捷圆钮（停留在当前页面实时调节圆角比例、发光边滚动强度与整窗对齐）
 final class OverlaySidePillsView: NSView {
     enum PillAction {
         case cycleCorner(optionHeld: Bool)
-        case cycleBackdrop
+        case toggleGlow(optionHeld: Bool)
         case snapWindow(optionHeld: Bool)
     }
 
     var onAction: ((PillAction) -> Void)?
+    var onScrollAdjust: ((Int, CGFloat) -> Void)?
     var hasCorner: Bool = false { didSet { needsDisplay = true } }
-    var hasBackdrop: Bool = false { didSet { needsDisplay = true } }
+    var hasGlow: Bool = false { didSet { needsDisplay = true } }
     private var hoveredIdx: Int?
 
     override var isFlipped: Bool { true }
@@ -59,8 +60,8 @@ final class OverlaySidePillsView: NSView {
         if hit != hoveredIdx {
             hoveredIdx = hit
             switch hit {
-            case 0: toolTip = "调节圆角比例进度条（B · ⌥+点击归零）"
-            case 1: toolTip = "切换渐变美化衬底实时预览 (G)"
+            case 0: toolTip = "调节圆角比例（B · 滚轮微调 · ⌥+点击归零）"
+            case 1: toolTip = "调节发光边强度（G · 滚轮调节 · ⌥+点击关闭）"
             case 2: toolTip = "对齐底层应用窗口（⌥+点击导出独立透明阴影窗口）"
             default: toolTip = nil
             }
@@ -70,12 +71,20 @@ final class OverlaySidePillsView: NSView {
 
     override func mouseExited(with event: NSEvent) { hoveredIdx = nil; needsDisplay = true }
 
+    override func scrollWheel(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        guard let idx = (0..<2).first(where: { rectForSlot($0).contains(p) }) else { return }
+        let delta = event.hasPreciseScrollingDeltas ? (-event.scrollingDeltaY * 0.004) : (event.scrollingDeltaY > 0 ? 0.05 : -0.05)
+        guard abs(delta) > 0.0005 else { return }
+        onScrollAdjust?(idx, delta)
+    }
+
     override func mouseDown(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)
         guard let idx = (0..<3).first(where: { rectForSlot($0).contains(p) }) else { return }
         switch idx {
         case 0: onAction?(.cycleCorner(optionHeld: event.modifierFlags.contains(.option)))
-        case 1: onAction?(.cycleBackdrop)
+        case 1: onAction?(.toggleGlow(optionHeld: event.modifierFlags.contains(.option)))
         case 2: onAction?(.snapWindow(optionHeld: event.modifierFlags.contains(.option)))
         default: break
         }
@@ -85,7 +94,7 @@ final class OverlaySidePillsView: NSView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let specs: [(String, Bool)] = [
             ("rectangle.roundedtop", hasCorner),
-            ("sparkles.rectangle.stack", hasBackdrop),
+            ("sun.max", hasGlow),
             ("macwindow", false)
         ]
         for (i, (sym, active)) in specs.enumerated() {

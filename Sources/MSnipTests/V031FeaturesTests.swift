@@ -112,6 +112,19 @@ func testV031Features() {
     check(ring.entries.count == 3 && ring.entries[0].isCollage, "生成的拼图应保留在最近历史中并标记 isCollage=true")
     check(ring.originalEntries.count == 2 && ring.originalEntries.allSatisfy { !$0.isCollage }, "originalEntries 必须自动排除历史拼图防止套娃")
     try? FileManager.default.removeItem(at: tmpDir)
+
+    // 8) BackdropBeautifier 发光白边导出（0% 零改动，>0% 生成透明外边距柔和发光晕）
+    let noGlow = BackdropBeautifier.applyLuminousGlow(to: card, imageScale: 1.0, glowIntensity: 0.0)
+    check(noGlow?.width == card.width && noGlow?.height == card.height, "发光强度为 0 时应原样直出不扩边")
+    if let glowed = BackdropBeautifier.applyLuminousGlow(to: card, imageScale: 1.0, glowIntensity: 0.6, innerCornerRadiusPt: 8) {
+        check(glowed.width > card.width && glowed.height > card.height, "发光边 >0% 应向外扩展透明光晕边距: \(glowed.width)×\(glowed.height)")
+        if let data = glowed.dataProvider?.data, let ptr = CFDataGetBytePtr(data) {
+            let cornerAlpha = ptr[3]
+            check(cornerAlpha < 40, "发光边最外角应柔和衰减至接近透明，实际 alpha=\(cornerAlpha)")
+        }
+    } else {
+        check(false, "发光边烘焙导出不应失败")
+    }
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

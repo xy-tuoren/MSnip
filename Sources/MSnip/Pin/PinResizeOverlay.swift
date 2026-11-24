@@ -194,8 +194,8 @@ extension PinWindow {
         chrome.onBorderHoverChanged = { [weak self] edge in self?.resizeState.hoveredEdge = edge }
         pinContentView.addSubview(chrome)
         resizeState.chromeView = chrome
-        pinContentView.onMouseMoved = { [weak self] winPt in _ = self?.handleResizeHover(windowPoint: winPt) }
-        pinContentView.onVisualStateChanged = { [weak self] in self?.syncResizeChromeVisibility() }
+        pinContentView.onMouseMoved = { [weak self] pt in _ = self?.handleResizeHover(contentPoint: pt) }
+        pinContentView.onVisualStateChanged = { [weak self] in self?.syncGlowState(); self?.syncResizeChromeVisibility() }
         syncResizeChromeVisibility()
     }
 
@@ -210,10 +210,10 @@ extension PinWindow {
     }
 
     @discardableResult
-    func handleResizeHover(windowPoint: NSPoint) -> Bool {
+    func handleResizeHover(contentPoint: NSPoint) -> Bool {
         guard !isClickThrough, editorCanvas == nil, cropOverlay == nil else { return false }
         if let active = resizeState.activeEdge { PinResizeCursorFactory.cursor(for: active).set(); return true }
-        let edge = PinResizeEdge.hitTest(point: windowPoint, in: pinContentView.bounds)
+        let edge = PinResizeEdge.hitTest(point: contentPoint, in: pinContentView.bounds)
         let prev = resizeState.hoveredEdge
         resizeState.hoveredEdge = edge
         resizeState.chromeView?.hoveredEdge = edge
@@ -234,9 +234,9 @@ extension PinWindow {
     func beginResizeDrag(edge: PinResizeEdge) {
         pinContentView.liveTextView.clearSelection()
         resizeState.activeEdge = edge; resizeState.hoveredEdge = edge
-        resizeState.mouseStart = NSEvent.mouseLocation; resizeState.frameStart = frame
+        resizeState.mouseStart = NSEvent.mouseLocation; resizeState.frameStart = imageScreenFrame
         resizeState.chromeView?.hoveredEdge = edge
-        updateResizeBadge(); PinResizeCursorFactory.cursor(for: edge).set()
+        updateResizeBadge(); PinResizeCursorFactory.cursor(for: edge).set(); syncGlowState()
     }
 
     func updateResizeDrag() {
@@ -249,18 +249,19 @@ extension PinWindow {
         )
         let s = imageScale
         zoomFactor = res.zoom
-        setFrame(NSRect(x: (res.frame.origin.x * s).rounded() / s, y: (res.frame.origin.y * s).rounded() / s, width: res.frame.width, height: res.frame.height), display: true)
+        setImageScreenFrame(NSRect(x: (res.frame.origin.x * s).rounded() / s, y: (res.frame.origin.y * s).rounded() / s, width: res.frame.width, height: res.frame.height))
         updateResizeBadge(); PinResizeCursorFactory.cursor(for: edge).set()
-        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: frame, on: screen) }
+        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
     }
 
     func endResizeDrag() {
         guard resizeState.activeEdge != nil else { return }
         resizeState.activeEdge = nil; resizeState.chromeView?.activeResizeBadge = nil
-        if let winPt = currentWindowMousePoint() { _ = handleResizeHover(windowPoint: winPt) }
+        if let cp = currentContentMousePoint() { _ = handleResizeHover(contentPoint: cp) }
         else { resizeState.hoveredEdge = nil; resizeState.chromeView?.hoveredEdge = nil; NSCursor.arrow.set() }
         if let chrome = resizeState.chromeView { invalidateCursorRects(for: chrome) }
-        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: frame, on: screen) }
+        syncGlowState()
+        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
     }
 
     @objc func fitToScreen() {
@@ -268,18 +269,19 @@ extension PinWindow {
         let fit = ImageTransform.fittedPinRect(baseSize: baseSize, visibleBounds: vf, preferredOrigin: nil)
         let s = imageScale
         zoomFactor = fit.zoom
-        setFrame(NSRect(x: (fit.frame.origin.x * s).rounded() / s, y: (fit.frame.origin.y * s).rounded() / s, width: fit.frame.width, height: fit.frame.height), display: true)
-        toolbarPanel?.reposition(anchoringTo: frame, on: screen)
-        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: frame, on: screen) }
+        setImageScreenFrame(NSRect(x: (fit.frame.origin.x * s).rounded() / s, y: (fit.frame.origin.y * s).rounded() / s, width: fit.frame.width, height: fit.frame.height))
+        toolbarPanel?.reposition(anchoringTo: imageScreenFrame, on: screen)
+        if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
     }
 
     private func updateResizeBadge() {
-        let w = Int(frame.width.rounded()), h = Int(frame.height.rounded())
-        resizeState.chromeView?.activeResizeBadge = "\(w) × \(h) · \(max(1, Int((zoomFactor * 100.0).rounded())))%"
+        let sz = imageScreenFrame.size
+        resizeState.chromeView?.activeResizeBadge = "\(Int(sz.width.rounded())) × \(Int(sz.height.rounded())) · \(max(1, Int((zoomFactor * 100.0).rounded())))%"
     }
 
-    private func currentWindowMousePoint() -> NSPoint? {
-        let pt = convertPoint(fromScreen: NSEvent.mouseLocation)
+    private func currentContentMousePoint() -> NSPoint? {
+        let winPt = convertPoint(fromScreen: NSEvent.mouseLocation)
+        let pt = pinContentView.convert(winPt, from: nil)
         return pinContentView.bounds.contains(pt) ? pt : nil
     }
 }

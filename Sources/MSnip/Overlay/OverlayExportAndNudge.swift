@@ -7,14 +7,9 @@ import MSnipCore
 extension OverlayView {
     enum FinishMode: Equatable { case copy, copyWithPath, save, quickSave, saveToFolder(String), pin, extractText, recognizeLatex, translateWindow }
 
-    func currentExportableImage(for targetRect: CGRect, plainForOCR: Bool) -> CGImage? {
+    func currentExportableImage(for targetRect: CGRect, plainForOCR: Bool, includeGlow: Bool = true) -> CGImage? {
+        let baseImg: CGImage?
         if !plainForOCR, let translated = inPlaceTranslateView?.translatedImage {
-            if backdropStyle != .none {
-                return BackdropBeautifier.apply(
-                    to: translated, style: backdropStyle, imageScale: snapshot.scaleFactor,
-                    innerCornerRadiusPt: cornerRadiusPt, aspectRatio: backdropAspectRatio, watermarkText: backdropWatermark
-                )
-            }
             if cornerRadiusPt > 0.5 {
                 let rPx = min(cornerRadiusPt * snapshot.scaleFactor, CGFloat(min(translated.width, translated.height)) * 0.5)
                 let cs = (translated.colorSpace?.model == .rgb && translated.colorSpace?.supportsOutput == true)
@@ -27,20 +22,23 @@ extension OverlayView {
                 ) {
                     let rect = CGRect(x: 0, y: 0, width: translated.width, height: translated.height)
                     ctx.addPath(CGPath(roundedRect: rect, cornerWidth: rPx, cornerHeight: rPx, transform: nil))
-                    ctx.clip()
-                    ctx.draw(translated, in: rect)
-                    if let clipped = ctx.makeImage() { return clipped }
-                }
-            }
-            return translated
+                    ctx.clip(); ctx.draw(translated, in: rect)
+                    baseImg = ctx.makeImage() ?? translated
+                } else { baseImg = translated }
+            } else { baseImg = translated }
+        } else {
+            baseImg = AnnotationRenderer.bakeExportImage(
+                sampler: snapshot.sampler, selection: targetRect, imageScale: snapshot.scaleFactor,
+                annotations: doc.objects, cornerRadiusPt: plainForOCR ? 0 : cornerRadiusPt
+            )
         }
-        return AnnotationRenderer.bakeExportImage(
-            sampler: snapshot.sampler, selection: targetRect, imageScale: snapshot.scaleFactor,
-            annotations: doc.objects, cornerRadiusPt: plainForOCR ? 0 : cornerRadiusPt,
-            backdropStyle: plainForOCR ? .none : backdropStyle,
-            backdropAspectRatio: plainForOCR ? .auto : backdropAspectRatio,
-            watermarkText: plainForOCR ? "" : backdropWatermark
-        )
+        guard let img = baseImg else { return nil }
+        if !plainForOCR && includeGlow && glowStrength > 0.005 {
+            return BackdropBeautifier.applyLuminousGlow(
+                to: img, imageScale: snapshot.scaleFactor, glowIntensity: glowStrength, innerCornerRadiusPt: cornerRadiusPt
+            )
+        }
+        return img
     }
 
     func cycleColorFormat() {
@@ -65,7 +63,7 @@ extension OverlayView {
         let isPlainOCR = (mode == .extractText || mode == .recognizeLatex || mode == .translateWindow)
         guard let targetRect = selection ?? hoveredAutoRect,
               targetRect.width >= 2, targetRect.height >= 2,
-              let baked = currentExportableImage(for: targetRect, plainForOCR: isPlainOCR) else { return }
+              let baked = currentExportableImage(for: targetRect, plainForOCR: isPlainOCR, includeGlow: mode != .pin) else { return }
 
         switch mode {
         case .copy:            onFinishCopy?(baked, snapshot.scaleFactor, targetRect)
