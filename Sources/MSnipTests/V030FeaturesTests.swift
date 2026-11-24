@@ -1,4 +1,5 @@
 import CoreGraphics
+import CoreVideo
 import Foundation
 import ImageIO
 import MSnipCore
@@ -131,8 +132,34 @@ func testV030Features() {
     check(comp.hasActiveVisuals(at: 1.5), "即便关闭点击回显，存在活跃实时画笔时 hasActiveVisuals 仍应为 true")
     check(!comp.hasActiveVisuals(at: 5.0), "激光笔迹超时后 hasActiveVisuals 应恢复为 false")
     comp.clearLiveStrokes()
-    let opts = RecordingOptions(gifFPS: 15, gifMaxLongSide: 720, mp4FPS: 60, showsCursor: false, captureSystemAudio: true)
-    check(opts.clampedGifFPS == 15 && opts.clampedGifMaxLongSide == 720 && opts.clampedMp4FPS == 60, "RecordingOptions 参数范围校验应准确")
+    let opts = RecordingOptions(gifFPS: 15, gifMaxLongSide: 1280, mp4FPS: 120, mp4FPSMode: .displayNative, mp4Resolution: .high, showsCursor: false, captureSystemAudio: true)
+    check(opts.clampedGifFPS == 15 && opts.clampedGifMaxLongSide == 1280 && opts.maxGIFFrames == 450, "15fps GIF 30秒帧上限应为 450 而非 360")
+    check(MP4ResolutionPreset.standard.scaledEvenSize(width: 2560, height: 1440) == (1280, 720), "MP4 标准档应等比缩至 1280×720")
+    check(MP4ResolutionPreset.high.scaledEvenSize(width: 1200, height: 800) == (1200, 800), "源图小于 1920px 时 MP4 高清档不应放大")
+    check(MP4ResolutionPreset.native.scaledEvenSize(width: 2561, height: 1441) == (2560, 1440), "MP4 原画档应保留原生分辨率并偶数对齐")
+    check(MP4FrameRateMode.displayNative.resolveFPS(displayMaxFPS: 120, outputWidth: 1920, outputHeight: 1080) == 120, "120Hz 屏高清档应原生输出 120fps")
+    check(MP4FrameRateMode.displayNative.resolveFPS(displayMaxFPS: 240, outputWidth: 1920, outputHeight: 1080) == 120, "240Hz 屏应安全封顶 120fps")
+    check(MP4FrameRateMode.displayNative.resolveFPS(displayMaxFPS: 120, outputWidth: 3840, outputHeight: 2160) == 60, "超 2560px 原画应自动稳帧 60fps 防硬件掉帧")
+    let br30 = RecordingOptions.recommendedMP4Bitrate(width: 1920, height: 1080, fps: 30)
+    let br60 = RecordingOptions.recommendedMP4Bitrate(width: 1920, height: 1080, fps: 60)
+    let br120 = RecordingOptions.recommendedMP4Bitrate(width: 1920, height: 1080, fps: 120)
+    check(br30 < br60 && br60 < br120 && br120 <= 32_000_000, "MP4 码率应随 30→60→120fps 平滑抬升且不超 32Mbps 上限")
+
+    // 验证 120fps 高精度 60_000 时基零拷贝 CVPixelBuffer 编码（帧间隔 8.33ms 不被降帧）
+    let dir120 = FileManager.default.temporaryDirectory.appendingPathComponent("MSnip120-\(UUID().uuidString)", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir120, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir120) }
+    let url120 = dir120.appendingPathComponent("pro120.mp4")
+    let enc120 = MediaClipEncoder(format: .mp4, outputURL: url120, options: RecordingOptions(mp4FPSMode: .displayNative, mp4Resolution: .high), targetMP4FPS: 120)
+    var pb120: CVPixelBuffer?
+    CVPixelBufferCreate(kCFAllocatorDefault, 160, 120, kCVPixelFormatType_32BGRA, nil, &pb120)
+    if let pb120 {
+        for i in 0..<6 {
+            check(enc120.appendPixelBuffer(pb120, at: Double(i) * (1.0 / 120.0)), "120fps 零拷贝帧应逐帧写入成功")
+        }
+    }
+    check(enc120.capturedFrameCount == 6, "120fps 8.33ms 间隔应完整采集全部 6 帧，实际: \(enc120.capturedFrameCount)")
+    enc120.cancel()
 }
 
 private func makeFourQuadrantImage(w: Int, h: Int) -> CGImage {

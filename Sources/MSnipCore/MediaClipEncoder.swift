@@ -25,14 +25,16 @@ public enum RecordingFormat: String, CaseIterable, Codable, Sendable {
 }
 
 /// 纯原生局部录屏编码器：
-/// - MP4：基于 `AVAssetWriter` 实时流式硬件 H.264 + 可选 AAC 48kHz 系统音频直写磁盘，无特效帧零拷贝 `CVPixelBuffer` 直通；
+/// - MP4：基于 `AVAssetWriter` 实时流式硬件 H.264 + 可选 AAC 48kHz 系统音频，支持 30/60/120fps 高精度 `60_000` 时基与零拷贝 `CVPixelBuffer` 直通；
 /// - GIF：委托 `GIFDiskSpooler` 执行 LZ4 磁盘流式暂存，录制全程零 `CGImage` 数组驻留内存。
 public final class MediaClipEncoder: @unchecked Sendable {
     private static let srgbSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+    private static let videoTimescale: CMTimeScale = 60_000
 
     public let format: RecordingFormat
     public let outputURL: URL
     public let options: RecordingOptions
+    public let targetMP4FPS: Int
     public var spoolFileURL: URL { gifSpooler.spoolFileURL }
 
     private let lock = NSLock()
@@ -40,8 +42,9 @@ public final class MediaClipEncoder: @unchecked Sendable {
     private var isFinished = false
 
     private let gifSpooler: GIFDiskSpooler
-    private let maxGIFFrames = 360
+    private let maxGIFFrames: Int
     private let gifMinInterval: TimeInterval
+    private let minVideoStepTicks: Int64
 
     private var assetWriter: AVAssetWriter?
     private var videoInput: AVAssetWriterInput?
@@ -49,17 +52,27 @@ public final class MediaClipEncoder: @unchecked Sendable {
     private var adaptor: AVAssetWriterInputPixelBufferAdaptor?
     private var mp4Size: (w: Int, h: Int) = (0, 0)
     private var startTime: TimeInterval?
-    private var lastPTSMillis: Int64 = -1
+    private var lastPTSTicks: Int64 = -1
     private var lastAudioPTS: CMTime = .invalid
     private var lastCGFrame: CGImage?
     private var lastPixelBuffer: CVPixelBuffer?
     private(set) public var capturedFrameCount: Int = 0
 
-    public init(format: RecordingFormat, outputURL: URL, options: RecordingOptions = RecordingOptions()) {
+    public init(
+        format: RecordingFormat,
+        outputURL: URL,
+        options: RecordingOptions = RecordingOptions(),
+        targetMP4FPS: Int? = nil
+    ) {
         self.format = format
         self.outputURL = outputURL
         self.options = options
+        let resolvedFPS = max(24, min(120, targetMP4FPS ?? options.mp4FPSMode.resolveFPS(displayMaxFPS: 60, outputWidth: 1920, outputHeight: 1080)))
+        self.targetMP4FPS = resolvedFPS
+        self.maxGIFFrames = options.maxGIFFrames
         self.gifMinInterval = max(0.05, 1.0 / Double(options.clampedGifFPS) * 0.92)
+        // 60_000 时基下按目标帧率动态设置最小单调步进（120fps 约 3.75ms，避免 120Hz 帧被量化降帧）
+        self.minVideoStepTicks = max(60, Int64((Double(Self.videoTimescale) / Double(resolvedFPS) * 0.45).rounded()))
         let spoolURL = outputURL.deletingLastPathComponent()
             .appendingPathComponent(".msnip-gifspool-\(UUID().uuidString).bin")
         self.gifSpooler = GIFDiskSpooler(spoolFileURL: spoolURL, maxLongSide: options.clampedGifMaxLongSide)
@@ -85,10 +98,9 @@ public final class MediaClipEncoder: @unchecked Sendable {
         }
         guard w == mp4Size.w, h == mp4Size.h else { return false }
         guard let input = videoInput, let adaptor, input.isReadyForMoreMediaData else { return true }
-        var ptsMs = Int64((elapsed * 1000.0).rounded())
-        if ptsMs <= lastPTSMillis { ptsMs = lastPTSMillis + 16 }
-        if adaptor.append(pixelBuffer, withPresentationTime: CMTime(value: ptsMs, timescale: 1000)) {
-            lastPTSMillis = ptsMs
+        let ptsTicks = nextMonotonicTicks(for: elapsed)
+        if adaptor.append(pixelBuffer, withPresentationTime: CMTime(value: ptsTicks, timescale: Self.videoTimescale)) {
+            lastPTSTicks = ptsTicks
             lastCGFrame = nil
             lastPixelBuffer = pixelBuffer
             capturedFrameCount += 1
@@ -136,10 +148,9 @@ public final class MediaClipEncoder: @unchecked Sendable {
             if assetWriter == nil {
                 guard setupMP4Writer(width: cgImage.width, height: cgImage.height) else { return }
             }
-            var ptsMs = Int64((elapsed * 1000.0).rounded())
-            if ptsMs <= lastPTSMillis { ptsMs = lastPTSMillis + 16 }
-            if writeMP4Frame(cgImage, ptsMillis: ptsMs) {
-                lastPTSMillis = ptsMs
+            let ptsTicks = nextMonotonicTicks(for: elapsed)
+            if writeMP4Frame(cgImage, ptsTicks: ptsTicks) {
+                lastPTSTicks = ptsTicks
                 lastCGFrame = cgImage
                 lastPixelBuffer = nil
                 capturedFrameCount += 1
@@ -156,6 +167,12 @@ public final class MediaClipEncoder: @unchecked Sendable {
         case .mp4:
             return await finalizeMP4(finalTimestamp: finalTimestamp)
         }
+    }
+
+    private func nextMonotonicTicks(for elapsed: TimeInterval) -> Int64 {
+        var ticks = Int64((elapsed * Double(Self.videoTimescale)).rounded())
+        if ticks <= lastPTSTicks { ticks = lastPTSTicks + minVideoStepTicks }
+        return ticks
     }
 
     private func markFinishedAndSnapshotStart(fallback: TimeInterval) -> TimeInterval? {
@@ -182,15 +199,16 @@ public final class MediaClipEncoder: @unchecked Sendable {
     // MARK: - Native H.264 + Optional AAC MP4 Encoding
 
     private func setupMP4Writer(width: Int, height: Int) -> Bool {
-        let outW = max(64, width & ~1)
-        let outH = max(64, height & ~1)
+        let (outW, outH) = options.mp4Resolution.scaledEvenSize(width: width, height: height)
         guard let writer = try? AVAssetWriter(outputURL: outputURL, fileType: .mp4) else { return false }
+        let bitrate = RecordingOptions.recommendedMP4Bitrate(width: outW, height: outH, fps: targetMP4FPS)
         let settings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
             AVVideoWidthKey: outW,
             AVVideoHeightKey: outH,
             AVVideoCompressionPropertiesKey: [
-                AVVideoAverageBitRateKey: max(1_400_000, outW * outH * 4),
+                AVVideoAverageBitRateKey: bitrate,
+                AVVideoExpectedSourceFrameRateKey: targetMP4FPS,
                 AVVideoProfileLevelKey: AVVideoProfileLevelH264HighAutoLevel
             ]
         ]
@@ -215,10 +233,7 @@ public final class MediaClipEncoder: @unchecked Sendable {
             ]
             let ai = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
             ai.expectsMediaDataInRealTime = true
-            if writer.canAdd(ai) {
-                writer.add(ai)
-                aInput = ai
-            }
+            if writer.canAdd(ai) { writer.add(ai); aInput = ai }
         }
 
         guard writer.startWriting() else { return false }
@@ -228,7 +243,7 @@ public final class MediaClipEncoder: @unchecked Sendable {
         return true
     }
 
-    private func writeMP4Frame(_ cgImage: CGImage, ptsMillis: Int64) -> Bool {
+    private func writeMP4Frame(_ cgImage: CGImage, ptsTicks: Int64) -> Bool {
         guard let input = videoInput, let adaptor, input.isReadyForMoreMediaData,
               let pool = adaptor.pixelBufferPool else { return false }
         var pbOut: CVPixelBuffer?
@@ -242,7 +257,7 @@ public final class MediaClipEncoder: @unchecked Sendable {
         ) else { return false }
         ctx.interpolationQuality = .high
         ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: mp4Size.w, height: mp4Size.h))
-        return adaptor.append(pb, withPresentationTime: CMTime(value: ptsMillis, timescale: 1000))
+        return adaptor.append(pb, withPresentationTime: CMTime(value: ptsTicks, timescale: Self.videoTimescale))
     }
 
     private func finalizeMP4(finalTimestamp: TimeInterval) async -> URL? {
@@ -251,11 +266,13 @@ public final class MediaClipEncoder: @unchecked Sendable {
             defer { lock.unlock() }
             guard let writer = assetWriter, let input = videoInput else { return nil }
             if let s = startTime {
-                let endMs = max(lastPTSMillis + 33, Int64(((finalTimestamp - s) * 1000.0).rounded()))
+                let rawEnd = Int64((max(0, finalTimestamp - s) * Double(Self.videoTimescale)).rounded())
+                let endTicks = max(lastPTSTicks + minVideoStepTicks, rawEnd)
                 if let tail = lastCGFrame {
-                    _ = writeMP4Frame(tail, ptsMillis: endMs)
-                } else if let tailPB = lastPixelBuffer, let adaptor, input.isReadyForMoreMediaData, endMs > lastPTSMillis + 60 {
-                    _ = adaptor.append(tailPB, withPresentationTime: CMTime(value: endMs, timescale: 1000))
+                    _ = writeMP4Frame(tail, ptsTicks: endTicks)
+                } else if let tailPB = lastPixelBuffer, let adaptor, input.isReadyForMoreMediaData,
+                          endTicks > lastPTSTicks + Int64(Self.videoTimescale / 15) {
+                    _ = adaptor.append(tailPB, withPresentationTime: CMTime(value: endTicks, timescale: Self.videoTimescale))
                 }
             }
             lastCGFrame = nil; lastPixelBuffer = nil

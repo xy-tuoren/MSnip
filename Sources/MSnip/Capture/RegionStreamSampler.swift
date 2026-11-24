@@ -21,6 +21,7 @@ final class RegionStreamSampler {
         fps: Int = 20,
         showsCursor: Bool = false,
         losslessBGRA: Bool = false,
+        maxLongSide: Int? = nil,
         capturesAudio: Bool = false,
         onFrameBackground: @escaping @Sendable (CGImage) -> Void,
         onPixelBufferBackground: (@Sendable (CVPixelBuffer) -> Void)? = nil,
@@ -83,20 +84,28 @@ final class RegionStreamSampler {
                     cfg.pixelFormat = kCVPixelFormatType_32BGRA
                     cfg.queueDepth = 8
                 } else {
-                    // 视频编码模式：保持偶数像素尺寸以满足 H.264 4:2:0 要求
-                    let evenW = max(24, Int((clampedRect.width * scale).rounded()) & ~1)
-                    let evenH = max(32, Int((clampedRect.height * scale).rounded()) & ~1)
+                    // 视频编码模式：按清晰度预设在 GPU 采集端直接等比缩放并保持偶数像素，确保 H.264 零拷贝直通
+                    let rawW = max(24, Int((clampedRect.width * scale).rounded()) & ~1)
+                    let rawH = max(32, Int((clampedRect.height * scale).rounded()) & ~1)
+                    let outW: Int, outH: Int
+                    if let limit = maxLongSide, max(rawW, rawH) > limit {
+                        let ratio = Double(limit) / Double(max(rawW, rawH))
+                        outW = max(64, Int((Double(rawW) * ratio).rounded()) & ~1)
+                        outH = max(64, Int((Double(rawH) * ratio).rounded()) & ~1)
+                    } else {
+                        outW = rawW; outH = rawH
+                    }
                     cfg.sourceRect = CGRect(
                         x: clampedRect.minX,
                         y: clampedRect.minY,
-                        width: CGFloat(evenW) / scale,
-                        height: CGFloat(evenH) / scale
+                        width: CGFloat(rawW) / scale,
+                        height: CGFloat(rawH) / scale
                     )
-                    cfg.width = evenW
-                    cfg.height = evenH
+                    cfg.width = outW
+                    cfg.height = outH
                     cfg.pixelFormat = kCVPixelFormatType_32BGRA
                     cfg.colorSpaceName = CGColorSpace.sRGB
-                    cfg.queueDepth = 5
+                    cfg.queueDepth = fps > 60 ? 8 : 5
                 }
                 cfg.minimumFrameInterval = CMTime(value: 1, timescale: CMTimeScale(max(5, fps)))
                 cfg.showsCursor = showsCursor

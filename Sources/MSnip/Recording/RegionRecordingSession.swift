@@ -131,18 +131,22 @@ final class RegionRecordingSession {
         let stamp = Int(Date().timeIntervalSince1970 * 1000)
         let outURL = dir.appendingPathComponent("MSnip-\(stamp).\(fmt.rawValue)")
 
-        let enc = MediaClipEncoder(format: fmt, outputURL: outURL, options: recordingOptions)
-        self.encoder = enc
-        self.accumulatedActiveTime = 0
-        self.paused = false
-        let now = CACurrentMediaTime()
-        self.segmentStartMediaTime = now
+        let scale = max(1.0, screen.backingScaleFactor)
+        let mp4Size = recordingOptions.mp4Resolution.scaledEvenSize(
+            width: max(64, Int((localCaptureRect.width * scale).rounded())),
+            height: max(64, Int((localCaptureRect.height * scale).rounded()))
+        )
+        let resolvedMP4FPS = recordingOptions.mp4FPSMode.resolveFPS(
+            displayMaxFPS: screen.maximumFramesPerSecond, outputWidth: mp4Size.width, outputHeight: mp4Size.height
+        )
+        let enc = MediaClipEncoder(format: fmt, outputURL: outURL, options: recordingOptions, targetMP4FPS: resolvedMP4FPS)
+        self.encoder = enc; self.accumulatedActiveTime = 0; self.paused = false
+        let now = CACurrentMediaTime(); self.segmentStartMediaTime = now
 
-        controlBar.isRecording = true
-        controlBar.isPaused = false
-        controlBar.elapsedSeconds = 0
+        controlBar.isRecording = true; controlBar.isPaused = false; controlBar.elapsedSeconds = 0
         borderView.statusStyle = .recording
-        borderView.statusText = "正在录制 \(fmt.badgeTitle) · 框内可直接点击操作"
+        let fpsTag = fmt == .mp4 ? " \(resolvedMP4FPS)fps" : " \(recordingOptions.clampedGifFPS)fps"
+        borderView.statusText = "正在录制 \(fmt.badgeTitle)\(fpsTag) · 框内可直接点击操作"
         repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: screen), on: screen)
 
         let pausedBox = RecordingFlagBox()
@@ -180,8 +184,9 @@ final class RegionRecordingSession {
         streamSampler.start(
             screen: screen,
             localTopLeftRect: localCaptureRect,
-            fps: fmt == .gif ? recordingOptions.clampedGifFPS : recordingOptions.clampedMp4FPS,
+            fps: fmt == .gif ? recordingOptions.clampedGifFPS : resolvedMP4FPS,
             showsCursor: recordingOptions.showsCursor,
+            maxLongSide: fmt == .mp4 ? recordingOptions.mp4Resolution.maxLongSide : nil,
             capturesAudio: wantAudio,
             onFrameBackground: { frame in
                 guard !pausedBox.value else { return }

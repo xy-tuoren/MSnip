@@ -104,7 +104,7 @@ func testMilestone3To5Features() {
     let finishedLargeGIF = runAsyncSync { await largeEnc.finish(finalTimestamp: 0.25) }
     if let url = finishedLargeGIF, let src = CGImageSourceCreateWithURL(url as CFURL, nil),
        let firstCG = CGImageSourceCreateImageAtIndex(src, 0, nil) {
-        check(firstCG.width == 880 && firstCG.height == 440, "超大尺寸 GIF 帧应自动等比缩放到 880px 长边，实际: \(firstCG.width)×\(firstCG.height)")
+        check(firstCG.width == 960 && firstCG.height == 480, "超大尺寸 GIF 帧应自动等比缩放到默认 960px 长边，实际: \(firstCG.width)×\(firstCG.height)")
     } else {
         check(false, "大图降采样 GIF 应成功导出")
     }

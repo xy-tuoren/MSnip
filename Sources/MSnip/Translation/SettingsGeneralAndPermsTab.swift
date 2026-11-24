@@ -15,6 +15,7 @@ final class GeneralModeControls {
     var appearanceSegment: GeekSegmentControl?
     var themeToggleBtn: GeekButton?
     var gifPresetSegment: GeekSegmentControl?
+    var mp4ResSegment: GeekSegmentControl?
     var mp4FpsSegment: GeekSegmentControl?
     var recordCursorSwitch: GeekToggleSwitch?
     var recordAudioSwitch: GeekToggleSwitch?

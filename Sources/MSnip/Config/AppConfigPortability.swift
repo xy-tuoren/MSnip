@@ -67,7 +67,7 @@ enum AppConfigPortability {
         let signed = CredentialVault.hasStableCodeSignature()
         let screens = NSScreen.screens.enumerated().map { idx, scr in
             let f = scr.frame
-            return "  - Display \(idx + 1): \(Int(f.width))×\(Int(f.height)) @\(Int(scr.backingScaleFactor))x origin=(\(Int(f.minX)), \(Int(f.minY)))"
+            return "  - Display \(idx + 1): \(Int(f.width))×\(Int(f.height)) @\(Int(scr.backingScaleFactor))x \(scr.maximumFramesPerSecond)Hz origin=(\(Int(f.minX)), \(Int(f.minY)))"
         }.joined(separator: "\n")
         let transKind = TranslationService.shared.settings.resolvedActiveProfile?.kind.rawValue ?? "none"
         let ro = config.recordingOptions
@@ -87,7 +87,7 @@ enum AppConfigPortability {
         Preferences (Non-Secret):
           - HotKey Preset: \(config.hotKeyPreset.rawValue) (forceTap=\(config.forcePriorityHotKeys))
           - Export Format: \(config.exportImageFormat.rawValue) (1xScale=\(config.exportAt1xScale))
-          - Recording: \(config.preferredRecordingFormat.rawValue), GIF \(ro.clampedGifFPS)fps/\(ro.clampedGifMaxLongSide)px, MP4 \(ro.clampedMp4FPS)fps, cursor=\(ro.showsCursor), audio=\(ro.captureSystemAudio)
+          - Recording: \(config.preferredRecordingFormat.rawValue), GIF \(ro.clampedGifFPS)fps/\(ro.clampedGifMaxLongSide)px, MP4 \(ro.mp4Resolution.rawValue)/\(ro.mp4FPSMode.rawValue), cursor=\(ro.showsCursor), audio=\(ro.captureSystemAudio)
           - Translation Active Kind: \(transKind)
           - Appearance: \(config.appearanceMode.rawValue)
           - Terminal Paste Adapt: \(config.terminalPasteAdaptEnabled)
