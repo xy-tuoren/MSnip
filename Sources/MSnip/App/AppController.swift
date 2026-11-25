@@ -282,7 +282,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func recordHistoryAndRefresh(img: CGImage, scale: CGFloat, isCollage: Bool = false) {
         historyRing.record(cgImage: img, scaleFactor: scale, isCollage: isCollage)
-        shelfController.refreshIfVisible()
+        shelfController.notifyNewCaptureRecorded()
         rebuildMenu()
     }
 }

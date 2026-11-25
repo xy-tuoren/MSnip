@@ -56,6 +56,15 @@ extension AppController {
                 MainActor.assumeIsolated { self?.executeLaunchCommand(initialCmd) }
             }
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            MainActor.assumeIsolated { self?.shelfController.presentInitiallyIfNeeded() }
+        }
+    }
+
+    /// 左键点击启动台 / 访达 / 聚焦搜索 / 程序坞中的 MSnip 应用图标重新激活时，直接打开设置面板
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        openGeneralPreferences()
+        return true
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

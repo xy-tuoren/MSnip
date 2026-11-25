@@ -170,8 +170,8 @@ extension TranslationSettingsWindow {
         extCard.addSubview(glowSeg)
 
         extCard.addHairline(atY: rowH * 2)
-        let shelfTip = "智能防误触（推荐）：平时选应用/切标签绝不误弹，仅在拖文件滑向顶边、按住 ⌥ 顶边、右键状态栏图标或按快捷键（默认 ⌥Q）时呼出"
-        addRowLabel("顶部暂存架呼出方式", y: rowH * 2, height: rowH, in: extCard, toolTip: shelfTip)
+        let shelfTip = "悬停展开（推荐）：贴顶停留 0.55 秒或拖文件到顶边下拉，新截图自动探头 3 秒，点顶栏秒收；快捷键切换：仅热键/右键菜单栏图标呼出；常驻显示：轻盈晾衣绳常驻顶部且缝隙透明穿透"
+        addRowLabel("顶部晾衣架显示方式", y: rowH * 2, height: rowH, in: extCard, toolTip: shelfTip)
         let shelfSeg = GeekSegmentControl(items: TopShelfTriggerMode.allCases.map(\.title), selectedIndex: 0)
         shelfSeg.toolTip = shelfTip
         shelfSeg.frame = NSRect(x: rightColX, y: rowH * 2 + segY, width: rightColW, height: segH)

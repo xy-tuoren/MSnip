@@ -35,7 +35,7 @@ struct AppConfig: Codable {
     var fullScreenCaptureAction: FullScreenCaptureAction = .copy
     var pinGlowStrength: CGFloat = 0.45
     var topShelfHoverEnabled: Bool = true
-    var topShelfTriggerMode: TopShelfTriggerMode = .smartDragAndOption
+    var topShelfTriggerMode: TopShelfTriggerMode = .topEdgeHover
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
@@ -100,7 +100,7 @@ struct AppConfig: Codable {
         pinGlowStrength = min(1.0, max(0.0, rawGlow))
         let legacyShelfHover = try c.decodeIfPresent(Bool.self, forKey: .topShelfHoverEnabled) ?? true
         topShelfTriggerMode = (try? c.decodeIfPresent(TopShelfTriggerMode.self, forKey: .topShelfTriggerMode))
-            ?? (legacyShelfHover ? .smartDragAndOption : .manualOnly)
+            ?? (legacyShelfHover ? .topEdgeHover : .manualOnly)
         topShelfHoverEnabled = (topShelfTriggerMode != .manualOnly)
     }
 

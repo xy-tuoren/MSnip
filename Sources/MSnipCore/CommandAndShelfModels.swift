@@ -125,17 +125,28 @@ public struct ShelfCustomItem: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-/// 顶部暂存架边缘呼出模式（默认智能防误触：仅拖文件到顶边或按住 ⌥ 顶边时展开，避免切标签页/选应用误触）
+/// 顶部晾衣架（暂存架）显示方式：对齐轻雪晾衣架 3 种直觉模式（兼容旧配置 `"smartDragAndOption"` 自动迁移至悬停展开）
 public enum TopShelfTriggerMode: String, CaseIterable, Codable, Sendable {
-    case smartDragAndOption = "smartDragAndOption"
-    case topEdgeHover       = "topEdgeHover"
-    case manualOnly         = "manualOnly"
+    case topEdgeHover = "topEdgeHover"
+    case manualOnly   = "manualOnly"
+    case alwaysShown  = "alwaysShown"
 
     public var title: String {
         switch self {
-        case .smartDragAndOption: return "智能防误触"
-        case .topEdgeHover:       return "顶边悬停"
-        case .manualOnly:         return "仅热键"
+        case .topEdgeHover: return "悬停展开"
+        case .manualOnly:   return "快捷键切换"
+        case .alwaysShown:  return "常驻显示"
+        }
+    }
+
+    public init(from decoder: Decoder) throws {
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        if raw == "smartDragAndOption" {
+            self = .topEdgeHover
+        } else if let mode = TopShelfTriggerMode(rawValue: raw) {
+            self = mode
+        } else {
+            self = .topEdgeHover
         }
     }
 }
@@ -152,9 +163,28 @@ public enum ShelfTriggerGeometry {
     public static func hitsTopCenterTrigger(point: CGPoint, screenFrame: CGRect, isDragging: Bool) -> Bool {
         guard containsInclusive(screenFrame, point: point) else { return false }
         let topDist = screenFrame.maxY - point.y
-        let topThreshold: CGFloat = isDragging ? 22.0 : 8.0
-        let halfBand = max(220.0, screenFrame.width * 0.16)
+        let topThreshold: CGFloat = isDragging ? 24.0 : 10.0
+        let halfBand = max(240.0, screenFrame.width * 0.22)
         return topDist <= topThreshold && abs(point.x - screenFrame.midX) <= halfBand
+    }
+
+    /// 展开后点击屏幕最顶栏窄带（≤ 30pt）可立即收起晾衣架并在离开顶边前抑制重弹
+    public static func hitsTopBarDismissBand(point: CGPoint, screenFrame: CGRect) -> Bool {
+        guard containsInclusive(screenFrame, point: point) else { return false }
+        return (screenFrame.maxY - point.y) <= 30.0
+    }
+
+    /// 计算悬链晾衣绳在水平坐标 `x` 处的下垂 Y 坐标（flipped 左上角原点二次贝塞尔弧线，供夹子精准卡在线上）
+    public static func ropeY(
+        atX x: CGFloat,
+        startX: CGFloat,
+        endX: CGFloat,
+        baseY: CGFloat,
+        sag: CGFloat
+    ) -> CGFloat {
+        let span = max(1.0, endX - startX)
+        let t = min(1.0, max(0.0, (x - startX) / span))
+        return baseY + 4.0 * sag * t * (1.0 - t)
     }
 
     /// 计算展开后的安全保持区：向上完整贯通至物理屏幕顶边 `screenFrame.maxY + 4`，避免光标刚触发即被菜单栏间隙误判离开

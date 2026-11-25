@@ -212,6 +212,21 @@ func testV031Features() {
           "贴图右上角外侧 3pt 内应命中右上角对角缩放热区")
     check(PinResizeEdge.hitTest(point: CGPoint(x: -6, y: 100), in: pinBounds, outerSlop: 4) == nil,
           "超出外沿 4pt 的柔和光晕区应继续穿透不截获缩放热区")
+
+    // 13) 轻盈晾衣架 3 模式迁移、悬链弧线公式与顶栏秒收热区
+    check(TopShelfTriggerMode.allCases == [.topEdgeHover, .manualOnly, .alwaysShown],
+          "晾衣架显示方式应包含悬停展开/快捷键切换/常驻显示 3 项")
+    if let legacyData = "\"smartDragAndOption\"".data(using: .utf8),
+       let migrated = try? JSONDecoder().decode(TopShelfTriggerMode.self, from: legacyData) {
+        check(migrated == .topEdgeHover, "旧配置 smartDragAndOption 应平滑迁移至悬停展开")
+    } else { check(false, "旧配置字符串应成功解码迁移") }
+    let midRopeY = ShelfTriggerGeometry.ropeY(atX: 400, startX: 0, endX: 800, baseY: 10, sag: 8)
+    let endRopeY = ShelfTriggerGeometry.ropeY(atX: 0, startX: 0, endX: 800, baseY: 10, sag: 8)
+    check(abs(midRopeY - 18.0) < 0.01 && abs(endRopeY - 10.0) < 0.01, "悬链晾衣绳中点应自然下垂 sag，两端回归 baseY")
+    check(ShelfTriggerGeometry.hitsTopBarDismissBand(point: CGPoint(x: 120, y: 970), screenFrame: scr),
+          "点击屏幕顶部 30pt 菜单栏带应触发晾衣架秒收")
+    check(!ShelfTriggerGeometry.hitsTopBarDismissBand(point: CGPoint(x: 120, y: 920), screenFrame: scr),
+          "菜单栏下方常规工作区点击不应误判为顶栏秒收")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

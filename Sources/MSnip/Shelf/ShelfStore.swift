@@ -148,3 +148,87 @@ final class ShelfStore {
         }
     }
 }
+
+/// 晾衣架卡片装配、复制/贴图/识字/拖拽分发与屏幕定位扩展
+extension ShelfPanelController {
+    func buildCardView(for item: ShelfCardItem, timeFormatter: DateFormatter) -> ShelfCardView {
+        let thumb: NSImage?, title: String, sub: String, sym: String?, snippet: String?, canOCR: Bool
+        switch item {
+        case .history(let e):
+            let url = historyRing.fileURL(for: e)
+            thumb = url.flatMap { ShelfStore.loadCardThumbnail(fileURL: $0) } ?? historyRing.menuThumbnail(for: e)
+            title = e.isCollage ? "多图对比" : "截图 \(timeFormatter.string(from: e.createdAt))"
+            sub = "\(e.pixelWidth)×\(e.pixelHeight)"; sym = "photo"; snippet = nil; canOCR = true
+        case .custom(let c):
+            if c.kind == .file, let p = c.filePath {
+                let u = URL(fileURLWithPath: p), ext = u.pathExtension.lowercased()
+                let isImg = ["png", "jpg", "jpeg", "webp", "heic", "gif", "tiff", "bmp"].contains(ext)
+                thumb = isImg ? ShelfStore.loadCardThumbnail(fileURL: u) : nil
+                title = c.title; sub = ext.isEmpty ? "文件" : ext.uppercased()
+                sym = isImg ? "photo" : (["mp4", "mov"].contains(ext) ? "film" : "doc.fill")
+                snippet = nil; canOCR = isImg
+            } else {
+                thumb = nil; title = c.title; sub = "\((c.textContent ?? "").count) 字"
+                sym = nil; snippet = c.textContent; canOCR = false
+            }
+        }
+        let card = ShelfCardView(item: item, thumbnail: thumb, title: title, subtitle: sub, symbol: sym, textSnippet: snippet, canOCR: canOCR)
+        card.onCopy = { [weak self] it in self?.handleCopy(it) }
+        card.onPin = { [weak self] it in self?.handlePin(it) }
+        card.onOCR = { [weak self] it in self?.handleOCR(it) }
+        card.onRemove = { [weak self] it in self?.handleRemove(it) }
+        card.dragWriterProvider = { [weak self] it in self?.pasteboardWriter(for: it) }
+        return card
+    }
+
+    private func handleCopy(_ item: ShelfCardItem) {
+        switch item {
+        case .history(let e): onCopyHistory?(e)
+        case .custom(let c):
+            if c.kind == .file, let p = c.filePath {
+                let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([URL(fileURLWithPath: p) as NSURL])
+                ToastHUD.show(message: "已复制文件：\(c.title)")
+            } else if let txt = c.textContent { ClipboardAndSave.copyText(txt); ToastHUD.show(message: "已复制暂存文本 (\(txt.count) 字)") }
+        }
+    }
+
+    private func handlePin(_ item: ShelfCardItem) {
+        switch item {
+        case .history(let e): onPinHistory?(e)
+        case .custom(let c):
+            if c.kind == .text, let txt = c.textContent { onPinText?(txt) }
+            else if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p),
+                    let e = historyRing.record(cgImage: cg, scaleFactor: NSScreen.main?.backingScaleFactor ?? 2.0) { onPinHistory?(e) }
+        }
+    }
+
+    private func handleOCR(_ item: ShelfCardItem) {
+        switch item {
+        case .history(let e): onOCRHistory?(e)
+        case .custom(let c):
+            if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p),
+               let e = historyRing.record(cgImage: cg, scaleFactor: 2.0) { onOCRHistory?(e) }
+        }
+    }
+
+    private func handleRemove(_ item: ShelfCardItem) {
+        if case .custom(let c) = item { store.removeCustom(id: c.id); reloadCards() }
+        else { ToastHUD.show(message: "截图条目自动随历史环滚动清理，拖入条目可单独移除") }
+    }
+
+    private func pasteboardWriter(for item: ShelfCardItem) -> NSPasteboardWriting? {
+        switch item {
+        case .history(let e): return historyRing.fileURL(for: e) as NSURL?
+        case .custom(let c): return c.kind == .file ? c.filePath.map { URL(fileURLWithPath: $0) as NSURL } : c.textContent as NSString?
+        }
+    }
+
+    private func loadImage(at path: String) -> CGImage? {
+        CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+    }
+
+    func screenUnderCursor() -> NSScreen {
+        let pt = NSEvent.mouseLocation
+        return NSScreen.screens.first(where: { ShelfTriggerGeometry.containsInclusive($0.frame, point: pt) }) ?? NSScreen.main ?? NSScreen.screens[0]
+    }
+}
