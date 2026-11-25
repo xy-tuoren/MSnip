@@ -8,7 +8,7 @@ import MSnipCore
 @MainActor
 final class ShelfPanelController {
     static let panelHeight: CGFloat = 98.0
-    static let railWidth: CGFloat = 104.0
+    static let railWidth: CGFloat = 112.0
     static let cardGap: CGFloat = 7.0
 
     var onCopyHistory: ((CaptureHistoryEntry) -> Void)?
@@ -28,20 +28,15 @@ final class ShelfPanelController {
     var rootView: ShelfClotheslineView?
     var scrollView: ShelfHorizontalScrollView?
     var stripView: GeekFlippedView?
-    var countLabel: NSTextField?
-    var clipBtn: GeekButton?
-    var secondaryBtn: GeekButton?
-    var pinBtn: GeekButton?
-    var closeBtn: GeekButton?
-    var leftNavBtn: GeekButton?
-    var rightNavBtn: GeekButton?
+    var railView: ShelfActionRailView?
+    var leftNavBtn: ShelfEdgeArrowButton?
+    var rightNavBtn: ShelfEdgeArrowButton?
     var emptyLabel: NSTextField?
     weak var activeHoveredCard: ShelfCardView?
     var selectedItemIDs: [UUID] = []
 
-    private var isPinnedOpen = false
+    var isPinnedOpen = false
     private var manuallyHidden = false
-    var showsCollageAction = false
     private(set) var isVisible = false
     private var activeScreenFrame: NSRect?
 
@@ -202,8 +197,8 @@ final class ShelfPanelController {
         p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true; p.animationBehavior = .none
 
         let ev = NSVisualEffectView(frame: initRect)
-        ev.material = .hudWindow; ev.blendingMode = .behindWindow; ev.state = .active
-        ev.wantsLayer = true; ev.layer?.cornerRadius = 13; ev.layer?.masksToBounds = true; ev.layer?.borderWidth = 0.8
+        ev.material = .popover; ev.blendingMode = .behindWindow; ev.state = .active
+        ev.wantsLayer = true; ev.layer?.cornerRadius = 14; ev.layer?.masksToBounds = true; ev.layer?.borderWidth = 0.75
 
         let root = ShelfClotheslineView(frame: initRect)
         root.onDropFiles = { [weak self] urls in
@@ -224,30 +219,33 @@ final class ShelfPanelController {
         let strip = GeekFlippedView(frame: .zero)
         sv.documentView = strip; root.addSubview(sv)
 
-        let cnt = NSTextField(labelWithString: "0 项")
-        cnt.font = .monospacedDigitSystemFont(ofSize: 11.0, weight: .semibold); root.addSubview(cnt)
-
-        func addBtn(_ title: String, tip: String? = nil, action: @escaping () -> Void) -> GeekButton {
-            let b = GeekButton(title: title, style: .subtle)
-            b.toolTip = tip; b.onClick = action; root.addSubview(b); return b
-        }
-        let pBtn = addBtn("钉", tip: "钉住常开 / 取消钉住") { [weak self] in
+        let rail = ShelfActionRailView(frame: .zero)
+        rail.onTogglePin = { [weak self] in
             guard let self else { return }
             self.isPinnedOpen.toggle()
-            self.pinBtn?.style = self.isPinnedOpen ? .accent : .subtle
+            self.railView?.isPinned = self.isPinnedOpen
         }
-        let xBtn = addBtn("✕", tip: "收起暂存架 (Esc)") { [weak self] in self?.isPinnedOpen = false; self?.hide(manual: true) }
-        let cBtn = addBtn("+ 剪贴板", tip: "将剪贴板图片、文件或文本加入暂存架") { [weak self] in
+        rail.onClose = { [weak self] in
+            self?.isPinnedOpen = false
+            self?.railView?.isPinned = false
+            self?.hide(manual: true)
+        }
+        rail.onAddClipboard = { [weak self] in
             guard let self else { return }
             if let msg = self.store.addFromClipboard(historyRing: self.historyRing) {
                 self.reloadCards(); ToastHUD.show(message: msg)
             } else { ToastHUD.show(message: "剪贴板暂无可加入的图片、文件或文本") }
         }
-        let secBtn = addBtn("拼图 / PDF", tip: "打开多图拼接与合并 PDF 窗口（⌘+点击卡片可先自选顺序）") { [weak self] in
-            self?.triggerCollageStudio()
-        }
-        let lBtn = addBtn("‹", tip: "向左翻页") { [weak self] in self?.scrollView?.scrollBy(deltaX: -340) }
-        let rBtn = addBtn("›", tip: "向右翻页") { [weak self] in self?.scrollView?.scrollBy(deltaX: 340) }
+        rail.onOpenCollage = { [weak self] in self?.triggerCollageStudio() }
+        root.addSubview(rail)
+
+        let lBtn = ShelfEdgeArrowButton(symbolName: "chevron.left", toolTip: "向左翻页")
+        lBtn.onClick = { [weak self] in self?.scrollView?.scrollBy(deltaX: -340) }
+        root.addSubview(lBtn)
+
+        let rBtn = ShelfEdgeArrowButton(symbolName: "chevron.right", toolTip: "向右翻页")
+        rBtn.onClick = { [weak self] in self?.scrollView?.scrollBy(deltaX: 340) }
+        root.addSubview(rBtn)
 
         let empty = NSTextField(labelWithString: "暂无条目 · 截图自动收录于此，或直接拖入文件 / 文字")
         empty.font = .systemFont(ofSize: 11.5, weight: .regular); empty.alignment = .center
@@ -255,7 +253,6 @@ final class ShelfPanelController {
 
         p.contentView = ev
         panel = p; effectView = ev; rootView = root; scrollView = sv; stripView = strip
-        countLabel = cnt; pinBtn = pBtn; closeBtn = xBtn; clipBtn = cBtn; secondaryBtn = secBtn
-        leftNavBtn = lBtn; rightNavBtn = rBtn; emptyLabel = empty
+        railView = rail; leftNavBtn = lBtn; rightNavBtn = rBtn; emptyLabel = empty
     }
 }

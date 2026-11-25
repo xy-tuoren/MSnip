@@ -2,7 +2,7 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// 顶部紧凑暂存条根容器：负责拖入文件/文本高亮、右侧操作区竖向分割线与规整内边距
+/// 顶部紧凑暂存条根容器：负责高通透毛玻璃底衬、内圈微高光描边、右侧精致竖向分割线与拖入高亮
 final class ShelfClotheslineView: NSView {
     var onDropFiles: (([URL]) -> Void)?
     var onDropText: ((String) -> Void)?
@@ -21,8 +21,7 @@ final class ShelfClotheslineView: NSView {
     required init?(coder: NSCoder) { fatalError() }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        isDragTargeted = true
-        return .copy
+        isDragTargeted = true; return .copy
     }
 
     override func draggingExited(_ sender: NSDraggingInfo?) { isDragTargeted = false }
@@ -31,12 +30,10 @@ final class ShelfClotheslineView: NSView {
         isDragTargeted = false
         let pb = sender.draggingPasteboard
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL], !urls.isEmpty {
-            onDropFiles?(urls)
-            return true
+            onDropFiles?(urls); return true
         }
         if let txt = pb.string(forType: .string), !txt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            onDropText?(txt)
-            return true
+            onDropText?(txt); return true
         }
         return false
     }
@@ -45,16 +42,30 @@ final class ShelfClotheslineView: NSView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let isDark = GeekTheme.isDark
 
-        // 右侧实用控制区规整 1pt 竖向分割线
+        // 1) 柔和毛玻璃润色层：浅色下清透乳白不发灰，深色下沉稳深炭有层次
+        let tint = isDark
+            ? NSColor(srgbRed: 0.11, green: 0.12, blue: 0.15, alpha: 0.62)
+            : NSColor(srgbRed: 0.97, green: 0.975, blue: 0.985, alpha: 0.72)
+        ctx.setFillColor(tint.cgColor)
+        ctx.fill(bounds)
+
+        // 2) 内圈 0.75pt 光学镜面细边（接近 macOS 控制中心 / Raycast 质感）
+        let inner = bounds.insetBy(dx: 0.9, dy: 0.9)
+        let innerPath = CGPath(roundedRect: inner, cornerWidth: 13.2, cornerHeight: 13.2, transform: nil)
+        ctx.setStrokeColor((isDark ? NSColor.white.withAlphaComponent(0.11) : NSColor.white.withAlphaComponent(0.62)).cgColor)
+        ctx.setLineWidth(0.75)
+        ctx.addPath(innerPath); ctx.strokePath()
+
+        // 3) 右侧实用工具列精致竖向分割线
         if dividerX > 10 && dividerX < bounds.width - 10 {
-            ctx.setFillColor((isDark ? NSColor.white.withAlphaComponent(0.11) : NSColor.black.withAlphaComponent(0.09)).cgColor)
-            ctx.fill(CGRect(x: floor(dividerX) + 0.5, y: 10, width: 1, height: bounds.height - 20))
+            ctx.setFillColor((isDark ? NSColor.white.withAlphaComponent(0.10) : NSColor.black.withAlphaComponent(0.08)).cgColor)
+            ctx.fill(CGRect(x: floor(dividerX) + 0.5, y: 11, width: 1, height: bounds.height - 22))
         }
 
-        // 拖入文件/文字时的整框虚线接纳反馈
+        // 4) 拖入文件/文字时的虚线高亮反馈
         guard isDragTargeted else { return }
         let r = bounds.insetBy(dx: 2.5, dy: 2.5)
-        let path = CGPath(roundedRect: r, cornerWidth: 11.5, cornerHeight: 11.5, transform: nil)
+        let path = CGPath(roundedRect: r, cornerWidth: 12, cornerHeight: 12, transform: nil)
         ctx.saveGState()
         ctx.setFillColor(GeekTheme.accent.withAlphaComponent(isDark ? 0.16 : 0.10).cgColor)
         ctx.addPath(path); ctx.fillPath()
@@ -73,22 +84,17 @@ extension ShelfPanelController {
         let railX = w - Self.railWidth
         rootView?.dividerX = railX
 
-        // 右侧 3 行规整工具列（88pt 宽，杜绝文字截断）
-        let colX = railX + 8, colW: CGFloat = Self.railWidth - 16
-        countLabel?.frame = NSRect(x: colX, y: 10, width: 42, height: 16)
-        closeBtn?.frame = NSRect(x: colX + colW - 21, y: 7, width: 21, height: 22)
-        pinBtn?.frame = NSRect(x: colX + colW - 45, y: 7, width: 21, height: 22)
-        clipBtn?.frame = NSRect(x: colX, y: 36, width: colW, height: 24)
-        secondaryBtn?.frame = NSRect(x: colX, y: 66, width: colW, height: 24)
+        // 右侧精炼控制列（10pt 呼吸留白）
+        railView?.frame = NSRect(x: railX + 9, y: 8, width: Self.railWidth - 18, height: h - 16)
 
-        leftNavBtn?.frame = NSRect(x: 5, y: 7, width: 18, height: h - 14)
-        rightNavBtn?.frame = NSRect(x: railX - 23, y: 7, width: 18, height: h - 14)
-        emptyLabel?.frame = NSRect(x: 12, y: round(h * 0.5 - 9), width: railX - 24, height: 18)
+        leftNavBtn?.frame = NSRect(x: 3, y: 7, width: 22, height: h - 14)
+        rightNavBtn?.frame = NSRect(x: railX - 25, y: 7, width: 22, height: h - 14)
+        emptyLabel?.frame = NSRect(x: 14, y: round(h * 0.5 - 9), width: railX - 28, height: 18)
         applyScrollFrame(railX: railX, height: h, hasOverflow: !(leftNavBtn?.isHidden ?? true) || !(rightNavBtn?.isHidden ?? true))
     }
 
     func applyScrollFrame(railX: CGFloat, height h: CGFloat, hasOverflow: Bool) {
-        let inset: CGFloat = hasOverflow ? 26 : 8
+        let inset: CGFloat = hasOverflow ? 27 : 8
         scrollView?.frame = NSRect(x: inset, y: 7, width: max(60, railX - inset * 2), height: h - 14)
     }
 
@@ -101,16 +107,18 @@ extension ShelfPanelController {
         let curX = sv.contentView.bounds.origin.x
         leftNavBtn?.isHidden = !overflow
         rightNavBtn?.isHidden = !overflow
-        leftNavBtn?.alphaValue = curX > 2 ? 1.0 : 0.28
-        rightNavBtn?.alphaValue = curX < maxX - 2 ? 1.0 : 0.28
+        leftNavBtn?.isNavEnabled = curX > 2
+        rightNavBtn?.isNavEnabled = curX < maxX - 2
     }
 
     func applyTheme() {
         let isDark = GeekTheme.isDark
         effectView?.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
-        effectView?.layer?.borderColor = (isDark ? NSColor.white.withAlphaComponent(0.14) : NSColor.black.withAlphaComponent(0.12)).cgColor
-        countLabel?.textColor = GeekTheme.inkSecondary
+        effectView?.layer?.borderColor = (isDark ? NSColor.white.withAlphaComponent(0.16) : NSColor.black.withAlphaComponent(0.12)).cgColor
         emptyLabel?.textColor = GeekTheme.inkMuted
+        railView?.needsDisplay = true
+        leftNavBtn?.needsDisplay = true
+        rightNavBtn?.needsDisplay = true
         rootView?.needsDisplay = true
     }
 
@@ -120,8 +128,9 @@ extension ShelfPanelController {
         let validIDs = Set(items.map(\.id))
         selectedItemIDs.removeAll { !validIDs.contains($0) }
         stripView.subviews.forEach { $0.removeFromSuperview() }
-        countLabel?.stringValue = "\(items.count) 项"
-        updateCollageButtonTitle()
+        railView?.itemCount = items.count
+        railView?.selectedCount = selectedItemIDs.count
+        railView?.isPinned = isPinnedOpen
         emptyLabel?.isHidden = !items.isEmpty
 
         let cardW = ShelfCardView.cardSize.width, cardH = ShelfCardView.cardSize.height
@@ -141,12 +150,6 @@ extension ShelfPanelController {
         updateScrollNavButtons()
     }
 
-    func updateCollageButtonTitle() {
-        let selCount = selectedItemIDs.count
-        secondaryBtn?.title = selCount > 0 ? "拼图 (\(selCount))" : "拼图 / PDF"
-        secondaryBtn?.style = selCount >= 2 ? .accent : .subtle
-    }
-
     func toggleSelection(for item: ShelfCardItem) {
         if let idx = selectedItemIDs.firstIndex(of: item.id) {
             selectedItemIDs.remove(at: idx)
@@ -158,6 +161,6 @@ extension ShelfPanelController {
                 card.selectionOrder = selectedItemIDs.firstIndex(of: card.item.id).map { $0 + 1 }
             }
         }
-        updateCollageButtonTitle()
+        railView?.selectedCount = selectedItemIDs.count
     }
 }
