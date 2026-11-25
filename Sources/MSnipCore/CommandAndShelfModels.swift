@@ -124,3 +124,30 @@ public struct ShelfCustomItem: Codable, Equatable, Identifiable, Sendable {
         }
     }
 }
+
+/// 顶部暂存架边缘命中与防误收安全区纯几何计算（AppKit 左下角原点坐标系，严格兼容 `pt.y == screenFrame.maxY` 顶边贴边）
+public enum ShelfTriggerGeometry {
+    /// 含闭区间边界校验判断光标是否落入目标屏幕（避免 `CGRect.contains` 在 `pt.y == maxY` 顶边处返回 false）
+    public static func containsInclusive(_ rect: CGRect, point: CGPoint) -> Bool {
+        point.x >= rect.minX - 1.0 && point.x <= rect.maxX + 1.0
+            && point.y >= rect.minY - 1.0 && point.y <= rect.maxY + 2.0
+    }
+
+    /// 判断光标是否命中屏幕顶部中央触发热区（避开左侧系统菜单与右侧状态栏图标）
+    public static func hitsTopCenterTrigger(point: CGPoint, screenFrame: CGRect, isDragging: Bool) -> Bool {
+        guard containsInclusive(screenFrame, point: point) else { return false }
+        let topDist = screenFrame.maxY - point.y
+        let topThreshold: CGFloat = isDragging ? 18.0 : 8.0
+        let halfBand = max(220.0, screenFrame.width * 0.16)
+        return topDist <= topThreshold && abs(point.x - screenFrame.midX) <= halfBand
+    }
+
+    /// 计算展开后的安全保持区：向上完整贯通至物理屏幕顶边 `screenFrame.maxY + 4`，避免光标刚触发即被菜单栏间隙误判离开
+    public static func safeKeepRect(panelFrame: CGRect, screenFrame: CGRect) -> CGRect {
+        let minX = panelFrame.minX - 24.0
+        let maxX = panelFrame.maxX + 24.0
+        let minY = panelFrame.minY - 24.0
+        let maxY = max(panelFrame.maxY + 24.0, screenFrame.maxY + 4.0)
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+}

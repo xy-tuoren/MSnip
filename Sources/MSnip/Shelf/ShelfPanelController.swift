@@ -32,6 +32,7 @@ final class ShelfPanelController {
 
     private var isPinnedOpen = false
     private(set) var isVisible = false
+    private var activeScreenFrame: NSRect?
 
     var hoverTriggerEnabled: Bool {
         get { edgeWatcher.isEnabled }
@@ -47,6 +48,7 @@ final class ShelfPanelController {
         edgeWatcher.onTriggerShow = { [weak self] in self?.show(on: nil) }
         edgeWatcher.onTriggerHide = { [weak self] in self?.hide() }
         edgeWatcher.panelFrameProvider = { [weak self] in self?.panel?.frame }
+        edgeWatcher.panelScreenFrameProvider = { [weak self] in self?.activeScreenFrame }
         edgeWatcher.isPinnedProvider = { [weak self] in self?.isPinnedOpen ?? false }
         edgeWatcher.isVisibleProvider = { [weak self] in self?.isVisible ?? false }
     }
@@ -55,12 +57,13 @@ final class ShelfPanelController {
 
     func show(on screen: NSScreen? = nil) {
         let targetScreen = screen ?? screenUnderCursor()
+        activeScreenFrame = targetScreen.frame
         ensurePanelBuilt()
         guard let panel else { return }
         applyTheme()
         let w = min(692, targetScreen.frame.width - 64), h: CGFloat = 148
         let x = round(targetScreen.frame.midX - w * 0.5)
-        let y = round(targetScreen.visibleFrame.maxY - h - 4)
+        let y = round(targetScreen.visibleFrame.maxY - h - 2)
         panel.setFrame(NSRect(x: x, y: y, width: w, height: h), display: false)
         layoutSubviews(width: w, height: h)
         reloadCards()
@@ -287,6 +290,7 @@ final class ShelfPanelController {
 
     private func screenUnderCursor() -> NSScreen {
         let pt = NSEvent.mouseLocation
-        return NSScreen.screens.first(where: { $0.frame.contains(pt) }) ?? NSScreen.main ?? NSScreen.screens[0]
+        return NSScreen.screens.first(where: { ShelfTriggerGeometry.containsInclusive($0.frame, point: pt) })
+            ?? NSScreen.main ?? NSScreen.screens[0]
     }
 }

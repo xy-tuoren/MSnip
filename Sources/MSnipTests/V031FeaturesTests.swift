@@ -160,6 +160,17 @@ func testV031Features() {
        let decoded = try? JSONDecoder().decode(ShelfCustomItem.self, from: data) {
         check(decoded == textShelf && decoded.isValidOnDisk, "暂存架文本条目应完整支持 JSON 编解码且有效")
     } else { check(false, "暂存架条目编解码不应失败") }
+
+    // 11) 顶部暂存架闭区间贴顶触发与菜单栏贯通安全保持区
+    let scr = CGRect(x: 0, y: 0, width: 1512, height: 982)
+    check(ShelfTriggerGeometry.hitsTopCenterTrigger(point: CGPoint(x: 756, y: 982), screenFrame: scr, isDragging: false),
+          "光标紧贴物理顶边 y == maxY 时必须 100% 命中顶部暂存架触发区")
+    check(!ShelfTriggerGeometry.hitsTopCenterTrigger(point: CGPoint(x: 60, y: 982), screenFrame: scr, isDragging: false),
+          "光标在左上角系统菜单区不应误触发顶部暂存架")
+    let panelF = CGRect(x: 410, y: 795, width: 692, height: 148) // 刘海屏菜单栏下方 39pt
+    let safeF = ShelfTriggerGeometry.safeKeepRect(panelFrame: panelF, screenFrame: scr)
+    check(ShelfTriggerGeometry.containsInclusive(safeF, point: CGPoint(x: 756, y: 982)),
+          "展开后的安全保持区必须向上贯通至顶边，防止刚弹出即被菜单栏间隙误收")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {
