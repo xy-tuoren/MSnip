@@ -204,23 +204,20 @@ public enum ImageTransform {
 public enum PinResizeEdge: CaseIterable, Equatable, Sendable {
     case topLeft, top, topRight, right, bottomRight, bottom, bottomLeft, left
 
-    /// 在窗口局部坐标系中检测是否命中 4 角或 4 边拖拽热区（四角优先，小图自动收窄避免挤占中心拖动区）
+    /// 在窗口局部坐标系中检测是否命中 4 角或 4 边拖拽热区（四角优先，支持向外延伸 `outerSlop` 覆盖外发光描边）
     public static func hitTest(
         point: CGPoint,
         in bounds: CGRect,
         cornerSize: CGFloat = 14,
-        edgeThickness: CGFloat = 7
+        edgeThickness: CGFloat = 7,
+        outerSlop: CGFloat = 0
     ) -> PinResizeEdge? {
-        guard bounds.contains(point), bounds.width >= 32, bounds.height >= 32 else { return nil }
+        let hitBounds = outerSlop > 0 ? bounds.insetBy(dx: -outerSlop, dy: -outerSlop) : bounds
+        guard hitBounds.contains(point), bounds.width >= 32, bounds.height >= 32 else { return nil }
         let minDim = min(bounds.width, bounds.height)
-        let c = min(cornerSize, max(6, minDim * 0.28))
-        let e = min(edgeThickness, max(4, minDim * 0.18))
-
-        let dL = point.x - bounds.minX
-        let dR = bounds.maxX - point.x
-        let dB = point.y - bounds.minY
-        let dT = bounds.maxY - point.y
-
+        let c = min(cornerSize, max(6, minDim * 0.28)), e = min(edgeThickness, max(4, minDim * 0.18))
+        let dL = point.x - bounds.minX, dR = bounds.maxX - point.x
+        let dB = point.y - bounds.minY, dT = bounds.maxY - point.y
         if dL <= c && dT <= c { return .topLeft }
         if dR <= c && dT <= c { return .topRight }
         if dL <= c && dB <= c { return .bottomLeft }

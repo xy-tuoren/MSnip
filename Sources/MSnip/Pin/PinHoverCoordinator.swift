@@ -78,7 +78,7 @@ final class PinHoverCoordinator {
             guard pin.isHoverBarAllowed,
                   PinHoverGeometry.isPointInHoverZone(
                       point: mouse,
-                      pinFrame: pin.imageScreenFrame,
+                      pinFrame: pin.interactiveHoverFrame,
                       barFrame: nil,
                       isBarVisible: false
                   ) else { continue }
@@ -110,6 +110,11 @@ final class PinHoverCoordinator {
 
 /// 贴图窗口悬浮态自愈与真实光标复核扩展
 extension PinWindow {
+    var interactiveHoverFrame: NSRect {
+        let r = PinGlowContainerView.outerResizeReach
+        return imageScreenFrame.insetBy(dx: -r, dy: -r)
+    }
+
     var isHoverBarAllowed: Bool {
         isVisible && isOnActiveSpace && !isClickThrough
             && editorCanvas == nil && cropOverlay == nil && !pinContentView.isAnnotating
@@ -122,16 +127,14 @@ extension PinWindow {
             isMouseInPin = true
             pinContentView.syncMouseInsideFlag(true)
             if changed { syncGlowState(); syncResizeChromeVisibility() }
-            if changed || !hoverBarPanel.isVisible || !hoverBarPanel.isOnActiveSpace {
-                syncHoverBarVisibility()
-            }
+            if changed || !hoverBarPanel.isVisible || !hoverBarPanel.isOnActiveSpace { syncHoverBarVisibility() }
             return
         }
 
-        // 防止 VisionKit / 边角跟踪区重建导致鼠标仍在图内时发出伪 mouseExited
+        // 防止 VisionKit / 边角跟踪区重建导致鼠标仍在图内或外沿缩放带时发出伪 mouseExited
         let mouse = NSEvent.mouseLocation
         if isHoverBarAllowed,
-           PinHoverGeometry.containsPointInclusive(imageScreenFrame, mouse),
+           PinHoverGeometry.containsPointInclusive(interactiveHoverFrame, mouse),
            isPinUncovered(at: mouse, topWindowNumber: NSWindow.windowNumber(at: mouse, belowWindowWithWindowNumber: 0)) {
             pinContentView.syncMouseInsideFlag(true)
             return
@@ -176,7 +179,7 @@ extension PinWindow {
             && PinHoverGeometry.containsPointInclusive(hoverBarPanel.frame, mouse)
             && isHoverBarUncovered(at: mouse, topWindowNumber: topWin)
 
-        let inPinRect = PinHoverGeometry.containsPointInclusive(imageScreenFrame, mouse)
+        let inPinRect = PinHoverGeometry.containsPointInclusive(interactiveHoverFrame, mouse)
         let blockedByOtherPin = allPinWindowNumbers.contains(topWin)
             && topWin != windowNumber && topWin != hoverBarPanel.windowNumber
         let inPin = !inBar && inPinRect && !blockedByOtherPin && isPinUncovered(at: mouse, topWindowNumber: topWin)
@@ -188,23 +191,20 @@ extension PinWindow {
             )
             && isHoverBarUncovered(at: mouse, topWindowNumber: topWin)
 
-        if inBar {
-            hoverBarPanel.barView.reconcileHover(screenPoint: mouse)
-        }
+        if inBar { hoverBarPanel.barView.reconcileHover(screenPoint: mouse) }
 
         let prevPin = isMouseInPin, prevBar = isMouseInHoverBar
         if inPin || inBar {
             isMouseInPin = inPin
             isMouseInHoverBar = inBar
             pinContentView.syncMouseInsideFlag(inPin)
-            if !inPin { clearResizeHoverCursorIfNeeded() }
-            if prevPin != inPin || prevBar != inBar {
-                syncGlowState()
-                syncResizeChromeVisibility()
+            if inPin {
+                _ = handleResizeHover(contentPoint: pinContentView.convert(convertPoint(fromScreen: mouse), from: nil))
+            } else {
+                clearResizeHoverCursorIfNeeded()
             }
-            if prevPin != inPin || prevBar != inBar || !barVisible {
-                syncHoverBarVisibility()
-            }
+            if prevPin != inPin || prevBar != inBar { syncGlowState(); syncResizeChromeVisibility() }
+            if prevPin != inPin || prevBar != inBar || !barVisible { syncHoverBarVisibility() }
         } else if inBridge {
             // 正在跨过贴图与悬浮条之间的 5pt 间隙：保持悬浮条不闪退
             if prevPin || prevBar {
@@ -232,7 +232,7 @@ extension PinWindow {
         guard isHoverBarAllowed else { return false }
         let mouse = NSEvent.mouseLocation
         let topWin = NSWindow.windowNumber(at: mouse, belowWindowWithWindowNumber: 0)
-        if PinHoverGeometry.containsPointInclusive(imageScreenFrame, mouse),
+        if PinHoverGeometry.containsPointInclusive(interactiveHoverFrame, mouse),
            isPinUncovered(at: mouse, topWindowNumber: topWin) {
             isMouseInPin = true
             pinContentView.syncMouseInsideFlag(true)

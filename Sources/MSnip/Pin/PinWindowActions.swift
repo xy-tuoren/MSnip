@@ -18,6 +18,9 @@ extension PinWindow {
             hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen)
             if !hoverBarPanel.isVisible || !hoverBarPanel.isOnActiveSpace {
                 hoverBarPanel.orderFrontRegardless()
+                if let edge = resizeState.activeEdge ?? resizeState.hoveredEdge {
+                    PinResizeCursorFactory.cursor(for: edge).set()
+                }
             }
         } else {
             let work = DispatchWorkItem { [weak self] in

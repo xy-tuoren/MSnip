@@ -58,14 +58,13 @@ enum PinResizeCursorFactory {
     }
 }
 
-/// 贴图边角悬停微指示与原生光标热区视图（仅在 8 条边角窄带接管 hitTest 与 CursorRect，中心 100% 穿透给实况文本）
+/// 贴图边角悬停微指示与原生光标热区视图（跨贴图外沿 -4pt ~ 内沿 +7pt 8 条窄带接管 hitTest 与 CursorRect，中心 100% 穿透给实况文本）
 final class PinResizeChromeView: NSView {
+    private let outerReach = PinGlowContainerView.outerResizeReach
+    private var imageBounds: NSRect { bounds.insetBy(dx: outerReach, dy: outerReach) }
+
     var isInteractive: Bool = true {
-        didSet {
-            guard oldValue != isInteractive else { return }
-            updateTrackingAreas()
-            window?.invalidateCursorRects(for: self)
-        }
+        didSet { guard oldValue != isInteractive else { return }; updateTrackingAreas(); window?.invalidateCursorRects(for: self) }
     }
     var hoveredEdge: PinResizeEdge? { didSet { if oldValue != hoveredEdge { needsDisplay = true } } }
     var activeResizeBadge: String? { didSet { if oldValue != activeResizeBadge { needsDisplay = true } } }
@@ -73,9 +72,9 @@ final class PinResizeChromeView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard isInteractive else { return nil }
-        return PinResizeEdge.hitTest(point: convert(point, from: superview), in: bounds) != nil ? self : nil
+        return PinResizeEdge.hitTest(point: convert(point, from: superview), in: imageBounds, outerSlop: outerReach) != nil ? self : nil
     }
-    override func menu(for event: NSEvent) -> NSMenu? { superview?.menu }
+    override func menu(for event: NSEvent) -> NSMenu? { superview?.menu ?? (superview as? PinGlowContainerView)?.contentHost.menu }
     override func setFrameSize(_ newSize: NSSize) { super.setFrameSize(newSize); window?.invalidateCursorRects(for: self) }
 
     override func resetCursorRects() {
@@ -89,34 +88,45 @@ final class PinResizeChromeView: NSView {
         trackingAreas.forEach { removeTrackingArea($0) }
         guard isInteractive else { return }
         for (edge, rect) in borderZones() where !rect.isEmpty {
-            addTrackingArea(NSTrackingArea(rect: rect, options: [.cursorUpdate, .mouseEnteredAndExited, .activeAlways], owner: self, userInfo: ["edge": edge]))
+            addTrackingArea(NSTrackingArea(rect: rect, options: [.cursorUpdate, .mouseEnteredAndExited, .mouseMoved, .activeAlways], owner: self, userInfo: ["edge": edge]))
         }
     }
 
     override func cursorUpdate(with event: NSEvent) {
         guard isInteractive else { super.cursorUpdate(with: event); return }
-        if let edge = (event.trackingArea?.userInfo?["edge"] as? PinResizeEdge) ?? PinResizeEdge.hitTest(point: convert(event.locationInWindow, from: nil), in: bounds) {
+        let local = convert(event.locationInWindow, from: nil)
+        if let edge = PinResizeEdge.hitTest(point: local, in: imageBounds, outerSlop: outerReach) ?? (event.trackingArea?.userInfo?["edge"] as? PinResizeEdge) {
             PinResizeCursorFactory.cursor(for: edge).set()
         } else { super.cursorUpdate(with: event) }
     }
 
     override func mouseEntered(with event: NSEvent) {
-        guard isInteractive, let edge = event.trackingArea?.userInfo?["edge"] as? PinResizeEdge else { return }
+        guard isInteractive else { return }
+        let local = convert(event.locationInWindow, from: nil)
+        guard let edge = PinResizeEdge.hitTest(point: local, in: imageBounds, outerSlop: outerReach) ?? (event.trackingArea?.userInfo?["edge"] as? PinResizeEdge) else { return }
         hoveredEdge = edge; onBorderHoverChanged?(edge); PinResizeCursorFactory.cursor(for: edge).set()
+    }
+
+    override func mouseMoved(with event: NSEvent) {
+        guard isInteractive else { return }
+        let edge = PinResizeEdge.hitTest(point: convert(event.locationInWindow, from: nil), in: imageBounds, outerSlop: outerReach)
+        if hoveredEdge != edge { hoveredEdge = edge; onBorderHoverChanged?(edge) }
+        if let edge { PinResizeCursorFactory.cursor(for: edge).set() }
     }
 
     override func mouseExited(with event: NSEvent) {
         guard let exited = event.trackingArea?.userInfo?["edge"] as? PinResizeEdge, hoveredEdge == exited else { return }
-        let next = isInteractive ? PinResizeEdge.hitTest(point: convert(event.locationInWindow, from: nil), in: bounds) : nil
+        let next = isInteractive ? PinResizeEdge.hitTest(point: convert(event.locationInWindow, from: nil), in: imageBounds, outerSlop: outerReach) : nil
         hoveredEdge = next; onBorderHoverChanged?(next)
         if let next { PinResizeCursorFactory.cursor(for: next).set() } else { NSCursor.arrow.set() }
     }
 
     private func borderZones() -> [(PinResizeEdge, NSRect)] {
-        guard bounds.width >= 32, bounds.height >= 32 else { return [] }
-        let minDim = min(bounds.width, bounds.height)
-        let c = min(14, max(6, minDim * 0.28))
-        let e = min(7, max(4, minDim * 0.18))
+        let img = imageBounds
+        guard img.width >= 32, img.height >= 32 else { return [] }
+        let minDim = min(img.width, img.height)
+        let c = min(14, max(6, minDim * 0.28)) + outerReach
+        let e = min(7, max(4, minDim * 0.18)) + outerReach
         let w = bounds.width, h = bounds.height
         return [
             (.topLeft,     NSRect(x: 0, y: h - c, width: c, height: c)),
@@ -134,14 +144,15 @@ final class PinResizeChromeView: NSView {
         guard hoveredEdge != nil || activeResizeBadge != nil,
               let ctx = NSGraphicsContext.current?.cgContext else { return }
         if let edge = hoveredEdge { drawEdgeIndicator(edge, in: ctx) }
-        if let badge = activeResizeBadge, bounds.width >= 96, bounds.height >= 44 {
+        let img = imageBounds
+        if let badge = activeResizeBadge, img.width >= 96, img.height >= 44 {
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: 11.5, weight: .semibold),
                 .foregroundColor: NSColor.white
             ]
             let ns = badge as NSString, sz = ns.size(withAttributes: attrs)
             let pillW = ceil(sz.width + 16), pillH: CGFloat = 22
-            let pill = CGRect(x: round(bounds.midX - pillW * 0.5), y: 10, width: pillW, height: pillH)
+            let pill = CGRect(x: round(img.midX - pillW * 0.5), y: img.minY + 10, width: pillW, height: pillH)
             let path = CGPath(roundedRect: pill, cornerWidth: 11, cornerHeight: 11, transform: nil)
             ctx.setFillColor(NSColor(srgbRed: 0.08, green: 0.09, blue: 0.12, alpha: 0.80).cgColor)
             ctx.addPath(path); ctx.fillPath()
@@ -152,30 +163,30 @@ final class PinResizeChromeView: NSView {
     }
 
     private func drawEdgeIndicator(_ edge: PinResizeEdge, in ctx: CGContext) {
-        let inset: CGFloat = 2.0
-        let arm: CGFloat = min(10.0, max(5.0, min(bounds.width, bounds.height) * 0.16))
+        let img = imageBounds, inset: CGFloat = 1.5
+        let arm: CGFloat = min(10.0, max(5.0, min(img.width, img.height) * 0.16))
         let p = CGMutablePath()
         switch edge {
         case .topLeft:
-            let pt = CGPoint(x: inset, y: bounds.height - inset)
+            let pt = CGPoint(x: img.minX + inset, y: img.maxY - inset)
             p.move(to: CGPoint(x: pt.x + arm, y: pt.y)); p.addLine(to: pt); p.addLine(to: CGPoint(x: pt.x, y: pt.y - arm))
         case .topRight:
-            let pt = CGPoint(x: bounds.width - inset, y: bounds.height - inset)
+            let pt = CGPoint(x: img.maxX - inset, y: img.maxY - inset)
             p.move(to: CGPoint(x: pt.x - arm, y: pt.y)); p.addLine(to: pt); p.addLine(to: CGPoint(x: pt.x, y: pt.y - arm))
         case .bottomLeft:
-            let pt = CGPoint(x: inset, y: inset)
+            let pt = CGPoint(x: img.minX + inset, y: img.minY + inset)
             p.move(to: CGPoint(x: pt.x + arm, y: pt.y)); p.addLine(to: pt); p.addLine(to: CGPoint(x: pt.x, y: pt.y + arm))
         case .bottomRight:
-            let pt = CGPoint(x: bounds.width - inset, y: inset)
+            let pt = CGPoint(x: img.maxX - inset, y: img.minY + inset)
             p.move(to: CGPoint(x: pt.x - arm, y: pt.y)); p.addLine(to: pt); p.addLine(to: CGPoint(x: pt.x, y: pt.y + arm))
         case .top, .bottom:
-            let half = min(18.0, max(8.0, bounds.width * 0.12))
-            let y = (edge == .top) ? (bounds.height - inset) : inset
-            p.move(to: CGPoint(x: bounds.midX - half, y: y)); p.addLine(to: CGPoint(x: bounds.midX + half, y: y))
+            let half = min(18.0, max(8.0, img.width * 0.12))
+            let y = (edge == .top) ? (img.maxY - inset) : (img.minY + inset)
+            p.move(to: CGPoint(x: img.midX - half, y: y)); p.addLine(to: CGPoint(x: img.midX + half, y: y))
         case .left, .right:
-            let half = min(18.0, max(8.0, bounds.height * 0.12))
-            let x = (edge == .right) ? (bounds.width - inset) : inset
-            p.move(to: CGPoint(x: x, y: bounds.midY - half)); p.addLine(to: CGPoint(x: x, y: bounds.midY + half))
+            let half = min(18.0, max(8.0, img.height * 0.12))
+            let x = (edge == .right) ? (img.maxX - inset) : (img.minX + inset)
+            p.move(to: CGPoint(x: x, y: img.midY - half)); p.addLine(to: CGPoint(x: x, y: img.midY + half))
         }
         ctx.setLineCap(.round); ctx.setLineJoin(.round)
         ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.95).cgColor); ctx.setLineWidth(3.8); ctx.addPath(p); ctx.strokePath()
@@ -189,13 +200,14 @@ extension PinWindow {
     var maxAllowedZoom: CGFloat { 4.0 }
 
     func attachResizeChrome() {
-        let chrome = PinResizeChromeView(frame: pinContentView.bounds)
+        let reach = PinGlowContainerView.outerResizeReach
+        let chrome = PinResizeChromeView(frame: pinContentView.frame.insetBy(dx: -reach, dy: -reach))
         chrome.autoresizingMask = [.width, .height]
         chrome.onBorderHoverChanged = { [weak self] edge in
             self?.resizeState.hoveredEdge = edge
             if edge != nil { self?.updatePinHover(true) }
         }
-        pinContentView.addSubview(chrome)
+        glowContainer.addSubview(chrome)
         resizeState.chromeView = chrome
         pinContentView.onMouseMoved = { [weak self] pt in _ = self?.handleResizeHover(contentPoint: pt) }
         pinContentView.onVisualStateChanged = { [weak self] in self?.syncGlowState(); self?.syncResizeChromeVisibility() }
@@ -205,33 +217,24 @@ extension PinWindow {
     func syncResizeChromeVisibility() {
         let allow = !isClickThrough && editorCanvas == nil && cropOverlay == nil
         resizeState.chromeView?.isInteractive = allow
-        if !allow {
-            resizeState.hoveredEdge = nil
-            resizeState.chromeView?.hoveredEdge = nil
-            resizeState.chromeView?.activeResizeBadge = nil
-        }
+        if !allow { resizeState.hoveredEdge = nil; resizeState.chromeView?.hoveredEdge = nil; resizeState.chromeView?.activeResizeBadge = nil }
     }
 
     @discardableResult
     func handleResizeHover(contentPoint: NSPoint) -> Bool {
         guard !isClickThrough, editorCanvas == nil, cropOverlay == nil else { return false }
         if let active = resizeState.activeEdge { PinResizeCursorFactory.cursor(for: active).set(); return true }
-        let edge = PinResizeEdge.hitTest(point: contentPoint, in: pinContentView.bounds)
+        let edge = PinResizeEdge.hitTest(point: contentPoint, in: pinContentView.bounds, outerSlop: PinGlowContainerView.outerResizeReach)
         let prev = resizeState.hoveredEdge
-        resizeState.hoveredEdge = edge
-        resizeState.chromeView?.hoveredEdge = edge
+        resizeState.hoveredEdge = edge; resizeState.chromeView?.hoveredEdge = edge
         if let edge { PinResizeCursorFactory.cursor(for: edge).set(); return true }
         if prev != nil { NSCursor.arrow.set() }
         return false
     }
 
     func clearResizeHoverCursorIfNeeded() {
-        guard resizeState.activeEdge == nil else { return }
-        if resizeState.hoveredEdge != nil {
-            resizeState.hoveredEdge = nil
-            resizeState.chromeView?.hoveredEdge = nil
-            NSCursor.arrow.set()
-        }
+        guard resizeState.activeEdge == nil, resizeState.hoveredEdge != nil else { return }
+        resizeState.hoveredEdge = nil; resizeState.chromeView?.hoveredEdge = nil; NSCursor.arrow.set()
     }
 
     func beginResizeDrag(edge: PinResizeEdge) {
@@ -287,6 +290,7 @@ extension PinWindow {
     private func currentContentMousePoint() -> NSPoint? {
         let winPt = convertPoint(fromScreen: NSEvent.mouseLocation)
         let pt = pinContentView.convert(winPt, from: nil)
-        return pinContentView.bounds.contains(pt) ? pt : nil
+        let reach = PinGlowContainerView.outerResizeReach
+        return pinContentView.bounds.insetBy(dx: -reach, dy: -reach).contains(pt) ? pt : nil
     }
 }

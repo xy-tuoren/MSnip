@@ -213,10 +213,11 @@ final class PinHoverBarView: NSView {
     }
 
     func resetHoverState() {
+        let wasHovered = isMouseInsideBar || hoveredIdx != nil
         isMouseInsideBar = false
         hoveredIdx = nil
         toolTip = nil
-        if !isDraggingPin { NSCursor.arrow.set() }
+        if wasHovered && !isDraggingPin { NSCursor.arrow.set() }
     }
 
     func reconcileHover(screenPoint: NSPoint) {

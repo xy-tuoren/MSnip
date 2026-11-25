@@ -205,6 +205,13 @@ func testV031Features() {
           "悬停在透明圆角/透明 PNG 区域时 topWin == belowPinWin 应仍判定未被遮挡")
     check(!PinHoverGeometry.isWindowUncovered(pinWindowNumber: 101, topWindowNumber: 202, belowPinWindowNumber: 55),
           "上方存在菜单/Spotlight/另一张贴图时 topWin != belowPinWin 必须正确识别遮挡")
+
+    check(PinResizeEdge.hitTest(point: CGPoint(x: -3, y: 100), in: pinBounds, outerSlop: 4) == .left,
+          "贴图外发光轮廓外侧 3pt 内应命中左向缩放热区")
+    check(PinResizeEdge.hitTest(point: CGPoint(x: 303, y: 203), in: pinBounds, outerSlop: 4) == .topRight,
+          "贴图右上角外侧 3pt 内应命中右上角对角缩放热区")
+    check(PinResizeEdge.hitTest(point: CGPoint(x: -6, y: 100), in: pinBounds, outerSlop: 4) == nil,
+          "超出外沿 4pt 的柔和光晕区应继续穿透不截获缩放热区")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

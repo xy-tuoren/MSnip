@@ -166,25 +166,27 @@ final class PinWindow: NSPanel {
         switch event.type {
         case .mouseMoved:
             let cp = pinContentView.convert(event.locationInWindow, from: nil)
-            if pinContentView.bounds.contains(cp), !isMouseInPin { updatePinHover(true) }
+            let edge = PinResizeEdge.hitTest(point: cp, in: pinContentView.bounds, outerSlop: PinGlowContainerView.outerResizeReach)
+            if (edge != nil || pinContentView.bounds.contains(cp)), !isMouseInPin { updatePinHover(true) }
             if handleResizeHover(contentPoint: cp) { return }
             super.sendEvent(event)
 
         case .cursorUpdate:
             let cp = pinContentView.convert(event.locationInWindow, from: nil)
-            if let edge = resizeState.activeEdge ?? PinResizeEdge.hitTest(point: cp, in: pinContentView.bounds) {
+            if let edge = resizeState.activeEdge ?? PinResizeEdge.hitTest(point: cp, in: pinContentView.bounds, outerSlop: PinGlowContainerView.outerResizeReach) {
                 PinResizeCursorFactory.cursor(for: edge).set(); return
             }
             super.sendEvent(event)
 
         case .leftMouseDown:
             let cp = pinContentView.convert(event.locationInWindow, from: nil)
-            guard pinContentView.bounds.contains(cp) else { return }
+            let hitEdge = PinResizeEdge.hitTest(point: cp, in: pinContentView.bounds, outerSlop: PinGlowContainerView.outerResizeReach)
+            guard hitEdge != nil || pinContentView.bounds.contains(cp) else { return }
             if !isKeyWindow { makeKeyAndOrderFront(nil) }
             if event.modifierFlags.contains(.command) {
                 pinContentView.startPNGFileDrag(with: event, cgImage: currentCGImage, scaleFactor: imageScale); return
             }
-            if let edge = PinResizeEdge.hitTest(point: cp, in: pinContentView.bounds) {
+            if let edge = hitEdge {
                 isDraggingWindow = false; beginResizeDrag(edge: edge); return
             }
             let forceDrag = event.modifierFlags.contains(.option)

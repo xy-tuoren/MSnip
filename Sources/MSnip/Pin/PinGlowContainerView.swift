@@ -7,6 +7,8 @@ import Foundation
 /// - 采用 even-odd 外环裁切，仅向图像外围渲染光晕，绝不向透明圆角图像内部填底色。
 final class PinGlowContainerView: NSView {
     static let glowPadding: CGFloat = 14.0
+    /// 允许鼠标贴着外发光轮廓外侧 4pt 内直接触发 8 向缩放光标与拖拽，外围 10pt 柔和光晕继续穿透点击
+    static let outerResizeReach: CGFloat = 4.0
 
     let contentHost: PinContentView
     var glowStrength: CGFloat = 0.45 { didSet { if abs(oldValue - glowStrength) > 0.001 { needsDisplay = true } } }
@@ -31,7 +33,10 @@ final class PinGlowContainerView: NSView {
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         let local = convert(point, from: superview)
-        guard contentHost.frame.contains(local) else { return nil }
+        let activeRect = (!isGhostMode && !isAnnotating)
+            ? contentHost.frame.insetBy(dx: -Self.outerResizeReach, dy: -Self.outerResizeReach)
+            : contentHost.frame
+        guard activeRect.contains(local) else { return nil }
         return super.hitTest(point)
     }
 
@@ -42,13 +47,23 @@ final class PinGlowContainerView: NSView {
 
         let activeBlue = isHoveredOrFocused || isAnnotating
         let s = min(1.0, max(0.0, glowStrength))
-        if !activeBlue && !isGhostMode && s <= 0.005 { return }
 
         ctx.saveGState()
-        // 外环 even-odd 裁切：确保光晕严格扩散在贴图外部，不污染透明圆角内部
+        // 外环 even-odd 裁切：确保光晕与外沿缩放热区严格位于贴图外部，绝不污染透明圆角内部
         ctx.addRect(bounds)
         ctx.addRect(imgRect)
         ctx.clip(using: .evenOdd)
+
+        // 为外沿 4pt 缩放热区铺一层肉眼不可见的非零 alpha 捕获带，确保即使关掉光晕 WindowServer 也能路由缩放光标
+        if !isGhostMode && !isAnnotating {
+            ctx.setFillColor(NSColor.white.withAlphaComponent(0.008).cgColor)
+            ctx.fill(imgRect.insetBy(dx: -Self.outerResizeReach, dy: -Self.outerResizeReach))
+        }
+
+        if !activeBlue && !isGhostMode && s <= 0.005 {
+            ctx.restoreGState()
+            return
+        }
 
         if activeBlue {
             let eff = max(0.35, s)
