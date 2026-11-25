@@ -157,7 +157,7 @@ extension ShelfPanelController {
         case .history(let e):
             let url = historyRing.fileURL(for: e)
             thumb = url.flatMap { ShelfStore.loadCardThumbnail(fileURL: $0) } ?? historyRing.menuThumbnail(for: e)
-            title = e.isCollage ? "多图对比" : "截图 \(timeFormatter.string(from: e.createdAt))"
+            title = e.isCollage ? "并排对比" : timeFormatter.string(from: e.createdAt)
             sub = "\(e.pixelWidth)×\(e.pixelHeight)"; sym = "photo"; snippet = nil; canOCR = true
         case .custom(let c):
             if c.kind == .file, let p = c.filePath {
@@ -212,8 +212,15 @@ extension ShelfPanelController {
     }
 
     private func handleRemove(_ item: ShelfCardItem) {
-        if case .custom(let c) = item { store.removeCustom(id: c.id); reloadCards() }
-        else { ToastHUD.show(message: "截图条目自动随历史环滚动清理，拖入条目可单独移除") }
+        switch item {
+        case .custom(let c):
+            store.removeCustom(id: c.id)
+            reloadCards()
+        case .history(let e):
+            historyRing.remove(id: e.id)
+            onHistoryMutated?()
+            reloadCards()
+        }
     }
 
     private func pasteboardWriter(for item: ShelfCardItem) -> NSPasteboardWriting? {

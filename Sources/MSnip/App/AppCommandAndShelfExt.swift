@@ -43,6 +43,8 @@ extension AppController {
             let dummy = NSMenuItem(); dummy.tag = 12 // 最近 2 张横向并排对比
             self.createHistoryCollage(dummy)
         }
+        shelfController.onOpenSettings = { [weak self] in self?.openGeneralPreferences() }
+        shelfController.onHistoryMutated = { [weak self] in self?.rebuildMenu() }
 
         DistributedNotificationCenter.default().addObserver(
             self,

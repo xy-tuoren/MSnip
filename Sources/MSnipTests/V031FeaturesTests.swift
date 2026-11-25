@@ -227,6 +227,9 @@ func testV031Features() {
           "点击屏幕顶部 30pt 菜单栏带应触发晾衣架秒收")
     check(!ShelfTriggerGeometry.hitsTopBarDismissBand(point: CGPoint(x: 120, y: 920), screenFrame: scr),
           "菜单栏下方常规工作区点击不应误判为顶栏秒收")
+    let compactW = ShelfTriggerGeometry.dockPanelWidth(itemCount: 2, maxWidth: 1140)
+    let fullW = ShelfTriggerGeometry.dockPanelWidth(itemCount: 18, maxWidth: 1140)
+    check(compactW < 400 && fullW == 1140, "实用暂存条应按条目数自适应宽窄并上限钳位，实际: \(compactW), \(fullW)")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

@@ -1,21 +1,12 @@
 import AppKit
 import CoreGraphics
 import Foundation
-import MSnipCore
 
-/// 顶部轻盈「晾衣绳」根容器：
-/// - 取消笨重实心矩形底框，绘制一条两端自然淡出的悬链弧形细绳；
-/// - 空白缝隙 100% 透明且 `hitTest` 返回 `nil` 穿透给底层应用，常驻或展开时完全不遮挡工作区；
-/// - 拖入文件/文本经过绳子时即时点亮柔和接纳光带，松手即挂上晾衣架。
+/// 顶部紧凑暂存条根容器：负责拖入文件/文本高亮、右侧操作区竖向分割线与规整内边距
 final class ShelfClotheslineView: NSView {
-    static let ropeMarginX: CGFloat = 18.0
-    static let ropeBaseY: CGFloat = 28.0
-    static let ropeSag: CGFloat = 7.0
-
     var onDropFiles: (([URL]) -> Void)?
     var onDropText: ((String) -> Void)?
-    var utilityPillRect: CGRect = .zero { didSet { if oldValue != utilityPillRect { needsDisplay = true } } }
-    var hitTestTargetsProvider: (() -> [NSView])?
+    var dividerX: CGFloat = 0 { didSet { if abs(oldValue - dividerX) > 0.5 { needsDisplay = true } } }
 
     private var isDragTargeted = false { didSet { if oldValue != isDragTargeted { needsDisplay = true } } }
 
@@ -28,25 +19,6 @@ final class ShelfClotheslineView: NSView {
 
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError() }
-
-    /// 精确透明穿透：仅卡片本体、右上微型胶囊与左右翻页键接管鼠标，卡片间透明缝隙彻底穿透给底层窗口
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        if isDragTargeted { return self }
-        let local = convert(point, from: superview)
-        guard bounds.contains(local) else { return nil }
-        if utilityPillRect.contains(local) {
-            return super.hitTest(point) ?? self
-        }
-        if let targets = hitTestTargetsProvider?() {
-            for target in targets where !target.isHidden {
-                let ptInTarget = target.convert(local, from: self)
-                if target.bounds.contains(ptInTarget) {
-                    return target.hitTest(target.convert(point, from: superview)) ?? target
-                }
-            }
-        }
-        return nil
-    }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
         isDragTargeted = true
@@ -73,89 +45,97 @@ final class ShelfClotheslineView: NSView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let isDark = GeekTheme.isDark
 
-        // 1) 拖入文件/文字时的柔光接纳区提示
-        if isDragTargeted {
-            let dropR = CGRect(x: 20, y: 12, width: bounds.width - 40, height: bounds.height - 22)
-            let path = CGPath(roundedRect: dropR, cornerWidth: 16, cornerHeight: 16, transform: nil)
-            ctx.saveGState()
-            ctx.setFillColor(GeekTheme.accent.withAlphaComponent(isDark ? 0.18 : 0.12).cgColor)
-            ctx.addPath(path); ctx.fillPath()
-            ctx.setStrokeColor(GeekTheme.accent.withAlphaComponent(0.92).cgColor)
-            ctx.setLineWidth(1.8); ctx.setLineDash(phase: 0, lengths: [6, 4])
-            ctx.addPath(path); ctx.strokePath()
-            ctx.restoreGState()
+        // 右侧实用控制区规整 1pt 竖向分割线
+        if dividerX > 10 && dividerX < bounds.width - 10 {
+            ctx.setFillColor((isDark ? NSColor.white.withAlphaComponent(0.11) : NSColor.black.withAlphaComponent(0.09)).cgColor)
+            ctx.fill(CGRect(x: floor(dividerX) + 0.5, y: 10, width: 1, height: bounds.height - 20))
         }
 
-        // 2) 悬链晾衣绳（两端 8% 渐隐淡出，柔和阴影 + 金属/亚麻双层质感）
-        drawCatenaryRope(in: ctx, isDark: isDark)
+        // 拖入文件/文字时的整框虚线接纳反馈
+        guard isDragTargeted else { return }
+        let r = bounds.insetBy(dx: 2.5, dy: 2.5)
+        let path = CGPath(roundedRect: r, cornerWidth: 11.5, cornerHeight: 11.5, transform: nil)
+        ctx.saveGState()
+        ctx.setFillColor(GeekTheme.accent.withAlphaComponent(isDark ? 0.16 : 0.10).cgColor)
+        ctx.addPath(path); ctx.fillPath()
+        ctx.setStrokeColor(GeekTheme.accent.withAlphaComponent(0.92).cgColor)
+        ctx.setLineWidth(1.8); ctx.setLineDash(phase: 0, lengths: [6, 4])
+        ctx.addPath(path); ctx.strokePath()
+        ctx.restoreGState()
+    }
+}
 
-        // 3) 右上角精简悬浮操作微胶囊底衬
-        if !utilityPillRect.isEmpty {
-            ctx.saveGState()
-            let r = utilityPillRect
-            let path = CGPath(roundedRect: r, cornerWidth: r.height * 0.5, cornerHeight: r.height * 0.5, transform: nil)
-            ctx.setShadow(
-                offset: CGSize(width: 0, height: -2),
-                blur: 8,
-                color: NSColor.black.withAlphaComponent(isDark ? 0.38 : 0.14).cgColor
-            )
-            let bg = isDark
-                ? NSColor(srgbRed: 0.13, green: 0.14, blue: 0.17, alpha: 0.90)
-                : NSColor(srgbRed: 0.98, green: 0.98, blue: 0.99, alpha: 0.94)
-            ctx.setFillColor(bg.cgColor)
-            ctx.addPath(path); ctx.fillPath()
-            ctx.setShadow(offset: .zero, blur: 0, color: nil)
-            ctx.setStrokeColor((isDark ? NSColor.white.withAlphaComponent(0.16) : NSColor.black.withAlphaComponent(0.10)).cgColor)
-            ctx.setLineWidth(0.8)
-            ctx.addPath(path); ctx.strokePath()
-            ctx.restoreGState()
+/// 顶部实用暂存条布局、翻页对称指示与卡片填充扩展
+extension ShelfPanelController {
+    func layoutSubviews(width w: CGFloat, height h: CGFloat) {
+        effectView?.frame = NSRect(x: 0, y: 0, width: w, height: h)
+        rootView?.frame = NSRect(x: 0, y: 0, width: w, height: h)
+        let railX = w - Self.railWidth
+        rootView?.dividerX = railX
+
+        // 右侧 3 行规整工具列（88pt 宽，杜绝文字截断）
+        let colX = railX + 8, colW: CGFloat = Self.railWidth - 16
+        countLabel?.frame = NSRect(x: colX, y: 10, width: 42, height: 16)
+        closeBtn?.frame = NSRect(x: colX + colW - 21, y: 7, width: 21, height: 22)
+        pinBtn?.frame = NSRect(x: colX + colW - 45, y: 7, width: 21, height: 22)
+        clipBtn?.frame = NSRect(x: colX, y: 36, width: colW, height: 24)
+        secondaryBtn?.frame = NSRect(x: colX, y: 66, width: colW, height: 24)
+
+        leftNavBtn?.frame = NSRect(x: 5, y: 7, width: 18, height: h - 14)
+        rightNavBtn?.frame = NSRect(x: railX - 23, y: 7, width: 18, height: h - 14)
+        emptyLabel?.frame = NSRect(x: 12, y: round(h * 0.5 - 9), width: railX - 24, height: 18)
+        applyScrollFrame(railX: railX, height: h, hasOverflow: !(leftNavBtn?.isHidden ?? true) || !(rightNavBtn?.isHidden ?? true))
+    }
+
+    func applyScrollFrame(railX: CGFloat, height h: CGFloat, hasOverflow: Bool) {
+        let inset: CGFloat = hasOverflow ? 26 : 8
+        scrollView?.frame = NSRect(x: inset, y: 7, width: max(60, railX - inset * 2), height: h - 14)
+    }
+
+    func updateScrollNavButtons() {
+        guard let sv = scrollView, let doc = sv.documentView, let root = rootView else { return }
+        let railX = root.bounds.width - Self.railWidth
+        let overflow = doc.frame.width > (railX - 16) + 2
+        applyScrollFrame(railX: railX, height: root.bounds.height, hasOverflow: overflow)
+        let maxX = max(0, doc.frame.width - sv.contentView.bounds.width)
+        let curX = sv.contentView.bounds.origin.x
+        leftNavBtn?.isHidden = !overflow
+        rightNavBtn?.isHidden = !overflow
+        leftNavBtn?.alphaValue = curX > 2 ? 1.0 : 0.28
+        rightNavBtn?.alphaValue = curX < maxX - 2 ? 1.0 : 0.28
+    }
+
+    func applyTheme() {
+        let isDark = GeekTheme.isDark
+        effectView?.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+        effectView?.layer?.borderColor = (isDark ? NSColor.white.withAlphaComponent(0.14) : NSColor.black.withAlphaComponent(0.12)).cgColor
+        countLabel?.textColor = GeekTheme.inkSecondary
+        emptyLabel?.textColor = GeekTheme.inkMuted
+        rootView?.needsDisplay = true
+    }
+
+    func populateCards(_ items: [ShelfCardItem]) {
+        guard let stripView, let scrollView else { return }
+        activeHoveredCard = nil
+        stripView.subviews.forEach { $0.removeFromSuperview() }
+        countLabel?.stringValue = "\(items.count) 项"
+        showsCollageAction = historyRing.originalEntries.count >= 2
+        secondaryBtn?.title = showsCollageAction ? "并排对比" : "偏好设置"
+        secondaryBtn?.toolTip = showsCollageAction ? "将最近 2 张截图横向并排拼接对比" : "打开 MSnip 设置面板"
+        emptyLabel?.isHidden = !items.isEmpty
+
+        let cardW = ShelfCardView.cardSize.width, cardH = ShelfCardView.cardSize.height
+        var x: CGFloat = 0
+        let tf = DateFormatter(); tf.dateFormat = "HH:mm"
+        for item in items {
+            let card = buildCardView(for: item, timeFormatter: tf)
+            card.onHoverStart = { [weak self] c in self?.setActiveHoveredCard(c) }
+            card.frame = NSRect(x: x, y: 0, width: cardW, height: cardH)
+            stripView.addSubview(card)
+            x += cardW + Self.cardGap
         }
-    }
-
-    private func drawCatenaryRope(in ctx: CGContext, isDark: Bool) {
-        let x0 = Self.ropeMarginX
-        let x1 = bounds.width - Self.ropeMarginX
-        guard x1 > x0 + 40 else { return }
-        let baseY = Self.ropeBaseY
-        let ctrlY = baseY + Self.ropeSag * 2.0
-
-        let ropePath = CGMutablePath()
-        ropePath.move(to: CGPoint(x: x0, y: baseY))
-        ropePath.addQuadCurve(to: CGPoint(x: x1, y: baseY), control: CGPoint(x: (x0 + x1) * 0.5, y: ctrlY))
-
-        let mainColor = isDark
-            ? NSColor(srgbRed: 0.72, green: 0.76, blue: 0.82, alpha: 0.85)
-            : NSColor(srgbRed: 0.42, green: 0.46, blue: 0.53, alpha: 0.78)
-        let hiColor = isDark
-            ? NSColor.white.withAlphaComponent(0.36)
-            : NSColor.white.withAlphaComponent(0.75)
-
-        // 柔和底影
-        ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: -1.5), blur: 3.5, color: NSColor.black.withAlphaComponent(isDark ? 0.50 : 0.22).cgColor)
-        ctx.addPath(ropePath)
-        ctx.setLineWidth(2.0); ctx.setLineCap(.round)
-        ctx.replacePathWithStrokedPath()
-        ctx.clip()
-        drawFadeGradient(in: ctx, x0: x0, x1: x1, color: mainColor)
-        ctx.restoreGState()
-
-        // 顶缘微高光
-        ctx.saveGState()
-        ctx.translateBy(x: 0, y: -0.6)
-        ctx.addPath(ropePath)
-        ctx.setLineWidth(0.8); ctx.setLineCap(.round)
-        ctx.replacePathWithStrokedPath()
-        ctx.clip()
-        drawFadeGradient(in: ctx, x0: x0, x1: x1, color: hiColor)
-        ctx.restoreGState()
-    }
-
-    private func drawFadeGradient(in ctx: CGContext, x0: CGFloat, x1: CGFloat, color: NSColor) {
-        let cs = CGColorSpaceCreateDeviceRGB()
-        let clear = color.withAlphaComponent(0).cgColor
-        let solid = color.cgColor
-        guard let grad = CGGradient(colorsSpace: cs, colors: [clear, solid, solid, clear] as CFArray, locations: [0, 0.08, 0.92, 1]) else { return }
-        ctx.drawLinearGradient(grad, start: CGPoint(x: x0, y: 0), end: CGPoint(x: x1, y: 0), options: [])
+        let totalW = max(0, x - (items.isEmpty ? 0 : Self.cardGap))
+        stripView.frame = NSRect(x: 0, y: 0, width: max(scrollView.bounds.width, totalW), height: cardH)
+        updateScrollNavButtons()
     }
 }

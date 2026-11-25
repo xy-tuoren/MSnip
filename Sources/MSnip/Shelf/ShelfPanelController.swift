@@ -3,35 +3,44 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 顶部轻盈晾衣架（MSnip Shelf）控制器：
-/// 无笨重底框的悬链晾衣绳 + 小夹子卡片，缝隙 100% 透明穿透，支持 550ms 悬停防误触、新截图 3s 自动探头、快捷键切换与常驻挂绳。
+/// 顶部高密度实用暂存条（MSnip Shelf）控制器：
+/// 仅 `98pt` 紧凑高度、零浪费顶栏、右侧 3 行规整工具列与自适应宽度卡片带，兼顾 550ms 悬停防误触、新截图 3s 自动探头与 3 模式切换。
 @MainActor
 final class ShelfPanelController {
+    static let panelHeight: CGFloat = 98.0
+    static let railWidth: CGFloat = 104.0
+    static let cardGap: CGFloat = 7.0
+
     var onCopyHistory: ((CaptureHistoryEntry) -> Void)?
     var onPinHistory: ((CaptureHistoryEntry) -> Void)?
     var onOCRHistory: ((CaptureHistoryEntry) -> Void)?
     var onPinText: ((String) -> Void)?
     var onQuickCollage: (() -> Void)?
+    var onOpenSettings: (() -> Void)?
+    var onHistoryMutated: (() -> Void)?
 
     let store = ShelfStore()
     unowned let historyRing: CaptureHistoryRing
     private let edgeWatcher = ShelfEdgeWatcher()
 
-    private var panel: NSPanel?
-    private var clotheslineView: ShelfClotheslineView?
-    private var scrollView: ShelfHorizontalScrollView?
-    private var stripView: GeekFlippedView?
-    private var countLabel: NSTextField?
-    private var clipBtn: GeekButton?
-    private var collageBtn: GeekButton?
-    private var pinBtn: GeekButton?
-    private var closeBtn: GeekButton?
-    private var leftNavBtn: GeekButton?
-    private var rightNavBtn: GeekButton?
-    private var emptyPill: NSTextField?
+    var panel: NSPanel?
+    var effectView: NSVisualEffectView?
+    var rootView: ShelfClotheslineView?
+    var scrollView: ShelfHorizontalScrollView?
+    var stripView: GeekFlippedView?
+    var countLabel: NSTextField?
+    var clipBtn: GeekButton?
+    var secondaryBtn: GeekButton?
+    var pinBtn: GeekButton?
+    var closeBtn: GeekButton?
+    var leftNavBtn: GeekButton?
+    var rightNavBtn: GeekButton?
+    var emptyLabel: NSTextField?
+    weak var activeHoveredCard: ShelfCardView?
 
     private var isPinnedOpen = false
     private var manuallyHidden = false
+    var showsCollageAction = false
     private(set) var isVisible = false
     private var activeScreenFrame: NSRect?
 
@@ -88,7 +97,6 @@ final class ShelfPanelController {
         }
     }
 
-    /// 新截图入库后联动：悬停模式下探头展示 3 秒供顺手拖走/复制；展开或常驻时即时刷新卡片
     func notifyNewCaptureRecorded() {
         if isVisible {
             reloadCards()
@@ -108,18 +116,16 @@ final class ShelfPanelController {
         ensurePanelBuilt()
         guard let panel else { return }
         applyTheme()
-        let w = min(820, max(540, targetScreen.frame.width - 80)), h: CGFloat = 166
-        let x = round(targetScreen.frame.midX - w * 0.5)
-        let targetY = round(targetScreen.visibleFrame.maxY - h)
-        let targetRect = NSRect(x: x, y: targetY, width: w, height: h)
-        layoutSubviews(width: w, height: h)
-        reloadCards()
+        let items = store.mergedItems(historyRing: historyRing)
+        let targetRect = computePanelFrame(forItemCount: items.count, on: targetScreen)
+        layoutSubviews(width: targetRect.width, height: targetRect.height)
+        populateCards(items)
 
         if !isVisible {
-            panel.setFrame(NSRect(x: x, y: targetY + 20, width: w, height: h), display: false)
+            panel.setFrame(targetRect.offsetBy(dx: 0, dy: 14), display: false)
             panel.alphaValue = 0.0; panel.orderFrontRegardless(); isVisible = true
             NSAnimationContext.runAnimationGroup { ctx in
-                ctx.duration = 0.20; ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+                ctx.duration = 0.17; ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().setFrame(targetRect, display: true); panel.animator().alphaValue = 1.0
             }
         } else {
@@ -131,14 +137,13 @@ final class ShelfPanelController {
     func hide(manual: Bool = false) {
         edgeWatcher.stopTransientTimers()
         if manual { manuallyHidden = true }
+        activeHoveredCard?.clearHover(); activeHoveredCard = nil
         guard isVisible, let panel else { return }
         isVisible = false
-        let endRect = panel.frame.offsetBy(dx: 0, dy: 18)
+        let endRect = panel.frame.offsetBy(dx: 0, dy: 14)
         NSAnimationContext.runAnimationGroup({ ctx in
-            ctx.duration = 0.16
-            ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
-            panel.animator().setFrame(endRect, display: true)
-            panel.animator().alphaValue = 0.0
+            ctx.duration = 0.14; ctx.timingFunction = CAMediaTimingFunction(name: .easeIn)
+            panel.animator().setFrame(endRect, display: true); panel.animator().alphaValue = 0.0
         }, completionHandler: { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, !self.isVisible else { return }
@@ -150,145 +155,107 @@ final class ShelfPanelController {
 
     func refreshIfVisible() { if isVisible { reloadCards() } }
 
-    // MARK: - Panel Construction & Reload
+    func reloadCards() {
+        let items = store.mergedItems(historyRing: historyRing)
+        if let panel, isVisible {
+            let scr = NSScreen.screens.first(where: { activeScreenFrame == $0.frame }) ?? screenUnderCursor()
+            let rect = computePanelFrame(forItemCount: items.count, on: scr)
+            if abs(panel.frame.width - rect.width) > 2 || abs(panel.frame.origin.x - rect.origin.x) > 2 {
+                panel.setFrame(rect, display: true)
+            }
+            layoutSubviews(width: rect.width, height: rect.height)
+        }
+        populateCards(items)
+    }
+
+    func setActiveHoveredCard(_ card: ShelfCardView) {
+        if activeHoveredCard !== card {
+            activeHoveredCard?.clearHover()
+            activeHoveredCard = card
+        }
+    }
+
+    // MARK: - Construction & Layout
+
+    private func computePanelFrame(forItemCount count: Int, on screen: NSScreen) -> NSRect {
+        let maxW = min(1140.0, screen.frame.width - 40.0)
+        let w = ShelfTriggerGeometry.dockPanelWidth(
+            itemCount: count,
+            cardWidth: ShelfCardView.cardSize.width,
+            cardGap: Self.cardGap,
+            railWidth: Self.railWidth,
+            maxWidth: maxW
+        )
+        let h = Self.panelHeight
+        let x = round(screen.frame.midX - w * 0.5)
+        let y = round(screen.visibleFrame.maxY - h - 3.0)
+        return NSRect(x: x, y: y, width: w, height: h)
+    }
 
     private func ensurePanelBuilt() {
         guard panel == nil else { return }
-        let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 760, height: 166),
-                        styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+        let initRect = NSRect(x: 0, y: 0, width: 640, height: Self.panelHeight)
+        let p = NSPanel(contentRect: initRect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
         p.level = .statusBar; p.isFloatingPanel = true; p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = false; p.animationBehavior = .none
+        p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true; p.animationBehavior = .none
 
-        let root = ShelfClotheslineView(frame: NSRect(x: 0, y: 0, width: 760, height: 166))
+        let ev = NSVisualEffectView(frame: initRect)
+        ev.material = .hudWindow; ev.blendingMode = .behindWindow; ev.state = .active
+        ev.wantsLayer = true; ev.layer?.cornerRadius = 13; ev.layer?.masksToBounds = true; ev.layer?.borderWidth = 0.8
+
+        let root = ShelfClotheslineView(frame: initRect)
         root.onDropFiles = { [weak self] urls in
             guard let self else { return }
             let n = self.store.addFileURLs(urls)
-            if n > 0 { self.reloadCards(); ToastHUD.show(message: "已挂上晾衣绳 · \(n) 个文件") }
+            if n > 0 { self.reloadCards(); ToastHUD.show(message: "已挂架 \(n) 个文件") }
         }
         root.onDropText = { [weak self] txt in
             guard let self else { return }
-            if self.store.addText(txt) { self.reloadCards(); ToastHUD.show(message: "已将文本挂上晾衣绳") }
+            if self.store.addText(txt) { self.reloadCards(); ToastHUD.show(message: "已将文本挂上暂存架") }
         }
+        ev.addSubview(root)
 
         let sv = ShelfHorizontalScrollView(frame: .zero)
         sv.drawsBackground = false; sv.borderType = .noBorder
         sv.hasHorizontalScroller = false; sv.hasVerticalScroller = false
-        sv.onScrollOffsetChanged = { [weak self] in self?.updateScrollNavButtons(); self?.syncCardsToRope() }
+        sv.onScrollOffsetChanged = { [weak self] in self?.updateScrollNavButtons() }
         let strip = GeekFlippedView(frame: .zero)
         sv.documentView = strip; root.addSubview(sv)
 
-        let cnt = NSTextField(labelWithString: "晾衣架")
-        cnt.font = .systemFont(ofSize: 10.8, weight: .semibold); root.addSubview(cnt)
+        let cnt = NSTextField(labelWithString: "0 项")
+        cnt.font = .monospacedDigitSystemFont(ofSize: 11.0, weight: .semibold); root.addSubview(cnt)
 
-        func addBtn(_ title: String, action: @escaping () -> Void) -> GeekButton {
-            let b = GeekButton(title: title, style: .subtle); b.onClick = action; root.addSubview(b); return b
+        func addBtn(_ title: String, tip: String? = nil, action: @escaping () -> Void) -> GeekButton {
+            let b = GeekButton(title: title, style: .subtle)
+            b.toolTip = tip; b.onClick = action; root.addSubview(b); return b
         }
-        let cBtn = addBtn("+ 剪贴板") { [weak self] in
+        let pBtn = addBtn("钉", tip: "钉住常开 / 取消钉住") { [weak self] in
+            guard let self else { return }
+            self.isPinnedOpen.toggle()
+            self.pinBtn?.style = self.isPinnedOpen ? .accent : .subtle
+        }
+        let xBtn = addBtn("✕", tip: "收起暂存架 (Esc)") { [weak self] in self?.isPinnedOpen = false; self?.hide(manual: true) }
+        let cBtn = addBtn("+ 剪贴板", tip: "将剪贴板图片、文件或文本加入暂存架") { [weak self] in
             guard let self else { return }
             if let msg = self.store.addFromClipboard(historyRing: self.historyRing) {
                 self.reloadCards(); ToastHUD.show(message: msg)
-            } else { ToastHUD.show(message: "剪贴板暂无可挂绳的图片、文件或文本") }
+            } else { ToastHUD.show(message: "剪贴板暂无可加入的图片、文件或文本") }
         }
-        let colBtn = addBtn("对比") { [weak self] in self?.onQuickCollage?() }
-        let pBtn = addBtn("钉住") { [weak self] in
+        let secBtn = addBtn("并排对比", tip: "将最近 2 张截图横向并排拼接对比") { [weak self] in
             guard let self else { return }
-            self.isPinnedOpen.toggle()
-            self.pinBtn?.title = self.isPinnedOpen ? "已钉" : "钉住"
-            self.pinBtn?.style = self.isPinnedOpen ? .accent : .subtle
+            if self.showsCollageAction { self.onQuickCollage?() } else { self.hide(manual: true); self.onOpenSettings?() }
         }
-        let xBtn = addBtn("✕") { [weak self] in self?.isPinnedOpen = false; self?.hide(manual: true) }
-        let lBtn = addBtn("‹") { [weak self] in self?.scrollView?.scrollBy(deltaX: -280) }
-        let rBtn = addBtn("›") { [weak self] in self?.scrollView?.scrollBy(deltaX: 280) }
+        let lBtn = addBtn("‹", tip: "向左翻页") { [weak self] in self?.scrollView?.scrollBy(deltaX: -340) }
+        let rBtn = addBtn("›", tip: "向右翻页") { [weak self] in self?.scrollView?.scrollBy(deltaX: 340) }
 
-        let empty = NSTextField(labelWithString: "晾衣绳暂无内容 · 截图后自动挂上，或拖入文件 / 文字")
-        empty.font = .systemFont(ofSize: 11.5, weight: .medium); empty.alignment = .center
-        empty.wantsLayer = true; empty.layer?.cornerRadius = 11; empty.layer?.masksToBounds = true
+        let empty = NSTextField(labelWithString: "暂无条目 · 截图自动收录于此，或直接拖入文件 / 文字")
+        empty.font = .systemFont(ofSize: 11.5, weight: .regular); empty.alignment = .center
         root.addSubview(empty)
 
-        root.hitTestTargetsProvider = { [weak sv, weak lBtn, weak rBtn] in [sv, lBtn, rBtn].compactMap { $0 } }
-        p.contentView = root
-        panel = p; clotheslineView = root; scrollView = sv; stripView = strip
-        countLabel = cnt; clipBtn = cBtn; collageBtn = colBtn; pinBtn = pBtn; closeBtn = xBtn
-        leftNavBtn = lBtn; rightNavBtn = rBtn; emptyPill = empty
-    }
-
-    private func layoutSubviews(width w: CGFloat, height h: CGFloat) {
-        clotheslineView?.frame = NSRect(x: 0, y: 0, width: w, height: h)
-        let showCollage = historyRing.originalEntries.count >= 2
-        let pillW: CGFloat = showCollage ? 256 : 210, pillH: CGFloat = 24
-        let pillX = w - pillW - 14, pillY: CGFloat = 2
-        clotheslineView?.utilityPillRect = CGRect(x: pillX, y: pillY, width: pillW, height: pillH)
-
-        countLabel?.frame = NSRect(x: pillX + 10, y: pillY + 5, width: 64, height: 14)
-        var rx = pillX + pillW - 4
-        rx -= 22; closeBtn?.frame = NSRect(x: rx, y: pillY + 2, width: 22, height: 20)
-        rx -= 44; pinBtn?.frame = NSRect(x: rx, y: pillY + 2, width: 40, height: 20)
-        collageBtn?.isHidden = !showCollage
-        if showCollage { rx -= 44; collageBtn?.frame = NSRect(x: rx, y: pillY + 2, width: 40, height: 20) }
-        rx -= 64; clipBtn?.frame = NSRect(x: rx, y: pillY + 2, width: 60, height: 20)
-
-        scrollView?.frame = NSRect(x: 18, y: 20, width: w - 36, height: h - 22)
-        leftNavBtn?.frame = NSRect(x: 4, y: 78, width: 20, height: 28)
-        rightNavBtn?.frame = NSRect(x: w - 24, y: 78, width: 20, height: 28)
-        emptyPill?.frame = NSRect(x: round(w * 0.5 - 164), y: 58, width: 328, height: 24)
-    }
-
-    private func updateScrollNavButtons() {
-        guard let sv = scrollView, let doc = sv.documentView else { return }
-        let maxX = max(0, doc.frame.width - sv.contentView.bounds.width)
-        let curX = sv.contentView.bounds.origin.x
-        leftNavBtn?.isHidden = maxX <= 4 || curX <= 4
-        rightNavBtn?.isHidden = maxX <= 4 || curX >= maxX - 4
-    }
-
-    private func applyTheme() {
-        let isDark = GeekTheme.isDark
-        panel?.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
-        countLabel?.textColor = GeekTheme.inkSecondary
-        emptyPill?.textColor = GeekTheme.inkSecondary
-        emptyPill?.layer?.backgroundColor = (isDark ? NSColor(white: 0.14, alpha: 0.86) : NSColor(white: 0.98, alpha: 0.92)).cgColor
-        clotheslineView?.needsDisplay = true
-    }
-
-    func reloadCards() {
-        guard let stripView, let scrollView, let root = clotheslineView else { return }
-        stripView.subviews.forEach { $0.removeFromSuperview() }
-        let items = store.mergedItems(historyRing: historyRing)
-        countLabel?.stringValue = items.isEmpty ? "晾衣架" : "晾衣架 \(items.count)"
-        emptyPill?.isHidden = !items.isEmpty
-        layoutSubviews(width: root.bounds.width, height: root.bounds.height)
-
-        let gap: CGFloat = 14
-        let cardW = ShelfCardView.cardSize.width, cardH = ShelfCardView.cardSize.height
-        let contentW = CGFloat(items.count) * cardW + CGFloat(max(0, items.count - 1)) * gap
-        let startX = max(8.0, round((scrollView.bounds.width - contentW) * 0.5))
-        var x = startX
-        let tf = DateFormatter(); tf.dateFormat = "HH:mm"
-        for item in items {
-            let card = buildCardView(for: item, timeFormatter: tf)
-            card.frame = NSRect(x: x, y: 6, width: cardW, height: cardH)
-            stripView.addSubview(card)
-            x += cardW + gap
-        }
-        stripView.frame = NSRect(x: 0, y: 0, width: max(scrollView.bounds.width, x + 8), height: scrollView.bounds.height)
-        syncCardsToRope()
-        updateScrollNavButtons()
-    }
-
-    /// 按悬链线公式将每张卡片的小夹子精准贴合到当前弧形细绳高度
-    private func syncCardsToRope() {
-        guard let root = clotheslineView, let sv = scrollView, let strip = stripView else { return }
-        let x0 = ShelfClotheslineView.ropeMarginX, x1 = root.bounds.width - ShelfClotheslineView.ropeMarginX
-        let scrollOffset = sv.contentView.bounds.origin.x
-        for view in strip.subviews {
-            let centerInRoot = sv.frame.minX + view.frame.midX - scrollOffset
-            let ropeY = ShelfTriggerGeometry.ropeY(
-                atX: centerInRoot, startX: x0, endX: x1,
-                baseY: ShelfClotheslineView.ropeBaseY, sag: ShelfClotheslineView.ropeSag
-            )
-            let desiredY = round(ropeY - sv.frame.minY - 6.0)
-            if abs(view.frame.origin.y - desiredY) > 0.5 { view.frame.origin.y = desiredY }
-        }
+        p.contentView = ev
+        panel = p; effectView = ev; rootView = root; scrollView = sv; stripView = strip
+        countLabel = cnt; pinBtn = pBtn; closeBtn = xBtn; clipBtn = cBtn; secondaryBtn = secBtn
+        leftNavBtn = lBtn; rightNavBtn = rBtn; emptyLabel = empty
     }
 }

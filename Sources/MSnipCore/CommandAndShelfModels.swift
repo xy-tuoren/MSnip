@@ -187,6 +187,21 @@ public enum ShelfTriggerGeometry {
         return baseY + 4.0 * sag * t * (1.0 - t)
     }
 
+    /// 计算实用紧凑型顶部暂存条的自适应宽度：少量条目自动收窄不空旷，多条目铺满至多 `maxWidth` 同屏展示更多卡片
+    public static func dockPanelWidth(
+        itemCount: Int,
+        cardWidth: CGFloat = 106,
+        cardGap: CGFloat = 7,
+        railWidth: CGFloat = 104,
+        maxWidth: CGFloat
+    ) -> CGFloat {
+        let cap = max(360.0, maxWidth)
+        guard itemCount > 0 else { return min(cap, 440.0) }
+        let cardsW = CGFloat(itemCount) * cardWidth + CGFloat(max(0, itemCount - 1)) * cardGap
+        let desired = 16.0 + cardsW + railWidth
+        return min(cap, max(360.0, desired))
+    }
+
     /// 计算展开后的安全保持区：向上完整贯通至物理屏幕顶边 `screenFrame.maxY + 4`，避免光标刚触发即被菜单栏间隙误判离开
     public static func safeKeepRect(panelFrame: CGRect, screenFrame: CGRect) -> CGRect {
         let minX = panelFrame.minX - 24.0

@@ -212,16 +212,23 @@ public final class CaptureHistoryRing {
         return img
     }
 
-    public func clearAll() {
-        let dirURL = directoryURL
-        let idxURL = indexURL
-        let toDelete = entries
-        entries.removeAll()
-        stateLock.lock()
-        inFlightImages.removeAll()
-        thumbCache.removeAll()
-        stateLock.unlock()
+    public func remove(id: UUID) {
+        guard let idx = entries.firstIndex(where: { $0.id == id }) else { return }
+        let removed = entries.remove(at: idx)
+        stateLock.lock(); inFlightImages.removeValue(forKey: id); thumbCache.removeValue(forKey: id); stateLock.unlock()
+        let snapshot = entries, dirURL = directoryURL, idxURL = indexURL
+        Self.ioQueue.async {
+            let fm = FileManager.default
+            try? fm.removeItem(at: dirURL.appendingPathComponent(removed.fileName))
+            try? fm.removeItem(at: dirURL.appendingPathComponent(removed.thumbFileName))
+            if let data = try? JSONEncoder().encode(snapshot) { try? data.write(to: idxURL, options: .atomic) }
+        }
+    }
 
+    public func clearAll() {
+        let dirURL = directoryURL, idxURL = indexURL, toDelete = entries
+        entries.removeAll()
+        stateLock.lock(); inFlightImages.removeAll(); thumbCache.removeAll(); stateLock.unlock()
         Self.ioQueue.sync {
             let fm = FileManager.default
             for item in toDelete {
@@ -269,27 +276,16 @@ public final class CaptureHistoryRing {
 
     private static func writePNG(cgImage: CGImage, scaleFactor: CGFloat, to url: URL) {
         let data = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
-            return
-        }
+        guard let dest = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { return }
         let dpi = 72.0 * max(1.0, Double(scaleFactor))
-        let props: [CFString: Any] = [
-            kCGImagePropertyDPIWidth: dpi,
-            kCGImagePropertyDPIHeight: dpi
-        ]
+        let props: [CFString: Any] = [kCGImagePropertyDPIWidth: dpi, kCGImagePropertyDPIHeight: dpi]
         CGImageDestinationAddImage(dest, cgImage, props as CFDictionary)
-        if CGImageDestinationFinalize(dest) {
-            try? (data as Data).write(to: url, options: .atomic)
-        }
+        if CGImageDestinationFinalize(dest) { try? (data as Data).write(to: url, options: .atomic) }
     }
 
     private func loadIndex() {
         guard let data = try? Data(contentsOf: indexURL),
-              let decoded = try? JSONDecoder().decode([CaptureHistoryEntry].self, from: data) else {
-            return
-        }
-        entries = decoded.filter {
-            FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent($0.fileName).path)
-        }
+              let decoded = try? JSONDecoder().decode([CaptureHistoryEntry].self, from: data) else { return }
+        entries = decoded.filter { FileManager.default.fileExists(atPath: directoryURL.appendingPathComponent($0.fileName).path) }
     }
 }
