@@ -49,6 +49,7 @@ final class CollageStudioController: NSObject, NSWindowDelegate {
     var items: [CollageSourceItem] = []
     var options = CollageOptions()
     var studioMode: StudioMode = .collage
+    private let lightbox = CollageImageLightbox()
     private var renderSeq: UInt64 = 0
 
     func present(initialEntries: [CaptureHistoryEntry] = [], initialImages: [(title: String, cgImage: CGImage, scale: CGFloat)] = []) {
@@ -81,6 +82,7 @@ final class CollageStudioController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         renderSeq &+= 1
+        lightbox.dismiss()
         items.removeAll()
         canvasView?.previewImage = nil
         canvasView?.pdfPageItems = []
@@ -118,7 +120,15 @@ final class CollageStudioController: NSObject, NSWindowDelegate {
 
         let canvas = CollagePreviewCanvasView(frame: .zero)
         canvas.onDropImageURLs = { [weak self] urls in self?.appendImageURLs(urls) }
+        canvas.onInspectCollage = { [weak self] in self?.openCollageLightbox() }
+        canvas.onInspectPDFPage = { [weak self] idx in self?.openSourceLightbox(startIndex: idx) }
         root.addSubview(canvas)
+
+        lightbox.onCopyImage = { [weak self] img, scale in
+            ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
+            ToastHUD.show(message: "✓ 已复制当前预览图到剪贴板 · \(img.width) × \(img.height) px")
+            _ = self
+        }
 
         // 底部素材卡片
         let sCard = GeekCardView(frame: .zero)
@@ -211,6 +221,7 @@ final class CollageStudioController: NSObject, NSWindowDelegate {
         for (i, item) in items.enumerated() {
             let card = CollageFilmstripCardView(index: i, totalCount: items.count, item: item)
             card.frame = NSRect(x: x, y: 2, width: CollageFilmstripCardView.cardSize.width, height: CollageFilmstripCardView.cardSize.height)
+            card.onInspect = { [weak self] idx in self?.openSourceLightbox(startIndex: idx) }
             card.onMoveLeft = { [weak self] idx in self?.moveItem(from: idx, to: idx - 1) }
             card.onMoveRight = { [weak self] idx in self?.moveItem(from: idx, to: idx + 1) }
             card.onRemove = { [weak self] idx in self?.removeItem(at: idx) }
@@ -222,6 +233,24 @@ final class CollageStudioController: NSObject, NSWindowDelegate {
         doc.addSubview(addTile)
         x += 68
         doc.frame = NSRect(x: 0, y: 0, width: max(sv.bounds.width, x), height: sv.bounds.height)
+    }
+
+    private func openSourceLightbox(startIndex: Int) {
+        let list = items.map { CollageImageLightbox.Entry(title: $0.title, cgImage: $0.cgImage, scaleFactor: $0.scaleFactor) }
+        lightbox.show(entries: list, startIndex: startIndex, showsCheckerboard: false)
+    }
+
+    private func openCollageLightbox() {
+        let imgs = items.map(\.cgImage), opts = options, refScale = items.last?.scaleFactor ?? 2.0
+        guard !imgs.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            let hd = await Task.detached(priority: .userInitiated) {
+                ImageCollageStitcher.stitch(images: imgs, options: opts, maxRefSide: 2400)
+            }.value
+            guard let self, let hd else { return }
+            let entry = CollageImageLightbox.Entry(title: "\(opts.layout.title)拼图预览", cgImage: hd, scaleFactor: refScale)
+            self.lightbox.show(entries: [entry], startIndex: 0, showsCheckerboard: opts.background == .transparent)
+        }
     }
 
     private func moveItem(from: Int, to: Int) {

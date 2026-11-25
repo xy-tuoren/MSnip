@@ -10,6 +10,7 @@ final class CollageFilmstripCardView: NSView {
     let index: Int
     let totalCount: Int
     let item: CollageSourceItem
+    var onInspect: ((Int) -> Void)?
     var onMoveLeft: ((Int) -> Void)?
     var onMoveRight: ((Int) -> Void)?
     var onRemove: ((Int) -> Void)?
@@ -18,11 +19,12 @@ final class CollageFilmstripCardView: NSView {
     private var hoveredAction: Int? { didSet { if oldValue != hoveredAction { needsDisplay = true } } }
 
     override var isFlipped: Bool { true }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
     init(index: Int, totalCount: Int, item: CollageSourceItem) {
         self.index = index; self.totalCount = totalCount; self.item = item
         super.init(frame: NSRect(origin: .zero, size: Self.cardSize))
-        self.toolTip = "\(item.title) · \(item.cgImage.width)×\(item.cgImage.height)\n悬停可左右调序或移除"
+        self.toolTip = "\(item.title) · \(item.cgImage.width)×\(item.cgImage.height)\n单击查看大图 · 悬停可调序或移除"
     }
 
     @available(*, unavailable)
@@ -50,13 +52,17 @@ final class CollageFilmstripCardView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard let hit = controlRects().first(where: { $0.rect.contains(convert(event.locationInWindow, from: nil)) }) else { return }
-        switch hit.tag {
-        case 0: onMoveLeft?(index)
-        case 1: onMoveRight?(index)
-        case 2: onRemove?(index)
-        default: break
+        let p = convert(event.locationInWindow, from: nil)
+        if let hit = controlRects().first(where: { $0.rect.contains(p) }) {
+            switch hit.tag {
+            case 0: onMoveLeft?(index)
+            case 1: onMoveRight?(index)
+            case 2: onRemove?(index)
+            default: break
+            }
+            return
         }
+        onInspect?(index)
     }
 
     override func draw(_ dirtyRect: NSRect) {

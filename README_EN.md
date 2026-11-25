@@ -1,6 +1,6 @@
 <div align="center">
 
-# MSnip `v0.9.0`
+# MSnip `v0.9.1`
 
 **Precision screenshots, desktop pins, a top-edge drop shelf, scrolling capture, high-frame-rate recording, offline OCR, and in-place translation — packed into a ~3.5 MB pure-native Swift app. Zero dependencies, MIT open source, no subscriptions.**
 
@@ -78,10 +78,10 @@ MSnip is built strictly on Apple's system frameworks so speed and efficiency sho
 - **Post-Edit Handles, `⌘C/⌘V/⌘D` Cloning & 100-Step Undo**: Select any shape to adjust corners, endpoints, or step tails; press **`⌘C` / `⌘V`** to copy-paste or **`⌘D`** to duplicate in place (duplicating step badge `①` automatically increments to `②`), backed by a 100-step Copy-on-Write Undo/Redo stack.
 
 ### 3. Desktop Pin Workflow, Top Shelf & Multi-Image Comparison
-- **Compact Top Drop Shelf (MSnip Shelf)**: Supports **Hover to Expand** (`0.55s` dwell anti-misfire, `80ms` instant open when dragging files, automatic 3s peek on new captures, click top bar to dismiss), **Hotkey Toggle**, and **Always Shown** modes. At just `98pt` tall with adaptive width (up to 9 cards at once), it supports mouse-wheel horizontal scrolling, click-to-copy, drag-out sharing, per-card deletion, `+ Clipboard`, and 1-click side-by-side compare. Menu bar icon supports **Left-Click to open Settings, Right-Click for the action menu**.
+- **Compact Top Drop Shelf (MSnip Shelf)**: Supports **Hover to Expand** (`0.55s` dwell anti-misfire, `80ms` instant open when dragging files, automatic 3s peek on new captures, click top bar to dismiss), **Hotkey Toggle**, and **Always Shown** modes. At just `98pt` tall with adaptive width (up to 9 cards at once), it supports mouse-wheel horizontal scrolling, click-to-copy, `⌘ + Click` ordered multi-select for collage, drag-out sharing, per-card deletion, and `+ Clipboard`. Menu bar icon supports **Left-Click to open Settings, Right-Click for the action menu**.
 - **Soft Luminous Outer Glow**: Subtle white halo at rest (clear contrast on both dark and light wallpapers) transitioning smoothly to a soft blue glow on hover or focus; adjust live anytime with `⌥ + Scroll` or in Settings.
-- **8-Way Clean Edge & Corner Resizing**: Completely uncluttered at rest; hovering any of the 4 corners or 4 edges reveals subtle directional indicators with native macOS resize cursors and aspect-locked scaling.
-- **Multi-Image Comparison Collage & Auto-Fit**: Stitch the latest 2–4 original captures side-by-side or vertically right from *Recent Captures* (previous collages are automatically tagged and skipped to prevent recursive nesting). Oversized collages and long captures auto-scale to fit inside screen bounds while keeping 100% full-resolution pixels underneath.
+- **8-Way Clean Edge & Corner Resizing**: Completely uncluttered at rest; hovering the outer luminous border or any of the 4 corners reveals subtle directional indicators with native macOS resize cursors and aspect-locked scaling.
+- **Multi-Image Collage & PDF Merge Studio**: Open from the Top Shelf (with optional `⌘ + Click` multi-select) or Recent Captures menu. Supports drag-in, add from clipboard/history, reordering, and two clear modes — **Stitch Image** (Horizontal / Vertical / 2–4 Col Grid with live gap, padding, corner radius, and Light/White/Dark/Transparent background) and **Merge Multi-Page PDF** (lossless native CoreGraphics multi-page `.pdf` export with page preview). Oversized collages and long captures auto-scale to fit inside screen bounds while preserving full-resolution pixels underneath.
 - **Unobstructed Floating Bar**: `[ ✥ Drag | ✎ Annotate | OCR | Translate | Copy | ↓ Save | ✕ Close ]` sits outside the image. Includes native Live Text selection directly on the pin, `⌘ + Drag` out as a `.png` file, 1-click `↓` quick-save (`⇧ + Click` Save As), Crop (`C`), Rotate (`R`), Flip (`H`), Click-Through Ghost Mode (`P`), and `8pt` magnetic snapping.
 
 ### 4. Vertical & Horizontal Scrolling Capture (`⌥E` / `L`)

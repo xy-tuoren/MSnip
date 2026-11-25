@@ -21,14 +21,40 @@ final class CollagePreviewCanvasView: NSView {
     var showsCheckerboard: Bool = false { didSet { if oldValue != showsCheckerboard { needsDisplay = true } } }
     var statusBadgeText: String = "" { didSet { if oldValue != statusBadgeText { needsDisplay = true } } }
     var onDropImageURLs: (([URL]) -> Void)?
+    var onInspectCollage: (() -> Void)?
+    var onInspectPDFPage: ((Int) -> Void)?
 
     private var isDragTargeted = false { didSet { if oldValue != isDragTargeted { needsDisplay = true } } }
+    private var lastCollageRect: CGRect = .zero
+    private var lastPDFPageRects: [(Int, CGRect)] = []
 
     override var isFlipped: Bool { true }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         registerForDraggedTypes([.fileURL])
+        self.toolTip = "点击预览图可打开全尺寸高清大图（支持滚轮缩放与拖拽查看）"
+    }
+
+    override func resetCursorRects() {
+        if !isPDFMode && previewImage != nil {
+            addCursorRect(bounds, cursor: .pointingHand)
+        } else if isPDFMode && !pdfPageItems.isEmpty {
+            addCursorRect(bounds, cursor: .pointingHand)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        let p = convert(event.locationInWindow, from: nil)
+        if isPDFMode {
+            if let hit = lastPDFPageRects.first(where: { $0.1.contains(p) }) {
+                onInspectPDFPage?(hit.0)
+            }
+            return
+        }
+        if previewImage != nil && lastCollageRect.contains(p) {
+            onInspectCollage?()
+        }
     }
 
     @available(*, unavailable)
@@ -97,6 +123,7 @@ final class CollagePreviewCanvasView: NSView {
         let sc = min(inset.width / max(1, iw), inset.height / max(1, ih))
         let dw = round(iw * sc), dh = round(ih * sc)
         let dst = CGRect(x: round(inset.midX - dw * 0.5), y: round(inset.midY - dh * 0.5), width: dw, height: dh)
+        lastCollageRect = dst
         let clip = CGPath(roundedRect: dst, cornerWidth: 6, cornerHeight: 6, transform: nil)
 
         ctx.saveGState()
@@ -126,10 +153,12 @@ final class CollagePreviewCanvasView: NSView {
         let startX = round(area.midX - gridW * 0.5)
         let startY = round(area.midY - gridH * 0.5)
         let pageFill = (pdfBgStyle.rgbaColor ?? RGBAColor(255, 255, 255)).cgColor
+        lastPDFPageRects.removeAll()
 
         for idx in 0..<maxShown {
             let r = idx / cols, c = idx % cols
             let card = CGRect(x: startX + CGFloat(c) * (cellW + gap), y: startY + CGFloat(r) * (cellH + gap), width: cellW, height: cellH)
+            lastPDFPageRects.append((idx, card))
             let p = CGPath(roundedRect: card, cornerWidth: 8, cornerHeight: 8, transform: nil)
             ctx.saveGState()
             ctx.setShadow(offset: CGSize(width: 0, height: 3), blur: 10, color: NSColor.black.withAlphaComponent(isDark ? 0.42 : 0.14).cgColor)
@@ -187,5 +216,35 @@ final class CollagePreviewCanvasView: NSView {
             while x < rect.maxX { ctx.fill(CGRect(x: x, y: y, width: cell, height: cell)); x += cell * 2 }
             y += cell; row += 1
         }
+    }
+}
+
+/// 大图查看器无边框窗口（支持 Esc/Space 关闭、←/→ 切图、0/1 适应与 1:1、⌘C 复制）
+final class CollageLightboxWindow: NSWindow {
+    enum KeyAction { case close, prev, next, fit, actual100, copy }
+    var onKeyAction: ((KeyAction) -> Void)?
+
+    override var canBecomeKey: Bool { true }
+    override var canBecomeMain: Bool { false }
+
+    override func keyDown(with event: NSEvent) {
+        switch event.keyCode {
+        case 53, 49: onKeyAction?(.close)
+        case 123:    onKeyAction?(.prev)
+        case 124:    onKeyAction?(.next)
+        case 29:     onKeyAction?(.fit)
+        case 18:     onKeyAction?(.actual100)
+        default:     super.keyDown(with: event)
+        }
+    }
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let ch = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        if flags == .command && ch == "c" { onKeyAction?(.copy); return true }
+        if flags == .command && ch == "0" { onKeyAction?(.fit); return true }
+        if flags == .command && ch == "1" { onKeyAction?(.actual100); return true }
+        if flags.isEmpty && event.keyCode == 53 { onKeyAction?(.close); return true }
+        return super.performKeyEquivalent(with: event)
     }
 }
