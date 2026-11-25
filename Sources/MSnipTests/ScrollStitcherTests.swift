@@ -100,4 +100,128 @@ func testScrollStitcherWithStickyChromeAndBackscroll() {
     let expectedTotalH = topH + (bodyViewH + 164) + botH
     check(finalImg != nil && finalImg!.width == vw && finalImg!.height == expectedTotalH,
           "合成长图总高度应严格等于 顶栏+累积正文+底栏 (\(expectedTotalH)px)，实际: \(finalImg?.height ?? -1)")
+
+    testScrollStitcherDarkModeFloatingDownButtonAndMicroScroll()
+}
+
+/// 复现真实 ChatGPT 暗色模式长截图场景：
+/// - 深灰 `#212121` 背景 + 稀疏白色文字/表格线（易诱发旧算法暗色背景误匹配）
+/// - 底部固定输入框 + 输入框内每帧闪烁光标
+/// - 底部输入框上方居中悬浮 `↓` 置底圆钮（旧算法逐帧底边切片会将其反复盖章 10+ 次）
+/// - 35 帧微小步长平滑滚轮（+14..+20px/帧）+ 触底后 `↓` 按钮淡出静默刷新
+private func renderDarkChatViewport(
+    w: Int,
+    h: Int,
+    stickyBottomH: Int,
+    scrollY: Int,
+    showFloatingButton: Bool,
+    cursorOn: Bool
+) -> CGImage {
+    let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+    let ctx = CGContext(
+        data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+        space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    ctx.translateBy(x: 0, y: CGFloat(h))
+    ctx.scaleBy(x: 1, y: -1)
+
+    // 深灰底色 #212121
+    ctx.setFillColor(CGColor(srgbRed: 33.0 / 255.0, green: 33.0 / 255.0, blue: 33.0 / 255.0, alpha: 1))
+    ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+
+    // 稀疏唯一正文文字块与表格分割线（每个 docY 段落都有独特位置与宽度分布）
+    let bodyH = h - stickyBottomH
+    for vy in 0..<bodyH {
+        let docY = scrollY + vy
+        let rowInBlock = docY % 38
+        let blockIdx = docY / 38
+        if rowInBlock == 0 {
+            ctx.setFillColor(CGColor(srgbRed: 0.25, green: 0.25, blue: 0.27, alpha: 1))
+            ctx.fill(CGRect(x: 16, y: vy, width: w - 32, height: 1))
+        } else if rowInBlock >= 10 && rowInBlock <= 20 {
+            ctx.setFillColor(CGColor(srgbRed: 0.90, green: 0.90, blue: 0.92, alpha: 1))
+            let segCount = 3 + (blockIdx % 4)
+            for s in 0..<segCount {
+                let hash = (blockIdx * 37 + s * 53 + (rowInBlock / 3) * 19)
+                let sx = 20 + (hash * 17) % max(40, w - 90)
+                let sw = 24 + (hash % 36)
+                ctx.fill(CGRect(x: sx, y: vy, width: sw, height: 2))
+            }
+        }
+    }
+
+    // 底部上方居中悬浮 `↓` 置底圆钮（使用鲜艳青蓝色标记，便于单测逐像素校验零残留）
+    if showFloatingButton {
+        let btnSize = 42
+        let bx = (w - btnSize) / 2
+        let by = bodyH - btnSize - 16
+        ctx.setFillColor(CGColor(srgbRed: 0.10, green: 0.72, blue: 0.98, alpha: 1))
+        ctx.fillEllipse(in: CGRect(x: bx, y: by, width: btnSize, height: btnSize))
+        ctx.setFillColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        ctx.fill(CGRect(x: w / 2 - 2, y: by + 11, width: 4, height: 20))
+    }
+
+    // 底部固定输入栏 + 闪烁光标
+    if stickyBottomH > 0 {
+        let fy = h - stickyBottomH
+        ctx.setFillColor(CGColor(srgbRed: 0.16, green: 0.16, blue: 0.18, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: fy, width: w, height: stickyBottomH))
+        ctx.setFillColor(CGColor(srgbRed: 0.24, green: 0.24, blue: 0.27, alpha: 1))
+        ctx.fill(CGRect(x: 18, y: fy + 16, width: w - 36, height: stickyBottomH - 28))
+        ctx.setFillColor(CGColor(srgbRed: 0.20, green: 0.56, blue: 0.96, alpha: 1))
+        ctx.fillEllipse(in: CGRect(x: w - 54, y: fy + 24, width: 26, height: 26))
+        if cursorOn {
+            ctx.setFillColor(CGColor(srgbRed: 0.95, green: 0.95, blue: 0.98, alpha: 1))
+            ctx.fill(CGRect(x: 44, y: fy + 28, width: 3, height: 18))
+        }
+    }
+    return ctx.makeImage()!
+}
+
+private func testScrollStitcherDarkModeFloatingDownButtonAndMicroScroll() {
+    let w = 420, h = 520, botH = 84
+    let stitcher = ScrollStitcher()
+    var scrollY = 0
+    _ = stitcher.ingest(frame: renderDarkChatViewport(w: w, h: h, stickyBottomH: botH, scrollY: 0, showFloatingButton: true, cursorOn: true))
+
+    // 模拟高帧率平滑滚轮：35 帧微小位移 (+14..+20px)，每帧光标闪烁，底部一直悬浮 `↓` 按钮
+    let steps = [16, 18, 14, 20, 16, 18, 16, 20, 14, 18, 16, 20, 18, 16, 14, 20, 18, 16, 18, 16, 20, 14, 18, 16, 20, 18, 16, 14, 20, 18, 16, 20, 18, 16, 14]
+    for (idx, step) in steps.enumerated() {
+        scrollY += step
+        let frame = renderDarkChatViewport(w: w, h: h, stickyBottomH: botH, scrollY: scrollY, showFloatingButton: true, cursorOn: idx % 2 == 0)
+        let res = stitcher.ingest(frame: frame)
+        if case .appended = res {
+            // OK
+        } else {
+            check(false, "暗色模式平滑微滚动第 \(idx) 帧 (scrollY=\(scrollY)) 应成功拼接，实际: \(res)")
+            break
+        }
+    }
+
+    // 模拟滚到底部后 150ms：位移不变 (dy=0)，但悬浮 `↓` 按钮自然淡出
+    let settled = renderDarkChatViewport(w: w, h: h, stickyBottomH: botH, scrollY: scrollY, showFloatingButton: false, cursorOn: false)
+    _ = stitcher.ingest(frame: settled)
+
+    let expectedH = h + scrollY
+    guard let finalImg = stitcher.renderFinalImage() else {
+        check(false, "暗色模式悬浮按钮长截图应成功导出图像")
+        return
+    }
+    check(finalImg.width == w && finalImg.height == expectedH,
+          "35 帧微滚动拼接总高度应零漂移精确等于 \(expectedH)px，实际: \(finalImg.height)px")
+
+    // 逐行扫描整张正文中心列：断言全图正文区 0 颗悬浮 `↓` 按钮青蓝色像素残留
+    let sampler = PixelSampler(cgImage: finalImg)
+    var leakedCyanPixels = 0
+    for y in 0..<(finalImg.height - botH) {
+        for x in (w / 2 - 24)...(w / 2 + 24) {
+            let (r, g, b) = sampler.sampleRGB(px: x, py: y)
+            if b > 180 && g > 130 && r < 80 { leakedCyanPixels += 1 }
+        }
+    }
+    check(leakedCyanPixels == 0, "暗色模式长截图正文与触底淡出尾段不应残留任何悬浮 ↓ 按钮重影像素，实际残留: \(leakedCyanPixels)")
+
+    // 校验暗色模式跨整屏无关内容绝不会被 88% 黑底稀释误匹配
+    let unrelated = renderDarkChatViewport(w: w, h: h, stickyBottomH: botH, scrollY: scrollY + 2400, showFloatingButton: true, cursorOn: true)
+    check(stitcher.ingest(frame: unrelated) == .mismatchLostOverlap, "暗色模式无重叠跳跃帧应严格拦截为 mismatchLostOverlap")
 }

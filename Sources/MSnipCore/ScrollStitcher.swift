@@ -8,7 +8,9 @@ public enum ScrollStitchAxis: String, CaseIterable, Codable, Sendable {
 }
 
 /// 纯原生滚动长截图拼接状态机（零外部依赖）：
-/// 支持纵向/横向切换、自动剥离 Sticky 固定栏、屏蔽侧边栏与滚动条、撤回上一段、尾部微调裁剪及跨屏失步自愈续接
+/// - 采用「洁净中缝提交 + 动态尾段替换」架构，彻底消除底部悬浮按钮（如 `↓` 置底键）、渐变蒙版与固定底栏在正文中反复重影；
+/// - 采用关键帧步长提交，杜绝高帧率微小步进导致的累积亚像素漂移与文字切片重影；
+/// - 停滚后静默刷新尾段，自动吸收渐隐的置底按钮与系统滚动条。
 public final class ScrollStitcher: @unchecked Sendable {
     public enum StepResult: Equatable, Sendable {
         case initialized(widthPx: Int, heightPx: Int)
@@ -22,15 +24,15 @@ public final class ScrollStitcher: @unchecked Sendable {
     private struct UndoSnapshot {
         let stripCount: Int
         let bodyHeightPx: Int
+        let seamY: Int
         let lockedTopFixed: Int
         let lockedBottomFixed: Int
-        let frontierDigest: ScrollFrameDigest?
-        let latestFooterStrip: CGImage?
-        let previewFooterStrip: CGImage?
+        let anchorDigest: ScrollFrameDigest?
+        let liveTailStrip: CGImage?
+        let previewTailStrip: CGImage?
     }
 
     public static let defaultMaxHeightPx = 24_000
-
     public let maxHeightPx: Int
     public private(set) var axis: ScrollStitchAxis
     public private(set) var widthPx: Int = 0
@@ -40,86 +42,64 @@ public final class ScrollStitcher: @unchecked Sendable {
 
     private let lock = NSLock()
     private var firstFrame: CGImage?
-    private var frontierDigest: ScrollFrameDigest?
+    private var anchorDigest: ScrollFrameDigest?
+    private var pendingDigest: ScrollFrameDigest?
+    private var pendingDy: Int = 0
     private var resyncDigest: ScrollFrameDigest?
-    private var latestFooterStrip: CGImage?
-    private var previewFooterStrip: CGImage?
-    private var strips: [CGImage] = []
-    private var previewStrips: [CGImage] = []
-    private var bodyHeightPx: Int = 0
+    private var seamY: Int = 0
+    private var canvas = ScrollStripCanvas()
     private var undoStack: [UndoSnapshot] = []
 
-    /// 内部拼接方向上的累计像素长度（纵向为总高度，横向为总宽度）
     public var totalHeightPx: Int { lock.lock(); defer { lock.unlock() }; return totalHeightPxUnlocked }
-    private var totalHeightPxUnlocked: Int { strips.isEmpty ? frameHeightPx : bodyHeightPx + (latestFooterStrip?.height ?? 0) }
-    /// 对外输出图像尺寸（横向模式下自动映射为 `totalWidth × frameHeight`）
+    private var totalHeightPxUnlocked: Int { canvas.isEmpty ? frameHeightPx : canvas.totalHeightPx }
     public var outputSizePx: (width: Int, height: Int) {
         lock.lock(); defer { lock.unlock() }
         return axis == .horizontal ? (totalHeightPxUnlocked, widthPx) : (widthPx, totalHeightPxUnlocked)
     }
-    public var hasScrolled: Bool { lock.lock(); defer { lock.unlock() }; return !strips.isEmpty }
-    public var canUndoAppend: Bool { lock.lock(); defer { lock.unlock() }; return !undoStack.isEmpty }
+    public var hasScrolled: Bool { lock.lock(); defer { lock.unlock() }; return !canvas.isEmpty }
+    public var canUndoAppend: Bool { lock.lock(); defer { lock.unlock() }; return !undoStack.isEmpty || pendingDy > 0 }
 
     public init(maxHeightPx: Int = ScrollStitcher.defaultMaxHeightPx, axis: ScrollStitchAxis = .vertical) {
         self.maxHeightPx = max(1200, maxHeightPx)
         self.axis = axis
     }
 
-    /// 重置全部已拼接状态并切换拼接方向
     public func reset(axis newAxis: ScrollStitchAxis) {
         lock.lock(); defer { lock.unlock() }
         axis = newAxis
-        widthPx = 0; frameHeightPx = 0; lockedTopFixed = 0; lockedBottomFixed = 0
-        firstFrame = nil; frontierDigest = nil; resyncDigest = nil
-        latestFooterStrip = nil; previewFooterStrip = nil
-        strips.removeAll(); previewStrips.removeAll(); undoStack.removeAll(); bodyHeightPx = 0
+        widthPx = 0; frameHeightPx = 0; lockedTopFixed = 0; lockedBottomFixed = 0; seamY = 0
+        firstFrame = nil; anchorDigest = nil; pendingDigest = nil; pendingDy = 0; resyncDigest = nil
+        canvas.removeAll(); undoStack.removeAll()
     }
 
-    /// 撤回最近一次成功拼接的增量段落（恢复精确前沿锚点以便立即继续滚动）
     @discardableResult
     public func undoLastAppend() -> Bool {
         lock.lock(); defer { lock.unlock() }
-        guard let snap = undoStack.popLast() else { return false }
-        if strips.count > snap.stripCount {
-            strips.removeLast(strips.count - snap.stripCount)
-            previewStrips.removeLast(previewStrips.count - snap.stripCount)
+        if pendingDy > 0, let anchor = anchorDigest {
+            pendingDy = 0; pendingDigest = nil; resyncDigest = nil
+            if canvas.strips.count <= 1 && undoStack.isEmpty {
+                canvas.removeAll(); seamY = 0
+            } else {
+                canvas.updateLiveTail(from: anchor.image, topY: seamY, width: widthPx, frameHeight: frameHeightPx)
+            }
+            return true
         }
-        bodyHeightPx = snap.bodyHeightPx
-        lockedTopFixed = snap.lockedTopFixed
-        lockedBottomFixed = snap.lockedBottomFixed
-        frontierDigest = snap.frontierDigest
-        latestFooterStrip = snap.latestFooterStrip
-        previewFooterStrip = snap.previewFooterStrip
-        resyncDigest = nil
+        guard let snap = undoStack.popLast() else { return false }
+        canvas.restore(stripCount: snap.stripCount, bodyHeight: snap.bodyHeightPx, liveTail: snap.liveTailStrip, previewTail: snap.previewTailStrip)
+        seamY = snap.seamY; lockedTopFixed = snap.lockedTopFixed; lockedBottomFixed = snap.lockedBottomFixed
+        anchorDigest = snap.anchorDigest; pendingDy = 0; pendingDigest = nil; resyncDigest = nil
         return true
     }
 
-    /// 裁剪已拼接正文的尾部指定像素（用于去除误拼的多余尾部段）
     @discardableResult
     public func trimTail(pixels: Int) -> Bool {
         lock.lock(); defer { lock.unlock() }
-        guard pixels > 0, !strips.isEmpty else { return false }
-        var remaining = min(pixels, max(0, bodyHeightPx - max(32, frameHeightPx / 2)))
-        guard remaining > 0 else { return false }
-        while remaining > 0, let last = strips.last {
-            if last.height <= remaining, strips.count > 1 {
-                strips.removeLast(); previewStrips.removeLast()
-                bodyHeightPx -= last.height; remaining -= last.height
-            } else {
-                let keepH = max(16, last.height - remaining)
-                if let cropped = ScrollFrameDigest.detachCopy(last, rect: CGRect(x: 0, y: 0, width: last.width, height: keepH)) {
-                    strips[strips.count - 1] = cropped
-                    previewStrips[previewStrips.count - 1] = ScrollFrameDigest.makePreviewSlice(cropped)
-                    bodyHeightPx -= (last.height - keepH)
-                }
-                break
-            }
-        }
-        undoStack.removeAll()
-        return true
+        let ok = canvas.trimTail(pixels: pixels, width: widthPx, frameHeight: frameHeightPx, lockedBottomFixed: lockedBottomFixed)
+        if ok { pendingDy = 0; pendingDigest = nil; undoStack.removeAll() }
+        return ok
     }
 
-    /// 喂入最新采集到的选区帧（横向模式自动执行 90° 无损转置，复用完整抗 Sticky 纵向拼接引擎）
+    /// 喂入最新采集到的选区帧（横向模式自动执行 90° 无损转置，复用完整抗悬浮/抗固定栏引擎）
     public func ingest(frame rawFrame: CGImage) -> StepResult {
         lock.lock(); defer { lock.unlock() }
         let frame: CGImage
@@ -132,37 +112,62 @@ public final class ScrollStitcher: @unchecked Sendable {
         let w = frame.width, h = frame.height
         guard w >= 24, h >= 32 else { return .unchanged }
 
-        if frontierDigest == nil || (strips.isEmpty && (w != widthPx || h != frameHeightPx)) {
+        if anchorDigest == nil || (canvas.isEmpty && (w != widthPx || h != frameHeightPx)) {
             widthPx = w; frameHeightPx = h
             let detached = ScrollFrameDigest.build(for: frame, detach: true)
-            firstFrame = detached.image; frontierDigest = detached; resyncDigest = nil
+            firstFrame = detached.image; anchorDigest = detached
+            pendingDigest = nil; pendingDy = 0; resyncDigest = nil
             let sz = axis == .horizontal ? (totalHeightPxUnlocked, widthPx) : (widthPx, totalHeightPxUnlocked)
             return .initialized(widthPx: sz.0, heightPx: sz.1)
         }
-        guard let anchor = frontierDigest, w == widthPx, h == frameHeightPx else { return .unchanged }
+        guard let anchor = anchorDigest, w == widthPx, h == frameHeightPx else { return .unchanged }
         if totalHeightPxUnlocked >= maxHeightPx { return .reachedHeightLimit }
 
         let digest = ScrollFrameDigest.build(for: frame, detach: false)
+        let latest = pendingDigest ?? anchor
         var unchangedRows = 0
-        for y in 0..<h where anchor.rows[y].fullDiff(to: digest.rows[y]) <= 5 { unchangedRows += 1 }
-        if unchangedRows * 100 >= h * 97 { return .unchanged }
-
-        if let match = matchDisplacement(anchor: anchor, curr: digest, width: w, height: h) {
-            resyncDigest = nil
-            if match.dy == 0 { return .unchanged }
-            if match.dy < 0 { return .scrolledBackward }
-            return appendMatchedDelta(from: frame, digest: digest, dy: match.dy, margins: match.margins, resyncBase: nil)
+        for y in 0..<h where latest.rows[y].fullDiff(to: digest.rows[y]) <= 2 { unchangedRows += 1 }
+        if unchangedRows == h { return .unchanged }
+        if !canvas.isEmpty, unchangedRows * 100 >= h * 94,
+           ScrollOverlapVerifier.isUpperRegionAligned(a: latest, b: digest, workTop: lockedTopFixed, seamY: seamY) {
+            refreshSettledTail(from: frame, digest: digest)
+            return .unchanged
         }
 
-        if let pending = resyncDigest {
-            var sameAsPending = 0
-            for y in 0..<h where pending.rows[y].fullDiff(to: digest.rows[y]) <= 5 { sameAsPending += 1 }
-            if sameAsPending * 100 >= h * 97 { return .unchanged }
-            if let rec = matchDisplacement(anchor: pending, curr: digest, width: w, height: h) {
+        if let match = ScrollOverlapVerifier.matchDisplacement(
+            anchor: anchor, curr: digest, width: w, height: h, lockedTop: lockedTopFixed, lockedBottom: lockedBottomFixed
+        ) {
+            resyncDigest = nil
+            if match.dy == pendingDy {
+                if !canvas.isEmpty { refreshSettledTail(from: frame, digest: digest) }
+                return .unchanged
+            }
+            if match.dy < pendingDy { return .scrolledBackward }
+            return processForwardMatch(frame: frame, digest: digest, dy: match.dy, margins: match.margins)
+        }
+
+        if let pending = pendingDigest, pendingDy > 0,
+           let bridge = ScrollOverlapVerifier.matchDisplacement(
+               anchor: pending, curr: digest, width: w, height: h, lockedTop: lockedTopFixed, lockedBottom: lockedBottomFixed
+           ) {
+            resyncDigest = nil
+            if bridge.dy == 0 { return .unchanged }
+            if bridge.dy < 0 { return .scrolledBackward }
+            commitPendingAsKeyframe()
+            return processForwardMatch(frame: frame, digest: digest, dy: bridge.dy, margins: bridge.margins)
+        }
+
+        if let resync = resyncDigest {
+            var sameAsResync = 0
+            for y in 0..<h where resync.rows[y].fullDiff(to: digest.rows[y]) <= 4 { sameAsResync += 1 }
+            if sameAsResync * 100 >= h * 97 { return .unchanged }
+            if let rec = ScrollOverlapVerifier.matchDisplacement(
+                anchor: resync, curr: digest, width: w, height: h, lockedTop: lockedTopFixed, lockedBottom: lockedBottomFixed
+            ) {
                 if rec.dy == 0 { return .unchanged }
-                if rec.dy >= 8 {
+                if rec.dy >= 24 {
                     resyncDigest = nil
-                    return appendMatchedDelta(from: frame, digest: digest, dy: rec.dy, margins: rec.margins, resyncBase: pending.image)
+                    return applySelfResync(resyncBase: resync, currFrame: frame, currDigest: digest, dy: rec.dy)
                 }
             }
         }
@@ -170,121 +175,125 @@ public final class ScrollStitcher: @unchecked Sendable {
         return .mismatchLostOverlap
     }
 
-    private func matchDisplacement(
-        anchor: ScrollFrameDigest, curr: ScrollFrameDigest, width w: Int, height h: Int
-    ) -> (dy: Int, margins: (matchTop: Int, matchBottom: Int, stickyTop: Int, stickyBottom: Int))? {
-        let margins = ScrollFrameDigest.detectStaticMargins(a: anchor.rows, b: curr.rows, height: h)
-        let workTop = min(h * 30 / 100, max(lockedTopFixed, margins.matchTop))
-        let workBottom = h - min(h * 30 / 100, max(lockedBottomFixed, margins.matchBottom))
-        let workH = workBottom - workTop
-        guard workH >= 32 else { return nil }
-        let minOverlap = max(20, workH * 12 / 100), maxForwardDy = workH - minOverlap, minBackwardDy = -min(workH / 2, 260)
-        guard maxForwardDy >= 2 else { return nil }
-        let activeBands = ScrollFrameDigest.detectActiveBands(a: anchor.rows, b: curr.rows, workTop: workTop, workBottom: workBottom)
-
-        func score(at dy: Int, rowStep: Int) -> Double {
-            let ovS = max(workTop, workTop - dy), ovE = min(workBottom, workBottom - dy)
-            if ovE - ovS < minOverlap { return .greatestFiniteMagnitude }
-            var wDiff = 0.0, wSum = 0.0, textured = 0, cy = ovS
-            while cy < ovE {
-                let ra = anchor.rows[cy + dy], rc = curr.rows[cy]
-                let d = Double(ra.maskedDiff(to: rc, activeMask: activeBands.mask, activeCount: activeBands.count))
-                let isTex = ra.grad >= 4 || rc.grad >= 4
-                let wgt = isTex ? 3.5 : 0.45
-                if isTex { textured += 1 }
-                wDiff += d * wgt; wSum += wgt; cy += rowStep
-            }
-            guard wSum > 0 else { return .greatestFiniteMagnitude }
-            var m = (wDiff / wSum) * (1.0 + Double(abs(dy)) / Double(workH * 8))
-            if textured < 3 { m += 4.0 }
-            return m
+    private func refreshSettledTail(from frame: CGImage, digest: ScrollFrameDigest) {
+        canvas.updateLiveTail(from: frame, topY: max(lockedTopFixed, seamY - pendingDy), width: widthPx, frameHeight: frameHeightPx)
+        if let det = digest.detachedCopy() {
+            if pendingDigest != nil { pendingDigest = det } else { anchorDigest = det }
         }
-
-        var topCands: [(dy: Int, sc: Double)] = []
-        var cDy = minBackwardDy
-        while cDy <= maxForwardDy {
-            let sc = score(at: cDy, rowStep: 2)
-            if sc < .greatestFiniteMagnitude {
-                if topCands.count < 3 { topCands.append((cDy, sc)); topCands.sort { $0.sc < $1.sc } }
-                else if sc < topCands[2].sc { topCands[2] = (cDy, sc); topCands.sort { $0.sc < $1.sc } }
-            }
-            cDy += 2
-        }
-        var bestDy = 0, bestScore = Double.greatestFiniteMagnitude
-        for cand in topCands {
-            for dy in max(minBackwardDy, cand.dy - 3)...min(maxForwardDy, cand.dy + 3) {
-                let sc = score(at: dy, rowStep: 1)
-                if sc < bestScore { bestScore = sc; bestDy = dy }
-            }
-        }
-        guard bestScore <= 18.0, ScrollFrameDigest.verify2DOverlap(
-            anchor: anchor.sampler, curr: curr.sampler, width: w, height: h,
-            workTop: workTop, workBottom: workBottom, dy: bestDy, activeMask: activeBands.mask
-        ) else { return nil }
-        return (bestDy, margins)
     }
 
-    private func appendMatchedDelta(
-        from frame: CGImage, digest: ScrollFrameDigest, dy: Int,
-        margins: (matchTop: Int, matchBottom: Int, stickyTop: Int, stickyBottom: Int), resyncBase: CGImage?
+    private func processForwardMatch(
+        frame: CGImage, digest: ScrollFrameDigest, dy: Int,
+        margins: (matchTop: Int, matchBottom: Int, stickyTop: Int, stickyBottom: Int)
     ) -> StepResult {
-        if undoStack.count >= 8 { undoStack.removeFirst() }
-        undoStack.append(UndoSnapshot(
-            stripCount: strips.count, bodyHeightPx: bodyHeightPx, lockedTopFixed: lockedTopFixed,
-            lockedBottomFixed: lockedBottomFixed, frontierDigest: frontierDigest,
-            latestFooterStrip: latestFooterStrip, previewFooterStrip: previewFooterStrip
-        ))
+        guard let anchor = anchorDigest else { return .unchanged }
         let w = widthPx, h = frameHeightPx
-        if strips.isEmpty, let initial = firstFrame {
+        let clampedDelta = min(dy - pendingDy, maxHeightPx - totalHeightPxUnlocked)
+        guard clampedDelta > 0 else { return .reachedHeightLimit }
+        let effectiveDy = pendingDy + clampedDelta
+
+        let isFirstScroll = canvas.isEmpty
+        if isFirstScroll, let initial = firstFrame {
             lockedTopFixed = margins.stickyTop; lockedBottomFixed = margins.stickyBottom
-            if let s0 = ScrollFrameDigest.detachCopy(initial, rect: CGRect(x: 0, y: 0, width: w, height: h - lockedBottomFixed)) {
-                strips.append(s0); previewStrips.append(ScrollFrameDigest.makePreviewSlice(s0)); bodyHeightPx = s0.height
-            }
+            seamY = ScrollFrameDigest.pickCleanSeamY(
+                anchor: anchor.rows, curr: digest.rows, dy: effectiveDy,
+                workTop: lockedTopFixed, workBottom: h - lockedBottomFixed
+            )
+            canvas.appendBodyStrip(from: initial, y: 0, height: seamY, width: w)
         } else if margins.matchTop < lockedTopFixed {
             lockedTopFixed = min(lockedTopFixed, margins.stickyTop)
         }
-        var totalAdded = 0
-        let activeWorkBottom = h - lockedBottomFixed
-        if let baseImg = resyncBase {
-            let baseH = min(max(0, activeWorkBottom - lockedTopFixed), maxHeightPx - lockedBottomFixed - bodyHeightPx)
-            if baseH > 0, let bs = ScrollFrameDigest.detachCopy(baseImg, rect: CGRect(x: 0, y: lockedTopFixed, width: w, height: baseH)) {
-                strips.append(bs); previewStrips.append(ScrollFrameDigest.makePreviewSlice(bs)); bodyHeightPx += bs.height; totalAdded += bs.height
+
+        let workH = max(32, h - lockedBottomFixed - lockedTopFixed)
+        let minCommitDy = max(24, min(workH * 22 / 100, 160))
+        if effectiveDy < minCommitDy && effectiveDy <= max(1, seamY - lockedTopFixed) {
+            pendingDy = effectiveDy; pendingDigest = digest.detachedCopy()
+            canvas.updateLiveTail(from: frame, topY: seamY - effectiveDy, width: w, frameHeight: h)
+            return totalHeightPxUnlocked >= maxHeightPx ? .reachedHeightLimit : .appended(addedPx: clampedDelta, totalHeightPx: totalHeightPxUnlocked)
+        }
+
+        pushUndoSnapshot(baseIsInitial: isFirstScroll)
+        commitInteriorDelta(anchorImage: anchor.image, currFrame: frame, dy: effectiveDy, currentMatchTop: margins.matchTop)
+        if let det = digest.detachedCopy() { anchorDigest = det }
+        pendingDy = 0; pendingDigest = nil
+        canvas.updateLiveTail(from: frame, topY: seamY, width: w, frameHeight: h)
+        return totalHeightPxUnlocked >= maxHeightPx ? .reachedHeightLimit : .appended(addedPx: clampedDelta, totalHeightPx: totalHeightPxUnlocked)
+    }
+
+    private func commitPendingAsKeyframe() {
+        guard pendingDy > 0, let anchor = anchorDigest, let pending = pendingDigest else { return }
+        pushUndoSnapshot(baseIsInitial: false)
+        commitInteriorDelta(anchorImage: anchor.image, currFrame: pending.image, dy: pendingDy, currentMatchTop: lockedTopFixed)
+        anchorDigest = pending; pendingDy = 0; pendingDigest = nil
+        canvas.updateLiveTail(from: pending.image, topY: seamY, width: widthPx, frameHeight: frameHeightPx)
+    }
+
+    private func commitInteriorDelta(anchorImage: CGImage, currFrame: CGImage, dy: Int, currentMatchTop: Int) {
+        let w = widthPx, workBottom = frameHeightPx - lockedBottomFixed
+        let workH = max(32, workBottom - lockedTopFixed)
+        let topFloor = max(lockedTopFixed, min(seamY - 24, currentMatchTop))
+        let topPad = (workH >= 220) ? min(48, workH / 12) : 0
+        let safeTop = max(topFloor, min(seamY - 8, min(topFloor + topPad, workBottom - dy)))
+
+        if seamY - dy >= safeTop {
+            canvas.appendBodyStrip(from: currFrame, y: seamY - dy, height: dy, width: w)
+        } else {
+            let currSpan = max(0, seamY - safeTop), anchorSpan = dy - currSpan
+            if anchorSpan > 0 {
+                canvas.appendBodyStrip(from: anchorImage, y: seamY, height: min(anchorSpan, max(0, workBottom - seamY)), width: w)
             }
+            if currSpan > 0 { canvas.appendBodyStrip(from: currFrame, y: safeTop, height: currSpan, width: w) }
         }
-        let stripTopY = max(lockedTopFixed, activeWorkBottom - dy)
-        let allowedAddH = min(activeWorkBottom - stripTopY, maxHeightPx - lockedBottomFixed - bodyHeightPx)
-        guard allowedAddH > 0 else { _ = undoStack.popLast(); return .reachedHeightLimit }
-        guard let newStrip = ScrollFrameDigest.detachCopy(frame, rect: CGRect(x: 0, y: stripTopY, width: w, height: allowedAddH)) else {
-            _ = undoStack.popLast(); return .unchanged
-        }
-        strips.append(newStrip); previewStrips.append(ScrollFrameDigest.makePreviewSlice(newStrip))
-        bodyHeightPx += newStrip.height; totalAdded += newStrip.height
-        if lockedBottomFixed > 0 {
-            let footer = ScrollFrameDigest.detachCopy(frame, rect: CGRect(x: 0, y: activeWorkBottom, width: w, height: lockedBottomFixed))
-            latestFooterStrip = footer; previewFooterStrip = footer.map { ScrollFrameDigest.makePreviewSlice($0) }
-        }
-        if let detached = ScrollFrameDigest.detachCopy(frame, rect: CGRect(x: 0, y: 0, width: w, height: h)) {
-            frontierDigest = ScrollFrameDigest(image: detached, sampler: PixelSampler(cgImage: detached), rows: digest.rows)
-        }
-        return totalHeightPxUnlocked >= maxHeightPx ? .reachedHeightLimit : .appended(addedPx: totalAdded, totalHeightPx: totalHeightPxUnlocked)
     }
 
-    public func renderFinalImage() -> CGImage? {
-        lock.lock(); defer { lock.unlock() }
-        let composed = strips.isEmpty ? firstFrame : ScrollFrameDigest.composeStrips(
-            widthPx: widthPx, totalHeightPx: totalHeightPxUnlocked, strips: strips, previewStrips: previewStrips,
-            footer: latestFooterStrip, previewFooter: previewFooterStrip, scaleDownToMaxSide: nil, usePreviewSlices: false
-        )
-        guard let img = composed else { return nil }
-        return axis == .horizontal ? ImageTransform.rotateCounterClockwise90(img) : img
+    private func applySelfResync(resyncBase: ScrollFrameDigest, currFrame: CGImage, currDigest: ScrollFrameDigest, dy: Int) -> StepResult {
+        if pendingDy > 0 { commitPendingAsKeyframe() }
+        guard let oldAnchor = anchorDigest else { return .unchanged }
+        let w = widthPx, h = frameHeightPx, workBottom = h - lockedBottomFixed
+        if canvas.isEmpty, let initial = firstFrame {
+            seamY = max(lockedTopFixed + 16, lockedTopFixed + (workBottom - lockedTopFixed) * 43 / 100)
+            canvas.appendBodyStrip(from: initial, y: 0, height: seamY, width: w)
+        }
+        pushUndoSnapshot(baseIsInitial: false)
+        let beforeTotal = totalHeightPxUnlocked
+        let takeOld = min(max(0, workBottom - seamY), max(0, maxHeightPx - canvas.bodyHeightPx - (h - seamY)))
+        if takeOld > 0 { canvas.appendBodyStrip(from: oldAnchor.image, y: seamY, height: takeOld, width: w) }
+        let takeNew = min(max(0, seamY - lockedTopFixed), max(0, maxHeightPx - canvas.bodyHeightPx - (h - seamY)))
+        if takeNew > 0 { canvas.appendBodyStrip(from: resyncBase.image, y: lockedTopFixed, height: takeNew, width: w) }
+        let takeDy = min(dy, max(0, maxHeightPx - canvas.bodyHeightPx - (h - seamY)))
+        if takeDy > 0 { commitInteriorDelta(anchorImage: resyncBase.image, currFrame: currFrame, dy: takeDy, currentMatchTop: lockedTopFixed) }
+        if let det = currDigest.detachedCopy() { anchorDigest = det }
+        canvas.updateLiveTail(from: currFrame, topY: seamY, width: w, frameHeight: h)
+        let added = max(0, totalHeightPxUnlocked - beforeTotal)
+        return totalHeightPxUnlocked >= maxHeightPx ? .reachedHeightLimit : .appended(addedPx: added, totalHeightPx: totalHeightPxUnlocked)
     }
 
-    public func renderPreviewImage(maxSidePx: Int = 680) -> CGImage? {
+    private func pushUndoSnapshot(baseIsInitial: Bool) {
+        if undoStack.count >= 12 { undoStack.removeFirst() }
+        if baseIsInitial {
+            undoStack.append(UndoSnapshot(
+                stripCount: 0, bodyHeightPx: 0, seamY: 0, lockedTopFixed: 0, lockedBottomFixed: 0,
+                anchorDigest: anchorDigest, liveTailStrip: nil, previewTailStrip: nil
+            ))
+        } else {
+            let cleanTail = anchorDigest.flatMap {
+                ScrollStripCanvas.detachCopy($0.image, rect: CGRect(x: 0, y: seamY, width: widthPx, height: frameHeightPx - seamY))
+            }
+            undoStack.append(UndoSnapshot(
+                stripCount: canvas.strips.count, bodyHeightPx: canvas.bodyHeightPx, seamY: seamY,
+                lockedTopFixed: lockedTopFixed, lockedBottomFixed: lockedBottomFixed,
+                anchorDigest: anchorDigest, liveTailStrip: cleanTail,
+                previewTailStrip: cleanTail.map { ScrollStripCanvas.makePreviewSlice($0) }
+            ))
+        }
+    }
+
+    public func renderFinalImage() -> CGImage? { render(maxSidePx: nil, usePreview: false) }
+    public func renderPreviewImage(maxSidePx: Int = 680) -> CGImage? { render(maxSidePx: maxSidePx, usePreview: true) }
+
+    private func render(maxSidePx: Int?, usePreview: Bool) -> CGImage? {
         lock.lock(); defer { lock.unlock() }
-        let composed = strips.isEmpty ? firstFrame : ScrollFrameDigest.composeStrips(
-            widthPx: widthPx, totalHeightPx: totalHeightPxUnlocked, strips: strips, previewStrips: previewStrips,
-            footer: latestFooterStrip, previewFooter: previewFooterStrip, scaleDownToMaxSide: maxSidePx, usePreviewSlices: true
-        )
+        let composed = canvas.isEmpty ? firstFrame : canvas.compose(widthPx: widthPx, scaleDownToMaxSide: maxSidePx, usePreviewSlices: usePreview)
         guard let img = composed else { return nil }
         return axis == .horizontal ? ImageTransform.rotateCounterClockwise90(img) : img
     }
