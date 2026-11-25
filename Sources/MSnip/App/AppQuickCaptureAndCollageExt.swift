@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 主控制器一键全屏抓屏与最近历史多图对比拼接扩展
+/// 主控制器一键全屏抓屏扩展
 extension AppController {
     /// 一键抓取鼠标所在显示器整屏（菜单触发时按住 ⌥ 强制直接快存；快捷键触发按偏好设定执行）
     @objc func captureCurrentFullScreen() {
@@ -81,50 +81,6 @@ extension AppController {
                     ToastHUD.show(message: "✓ 已复制当前全屏（保存文件失败）", preview: img)
                 }
             }
-        }
-    }
-
-    /// 将最近 N 张历史截图拼成横向对比图或纵向长图（tag 编码：方向 * 10 + 张数，1=横向, 2=纵向）
-    @objc func createHistoryCollage(_ sender: NSMenuItem) {
-        let dirCode = sender.tag / 10
-        let count = max(2, sender.tag % 10)
-        let direction: CollageDirection = (dirCode == 2) ? .vertical : .horizontal
-        let slice = Array(historyRing.originalEntries.prefix(count)).reversed()
-        let loaded: [(CGImage, CGFloat)] = slice.compactMap { entry in
-            guard let cg = historyRing.loadCGImage(for: entry) else { return nil }
-            return (cg, entry.scaleFactor)
-        }
-        guard loaded.count >= 2 else {
-            ToastHUD.show(message: "至少需要 2 张最近原始截图才可拼接")
-            return
-        }
-        let images = loaded.map(\.0)
-        let refScale = loaded.last?.1 ?? 2.0
-        let dirLabel = direction == .horizontal ? "横向对比拼图" : "纵向长拼图"
-        Task { @MainActor [weak self] in
-            let stitched = await Task.detached(priority: .userInitiated) {
-                ImageCollageStitcher.stitch(images: images, direction: direction)
-            }.value
-            guard let self, let stitched else {
-                ToastHUD.show(message: "拼图合成失败")
-                return
-            }
-            ClipboardAndSave.copyToClipboard(cgImage: stitched, scaleFactor: refScale)
-            ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
-            self.recordHistoryAndRefresh(img: stitched, scale: refScale, isCollage: true)
-            ToastHUD.show(
-                message: "✓ 已生成 \(loaded.count) 图\(dirLabel)并复制",
-                subtitle: "\(stitched.width) × \(stitched.height) px",
-                preview: stitched,
-                actionTitle: "贴到桌面 ›",
-                onAction: { [weak self] in
-                    let mouse = NSEvent.mouseLocation
-                    let scr = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main ?? NSScreen.screens.first
-                    if let scr {
-                        self?.pinManager.pin(cgImage: stitched, scaleFactor: refScale, topLeftOnScreen: nil, screen: scr)
-                    }
-                }
-            )
         }
     }
 }

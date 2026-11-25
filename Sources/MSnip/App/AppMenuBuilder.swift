@@ -164,27 +164,10 @@ extension AppController {
         }
 
         sub.addItem(.separator())
-        let openStudio = NSMenuItem(title: "多图拼接 / 合并 PDF 窗口…", action: #selector(openCollageStudioWindow), keyEquivalent: "")
+        let openStudio = NSMenuItem(title: "多图拼接 / 合并 PDF…", action: #selector(openCollageStudioWindow), keyEquivalent: "")
         openStudio.image = MSnipUITheme.menuSymbol("rectangle.split.2x2")
         openStudio.target = self
         sub.addItem(openStudio)
-        let origCount = historyRing.originalEntries.count
-        if origCount >= 2 {
-            let collageRoot = NSMenuItem(title: "多图对比拼接", action: nil, keyEquivalent: "")
-            collageRoot.image = MSnipUITheme.menuSymbol("rectangle.split.2x1")
-            let colSub = NSMenu()
-            let maxN = min(4, origCount)
-            for n in 2...maxN {
-                let hItem = NSMenuItem(title: "最近 \(n) 张 · 横向并排对比", action: #selector(createHistoryCollage(_:)), keyEquivalent: "")
-                hItem.tag = 10 + n; hItem.target = self
-                colSub.addItem(hItem)
-                let vItem = NSMenuItem(title: "最近 \(n) 张 · 纵向顺序长拼", action: #selector(createHistoryCollage(_:)), keyEquivalent: "")
-                vItem.tag = 20 + n; vItem.target = self
-                colSub.addItem(vItem)
-            }
-            collageRoot.submenu = colSub
-            sub.addItem(collageRoot)
-        }
         let openDir = NSMenuItem(title: "打开最近截图目录…", action: #selector(openHistoryDirectory), keyEquivalent: "")
         openDir.image = MSnipUITheme.menuSymbol("folder")
         openDir.target = self
