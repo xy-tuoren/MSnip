@@ -9,7 +9,7 @@ final class GeneralExtraControls {
     var filenameField: NSTextField?
     var filenamePreviewLabel: NSTextField?
     var pinGlowSeg: GeekSegmentControl?
-    var shelfHoverSwitch: GeekToggleSwitch?
+    var shelfTriggerSeg: GeekSegmentControl?
     var delayPresetSeg: GeekSegmentControl?
     var delaySecondsField: NSTextField?
     var fullScreenActionSeg: GeekSegmentControl?
@@ -170,14 +170,18 @@ extension TranslationSettingsWindow {
         extCard.addSubview(glowSeg)
 
         extCard.addHairline(atY: rowH * 2)
-        let shelfTip = "将鼠标推至屏幕顶部中央（或拖着文件滑到顶部中央）自动垂下暂存架，集中拖拽分享最近截图、文件与文本；关闭后仍可从菜单栏或 msnip://shelf 呼出"
-        addRowLabel("顶部边缘悬停呼出暂存架", y: rowH * 2, height: rowH, in: extCard, toolTip: shelfTip)
-        let shelfSw = GeekToggleSwitch(isOn: true)
-        shelfSw.toolTip = shelfTip
-        shelfSw.frame = NSRect(x: switchX, y: rowH * 2 + switchY, width: 38, height: switchH)
-        shelfSw.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.topShelfHoverEnabled = on } }
-        modeControls.extra.shelfHoverSwitch = shelfSw
-        extCard.addSubview(shelfSw)
+        let shelfTip = "智能防误触（推荐）：平时选应用/切标签绝不误弹，仅在拖文件滑向顶边、按住 ⌥ 顶边、右键状态栏图标或按快捷键（默认 ⌥Q）时呼出"
+        addRowLabel("顶部暂存架呼出方式", y: rowH * 2, height: rowH, in: extCard, toolTip: shelfTip)
+        let shelfSeg = GeekSegmentControl(items: TopShelfTriggerMode.allCases.map(\.title), selectedIndex: 0)
+        shelfSeg.toolTip = shelfTip
+        shelfSeg.frame = NSRect(x: rightColX, y: rowH * 2 + segY, width: rightColW, height: segH)
+        shelfSeg.onSelect = { [weak self] idx in
+            let all = TopShelfTriggerMode.allCases
+            guard all.indices.contains(idx) else { return }
+            self?.onAppConfigMutated? { $0.topShelfTriggerMode = all[idx]; $0.topShelfHoverEnabled = (all[idx] != .manualOnly) }
+        }
+        modeControls.extra.shelfTriggerSeg = shelfSeg
+        extCard.addSubview(shelfSeg)
 
         extCard.addHairline(atY: rowH * 3)
         addRowLabel("复制与保存轻提示音", y: rowH * 3, height: rowH, in: extCard)
@@ -246,7 +250,7 @@ extension TranslationSettingsWindow {
         updateFilenamePreview(template: cfg.filenameTemplate)
         let g = cfg.pinGlowStrength
         modeControls.extra.pinGlowSeg?.selectedIndex = g <= 0.01 ? 0 : (abs(g - 0.45) < 0.06 ? 1 : (abs(g - 0.80) < 0.06 ? 2 : -1))
-        modeControls.extra.shelfHoverSwitch?.isOn = cfg.topShelfHoverEnabled
+        if let sIdx = TopShelfTriggerMode.allCases.firstIndex(of: cfg.topShelfTriggerMode) { modeControls.extra.shelfTriggerSeg?.selectedIndex = sIdx }
         modeControls.extra.soundSwitch?.isOn = cfg.soundFeedbackEnabled
         refreshCaptureModesUI(with: cfg)
     }

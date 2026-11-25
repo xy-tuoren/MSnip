@@ -115,6 +115,7 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
         case (.optASD, .record):            return KeyCombo(keyCode: UInt32(kVK_ANSI_R), carbonModifiers: opt)
         case (.optASD, .delayedCapture):    return KeyCombo(keyCode: UInt32(kVK_ANSI_W), carbonModifiers: opt)
         case (.optASD, .ocr):               return KeyCombo(keyCode: UInt32(kVK_ANSI_F), carbonModifiers: opt)
+        case (.optASD, .toggleShelf):       return KeyCombo(keyCode: UInt32(kVK_ANSI_Q), carbonModifiers: opt)
 
         case (.ctrl123, .capture):           return KeyCombo(keyCode: UInt32(kVK_ANSI_1), carbonModifiers: ctrl)
         case (.ctrl123, .pin):               return KeyCombo(keyCode: UInt32(kVK_ANSI_2), carbonModifiers: ctrl)
@@ -124,6 +125,7 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
         case (.ctrl123, .record):            return KeyCombo(keyCode: UInt32(kVK_ANSI_6), carbonModifiers: ctrl)
         case (.ctrl123, .delayedCapture):    return KeyCombo(keyCode: UInt32(kVK_ANSI_7), carbonModifiers: ctrl)
         case (.ctrl123, .ocr):               return KeyCombo(keyCode: UInt32(kVK_ANSI_8), carbonModifiers: ctrl)
+        case (.ctrl123, .toggleShelf):       return KeyCombo(keyCode: UInt32(kVK_ANSI_9), carbonModifiers: ctrl)
 
         case (.fnKeys, .capture):           return KeyCombo(keyCode: UInt32(kVK_F1), carbonModifiers: 0)
         case (.fnKeys, .pin):               return KeyCombo(keyCode: UInt32(kVK_F2), carbonModifiers: 0)
@@ -133,6 +135,7 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
         case (.fnKeys, .record):            return KeyCombo(keyCode: UInt32(kVK_F6), carbonModifiers: 0)
         case (.fnKeys, .delayedCapture):    return KeyCombo(keyCode: UInt32(kVK_F7), carbonModifiers: 0)
         case (.fnKeys, .ocr):               return KeyCombo(keyCode: UInt32(kVK_F8), carbonModifiers: 0)
+        case (.fnKeys, .toggleShelf):       return KeyCombo(keyCode: UInt32(kVK_F9), carbonModifiers: 0)
 
         case (.ctrlCmd, .capture):           return KeyCombo(keyCode: UInt32(kVK_ANSI_A), carbonModifiers: cc)
         case (.ctrlCmd, .pin):               return KeyCombo(keyCode: UInt32(kVK_ANSI_T), carbonModifiers: cc)
@@ -142,6 +145,7 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
         case (.ctrlCmd, .record):            return KeyCombo(keyCode: UInt32(kVK_ANSI_R), carbonModifiers: cc)
         case (.ctrlCmd, .delayedCapture):    return KeyCombo(keyCode: UInt32(kVK_ANSI_W), carbonModifiers: cc)
         case (.ctrlCmd, .ocr):               return KeyCombo(keyCode: UInt32(kVK_ANSI_G), carbonModifiers: cc)
+        case (.ctrlCmd, .toggleShelf):       return KeyCombo(keyCode: UInt32(kVK_ANSI_K), carbonModifiers: cc)
 
         default:                     return nil
         }

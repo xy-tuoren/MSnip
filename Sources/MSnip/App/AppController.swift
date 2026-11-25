@@ -7,6 +7,7 @@ import MSnipCore
 @MainActor
 final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var statusItem: NSStatusItem!
+    var statusMenu: NSMenu?
     var axMenuItem: NSMenuItem?
     var permWarnSepItem: NSMenuItem?
     var loginMenuItem: NSMenuItem?
@@ -55,7 +56,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = statusItem.button {
             button.image = MSnipUITheme.menuBarIcon(recording: false)
             button.imagePosition = .imageOnly
-            button.toolTip = "MSnip（麦截）— 轻量截图、长截图、动图录制、识字与贴图"
+            button.toolTip = nil
+            button.setAccessibilityLabel("MSnip（麦截）")
+            button.target = self
+            button.action = #selector(handleStatusBarClick(_:))
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
         }
         rebuildMenu()
     }
@@ -65,40 +70,23 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func setupCallbacks() {
-        hotKeyManager.onTrigger = { [weak self] action in
-            Task { @MainActor in self?.handleGlobalHotKey(action) }
-        }
-        pinManager.onCountChanged = { [weak self] _ in
-            self?.rebuildMenu()
-        }
+        hotKeyManager.onTrigger = { [weak self] action in Task { @MainActor in self?.handleGlobalHotKey(action) } }
+        pinManager.onCountChanged = { [weak self] _ in self?.rebuildMenu() }
         permissionGuide.onPermissionChanged = { [weak self] in
             guard let self else { return }
-            self.hotKeyManager.apply(config: self.config)
-            self.rebuildMenu()
+            self.hotKeyManager.apply(config: self.config); self.rebuildMenu()
         }
         pinManager.onSaveImage = { [weak self] img, scale in self?.performInteractiveSave(img: img, scale: scale) }
         pinManager.onQuickSaveImage = { [weak self] img, scale in self?.performQuickSave(img: img, scale: scale) }
         pinManager.onExtractOCR = { [weak self] img, scale, scr in self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr) }
         pinManager.onTranslateImage = { [weak self] img, scale, scr in self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: true) }
         pinManager.onGlowStrengthChanged = { [weak self] g in guard let self else { return }; self.config.pinGlowStrength = g; self.config.save() }
-        ocrController.ocrAutoCopyProvider = { [weak self] in
-            self?.config.ocrAutoCopy ?? true
-        }
-        ocrController.onPinImage = { [weak self] img, scale, scr in
-            self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
-        }
-        ocrController.onRecognizeLatex = { [weak self] img, scale, scr in
-            self?.latexController.present(cgImage: img, scaleFactor: scale, screen: scr)
-        }
-        ocrController.onOpenSettings = { [weak self] in
-            self?.translationSettings.show(tab: .translation)
-        }
-        latexController.onPinImage = { [weak self] img, scale, scr in
-            self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
-        }
-        latexController.onOpenMainAISettings = { [weak self] in
-            self?.translationSettings.show(tab: .translation)
-        }
+        ocrController.ocrAutoCopyProvider = { [weak self] in self?.config.ocrAutoCopy ?? true }
+        ocrController.onPinImage = { [weak self] img, scale, scr in self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr) }
+        ocrController.onRecognizeLatex = { [weak self] img, scale, scr in self?.latexController.present(cgImage: img, scaleFactor: scale, screen: scr) }
+        ocrController.onOpenSettings = { [weak self] in self?.translationSettings.show(tab: .translation) }
+        latexController.onPinImage = { [weak self] img, scale, scr in self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr) }
+        latexController.onOpenMainAISettings = { [weak self] in self?.translationSettings.show(tab: .translation) }
         translationSettings.appConfigProvider = { [weak self] in
             self?.config ?? AppConfig()
         }
@@ -121,7 +109,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if abs(self.config.pinGlowStrength - oldGlow) > 0.001 {
                 self.pinManager.applyGlowStrengthToAll(self.config.pinGlowStrength)
             }
-            self.shelfController.hoverTriggerEnabled = self.config.topShelfHoverEnabled
+            self.shelfController.triggerMode = self.config.topShelfTriggerMode
             self.hotKeyManager.apply(config: self.config)
             self.rebuildMenu()
         }

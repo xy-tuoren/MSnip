@@ -171,6 +171,14 @@ func testV031Features() {
     let safeF = ShelfTriggerGeometry.safeKeepRect(panelFrame: panelF, screenFrame: scr)
     check(ShelfTriggerGeometry.containsInclusive(safeF, point: CGPoint(x: 756, y: 982)),
           "展开后的安全保持区必须向上贯通至顶边，防止刚弹出即被菜单栏间隙误收")
+    let wheelRight = ShelfTriggerGeometry.nextHorizontalScrollX(currentX: 0, maxX: 600, deltaX: 0, deltaY: -3, hasPreciseDeltas: false)
+    let wheelClamp = ShelfTriggerGeometry.nextHorizontalScrollX(currentX: 580, maxX: 600, deltaX: 0, deltaY: -10, hasPreciseDeltas: false)
+    check(wheelRight > 40 && wheelClamp == 600, "普通鼠标上下滚轮应平滑映射为横向滚动并精确钳位，实际: \(wheelRight), \(wheelClamp)")
+    check(HotKeyPreset.optASD.defaultCombo(for: .toggleShelf)?.displayString == "⌥Q"
+          && HotKeyPreset.ctrl123.defaultCombo(for: .toggleShelf)?.displayString == "⌃9"
+          && HotKeyPreset.fnKeys.defaultCombo(for: .toggleShelf)?.displayString == "F9"
+          && HotKeyPreset.ctrlCmd.defaultCombo(for: .toggleShelf)?.displayString == "⌃⌘K",
+          "4 套快捷键预设应为顶部暂存架分配零冲突默认键位")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

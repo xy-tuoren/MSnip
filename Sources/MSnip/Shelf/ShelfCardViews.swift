@@ -228,3 +228,50 @@ final class ShelfDropContainerView: NSView {
         ctx.addPath(path); ctx.strokePath()
     }
 }
+
+/// 支持「普通鼠标上下滚轮直接左右滚动 + 触控板双指横向轻扫 + 一键平滑翻页」的横向暂存架滚动容器
+final class ShelfHorizontalScrollView: NSScrollView {
+    var onScrollOffsetChanged: (() -> Void)?
+
+    override func scrollWheel(with event: NSEvent) {
+        guard let doc = documentView else { super.scrollWheel(with: event); return }
+        let maxX = max(0, doc.frame.width - contentView.bounds.width)
+        guard maxX > 0.5 else { return }
+
+        // 触控板原生双指横向滑动优先走系统惯性滚动，普通鼠标上下滚轮直接丝滑映射为左右滚动
+        if event.hasPreciseScrollingDeltas && abs(event.scrollingDeltaX) > abs(event.scrollingDeltaY) {
+            super.scrollWheel(with: event)
+            onScrollOffsetChanged?()
+            return
+        }
+        let curX = contentView.bounds.origin.x
+        let nextX = ShelfTriggerGeometry.nextHorizontalScrollX(
+            currentX: curX,
+            maxX: maxX,
+            deltaX: event.scrollingDeltaX,
+            deltaY: event.scrollingDeltaY,
+            hasPreciseDeltas: event.hasPreciseScrollingDeltas
+        )
+        contentView.scroll(to: NSPoint(x: nextX, y: 0))
+        reflectScrolledClipView(contentView)
+        onScrollOffsetChanged?()
+    }
+
+    func scrollBy(deltaX: CGFloat) {
+        guard let doc = documentView else { return }
+        let maxX = max(0, doc.frame.width - contentView.bounds.width)
+        guard maxX > 0.5 else { return }
+        let targetX = min(max(0, contentView.bounds.origin.x + deltaX), maxX)
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.20
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            contentView.animator().setBoundsOrigin(NSPoint(x: targetX, y: 0))
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.reflectScrolledClipView(self.contentView)
+                self.onScrollOffsetChanged?()
+            }
+        })
+    }
+}

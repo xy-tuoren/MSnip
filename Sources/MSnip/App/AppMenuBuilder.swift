@@ -92,23 +92,13 @@ extension AppController {
             menu.addItem(makeHotKeyItem(title: visTitle, symbol: pinManager.arePinsHidden ? "eye" : "eye.slash", action: #selector(togglePinsVisibility), slot: .togglePins))
         }
         if pinManager.clickThroughCount > 0 {
-            let unghostItem = NSMenuItem(
-                title: "恢复穿透贴图 (\(pinManager.clickThroughCount))",
-                action: #selector(restoreClickThroughPins),
-                keyEquivalent: ""
-            )
-            unghostItem.image = MSnipUITheme.menuSymbol("hand.point.up.left")
-            unghostItem.target = self
+            let unghostItem = NSMenuItem(title: "恢复穿透贴图 (\(pinManager.clickThroughCount))", action: #selector(restoreClickThroughPins), keyEquivalent: "")
+            unghostItem.image = MSnipUITheme.menuSymbol("hand.point.up.left"); unghostItem.target = self
             menu.addItem(unghostItem)
         }
         if pinManager.count > 0 {
-            let clearItem = NSMenuItem(
-                title: "关闭全部贴图 (\(pinManager.count))",
-                action: #selector(closeAllPins),
-                keyEquivalent: ""
-            )
-            clearItem.image = MSnipUITheme.menuSymbol("xmark.circle")
-            clearItem.target = self
+            let clearItem = NSMenuItem(title: "关闭全部贴图 (\(pinManager.count))", action: #selector(closeAllPins), keyEquivalent: "")
+            clearItem.image = MSnipUITheme.menuSymbol("xmark.circle"); clearItem.target = self
             menu.addItem(clearItem)
         }
 
@@ -140,7 +130,8 @@ extension AppController {
         menu.addItem(quitItem)
 
         menu.delegate = self
-        statusItem.menu = menu
+        statusMenu = menu
+        if isStatusMenuOpen { statusItem.menu = menu }
     }
 
     private func populateHistorySubmenu(_ sub: NSMenu) {
@@ -209,7 +200,7 @@ extension AppController {
 
     func menuWillOpen(_ menu: NSMenu) {
         guard menu !== historySubmenu else { return }
-        if menu === statusItem.menu { isStatusMenuOpen = true }
+        if menu === statusMenu { isStatusMenuOpen = true }
         let screenOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
         axMenuItem?.isHidden = screenOK
         permWarnSepItem?.isHidden = screenOK
@@ -218,7 +209,10 @@ extension AppController {
     }
 
     func menuDidClose(_ menu: NSMenu) {
-        if menu === statusItem.menu { isStatusMenuOpen = false }
+        if menu === statusMenu {
+            isStatusMenuOpen = false
+            statusItem.menu = nil
+        }
     }
 
     /// 退出自身状态栏菜单模态追踪循环（`NSEventTrackingRunLoopMode`）并待菜单淡出后再执行抓屏，彻底避免自锁与截进自身菜单

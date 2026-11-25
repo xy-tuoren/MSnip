@@ -125,6 +125,21 @@ public struct ShelfCustomItem: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
+/// 顶部暂存架边缘呼出模式（默认智能防误触：仅拖文件到顶边或按住 ⌥ 顶边时展开，避免切标签页/选应用误触）
+public enum TopShelfTriggerMode: String, CaseIterable, Codable, Sendable {
+    case smartDragAndOption = "smartDragAndOption"
+    case topEdgeHover       = "topEdgeHover"
+    case manualOnly         = "manualOnly"
+
+    public var title: String {
+        switch self {
+        case .smartDragAndOption: return "智能防误触"
+        case .topEdgeHover:       return "顶边悬停"
+        case .manualOnly:         return "仅热键"
+        }
+    }
+}
+
 /// 顶部暂存架边缘命中与防误收安全区纯几何计算（AppKit 左下角原点坐标系，严格兼容 `pt.y == screenFrame.maxY` 顶边贴边）
 public enum ShelfTriggerGeometry {
     /// 含闭区间边界校验判断光标是否落入目标屏幕（避免 `CGRect.contains` 在 `pt.y == maxY` 顶边处返回 false）
@@ -137,7 +152,7 @@ public enum ShelfTriggerGeometry {
     public static func hitsTopCenterTrigger(point: CGPoint, screenFrame: CGRect, isDragging: Bool) -> Bool {
         guard containsInclusive(screenFrame, point: point) else { return false }
         let topDist = screenFrame.maxY - point.y
-        let topThreshold: CGFloat = isDragging ? 18.0 : 8.0
+        let topThreshold: CGFloat = isDragging ? 22.0 : 8.0
         let halfBand = max(220.0, screenFrame.width * 0.16)
         return topDist <= topThreshold && abs(point.x - screenFrame.midX) <= halfBand
     }
@@ -149,5 +164,23 @@ public enum ShelfTriggerGeometry {
         let minY = panelFrame.minY - 24.0
         let maxY = max(panelFrame.maxY + 24.0, screenFrame.maxY + 4.0)
         return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+
+    /// 将普通鼠标上下滚轮或触控板双指滚动统一换算为横向滚动条目标偏移量 `X`
+    public static func nextHorizontalScrollX(
+        currentX: CGFloat,
+        maxX: CGFloat,
+        deltaX: CGFloat,
+        deltaY: CGFloat,
+        hasPreciseDeltas: Bool
+    ) -> CGFloat {
+        guard maxX > 0 else { return 0 }
+        let rawStep: CGFloat
+        if abs(deltaX) > abs(deltaY) {
+            rawStep = -deltaX * (hasPreciseDeltas ? 1.0 : 18.0)
+        } else {
+            rawStep = -deltaY * (hasPreciseDeltas ? 1.0 : 22.0)
+        }
+        return min(max(0, currentX + rawStep), maxX)
     }
 }

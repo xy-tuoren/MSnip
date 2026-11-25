@@ -35,6 +35,7 @@ struct AppConfig: Codable {
     var fullScreenCaptureAction: FullScreenCaptureAction = .copy
     var pinGlowStrength: CGFloat = 0.45
     var topShelfHoverEnabled: Bool = true
+    var topShelfTriggerMode: TopShelfTriggerMode = .smartDragAndOption
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
@@ -44,7 +45,7 @@ struct AppConfig: Codable {
         case ocrAutoOpenDualPane, ocrPresentation, translateAutoOpenDualPane, ocrAutoCopy
         case exportImageFormat, exportAt1xScale, appearanceMode, terminalPasteAdaptEnabled
         case filenameTemplate, soundFeedbackEnabled, backdropAspectRatio, backdropWatermark
-        case delayedCaptureSeconds, fullScreenCaptureAction, pinGlowStrength, topShelfHoverEnabled
+        case delayedCaptureSeconds, fullScreenCaptureAction, pinGlowStrength, topShelfHoverEnabled, topShelfTriggerMode
     }
 
     init() {}
@@ -97,7 +98,10 @@ struct AppConfig: Codable {
         fullScreenCaptureAction = try c.decodeIfPresent(FullScreenCaptureAction.self, forKey: .fullScreenCaptureAction) ?? .copy
         let rawGlow = try c.decodeIfPresent(CGFloat.self, forKey: .pinGlowStrength) ?? 0.45
         pinGlowStrength = min(1.0, max(0.0, rawGlow))
-        topShelfHoverEnabled = try c.decodeIfPresent(Bool.self, forKey: .topShelfHoverEnabled) ?? true
+        let legacyShelfHover = try c.decodeIfPresent(Bool.self, forKey: .topShelfHoverEnabled) ?? true
+        topShelfTriggerMode = (try? c.decodeIfPresent(TopShelfTriggerMode.self, forKey: .topShelfTriggerMode))
+            ?? (legacyShelfHover ? .smartDragAndOption : .manualOnly)
+        topShelfHoverEnabled = (topShelfTriggerMode != .manualOnly)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -132,7 +136,8 @@ struct AppConfig: Codable {
         try c.encode(DelayedCaptureSettings.clampedSeconds(delayedCaptureSeconds), forKey: .delayedCaptureSeconds)
         try c.encode(fullScreenCaptureAction, forKey: .fullScreenCaptureAction)
         try c.encode(min(1.0, max(0.0, pinGlowStrength)), forKey: .pinGlowStrength)
-        try c.encode(topShelfHoverEnabled, forKey: .topShelfHoverEnabled)
+        try c.encode(topShelfTriggerMode != .manualOnly, forKey: .topShelfHoverEnabled)
+        try c.encode(topShelfTriggerMode, forKey: .topShelfTriggerMode)
     }
 
     func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {

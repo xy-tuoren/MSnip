@@ -6,7 +6,7 @@ import MSnipCore
 /// 命令行/URL Scheme 直达路由、顶部暂存架联动与后台静默 OCR 直拷扩展
 extension AppController {
     func setupShelfAndRemoteIPC() {
-        shelfController.hoverTriggerEnabled = config.topShelfHoverEnabled
+        shelfController.triggerMode = config.topShelfTriggerMode
         shelfController.isSuppressed = { [weak self] in
             guard let self else { return true }
             return self.activeSession != nil || self.activeLongShot != nil
@@ -92,6 +92,18 @@ extension AppController {
 
     @objc func toggleTopShelf() {
         shelfController.toggle()
+    }
+
+    /// 顶部菜单栏图标点击分发：左键正常展开菜单，右键（或按住 ⌥ 左键）一键开关顶部暂存架
+    @objc func handleStatusBarClick(_ sender: Any?) {
+        let ev = NSApp.currentEvent
+        if ev?.type == .rightMouseUp || ev?.modifierFlags.contains(.option) == true {
+            toggleTopShelf()
+            return
+        }
+        guard let menu = statusMenu else { return }
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
     }
 
     /// 快捷识字静默直拷：关闭冻结层后纯后台离线 Vision 识字并直接写入剪贴板，不弹窗打断心流

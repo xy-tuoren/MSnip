@@ -21,27 +21,23 @@ final class ShelfPanelController {
     private var panel: NSPanel?
     private var effectView: NSVisualEffectView?
     private var dropContainer: ShelfDropContainerView?
-    private var scrollView: NSScrollView?
+    private var scrollView: ShelfHorizontalScrollView?
     private var stripView: GeekFlippedView?
     private var titleLabel: NSTextField?
     private var clipBtn: GeekButton?
     private var closeBtn: GeekButton?
     private var pinBtn: GeekButton?
     private var collageBtn: GeekButton?
+    private var leftNavBtn: GeekButton?
+    private var rightNavBtn: GeekButton?
     private var emptyLabel: NSTextField?
 
     private var isPinnedOpen = false
     private(set) var isVisible = false
     private var activeScreenFrame: NSRect?
 
-    var hoverTriggerEnabled: Bool {
-        get { edgeWatcher.isEnabled }
-        set { edgeWatcher.isEnabled = newValue }
-    }
-    var isSuppressed: (() -> Bool)? {
-        get { edgeWatcher.isSuppressed }
-        set { edgeWatcher.isSuppressed = newValue }
-    }
+    var triggerMode: TopShelfTriggerMode { get { edgeWatcher.triggerMode } set { edgeWatcher.triggerMode = newValue } }
+    var isSuppressed: (() -> Bool)? { get { edgeWatcher.isSuppressed } set { edgeWatcher.isSuppressed = newValue } }
 
     init(historyRing: CaptureHistoryRing) {
         self.historyRing = historyRing
@@ -69,13 +65,9 @@ final class ShelfPanelController {
         reloadCards()
 
         if !isVisible {
-            panel.alphaValue = 0.0
-            panel.orderFrontRegardless()
-            isVisible = true
+            panel.alphaValue = 0.0; panel.orderFrontRegardless(); isVisible = true
             NSAnimationContext.runAnimationGroup { ctx in ctx.duration = 0.16; panel.animator().alphaValue = 1.0 }
-        } else {
-            panel.orderFrontRegardless()
-        }
+        } else { panel.orderFrontRegardless() }
         edgeWatcher.startAutoHideWatch()
     }
 
@@ -152,20 +144,29 @@ final class ShelfPanelController {
         closeBtn.onClick = { [weak self] in self?.isPinnedOpen = false; self?.hide() }
         drop.addSubview(closeBtn)
 
-        let sv = NSScrollView(frame: .zero)
+        let sv = ShelfHorizontalScrollView(frame: .zero)
         sv.drawsBackground = false; sv.borderType = .noBorder
         sv.hasHorizontalScroller = true; sv.hasVerticalScroller = false; sv.autohidesScrollers = true
+        sv.onScrollOffsetChanged = { [weak self] in self?.updateScrollNavButtons() }
         let strip = GeekFlippedView(frame: .zero)
         sv.documentView = strip; drop.addSubview(sv)
 
-        let empty = NSTextField(labelWithString: "暂无条目 · 截图会自动收纳于此，或直接将文件 / 文字拖到这里挂架")
+        let lBtn = GeekButton(title: "‹", style: .subtle)
+        lBtn.onClick = { [weak self] in self?.scrollView?.scrollBy(deltaX: -300) }
+        drop.addSubview(lBtn)
+
+        let rBtn = GeekButton(title: "›", style: .subtle)
+        rBtn.onClick = { [weak self] in self?.scrollView?.scrollBy(deltaX: 300) }
+        drop.addSubview(rBtn)
+
+        let empty = NSTextField(labelWithString: "暂无条目 · 截图会自动收纳于此，或直接拖入文件 / 文字挂架（支持滚轮左右翻页）")
         empty.font = .systemFont(ofSize: 12.0, weight: .regular); empty.alignment = .center
         drop.addSubview(empty)
 
         p.contentView = ev
         panel = p; effectView = ev; dropContainer = drop; scrollView = sv; stripView = strip
         titleLabel = title; self.clipBtn = clipBtn; self.closeBtn = closeBtn
-        pinBtn = pBtn; collageBtn = colBtn; emptyLabel = empty
+        pinBtn = pBtn; collageBtn = colBtn; leftNavBtn = lBtn; rightNavBtn = rBtn; emptyLabel = empty
     }
 
     private func layoutSubviews(width w: CGFloat, height h: CGFloat) {
@@ -177,7 +178,17 @@ final class ShelfPanelController {
         collageBtn?.frame = NSRect(x: w - 170, y: 6, width: 66, height: 22)
         clipBtn?.frame = NSRect(x: w - 246, y: 6, width: 70, height: 22)
         scrollView?.frame = NSRect(x: 10, y: 34, width: w - 20, height: h - 42)
+        leftNavBtn?.frame = NSRect(x: 12, y: 72, width: 22, height: 28)
+        rightNavBtn?.frame = NSRect(x: w - 34, y: 72, width: 22, height: 28)
         emptyLabel?.frame = NSRect(x: 20, y: 74, width: w - 40, height: 20)
+    }
+
+    private func updateScrollNavButtons() {
+        guard let sv = scrollView, let doc = sv.documentView else { return }
+        let maxX = max(0, doc.frame.width - sv.contentView.bounds.width)
+        let curX = sv.contentView.bounds.origin.x
+        leftNavBtn?.isHidden = maxX <= 4 || curX <= 4
+        rightNavBtn?.isHidden = maxX <= 4 || curX >= maxX - 4
     }
 
     private func applyTheme() {
@@ -205,6 +216,7 @@ final class ShelfPanelController {
             x += ShelfCardView.cardSize.width + 8
         }
         stripView.frame = NSRect(x: 0, y: 0, width: max(scrollView.bounds.width, x), height: scrollView.bounds.height)
+        updateScrollNavButtons()
     }
 
     private func buildCardView(for item: ShelfCardItem, timeFormatter: DateFormatter) -> ShelfCardView {
@@ -244,53 +256,41 @@ final class ShelfPanelController {
             if c.kind == .file, let p = c.filePath {
                 let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([URL(fileURLWithPath: p) as NSURL])
                 ToastHUD.show(message: "已复制文件：\(c.title)")
-            } else if let txt = c.textContent {
-                ClipboardAndSave.copyText(txt); ToastHUD.show(message: "已复制暂存文本 (\(txt.count) 字)")
-            }
+            } else if let txt = c.textContent { ClipboardAndSave.copyText(txt); ToastHUD.show(message: "已复制暂存文本 (\(txt.count) 字)") }
         }
     }
-
     private func handlePin(_ item: ShelfCardItem) {
         switch item {
         case .history(let e): onPinHistory?(e)
         case .custom(let c):
             if c.kind == .text, let txt = c.textContent { onPinText?(txt) }
             else if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p),
-                    let entry = historyRing.record(cgImage: cg, scaleFactor: NSScreen.main?.backingScaleFactor ?? 2.0) { onPinHistory?(entry) }
+                    let e = historyRing.record(cgImage: cg, scaleFactor: NSScreen.main?.backingScaleFactor ?? 2.0) { onPinHistory?(e) }
         }
     }
-
     private func handleOCR(_ item: ShelfCardItem) {
         switch item {
         case .history(let e): onOCRHistory?(e)
         case .custom(let c):
             if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p),
-               let entry = historyRing.record(cgImage: cg, scaleFactor: 2.0) { onOCRHistory?(entry) }
+               let e = historyRing.record(cgImage: cg, scaleFactor: 2.0) { onOCRHistory?(e) }
         }
     }
-
     private func handleRemove(_ item: ShelfCardItem) {
-        switch item {
-        case .history: ToastHUD.show(message: "截图条目自动随历史环滚动清理，拖入条目可单独移除")
-        case .custom(let c): store.removeCustom(id: c.id); reloadCards()
-        }
+        if case .custom(let c) = item { store.removeCustom(id: c.id); reloadCards() }
+        else { ToastHUD.show(message: "截图条目自动随历史环滚动清理，拖入条目可单独移除") }
     }
-
     private func pasteboardWriter(for item: ShelfCardItem) -> NSPasteboardWriting? {
         switch item {
         case .history(let e): return historyRing.fileURL(for: e) as NSURL?
         case .custom(let c): return c.kind == .file ? c.filePath.map { URL(fileURLWithPath: $0) as NSURL } : c.textContent as NSString?
         }
     }
-
     private func loadImage(at path: String) -> CGImage? {
-        guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(src, 0, nil)
+        CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
     }
-
     private func screenUnderCursor() -> NSScreen {
         let pt = NSEvent.mouseLocation
-        return NSScreen.screens.first(where: { ShelfTriggerGeometry.containsInclusive($0.frame, point: pt) })
-            ?? NSScreen.main ?? NSScreen.screens[0]
+        return NSScreen.screens.first(where: { ShelfTriggerGeometry.containsInclusive($0.frame, point: pt) }) ?? NSScreen.main ?? NSScreen.screens[0]
     }
 }

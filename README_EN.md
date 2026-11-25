@@ -78,7 +78,7 @@ MSnip is built strictly on Apple's system frameworks so speed and efficiency sho
 - **Post-Edit Handles, `⌘C/⌘V/⌘D` Cloning & 100-Step Undo**: Select any shape to adjust corners, endpoints, or step tails; press **`⌘C` / `⌘V`** to copy-paste or **`⌘D`** to duplicate in place (duplicating step badge `①` automatically increments to `②`), backed by a 100-step Copy-on-Write Undo/Redo stack.
 
 ### 3. Desktop Pin Workflow, Top Shelf & Multi-Image Comparison
-- **Top-Edge Drop Shelf (MSnip Shelf)**: Push your cursor (or drag a file) to the top center edge of your display to reveal a native frosted-glass shelf that collects recent captures plus any dropped files, images, or text snippets — click to copy, drag directly into Slack / Cursor / Finder / browsers, or pin open.
+- **Top-Edge Drop Shelf (MSnip Shelf)**: **Zero-misfire smart trigger by default** (never interrupts switching tabs or clicking menu bar apps — opens when dragging a real file/image to the top edge, holding `⌥` at the top edge, right-clicking the menu bar icon, or pressing `⌥Q`). Supports **vertical mouse-wheel horizontal scrolling**, click-to-copy, drag-out sharing, `+ Clipboard`, side-by-side compare, and pin-open.
 - **Soft Luminous Outer Glow**: Subtle white halo at rest (clear contrast on both dark and light wallpapers) transitioning smoothly to a soft blue glow on hover or focus; adjust live anytime with `⌥ + Scroll` or in Settings.
 - **8-Way Clean Edge & Corner Resizing**: Completely uncluttered at rest; hovering any of the 4 corners or 4 edges reveals subtle directional indicators with native macOS resize cursors and aspect-locked scaling.
 - **Multi-Image Comparison Collage & Auto-Fit**: Stitch the latest 2–4 original captures side-by-side or vertically right from *Recent Captures* (previous collages are automatically tagged and skipped to prevent recursive nesting). Oversized collages and long captures auto-scale to fit inside screen bounds while keeping 100% full-resolution pixels underneath.
@@ -150,6 +150,7 @@ brew install --cask msnip
 | **Region Recording (GIF/MP4)** | `⌥R` | `⌃6` | `F6` | `⌃⌘R` |
 | **Delayed Capture** | `⌥W` | `⌃7` | `F7` | `⌃⌘W` |
 | **Quick OCR** | `⌥F` | `⌃8` | `F8` | `⌃⌘G` |
+| **Top Drop Shelf** | `⌥Q` | `⌃9` | `F9` | `⌃⌘K` |
 | LaTeX / Toggle Pins / Repeat Last Area | Optional | Optional | Optional | Optional |
 
 <details>
