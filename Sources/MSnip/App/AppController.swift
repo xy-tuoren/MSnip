@@ -22,6 +22,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let translationSettings = TranslationSettingsWindow()
     let permissionGuide = PermissionGuideController()
     let delayedCapture = DelayedCaptureController()
+    let collageStudio = CollageStudioController()
     lazy var shelfController = ShelfPanelController(historyRing: historyRing)
     var activeSession: OverlaySession?
     var activeLongShot: LongShotSession?

@@ -230,6 +230,21 @@ func testV031Features() {
     let compactW = ShelfTriggerGeometry.dockPanelWidth(itemCount: 2, maxWidth: 1140)
     let fullW = ShelfTriggerGeometry.dockPanelWidth(itemCount: 18, maxWidth: 1140)
     check(compactW < 400 && fullW == 1140, "实用暂存条应按条目数自适应宽窄并上限钳位，实际: \(compactW), \(fullW)")
+
+    // 14) 多图网格拼图、透明底与原生多页 PDF 合并导出
+    let c1 = makeSolidTestImage(w: 200, h: 120, r: 0.9, g: 0.2, b: 0.2)
+    let c2 = makeSolidTestImage(w: 200, h: 120, r: 0.2, g: 0.7, b: 0.3)
+    let c3 = makeSolidTestImage(w: 200, h: 120, r: 0.2, g: 0.4, b: 0.9)
+    let gridOpts = CollageOptions(layout: .grid, gridColumns: 2, gapPx: 16, padPx: 20, cornerRadiusPx: 10, background: .transparent)
+    if let gridImg = ImageCollageStitcher.stitch(images: [c1, c2, c3], options: gridOpts) {
+        check(gridImg.width == 20 * 2 + 200 * 2 + 16 && gridImg.height > 240, "2 列网格拼图尺寸应精准对齐，实际: \(gridImg.width)x\(gridImg.height)")
+    } else { check(false, "网格透明底拼图不应失败") }
+    let pdfURL = FileManager.default.temporaryDirectory.appendingPathComponent("msnip-test-merge-\(UUID().uuidString).pdf")
+    defer { try? FileManager.default.removeItem(at: pdfURL) }
+    let pdfOK = ImageCollageStitcher.exportMultiPagePDF(images: [c1, c2, c3], padPx: 16, background: .white, to: pdfURL)
+    let pdfBytes = (try? Data(contentsOf: pdfURL)) ?? Data()
+    check(pdfOK && pdfBytes.count > 200 && String(data: pdfBytes.prefix(5), encoding: .ascii) == "%PDF-",
+          "多图合并 PDF 应输出有效原生 PDF 文件，字节数: \(pdfBytes.count)")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

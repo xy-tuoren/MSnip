@@ -164,6 +164,10 @@ extension AppController {
         }
 
         sub.addItem(.separator())
+        let openStudio = NSMenuItem(title: "多图拼接 / 合并 PDF 窗口…", action: #selector(openCollageStudioWindow), keyEquivalent: "")
+        openStudio.image = MSnipUITheme.menuSymbol("rectangle.split.2x2")
+        openStudio.target = self
+        sub.addItem(openStudio)
         let origCount = historyRing.originalEntries.count
         if origCount >= 2 {
             let collageRoot = NSMenuItem(title: "多图对比拼接", action: nil, keyEquivalent: "")

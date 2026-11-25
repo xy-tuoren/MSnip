@@ -238,4 +238,33 @@ extension ShelfPanelController {
         let pt = NSEvent.mouseLocation
         return NSScreen.screens.first(where: { ShelfTriggerGeometry.containsInclusive($0.frame, point: pt) }) ?? NSScreen.main ?? NSScreen.screens[0]
     }
+
+    /// 将当前 ⌘ 勾选的条目（或默认最近 2 张截图）送入多图拼接与合并 PDF 工作室
+    func triggerCollageStudio() {
+        let allItems = store.mergedItems(historyRing: historyRing)
+        let byID = Dictionary(uniqueKeysWithValues: allItems.map { ($0.id, $0) })
+        let chosen = selectedItemIDs.compactMap { byID[$0] }
+        selectedItemIDs.removeAll()
+        hide(manual: true)
+
+        if chosen.isEmpty {
+            onOpenCollageStudio?([], [])
+            return
+        }
+        var imgs: [(String, CGImage, CGFloat)] = []
+        let tf = DateFormatter(); tf.dateFormat = "HH:mm:ss"
+        for it in chosen {
+            switch it {
+            case .history(let e):
+                if let cg = historyRing.loadCGImage(for: e) { imgs.append(("截图 \(tf.string(from: e.createdAt))", cg, e.scaleFactor)) }
+            case .custom(let c):
+                if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p) {
+                    imgs.append((c.title, cg, 2.0))
+                } else if c.kind == .text, let txt = c.textContent, let cg = TextPinCardRenderer.render(text: txt, scale: 2.0) {
+                    imgs.append((c.title, cg, 2.0))
+                }
+            }
+        }
+        onOpenCollageStudio?([], imgs)
+    }
 }

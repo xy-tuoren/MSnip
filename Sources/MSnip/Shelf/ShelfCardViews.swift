@@ -18,12 +18,14 @@ final class ShelfCardView: NSView, NSDraggingSource {
     private let canOCR: Bool
 
     var onHoverStart: ((ShelfCardView) -> Void)?
+    var onToggleSelect: ((ShelfCardItem) -> Void)?
     var onCopy: ((ShelfCardItem) -> Void)?
     var onPin: ((ShelfCardItem) -> Void)?
     var onOCR: ((ShelfCardItem) -> Void)?
     var onRemove: ((ShelfCardItem) -> Void)?
     var dragWriterProvider: ((ShelfCardItem) -> NSPasteboardWriting?)?
 
+    var selectionOrder: Int? { didSet { if oldValue != selectionOrder { needsDisplay = true } } }
     private var hovered = false
     private var hoveredBtn: Int? // 0 = pin, 1 = ocr, 2 = remove
     private var dragStartPoint: NSPoint?
@@ -40,7 +42,7 @@ final class ShelfCardView: NSView, NSDraggingSource {
         self.textSnippet = textSnippet
         self.canOCR = canOCR
         super.init(frame: NSRect(origin: .zero, size: Self.cardSize))
-        self.toolTip = "\(title) · \(subtitle)\n单击复制 · 拖出分享到任意应用"
+        self.toolTip = "\(title) · \(subtitle)\n单击复制 · ⌘+单击多选拼图 · 拖出分享"
     }
 
     @available(*, unavailable)
@@ -119,6 +121,10 @@ final class ShelfCardView: NSView, NSDraggingSource {
     override func mouseUp(with event: NSEvent) {
         guard dragStartPoint != nil else { return }
         dragStartPoint = nil
+        if event.modifierFlags.contains(.command) {
+            onToggleSelect?(item)
+            return
+        }
         onCopy?(item)
     }
 
@@ -146,8 +152,9 @@ final class ShelfCardView: NSView, NSDraggingSource {
         }()
         ctx.setFillColor(bg.cgColor)
         ctx.addPath(path); ctx.fillPath()
-        ctx.setStrokeColor((hovered ? GeekTheme.accent : (isDark ? NSColor.white.withAlphaComponent(0.11) : NSColor.black.withAlphaComponent(0.10))).cgColor)
-        ctx.setLineWidth(hovered ? 1.4 : 0.8)
+        let isSelected = (selectionOrder != nil)
+        ctx.setStrokeColor(((isSelected || hovered) ? GeekTheme.accent : (isDark ? NSColor.white.withAlphaComponent(0.11) : NSColor.black.withAlphaComponent(0.10))).cgColor)
+        ctx.setLineWidth(isSelected ? 1.8 : (hovered ? 1.4 : 0.8))
         ctx.addPath(path); ctx.strokePath()
         ctx.restoreGState()
 
@@ -204,7 +211,17 @@ final class ShelfCardView: NSView, NSDraggingSource {
         ])
         (subtitleText as NSString).draw(in: CGRect(x: bounds.width - 5.5 - metaW, y: footY + 0.8, width: metaW, height: 12), withAttributes: metaAttrs)
 
-        // 4) 悬停右上角紧凑一体化微胶囊（零遮挡预览）
+        // 4) 多选拼图序号角标（⌘+点击勾选）
+        if let order = selectionOrder {
+            let badge = CGRect(x: 5, y: 5, width: 17, height: 17)
+            ctx.saveGState()
+            ctx.setFillColor(GeekTheme.accent.cgColor)
+            ctx.fillEllipse(in: badge)
+            GeekTheme.drawText("\(order)", in: badge, font: .monospacedDigitSystemFont(ofSize: 9.5, weight: .bold), color: .white, align: .center)
+            ctx.restoreGState()
+        }
+
+        // 5) 悬停右上角紧凑一体化微胶囊（零遮挡预览）
         if hovered {
             let (pill, slots) = actionSlots()
             let pillPath = CGPath(roundedRect: pill, cornerWidth: 6, cornerHeight: 6, transform: nil)

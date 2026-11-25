@@ -117,11 +117,11 @@ extension ShelfPanelController {
     func populateCards(_ items: [ShelfCardItem]) {
         guard let stripView, let scrollView else { return }
         activeHoveredCard = nil
+        let validIDs = Set(items.map(\.id))
+        selectedItemIDs.removeAll { !validIDs.contains($0) }
         stripView.subviews.forEach { $0.removeFromSuperview() }
         countLabel?.stringValue = "\(items.count) 项"
-        showsCollageAction = historyRing.originalEntries.count >= 2
-        secondaryBtn?.title = showsCollageAction ? "并排对比" : "偏好设置"
-        secondaryBtn?.toolTip = showsCollageAction ? "将最近 2 张截图横向并排拼接对比" : "打开 MSnip 设置面板"
+        updateCollageButtonTitle()
         emptyLabel?.isHidden = !items.isEmpty
 
         let cardW = ShelfCardView.cardSize.width, cardH = ShelfCardView.cardSize.height
@@ -129,7 +129,9 @@ extension ShelfPanelController {
         let tf = DateFormatter(); tf.dateFormat = "HH:mm"
         for item in items {
             let card = buildCardView(for: item, timeFormatter: tf)
+            card.selectionOrder = selectedItemIDs.firstIndex(of: item.id).map { $0 + 1 }
             card.onHoverStart = { [weak self] c in self?.setActiveHoveredCard(c) }
+            card.onToggleSelect = { [weak self] it in self?.toggleSelection(for: it) }
             card.frame = NSRect(x: x, y: 0, width: cardW, height: cardH)
             stripView.addSubview(card)
             x += cardW + Self.cardGap
@@ -137,5 +139,25 @@ extension ShelfPanelController {
         let totalW = max(0, x - (items.isEmpty ? 0 : Self.cardGap))
         stripView.frame = NSRect(x: 0, y: 0, width: max(scrollView.bounds.width, totalW), height: cardH)
         updateScrollNavButtons()
+    }
+
+    func updateCollageButtonTitle() {
+        let selCount = selectedItemIDs.count
+        secondaryBtn?.title = selCount > 0 ? "拼图 (\(selCount))" : "拼图 / PDF"
+        secondaryBtn?.style = selCount >= 2 ? .accent : .subtle
+    }
+
+    func toggleSelection(for item: ShelfCardItem) {
+        if let idx = selectedItemIDs.firstIndex(of: item.id) {
+            selectedItemIDs.remove(at: idx)
+        } else {
+            selectedItemIDs.append(item.id)
+        }
+        if let stripView {
+            for case let card as ShelfCardView in stripView.subviews {
+                card.selectionOrder = selectedItemIDs.firstIndex(of: card.item.id).map { $0 + 1 }
+            }
+        }
+        updateCollageButtonTitle()
     }
 }

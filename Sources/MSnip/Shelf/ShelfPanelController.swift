@@ -15,7 +15,7 @@ final class ShelfPanelController {
     var onPinHistory: ((CaptureHistoryEntry) -> Void)?
     var onOCRHistory: ((CaptureHistoryEntry) -> Void)?
     var onPinText: ((String) -> Void)?
-    var onQuickCollage: (() -> Void)?
+    var onOpenCollageStudio: (([CaptureHistoryEntry], [(String, CGImage, CGFloat)]) -> Void)?
     var onOpenSettings: (() -> Void)?
     var onHistoryMutated: (() -> Void)?
 
@@ -37,6 +37,7 @@ final class ShelfPanelController {
     var rightNavBtn: GeekButton?
     var emptyLabel: NSTextField?
     weak var activeHoveredCard: ShelfCardView?
+    var selectedItemIDs: [UUID] = []
 
     private var isPinnedOpen = false
     private var manuallyHidden = false
@@ -242,9 +243,8 @@ final class ShelfPanelController {
                 self.reloadCards(); ToastHUD.show(message: msg)
             } else { ToastHUD.show(message: "剪贴板暂无可加入的图片、文件或文本") }
         }
-        let secBtn = addBtn("并排对比", tip: "将最近 2 张截图横向并排拼接对比") { [weak self] in
-            guard let self else { return }
-            if self.showsCollageAction { self.onQuickCollage?() } else { self.hide(manual: true); self.onOpenSettings?() }
+        let secBtn = addBtn("拼图 / PDF", tip: "打开多图拼接与合并 PDF 窗口（⌘+点击卡片可先自选顺序）") { [weak self] in
+            self?.triggerCollageStudio()
         }
         let lBtn = addBtn("‹", tip: "向左翻页") { [weak self] in self?.scrollView?.scrollBy(deltaX: -340) }
         let rBtn = addBtn("›", tip: "向右翻页") { [weak self] in self?.scrollView?.scrollBy(deltaX: 340) }

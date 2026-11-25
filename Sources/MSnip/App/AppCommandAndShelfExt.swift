@@ -37,14 +37,31 @@ extension AppController {
             self.shelfController.hide()
             self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
         }
-        shelfController.onQuickCollage = { [weak self] in
-            guard let self else { return }
-            self.shelfController.hide()
-            let dummy = NSMenuItem(); dummy.tag = 12 // 最近 2 张横向并排对比
-            self.createHistoryCollage(dummy)
+        shelfController.onOpenCollageStudio = { [weak self] entries, imgs in
+            self?.collageStudio.present(initialEntries: entries, initialImages: imgs)
         }
         shelfController.onOpenSettings = { [weak self] in self?.openGeneralPreferences() }
         shelfController.onHistoryMutated = { [weak self] in self?.rebuildMenu() }
+
+        collageStudio.historyRingProvider = { [weak self] in self?.historyRing }
+        collageStudio.onCopyCollage = { [weak self] img, scale in
+            guard let self else { return }
+            ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
+            ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
+            self.recordHistoryAndRefresh(img: img, scale: scale, isCollage: true)
+            ToastHUD.show(message: "✓ 已复制高清拼图到剪贴板 · \(img.width) × \(img.height) px", preview: img)
+        }
+        collageStudio.onPinCollage = { [weak self] img, scale in
+            guard let self else { return }
+            self.recordHistoryAndRefresh(img: img, scale: scale, isCollage: true)
+            let mouse = NSEvent.mouseLocation
+            if let scr = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main ?? NSScreen.screens.first {
+                self.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr)
+            }
+        }
+        collageStudio.onSaveCollage = { [weak self] img, scale in
+            self?.performInteractiveSave(img: img, scale: scale)
+        }
 
         DistributedNotificationCenter.default().addObserver(
             self,
@@ -103,6 +120,10 @@ extension AppController {
 
     @objc func toggleTopShelf() {
         shelfController.toggle()
+    }
+
+    @objc func openCollageStudioWindow() {
+        collageStudio.present()
     }
 
     /// 顶部菜单栏图标点击分发：左键直接打开设置面板，右键（或 ⌃+左键）弹出菜单栏下拉菜单，⌥+左键开关顶部暂存架
