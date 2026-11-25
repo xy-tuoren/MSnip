@@ -193,8 +193,14 @@ extension OverlayView {
     func triggerQuickLaunchIfNeeded() {
         switch quickLaunchMode {
         case .standard, .quickRecord: break
+        case .quickSilentOCR:
+            exportAndFinish(mode: .silentOCR)
         case .quickOCR:
-            if ocrAutoOpenDualPane { exportAndFinish(mode: .extractText) } else { activateInPlaceOCR() }
+            switch ocrPresentation {
+            case .inPlace:    activateInPlaceOCR()
+            case .dualPane:   exportAndFinish(mode: .extractText)
+            case .silentCopy: exportAndFinish(mode: .silentOCR)
+            }
         case .quickTranslate:
             if translateAutoOpenDualPane { exportAndFinish(mode: .translateWindow) } else { activateInPlaceTranslate() }
         case .quickLongShot:  beginLongShot()

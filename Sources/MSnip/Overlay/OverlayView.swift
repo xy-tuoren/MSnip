@@ -30,6 +30,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
     var onFinishCopyText: ((String, NSPoint) -> Void)?
     var onFinishExtractText: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
+    var onFinishSilentOCR: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
     var onFinishRecognizeLatex: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
     var onFinishTranslateWindow: ((CGImage, CGFloat, NSScreen, CGRect) -> Void)?
     var onOpenTranslationSettings: (() -> Void)?
@@ -42,20 +43,16 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onRecordingPrefsChanged: ((RecordingFormat, Bool) -> Void)?
     var onRecordingModeChanged: ((Bool) -> Void)?
     var onGlowStrengthChanged: ((CGFloat) -> Void)?
-
     var isRecordingMode: Bool { toolbar.isRecordingMode }
     var quickLaunchMode: OverlayQuickLaunchMode = .standard
     var canvasKeyMap: [CanvasAction: String] = CanvasAction.defaultMap
     var activePinCombo: KeyCombo?
-    var ocrAutoOpenDualPane: Bool = false
-    var translateAutoOpenDualPane: Bool = false
-    var ocrAutoCopy: Bool = true
-    var backdropAspectRatio: BackdropAspectRatio = .auto
-    var backdropWatermark: String = ""
-    var defaultPinGlowStrength: CGFloat = 0.45
-    var didAdjustGlow: Bool = false
-    var magnifierLegendCache: (key: String, image: CGImage)?
-    var barcodeScanTask: Task<Void, Never>?
+    var ocrPresentation: OCRDefaultPresentation = .inPlace; var ocrAutoOpenDualPane: Bool { ocrPresentation == .dualPane }
+    var translateAutoOpenDualPane: Bool = false; var ocrAutoCopy: Bool = true
+    var backdropAspectRatio: BackdropAspectRatio = .auto; var backdropWatermark: String = ""
+    var defaultPinGlowStrength: CGFloat = 0.45; var didAdjustGlow: Bool = false
+    var magnifierLegendCache: (key: String, image: CGImage)?; var barcodeScanTask: Task<Void, Never>?
+    var copiedAnnotation: Annotation?; var pasteCascadeCount: Int = 0
 
     func keyUpper(_ action: CanvasAction) -> String {
         (canvasKeyMap[action] ?? action.defaultKey).uppercased()

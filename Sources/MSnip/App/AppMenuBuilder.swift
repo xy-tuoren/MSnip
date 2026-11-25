@@ -73,6 +73,8 @@ extension AppController {
 
         menu.addItem(.separator())
 
+        menu.addItem(makeHotKeyItem(title: "顶部暂存架", symbol: "tray.and.arrow.down", action: #selector(toggleTopShelf), slot: .toggleShelf))
+
         // 最近截图（按需懒加载缩略图子菜单，避免每次配置变更/开关贴图都重复解码全部历史缩略图）
         let histTitle = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
         let histRoot = NSMenuItem(title: histTitle, action: nil, keyEquivalent: "")

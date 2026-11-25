@@ -17,6 +17,7 @@ final class OverlaySession {
         case copiedColor(String, RGBAColor, NSPoint)
         case copiedCoordinate(String, NSPoint)
         case extractText(CGImage, CGFloat, NSScreen)
+        case silentExtractText(CGImage, CGFloat, NSScreen)
         case recognizeLatex(CGImage, CGFloat, NSScreen)
         case translateText(CGImage, CGFloat, NSScreen)
         case openTranslationSettings
@@ -62,7 +63,7 @@ final class OverlaySession {
         launchMode: OverlayQuickLaunchMode = .standard,
         canvasKeyMap: [CanvasAction: String] = CanvasAction.defaultMap,
         activePinCombo: KeyCombo? = nil,
-        ocrAutoOpenDualPane: Bool = false,
+        ocrPresentation: OCRDefaultPresentation = .inPlace,
         translateAutoOpenDualPane: Bool = false,
         ocrAutoCopy: Bool = true,
         backdropAspectRatio: BackdropAspectRatio = .auto,
@@ -88,13 +89,13 @@ final class OverlaySession {
             view.toolbar.recordingFormat = recordingFormat
             view.toolbar.recordingHUDEnabled = recordingHUDEnabled
             view.toolbar.canvasKeyMap = canvasKeyMap
-            view.toolbar.ocrAutoOpenDualPane = ocrAutoOpenDualPane
+            view.toolbar.ocrAutoOpenDualPane = (ocrPresentation == .dualPane)
             view.toolbar.translateAutoOpenDualPane = translateAutoOpenDualPane
             view.saveFolderOptions = saveFolderOptions
             view.quickLaunchMode = launchMode
             view.canvasKeyMap = canvasKeyMap
             view.activePinCombo = activePinCombo
-            view.ocrAutoOpenDualPane = ocrAutoOpenDualPane
+            view.ocrPresentation = ocrPresentation
             view.translateAutoOpenDualPane = translateAutoOpenDualPane
             view.ocrAutoCopy = ocrAutoCopy
             view.backdropAspectRatio = backdropAspectRatio
@@ -166,6 +167,10 @@ final class OverlaySession {
             view.onFinishExtractText = { [weak self] img, scale, scr, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
                 self?.finish(.extractText(img, scale, scr))
+            }
+            view.onFinishSilentOCR = { [weak self] img, scale, scr, rect in
+                Self.lastSelectionByDisplay[snap.displayID] = rect
+                self?.finish(.silentExtractText(img, scale, scr))
             }
             view.onFinishRecognizeLatex = { [weak self] img, scale, scr, rect in
                 Self.lastSelectionByDisplay[snap.displayID] = rect
@@ -278,7 +283,7 @@ final class OverlaySession {
         windows.removeAll()
         AnnotationRenderer.purgeCaches()
         let shouldRestorePrev: Bool = switch outcome {
-        case .copied, .copiedWithPath, .quickSaved, .savedToFolder, .copiedColor, .copiedCoordinate, .cancelled: true
+        case .copied, .copiedWithPath, .quickSaved, .savedToFolder, .copiedColor, .copiedCoordinate, .silentExtractText, .cancelled: true
         default: false
         }
         focusGuard.teardown(restorePreviousApp: shouldRestorePrev); onComplete?(outcome)

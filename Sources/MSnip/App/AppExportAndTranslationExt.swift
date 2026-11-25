@@ -18,6 +18,7 @@ extension AppController {
         case .latex:             startQuickLatex()
         case .togglePins:        togglePinsVisibility()
         case .repeatCapture:     repeatLastCapture()
+        case .toggleShelf:       toggleTopShelf()
         }
     }
 

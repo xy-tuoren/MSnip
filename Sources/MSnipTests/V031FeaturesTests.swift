@@ -125,6 +125,41 @@ func testV031Features() {
     } else {
         check(false, "发光边烘焙导出不应失败")
     }
+
+    // 9) 标注图形复制粘贴 (⌘C / ⌘V / ⌘D)：独立 UUID、步骤序号自增、边界约束与单步撤销
+    var copyDoc = AnnotationDocument()
+    let rectAnn = Annotation(payload: .rect(CGRect(x: 20, y: 20, width: 60, height: 40)), style: AnnotationStyle())
+    copyDoc.append(rectAnn)
+    let pastedIdx = copyDoc.pasteClone(of: rectAnn, offset: CGPoint(x: 16, y: 16), within: CGRect(x: 0, y: 0, width: 120, height: 100))
+    check(pastedIdx == 1 && copyDoc.objects.count == 2 && copyDoc.objects[1].id != rectAnn.id, "粘贴副本应生成新 UUID 并追加至文档")
+    if case .rect(let r2) = copyDoc.objects[1].payload {
+        check(abs(r2.minX - 36) < 0.5 && abs(r2.minY - 36) < 0.5, "粘贴副本应精确偏移 +16pt，实际: \(r2)")
+    } else { check(false, "粘贴副本应保持 .rect 载荷") }
+
+    let step1 = Annotation(payload: .step(center: CGPoint(x: 40, y: 40), tail: nil, number: 1), style: AnnotationStyle())
+    copyDoc.append(step1)
+    let dupStepIdx = copyDoc.duplicate(at: copyDoc.objects.count - 1, offset: CGPoint(x: 20, y: 20), within: CGRect(x: 0, y: 0, width: 200, height: 200))
+    if let i = dupStepIdx, case .step(let c2, _, let n2) = copyDoc.objects[i].payload {
+        check(n2 == 2 && abs(c2.x - 60) < 0.5, "克隆步骤序号 ① 应自动自增为 ② 且偏移，实际: n=\(n2), c=\(c2)")
+    } else { check(false, "克隆步骤序号应返回有效新副本") }
+    check(copyDoc.undo() && copyDoc.objects.count == 3, "克隆标注应支持单步 ⌘Z 精确撤回")
+
+    // 10) CLI 命令行参数与 msnip:// URL Scheme 直达解析 + OCR 三模式与暂存架模型
+    check(MSnipLaunchCommand.parse(arguments: ["MSnip", "--enter=ocr"]) == .ocr, "--enter=ocr 应解析为 .ocr")
+    check(MSnipLaunchCommand.parse(arguments: ["MSnip", "--enter=video"]) == .record, "--enter=video 应解析为 .record")
+    check(MSnipLaunchCommand.parse(arguments: ["MSnip", "--shelf"]) == .shelf, "--shelf 应解析为 .shelf")
+    check(MSnipLaunchCommand.parse(arguments: ["MSnip", "--silent-ocr"]) == .silentOCR, "--silent-ocr 应解析为 .silentOCR")
+    check(MSnipLaunchCommand.parse(url: URL(string: "msnip://silent-ocr")!) == .silentOCR, "msnip://silent-ocr URL Scheme 应解析为 .silentOCR")
+    check(MSnipLaunchCommand.parse(url: URL(string: "msnip://shelf")!) == .shelf, "msnip://shelf URL Scheme 应解析为 .shelf")
+    check(MSnipLaunchCommand.parse(url: URL(string: "msnip://long")!) == .long, "msnip://long URL Scheme 应解析为 .long")
+    check(OCRDefaultPresentation.allCases == [.inPlace, .dualPane, .silentCopy], "OCR 默认方式应完整包含原位/双栏/静默直拷 3 项")
+    check(GlobalHotKeyAction.allCases.contains(.toggleShelf), "全局热键应包含顶部暂存架开关")
+
+    let textShelf = ShelfCustomItem(kind: .text, title: "Demo", textContent: "Hello MSnip Shelf")
+    if let data = try? JSONEncoder().encode(textShelf),
+       let decoded = try? JSONDecoder().decode(ShelfCustomItem.self, from: data) {
+        check(decoded == textShelf && decoded.isValidOnDisk, "暂存架文本条目应完整支持 JSON 编解码且有效")
+    } else { check(false, "暂存架条目编解码不应失败") }
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

@@ -20,6 +20,7 @@ struct AppConfig: Codable {
     var recordingOptions: RecordingOptions = RecordingOptions()
     var defaultTextCapsule: Bool = false
     var ocrAutoOpenDualPane: Bool = false
+    var ocrPresentation: OCRDefaultPresentation = .inPlace
     var translateAutoOpenDualPane: Bool = false
     var ocrAutoCopy: Bool = true
     var exportImageFormat: CaptureExportFormat = .png
@@ -33,16 +34,17 @@ struct AppConfig: Codable {
     var delayedCaptureSeconds: Int = DelayedCaptureSettings.defaultSeconds
     var fullScreenCaptureAction: FullScreenCaptureAction = .copy
     var pinGlowStrength: CGFloat = 0.45
+    var topShelfHoverEnabled: Bool = true
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
         case customCaptureCombo, customPinCombo, customOCRCombo
         case defaultColorIndex, defaultLineWidth, lastSaveDirectory, recentSaveDirectories
         case colorCopyFormat, showShortcutTips, preferredRecordingFormat, recordInteractionHUD, recordingOptions, defaultTextCapsule
-        case ocrAutoOpenDualPane, translateAutoOpenDualPane, ocrAutoCopy
+        case ocrAutoOpenDualPane, ocrPresentation, translateAutoOpenDualPane, ocrAutoCopy
         case exportImageFormat, exportAt1xScale, appearanceMode, terminalPasteAdaptEnabled
         case filenameTemplate, soundFeedbackEnabled, backdropAspectRatio, backdropWatermark
-        case delayedCaptureSeconds, fullScreenCaptureAction, pinGlowStrength
+        case delayedCaptureSeconds, fullScreenCaptureAction, pinGlowStrength, topShelfHoverEnabled
     }
 
     init() {}
@@ -77,7 +79,9 @@ struct AppConfig: Codable {
         recordInteractionHUD = try c.decodeIfPresent(Bool.self, forKey: .recordInteractionHUD) ?? true
         recordingOptions = try c.decodeIfPresent(RecordingOptions.self, forKey: .recordingOptions) ?? RecordingOptions()
         defaultTextCapsule = try c.decodeIfPresent(Bool.self, forKey: .defaultTextCapsule) ?? false
-        ocrAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoOpenDualPane) ?? false
+        let legacyDualOCR = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoOpenDualPane) ?? false
+        ocrPresentation = (try? c.decodeIfPresent(OCRDefaultPresentation.self, forKey: .ocrPresentation)) ?? (legacyDualOCR ? .dualPane : .inPlace)
+        ocrAutoOpenDualPane = (ocrPresentation == .dualPane)
         translateAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .translateAutoOpenDualPane) ?? false
         ocrAutoCopy = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoCopy) ?? true
         exportImageFormat = (try? c.decodeIfPresent(CaptureExportFormat.self, forKey: .exportImageFormat)) ?? .png
@@ -93,6 +97,7 @@ struct AppConfig: Codable {
         fullScreenCaptureAction = try c.decodeIfPresent(FullScreenCaptureAction.self, forKey: .fullScreenCaptureAction) ?? .copy
         let rawGlow = try c.decodeIfPresent(CGFloat.self, forKey: .pinGlowStrength) ?? 0.45
         pinGlowStrength = min(1.0, max(0.0, rawGlow))
+        topShelfHoverEnabled = try c.decodeIfPresent(Bool.self, forKey: .topShelfHoverEnabled) ?? true
     }
 
     func encode(to encoder: Encoder) throws {
@@ -112,7 +117,8 @@ struct AppConfig: Codable {
         try c.encode(recordInteractionHUD, forKey: .recordInteractionHUD)
         try c.encode(recordingOptions, forKey: .recordingOptions)
         try c.encode(defaultTextCapsule, forKey: .defaultTextCapsule)
-        try c.encode(ocrAutoOpenDualPane, forKey: .ocrAutoOpenDualPane)
+        try c.encode(ocrPresentation == .dualPane, forKey: .ocrAutoOpenDualPane)
+        try c.encode(ocrPresentation, forKey: .ocrPresentation)
         try c.encode(translateAutoOpenDualPane, forKey: .translateAutoOpenDualPane)
         try c.encode(ocrAutoCopy, forKey: .ocrAutoCopy)
         try c.encode(exportImageFormat, forKey: .exportImageFormat)
@@ -126,6 +132,7 @@ struct AppConfig: Codable {
         try c.encode(DelayedCaptureSettings.clampedSeconds(delayedCaptureSeconds), forKey: .delayedCaptureSeconds)
         try c.encode(fullScreenCaptureAction, forKey: .fullScreenCaptureAction)
         try c.encode(min(1.0, max(0.0, pinGlowStrength)), forKey: .pinGlowStrength)
+        try c.encode(topShelfHoverEnabled, forKey: .topShelfHoverEnabled)
     }
 
     func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {

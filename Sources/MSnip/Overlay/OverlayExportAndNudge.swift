@@ -5,7 +5,7 @@ import MSnipCore
 
 /// 覆盖层的标注草稿构建、取色/坐标复制、1px 边缘微调与导出烘焙扩展
 extension OverlayView {
-    enum FinishMode: Equatable { case copy, copyWithPath, save, quickSave, saveToFolder(String), pin, extractText, recognizeLatex, translateWindow }
+    enum FinishMode: Equatable { case copy, copyWithPath, save, quickSave, saveToFolder(String), pin, extractText, silentOCR, recognizeLatex, translateWindow }
 
     func currentExportableImage(for targetRect: CGRect, plainForOCR: Bool, includeGlow: Bool = true) -> CGImage? {
         let baseImg: CGImage?
@@ -60,7 +60,7 @@ extension OverlayView {
 
     func exportAndFinish(mode: FinishMode) {
         commitTextEditing()
-        let isPlainOCR = (mode == .extractText || mode == .recognizeLatex || mode == .translateWindow)
+        let isPlainOCR = (mode == .extractText || mode == .silentOCR || mode == .recognizeLatex || mode == .translateWindow)
         guard let targetRect = selection ?? hoveredAutoRect,
               targetRect.width >= 2, targetRect.height >= 2,
               let baked = currentExportableImage(for: targetRect, plainForOCR: isPlainOCR, includeGlow: mode != .pin) else { return }
@@ -76,8 +76,26 @@ extension OverlayView {
             let snappedOrigin = CGPoint(x: round(targetRect.minX * s) / s, y: round(targetRect.minY * s) / s)
             onFinishPin?(baked, snapshot.scaleFactor, snappedOrigin, snapshot.screen, targetRect)
         case .extractText:     onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
+        case .silentOCR:       onFinishSilentOCR?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         case .recognizeLatex:  onFinishRecognizeLatex?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         case .translateWindow: onFinishTranslateWindow?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
+        }
+    }
+
+    func pasteCopiedAnnotationIfAny() {
+        guard let copied = copiedAnnotation else { return }
+        pasteCascadeCount += 1
+        let off = CGFloat(pasteCascadeCount) * 16.0
+        if let newIdx = doc.pasteClone(of: copied, offset: CGPoint(x: off, y: off), within: selection ?? bounds) {
+            selectedObjectIndex = newIdx; updateToolbarLayout(); needsDisplay = true
+        }
+    }
+
+    func duplicateSelectedAnnotationIfAny() {
+        guard let idx = selectedObjectIndex, doc.objects.indices.contains(idx) else { return }
+        if let newIdx = doc.duplicate(at: idx, offset: CGPoint(x: 16, y: 16), within: selection ?? bounds) {
+            selectedObjectIndex = newIdx; copiedAnnotation = doc.objects[newIdx]; pasteCascadeCount = 0
+            updateToolbarLayout(); needsDisplay = true
         }
     }
 

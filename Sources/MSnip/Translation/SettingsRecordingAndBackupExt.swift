@@ -9,6 +9,7 @@ final class GeneralExtraControls {
     var filenameField: NSTextField?
     var filenamePreviewLabel: NSTextField?
     var pinGlowSeg: GeekSegmentControl?
+    var shelfHoverSwitch: GeekToggleSwitch?
     var delayPresetSeg: GeekSegmentControl?
     var delaySecondsField: NSTextField?
     var fullScreenActionSeg: GeekSegmentControl?
@@ -116,10 +117,10 @@ extension TranslationSettingsWindow {
         modeControls.recordAudioSwitch = audioSw
         recCard.addSubview(audioSw)
 
-        // 2) 命名、贴图与反馈（3 行，右侧 224pt 统一圆角控件列对齐 + 文件名实时预览）
+        // 2) 命名、贴图与反馈（4 行，右侧 224pt 统一圆角控件列对齐 + 文件名实时预览）
         let yMid = recCard.frame.maxY + sectionGap
         addSectionHeader("命名、贴图与反馈", x: headerX, y: yMid, in: content)
-        let extCard = GeekCardView(frame: NSRect(x: cardX, y: yMid + headerToCard, width: cardW, height: rowH * 3))
+        let extCard = GeekCardView(frame: NSRect(x: cardX, y: yMid + headerToCard, width: cardW, height: rowH * 4))
         content.addSubview(extCard)
 
         let rightColW: CGFloat = 224
@@ -169,9 +170,19 @@ extension TranslationSettingsWindow {
         extCard.addSubview(glowSeg)
 
         extCard.addHairline(atY: rowH * 2)
-        addRowLabel("复制与保存轻提示音", y: rowH * 2, height: rowH, in: extCard)
+        let shelfTip = "将鼠标推至屏幕顶部中央（或拖着文件滑到顶部中央）自动垂下暂存架，集中拖拽分享最近截图、文件与文本；关闭后仍可从菜单栏或 msnip://shelf 呼出"
+        addRowLabel("顶部边缘悬停呼出暂存架", y: rowH * 2, height: rowH, in: extCard, toolTip: shelfTip)
+        let shelfSw = GeekToggleSwitch(isOn: true)
+        shelfSw.toolTip = shelfTip
+        shelfSw.frame = NSRect(x: switchX, y: rowH * 2 + switchY, width: 38, height: switchH)
+        shelfSw.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.topShelfHoverEnabled = on } }
+        modeControls.extra.shelfHoverSwitch = shelfSw
+        extCard.addSubview(shelfSw)
+
+        extCard.addHairline(atY: rowH * 3)
+        addRowLabel("复制与保存轻提示音", y: rowH * 3, height: rowH, in: extCard)
         let sndSw = GeekToggleSwitch(isOn: false)
-        sndSw.frame = NSRect(x: switchX, y: rowH * 2 + switchY, width: 38, height: switchH)
+        sndSw.frame = NSRect(x: switchX, y: rowH * 3 + switchY, width: 38, height: switchH)
         sndSw.onToggle = { [weak self] on in
             self?.onAppConfigMutated? { $0.soundFeedbackEnabled = on }
             if on { ClipboardAndSave.playFeedbackSound(enabled: true) }
@@ -235,6 +246,7 @@ extension TranslationSettingsWindow {
         updateFilenamePreview(template: cfg.filenameTemplate)
         let g = cfg.pinGlowStrength
         modeControls.extra.pinGlowSeg?.selectedIndex = g <= 0.01 ? 0 : (abs(g - 0.45) < 0.06 ? 1 : (abs(g - 0.80) < 0.06 ? 2 : -1))
+        modeControls.extra.shelfHoverSwitch?.isOn = cfg.topShelfHoverEnabled
         modeControls.extra.soundSwitch?.isOn = cfg.soundFeedbackEnabled
         refreshCaptureModesUI(with: cfg)
     }

@@ -46,46 +46,41 @@ extension OverlayView {
         let opt = flags.contains(.option)
         let letter = ansiLetter(for: event.keyCode) ?? (event.charactersIgnoringModifiers?.lowercased() ?? "")
 
-        if event.keyCode == 49 { // Space：拖拽中按住平移选框
-            if dragOp != nil { spacePressed = true }
-            return
-        }
+        if event.keyCode == 49 { if dragOp != nil { spacePressed = true }; return }
         if event.keyCode == 53 {
             if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == OverlayMenuFocusGuard.syntheticEscMagic { return }
             handleEscapeStepBack(); return
-        } // Esc
-        if event.keyCode == 48 { cycleColorFormat(); return } // Tab
-        if event.keyCode == 36 || event.keyCode == 76 { // Return / Enter
+        }
+        if event.keyCode == 48 { cycleColorFormat(); return }
+        if event.keyCode == 36 || event.keyCode == 76 {
             if isRecordingMode { confirmBeginRegionRecording() }
             else if shift && !cmd && !ctrl { captureCurrentWindowAndFinish(pin: opt) }
             else if opt && !cmd && !ctrl { exportAndFinish(mode: .copyWithPath) }
             else { exportAndFinish(mode: .copy) }
             return
         }
+        if let pCombo = activePinCombo, KeyCombo.from(event: event) == pCombo { exportAndFinish(mode: .pin); return }
 
-        if let pCombo = activePinCombo, KeyCombo.from(event: event) == pCombo {
-            exportAndFinish(mode: .pin)
-            return
-        }
-
-        // 兼容系统通用 ⌘ 组合键（⌘C / ⌘S / ⌘Z / ⌘A / ⌘O / ⌘B）
+        // 兼容系统通用 ⌘ 组合键（⌘C / ⌘V / ⌘D / ⌘S / ⌘Z / ⌘A / ⌘O / ⌘B）
         if cmd {
             switch letter {
             case "c":
                 if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() {
                     ToastHUD.show(message: "已复制划选文字")
+                } else if !shift, let idx = selectedObjectIndex, doc.objects.indices.contains(idx) {
+                    copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0
+                    ToastHUD.show(message: "已复制标注图形 · 按 ⌘V 粘贴（⌘D 直接克隆）")
                 } else {
                     exportAndFinish(mode: shift ? .copyWithPath : .copy)
                 }
                 return
-            case "s":
-                if shift { exportAndFinish(mode: .save) } else { quickSaveInPlace() }
-                return
+            case "v": pasteCopiedAnnotationIfAny(); return
+            case "d": duplicateSelectedAnnotationIfAny(); return
+            case "s": if shift { exportAndFinish(mode: .save) } else { quickSaveInPlace() }; return
             case "b": toggleTextCapsuleMode(); return
             case "a": selection = bounds; return
             case "o": exportAndFinish(mode: .extractText); return
-            case "z", "y":
-                performUndoRedo(isRedo: (letter == "y") || shift); return
+            case "z", "y": performUndoRedo(isRedo: (letter == "y") || shift); return
             default: break
             }
         }
@@ -195,7 +190,9 @@ extension OverlayView {
         case .caliper:    if !shift && !opt && !isRepeat { caliperActive.toggle() }
         case .ocr:
             if shift { exportAndFinish(mode: .recognizeLatex) }
-            else if opt != ocrAutoOpenDualPane { exportAndFinish(mode: .extractText) }
+            else if opt { if ocrPresentation == .dualPane { toggleInPlaceOCR() } else { exportAndFinish(mode: .extractText) } }
+            else if ocrPresentation == .dualPane { exportAndFinish(mode: .extractText) }
+            else if ocrPresentation == .silentCopy { exportAndFinish(mode: .silentOCR) }
             else { toggleInPlaceOCR() }
         case .translate:
             if opt != translateAutoOpenDualPane { exportAndFinish(mode: .translateWindow) } else { toggleInPlaceTranslate() }

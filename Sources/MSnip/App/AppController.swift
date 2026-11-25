@@ -21,6 +21,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let translationSettings = TranslationSettingsWindow()
     let permissionGuide = PermissionGuideController()
     let delayedCapture = DelayedCaptureController()
+    lazy var shelfController = ShelfPanelController(historyRing: historyRing)
     var activeSession: OverlaySession?
     var activeLongShot: LongShotSession?
     var activeRecording: RegionRecordingSession?
@@ -34,6 +35,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pinManager.defaultGlowStrength = config.pinGlowStrength
         setupStatusBar()
         setupCallbacks()
+        setupShelfAndRemoteIPC()
         hotKeyManager.apply(config: config)
         // 启动期仅做轻量权限探测，不在空载时提前拉起 ScreenCaptureKit / Metal 图形池以压低常驻内存
         Task { @MainActor [weak self] in
@@ -119,6 +121,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if abs(self.config.pinGlowStrength - oldGlow) > 0.001 {
                 self.pinManager.applyGlowStrengthToAll(self.config.pinGlowStrength)
             }
+            self.shelfController.hoverTriggerEnabled = self.config.topShelfHoverEnabled
             self.hotKeyManager.apply(config: self.config)
             self.rebuildMenu()
         }
@@ -223,7 +226,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 launchMode: mode,
                 canvasKeyMap: self.config.resolvedCanvasKeyMap,
                 activePinCombo: pinCombo,
-                ocrAutoOpenDualPane: self.config.ocrAutoOpenDualPane,
+                ocrPresentation: self.config.ocrPresentation,
                 translateAutoOpenDualPane: self.config.translateAutoOpenDualPane,
                 ocrAutoCopy: self.config.ocrAutoCopy,
                 backdropAspectRatio: self.config.backdropAspectRatio,
@@ -272,6 +275,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
         case .extractText(let img, let scale, let scr):
             ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: false)
+        case .silentExtractText(let img, let scale, let scr):
+            performSilentOCRCopy(img: img, scale: scale, screen: scr)
         case .recognizeLatex(let img, let scale, let scr):
             latexController.present(cgImage: img, scaleFactor: scale, screen: scr)
         case .translateText(let img, let scale, let scr):
@@ -289,6 +294,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func recordHistoryAndRefresh(img: CGImage, scale: CGFloat, isCollage: Bool = false) {
         historyRing.record(cgImage: img, scaleFactor: scale, isCollage: isCollage)
+        shelfController.refreshIfVisible()
         rebuildMenu()
     }
 }

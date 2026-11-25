@@ -101,14 +101,15 @@ extension TranslationSettingsWindow {
         content.addSubview(panelCard)
 
         addRowLabel("提取文字 (OCR) 默认方式", y: 0, height: rowH, in: panelCard)
-        let ocrSeg = GeekSegmentControl(items: ["原位划词", "双栏面板"], selectedIndex: 0)
-        ocrSeg.toolTip = "选择提取文字的默认交互方式（按住 ⌥ 触发可临时切换为另一种方式）"
-        ocrSeg.frame = NSRect(x: cardW - insetX - 196, y: segY, width: 196, height: segH)
+        let ocrSeg = GeekSegmentControl(items: OCRDefaultPresentation.allCases.map(\.title), selectedIndex: 0)
+        ocrSeg.toolTip = "原位划词：冻结画布直接拖选；双栏面板：弹出对照窗；静默直拷：松手即退出截图并后台识别直写剪贴板（按住 ⌥ 可临时切换）"
+        ocrSeg.frame = NSRect(x: cardW - insetX - 246, y: segY, width: 246, height: segH)
         ocrSeg.onSelect = { [weak self] idx in
-            self?.onAppConfigMutated? { $0.ocrAutoOpenDualPane = (idx == 1) }
+            let all = OCRDefaultPresentation.allCases
+            guard all.indices.contains(idx) else { return }
+            self?.onAppConfigMutated? { $0.ocrPresentation = all[idx]; $0.ocrAutoOpenDualPane = (all[idx] == .dualPane) }
         }
-        modeControls.ocrModeSegment = ocrSeg
-        panelCard.addSubview(ocrSeg)
+        modeControls.ocrModeSegment = ocrSeg; panelCard.addSubview(ocrSeg)
 
         panelCard.addHairline(atY: rowH)
         addRowLabel("截图翻译默认方式", y: rowH, height: rowH, in: panelCard)
@@ -236,7 +237,7 @@ extension TranslationSettingsWindow {
         loginSwitch.isOn = LaunchAtLoginManager.isEnabled
         tipsSwitch.isOn = cfg.showShortcutTips
         keychainSwitch?.isOn = draft.preferKeychainStorage
-        modeControls.ocrModeSegment?.selectedIndex = cfg.ocrAutoOpenDualPane ? 1 : 0
+        if let oIdx = OCRDefaultPresentation.allCases.firstIndex(of: cfg.ocrPresentation) { modeControls.ocrModeSegment?.selectedIndex = oIdx }
         modeControls.translateModeSegment?.selectedIndex = cfg.translateAutoOpenDualPane ? 1 : 0
         modeControls.ocrAutoCopySwitch?.isOn = cfg.ocrAutoCopy
         modeControls.transTabDualSwitch?.isOn = cfg.translateAutoOpenDualPane

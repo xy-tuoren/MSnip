@@ -7,6 +7,7 @@ import MSnipCore
 enum OverlayQuickLaunchMode: Equatable {
     case standard
     case quickOCR
+    case quickSilentOCR
     case quickTranslate
     case quickLongShot
     case quickLatex
@@ -16,6 +17,7 @@ enum OverlayQuickLaunchMode: Equatable {
         switch self {
         case .standard:       return ""
         case .quickOCR:       return "识字 · "
+        case .quickSilentOCR: return "静默识字 · "
         case .quickTranslate: return "翻译 · "
         case .quickLongShot:  return "长截图 · "
         case .quickLatex:     return "公式 · "

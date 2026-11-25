@@ -31,6 +31,8 @@ final class PinAnnotationCanvasView: NSView, NSTextFieldDelegate {
     private var lastHoverPoint: CGPoint?
     var draft: Annotation? { didSet { needsDisplay = true } }
     var selectedIndex: Int? { didSet { needsDisplay = true } }
+    var copiedAnnotation: Annotation?
+    var pasteCascadeCount: Int = 0
     var textField: NSTextField?
     var editingOrigin: CGPoint?
     var editingIndex: Int?

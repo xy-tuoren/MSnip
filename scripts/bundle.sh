@@ -92,6 +92,19 @@ cat > "$CONTENTS/Info.plist" << EOF
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Viewer</string>
+            <key>CFBundleURLName</key>
+            <string>$BUNDLE_ID</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>msnip</string>
+            </array>
+        </dict>
+    </array>
     <key>NSScreenCaptureUsageDescription</key>
     <string>MSnip 需要屏幕录制权限以捕捉并冻结当前屏幕区域供你圈记和贴图。</string>
 </dict>

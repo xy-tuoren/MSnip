@@ -119,6 +119,26 @@ extension PinAnnotationCanvasView {
             needsDisplay = true
             return
         }
+        if cmd && chars == "c", let idx = selectedIndex, doc.objects.indices.contains(idx) {
+            copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0
+            ToastHUD.show(message: "已复制标注图形 · 按 ⌘V 粘贴")
+            return
+        }
+        if cmd && chars == "v", let copied = copiedAnnotation {
+            pasteCascadeCount += 1
+            let off = CGFloat(pasteCascadeCount) * 14.0
+            if let newIdx = doc.pasteClone(of: copied, offset: CGPoint(x: off, y: off), within: CGRect(origin: .zero, size: baseSize)) {
+                selectedIndex = newIdx; onDocStateChanged?(); needsDisplay = true
+            }
+            return
+        }
+        if cmd && chars == "d", let idx = selectedIndex, doc.objects.indices.contains(idx) {
+            if let newIdx = doc.duplicate(at: idx, offset: CGPoint(x: 14, y: 14), within: CGRect(origin: .zero, size: baseSize)) {
+                selectedIndex = newIdx; copiedAnnotation = doc.objects[newIdx]; pasteCascadeCount = 0
+                onDocStateChanged?(); needsDisplay = true
+            }
+            return
+        }
         if event.keyCode == 51 || event.keyCode == 117, let idx = selectedIndex {
             doc.remove(at: idx)
             selectedIndex = nil

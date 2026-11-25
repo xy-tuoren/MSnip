@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// 标注编辑文档：维护有序标注列表与 100 步快照撤销/重做栈。
@@ -75,6 +76,45 @@ public struct AnnotationDocument: Sendable {
         guard objects.indices.contains(index) else { return nil }
         pushUndo(objects)
         return objects.remove(at: index)
+    }
+
+    /// 粘贴指定标注的偏移副本并记入撤销栈（步骤序号自动分配下一个自增编号，坐标自动约束在 `clampBounds` 内）
+    @discardableResult
+    public mutating func pasteClone(
+        of source: Annotation,
+        offset: CGPoint = CGPoint(x: 16, y: 16),
+        within clampBounds: CGRect? = nil
+    ) -> Int? {
+        guard !source.isTrivial else { return nil }
+        var payload = source.payload
+        if case .step(let center, let tail, _) = payload {
+            payload = .step(center: center, tail: tail, number: nextStepNumber())
+        }
+        var copy = Annotation(id: UUID(), payload: payload, style: source.style)
+        copy.translate(dx: offset.x, dy: offset.y)
+        if let limit = clampBounds, limit.width >= 8, limit.height >= 8 {
+            let b = copy.bounds
+            var fixX: CGFloat = 0, fixY: CGFloat = 0
+            if b.maxX > limit.maxX { fixX = limit.maxX - b.maxX }
+            if b.minX + fixX < limit.minX { fixX = limit.minX - b.minX }
+            if b.maxY > limit.maxY { fixY = limit.maxY - b.maxY }
+            if b.minY + fixY < limit.minY { fixY = limit.minY - b.minY }
+            if abs(fixX) > 0.01 || abs(fixY) > 0.01 { copy.translate(dx: fixX, dy: fixY) }
+        }
+        pushUndo(objects)
+        objects.append(copy)
+        return objects.count - 1
+    }
+
+    /// 一键原地克隆指定下标的标注（`⌘D`），返回新副本下标
+    @discardableResult
+    public mutating func duplicate(
+        at index: Int,
+        offset: CGPoint = CGPoint(x: 16, y: 16),
+        within clampBounds: CGRect? = nil
+    ) -> Int? {
+        guard objects.indices.contains(index) else { return nil }
+        return pasteClone(of: objects[index], offset: offset, within: clampBounds)
     }
 
     /// 清空全部标注

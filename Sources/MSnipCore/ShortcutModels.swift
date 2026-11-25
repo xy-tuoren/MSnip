@@ -15,6 +15,7 @@ public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
     case latex             = "latex"
     case togglePins        = "togglePins"
     case repeatCapture     = "repeatCapture"
+    case toggleShelf       = "toggleShelf"
 
     public var title: String {
         switch self {
@@ -29,6 +30,7 @@ public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
         case .latex:             return "公式识别 (LaTeX)"
         case .togglePins:        return "显隐全部贴图"
         case .repeatCapture:     return "重截上次选区"
+        case .toggleShelf:       return "呼出顶部暂存架"
         }
     }
 
@@ -36,7 +38,7 @@ public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
         switch self {
         case .capture:           return "冻结屏幕框选、圈记标注、取色与独立窗口抓拍"
         case .pin:               return "将剪贴板图片/色值钉在桌面，或在截图中直接贴出"
-        case .ocr:               return "框选屏幕任意区域后立即进入实况划词识字"
+        case .ocr:               return "框选屏幕任意区域后立即识字（支持原位/双栏/静默直拷）"
         case .translate:         return "框选屏幕任意区域后立即原位替换译文"
         case .longShot:          return "框选可滚动区域后直接开始长图自动拼接"
         case .record:            return "直接进入 GIF / MP4 选区录屏准备状态"
@@ -45,6 +47,7 @@ public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
         case .latex:             return "框选数学公式直接识别并弹出 KaTeX 预览"
         case .togglePins:        return "一键暂藏或恢复桌面上所有置顶贴图窗口"
         case .repeatCapture:     return "按上一次截图的选区位置静默重截并复制到剪贴板"
+        case .toggleShelf:       return "展开或收起屏幕顶部暂存架，集中拖拽最近截图、文件与文本"
         }
     }
 
@@ -61,6 +64,7 @@ public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
         case .latex:             return "function"
         case .togglePins:        return "eye.slash"
         case .repeatCapture:     return "arrow.clockwise"
+        case .toggleShelf:       return "tray.and.arrow.down"
         }
     }
 }
