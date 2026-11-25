@@ -5,6 +5,21 @@ import ImageIO
 import MSnipCore
 import UniformTypeIdentifiers
 
+/// 拼图工作室自定义窗口（支持 ⌘C 快捷复制拼图、⌘S 快捷保存/导出 PDF、Esc 快捷关闭）
+final class CollageStudioWindow: NSWindow {
+    var onCopyShortcut: (() -> Void)?
+    var onSaveShortcut: (() -> Void)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let ch = event.charactersIgnoringModifiers?.lowercased() ?? ""
+        if flags == .command && ch == "c" { onCopyShortcut?(); return true }
+        if flags == .command && ch == "s" { onSaveShortcut?(); return true }
+        if flags.isEmpty && event.keyCode == 53 { close(); return true }
+        return super.performKeyEquivalent(with: event)
+    }
+}
+
 /// 拼图右侧属性区：带实时数值读数的极客滑条行（间距 / 边距 / 圆角）
 final class CollageSliderRow: NSView {
     private let titleLabel: NSTextField
@@ -38,9 +53,7 @@ final class CollageSliderRow: NSView {
         slider.target = self
         slider.action = #selector(sliderChanged)
 
-        addSubview(titleLabel)
-        addSubview(valueLabel)
-        addSubview(slider)
+        addSubview(titleLabel); addSubview(valueLabel); addSubview(slider)
         applyTheme()
     }
 
@@ -52,7 +65,7 @@ final class CollageSliderRow: NSView {
         let w = bounds.width
         titleLabel.frame = NSRect(x: 0, y: 0, width: w - 58, height: 16)
         valueLabel.frame = NSRect(x: w - 56, y: 0, width: 56, height: 16)
-        slider.frame = NSRect(x: 0, y: 20, width: w, height: 18)
+        slider.frame = NSRect(x: 0, y: 19, width: w, height: 18)
     }
 
     func applyTheme() {
@@ -67,8 +80,9 @@ final class CollageSliderRow: NSView {
     }
 }
 
-/// 拼图背景底色 4 档色板（柔灰 / 纯白 / 深炭 / 透明棋盘格）
+/// 拼图背景底色色板（柔灰 / 纯白 / 深炭 / 透明棋盘格，PDF 模式自动隐藏透明项）
 final class CollageBgSwatchView: NSView {
+    var availableStyles: [CollageBackgroundStyle] = CollageBackgroundStyle.allCases { didSet { needsDisplay = true } }
     var selected: CollageBackgroundStyle = .lightGray { didSet { needsDisplay = true } }
     var onSelect: ((CollageBackgroundStyle) -> Void)?
     private var hoveredIdx: Int? { didSet { if oldValue != hoveredIdx { needsDisplay = true } } }
@@ -83,40 +97,38 @@ final class CollageBgSwatchView: NSView {
     }
 
     override func mouseMoved(with event: NSEvent) {
-        let all = CollageBackgroundStyle.allCases
+        guard !availableStyles.isEmpty else { return }
         let x = convert(event.locationInWindow, from: nil).x
-        hoveredIdx = min(all.count - 1, max(0, Int(x / (bounds.width / CGFloat(all.count)))))
+        hoveredIdx = min(availableStyles.count - 1, max(0, Int(x / (bounds.width / CGFloat(availableStyles.count)))))
     }
 
     override func mouseExited(with event: NSEvent) { hoveredIdx = nil }
 
     override func mouseDown(with event: NSEvent) {
-        let all = CollageBackgroundStyle.allCases
+        guard !availableStyles.isEmpty else { return }
         let x = convert(event.locationInWindow, from: nil).x
-        let idx = min(all.count - 1, max(0, Int(x / (bounds.width / CGFloat(all.count)))))
-        selected = all[idx]
-        onSelect?(all[idx])
+        let idx = min(availableStyles.count - 1, max(0, Int(x / (bounds.width / CGFloat(availableStyles.count)))))
+        selected = availableStyles[idx]
+        onSelect?(availableStyles[idx])
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let all = CollageBackgroundStyle.allCases
+        guard let ctx = NSGraphicsContext.current?.cgContext, !availableStyles.isEmpty else { return }
         let gap: CGFloat = 6
-        let cellW = (bounds.width - gap * CGFloat(all.count - 1)) / CGFloat(all.count)
+        let cellW = (bounds.width - gap * CGFloat(availableStyles.count - 1)) / CGFloat(availableStyles.count)
 
-        for (i, item) in all.enumerated() {
+        for (i, item) in availableStyles.enumerated() {
             let r = CGRect(x: CGFloat(i) * (cellW + gap), y: 1, width: cellW, height: bounds.height - 2)
             let p = CGPath(roundedRect: r, cornerWidth: 7, cornerHeight: 7, transform: nil)
             let isSel = (item == selected)
 
             ctx.saveGState()
-            ctx.setFillColor((isSel ? GeekTheme.accent.withAlphaComponent(0.14) : (hoveredIdx == i ? GeekTheme.hoverSoft : GeekTheme.segTrackBg)).cgColor)
+            ctx.setFillColor((isSel ? GeekTheme.accent.withAlphaComponent(GeekTheme.isDark ? 0.22 : 0.12) : (hoveredIdx == i ? GeekTheme.hoverSoft : GeekTheme.segTrackBg)).cgColor)
             ctx.addPath(p); ctx.fillPath()
             ctx.setStrokeColor((isSel ? GeekTheme.accent : GeekTheme.border).cgColor)
             ctx.setLineWidth(isSel ? 1.4 : 0.9); ctx.addPath(p); ctx.strokePath()
 
-            // 左侧小色块
-            let sw = CGRect(x: r.minX + 6, y: round(r.midY - 6), width: 12, height: 12)
+            let sw = CGRect(x: r.minX + 6, y: round(r.midY - 5.5), width: 11, height: 11)
             let swP = CGPath(roundedRect: sw, cornerWidth: 3, cornerHeight: 3, transform: nil)
             ctx.saveGState()
             ctx.addPath(swP); ctx.clip()
@@ -125,11 +137,11 @@ final class CollageBgSwatchView: NSView {
             } else {
                 ctx.setFillColor(NSColor.white.cgColor); ctx.fill(sw)
                 ctx.setFillColor(NSColor(white: 0.72, alpha: 1).cgColor)
-                ctx.fill(CGRect(x: sw.minX, y: sw.minY, width: 6, height: 6))
-                ctx.fill(CGRect(x: sw.minX + 6, y: sw.minY + 6, width: 6, height: 6))
+                ctx.fill(CGRect(x: sw.minX, y: sw.minY, width: 5.5, height: 5.5))
+                ctx.fill(CGRect(x: sw.minX + 5.5, y: sw.minY + 5.5, width: 5.5, height: 5.5))
             }
             ctx.restoreGState()
-            ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.20).cgColor)
+            ctx.setStrokeColor(NSColor.black.withAlphaComponent(0.22).cgColor)
             ctx.setLineWidth(0.6); ctx.addPath(swP); ctx.strokePath()
 
             GeekTheme.drawText(
@@ -172,6 +184,13 @@ extension CollageStudioController {
         }
         items.append(makeSourceItem(title: "剪贴板图片", cgImage: cg, scaleFactor: 2.0))
         reloadFilmstrip(); schedulePreviewRender()
+    }
+
+    func clearAllItems() {
+        guard !items.isEmpty else { return }
+        items.removeAll()
+        reloadFilmstrip()
+        schedulePreviewRender()
     }
 
     func showRecentCapturesPicker() {
@@ -217,7 +236,7 @@ extension CollageStudioController {
     }
 
     func exportPDF() {
-        let imgs = items.map(\.cgImage), pad = options.padPx, bg = options.background
+        let imgs = items.map(\.cgImage), pad = options.padPx, bg = options.background == .transparent ? .white : options.background
         guard !imgs.isEmpty else { return }
         let panel = NSSavePanel()
         panel.allowedContentTypes = [.pdf]
