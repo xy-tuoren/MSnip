@@ -98,12 +98,12 @@ final class PinGlowContainerView: NSView {
             return
         }
 
-        // 默认静置态：淡淡发光白边 + 极轻环境分离影（深色桌面通透微光、浅色桌面清晰分离）
-        let blur = 2.8 + 8.6 * s
+        // 默认静置态：淡淡发光白边 + 柔和环境分离影（深色桌面通透微光、纯白浅色网页下边界同样清晰常亮）
+        let blur = 3.0 + 8.6 * s
         ctx.setShadow(
             offset: .zero,
-            blur: blur * 0.80,
-            color: NSColor.black.withAlphaComponent(0.14 + 0.14 * s).cgColor
+            blur: blur * 0.85,
+            color: NSColor.black.withAlphaComponent(0.20 + 0.16 * s).cgColor
         )
         ctx.setFillColor(NSColor.white.cgColor)
         ctx.fill(imgRect)
@@ -111,15 +111,15 @@ final class PinGlowContainerView: NSView {
         ctx.setShadow(
             offset: .zero,
             blur: blur,
-            color: NSColor.white.withAlphaComponent(0.38 + 0.48 * s).cgColor
+            color: NSColor.white.withAlphaComponent(0.46 + 0.44 * s).cgColor
         )
         ctx.fill(imgRect)
         ctx.restoreGState()
 
         ctx.saveGState()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.24 + 0.34 * s).cgColor)
-        ctx.setLineWidth(0.75)
-        ctx.stroke(imgRect.insetBy(dx: -0.4, dy: -0.4))
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.32 + 0.36 * s).cgColor)
+        ctx.setLineWidth(0.85)
+        ctx.stroke(imgRect.insetBy(dx: -0.45, dy: -0.45))
         ctx.restoreGState()
     }
 }
