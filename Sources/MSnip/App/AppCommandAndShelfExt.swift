@@ -105,16 +105,20 @@ extension AppController {
         shelfController.toggle()
     }
 
-    /// 顶部菜单栏图标点击分发：左键正常展开菜单，右键（或按住 ⌥ 左键）一键开关顶部暂存架
+    /// 顶部菜单栏图标点击分发：左键直接打开设置面板，右键（或 ⌃+左键）弹出菜单栏下拉菜单，⌥+左键开关顶部暂存架
     @objc func handleStatusBarClick(_ sender: Any?) {
         let ev = NSApp.currentEvent
-        if ev?.type == .rightMouseUp || ev?.modifierFlags.contains(.option) == true {
+        if ev?.type == .rightMouseUp || ev?.modifierFlags.contains(.control) == true {
+            guard let menu = statusMenu else { return }
+            statusItem.menu = menu
+            statusItem.button?.performClick(nil)
+            return
+        }
+        if ev?.modifierFlags.contains(.option) == true {
             toggleTopShelf()
             return
         }
-        guard let menu = statusMenu else { return }
-        statusItem.menu = menu
-        statusItem.button?.performClick(nil)
+        openGeneralPreferences()
     }
 
     /// 快捷识字静默直拷：关闭冻结层后纯后台离线 Vision 识字并直接写入剪贴板，不弹窗打断心流

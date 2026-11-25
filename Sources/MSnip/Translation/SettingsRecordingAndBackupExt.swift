@@ -170,7 +170,7 @@ extension TranslationSettingsWindow {
         extCard.addSubview(glowSeg)
 
         extCard.addHairline(atY: rowH * 2)
-        let shelfTip = "悬停展开（推荐）：贴顶停留 0.55 秒或拖文件到顶边下拉，新截图自动探头 3 秒，点顶栏秒收；快捷键切换：仅热键/右键菜单栏图标呼出；常驻显示：紧凑悬浮条常驻顶部"
+        let shelfTip = "悬停展开（推荐）：贴顶停留 0.55 秒或拖文件到顶边下拉，新截图自动探头 3 秒，点顶栏秒收；快捷键切换：仅热键或右键菜单呼出；常驻显示：紧凑悬浮条常驻顶部"
         addRowLabel("顶部暂存架显示方式", y: rowH * 2, height: rowH, in: extCard, toolTip: shelfTip)
         let shelfSeg = GeekSegmentControl(items: TopShelfTriggerMode.allCases.map(\.title), selectedIndex: 0)
         shelfSeg.toolTip = shelfTip
