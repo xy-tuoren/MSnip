@@ -9,25 +9,26 @@ extension PinWindow {
         hideHoverWorkItem?.cancel()
         hideHoverWorkItem = nil
 
-        if isClickThrough || editorCanvas != nil || cropOverlay != nil {
-            hoverBarPanel.orderOut(nil)
+        if !isHoverBarAllowed {
+            hoverBarPanel.hideCleanly()
             return
         }
 
         if isMouseInPin || isMouseInHoverBar || isDraggingFromBar {
             hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen)
-            if !hoverBarPanel.isVisible {
+            if !hoverBarPanel.isVisible || !hoverBarPanel.isOnActiveSpace {
                 hoverBarPanel.orderFrontRegardless()
             }
         } else {
             let work = DispatchWorkItem { [weak self] in
                 MainActor.assumeIsolated {
                     guard let self, !self.isMouseInPin, !self.isMouseInHoverBar, !self.isDraggingFromBar else { return }
-                    self.hoverBarPanel.orderOut(nil)
+                    if self.shouldKeepHoverBarAliveNow() { return }
+                    self.hoverBarPanel.hideCleanly()
                 }
             }
             hideHoverWorkItem = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16, execute: work)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24, execute: work)
         }
     }
 
@@ -155,8 +156,10 @@ extension PinWindow {
         pinContentView.isAnnotating = false
         if reanalyzeLiveText {
             pinContentView.liveTextView.configure(cgImage: currentCGImage, logicalSize: baseSize)
+            reconcileHoverFromCurrentMouse()
+        } else {
+            syncHoverBarVisibility()
         }
-        syncHoverBarVisibility()
         AnnotationRenderer.purgeCaches()
     }
 
@@ -215,12 +218,13 @@ extension PinWindow {
         setImageScreenFrame(NSRect(origin: NSPoint(x: nx, y: ny), size: sz))
         pinContentView.liveTextView.configure(cgImage: nextCG, logicalSize: nextBase)
         if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
+        reconcileHoverFromCurrentMouse()
         ToastHUD.show(message: toast)
     }
 
     @objc func closePin() {
         hideHoverWorkItem?.cancel(); hideHoverWorkItem = nil
-        hoverBarPanel.orderOut(nil)
+        hoverBarPanel.hideCleanly()
         endCropEditing()
         endAnnotationEditing(commit: false, reanalyzeLiveText: false)
         activeBaseSampler = nil
@@ -245,6 +249,7 @@ extension PinWindow {
         setImageScreenFrame(NSRect(origin: NSPoint(x: ax, y: ay), size: sz))
         toolbarPanel?.reposition(anchoringTo: imageScreenFrame, on: screen)
         if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
+        reconcileHoverFromCurrentMouse()
     }
 
     func buildContextMenu() -> NSMenu {

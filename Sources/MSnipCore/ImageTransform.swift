@@ -232,3 +232,68 @@ public enum PinResizeEdge: CaseIterable, Equatable, Sendable {
         return nil
     }
 }
+
+/// 贴图外置悬浮操作条定位、桥接热区与窗口遮挡纯几何判定（100% 可单测）
+public enum PinHoverGeometry {
+    /// 闭区间命中判断，避免光标紧贴 `maxX` / `maxY` 物理边缘时因半开区间漏检
+    public static func containsPointInclusive(_ rect: CGRect, _ point: CGPoint) -> Bool {
+        guard !rect.isNull, !rect.isEmpty else { return false }
+        return point.x >= rect.minX && point.x <= rect.maxX
+            && point.y >= rect.minY && point.y <= rect.maxY
+    }
+
+    /// 计算外置悬浮条在目标屏幕可见区内的锚定矩形（优先置顶右对齐，触顶自动翻至贴图下方）
+    public static func hoverBarFrame(
+        anchoringTo pinFrame: CGRect,
+        barSize: CGSize,
+        visibleBounds vf: CGRect,
+        gap: CGFloat = 5
+    ) -> CGRect {
+        let minX = vf.minX + 4
+        let maxX = max(minX, vf.maxX - barSize.width - 4)
+        let x = min(max(minX, round(pinFrame.maxX - barSize.width)), maxX)
+        let aboveY = round(pinFrame.maxY + gap)
+        let belowY = round(pinFrame.minY - barSize.height - gap)
+        let y = (aboveY + barSize.height <= vf.maxY - 2) ? aboveY : max(vf.minY + 4, belowY)
+        return CGRect(x: x, y: y, width: barSize.width, height: barSize.height)
+    }
+
+    /// 贴图与悬浮条之间的窄桥接走廊（仅覆盖悬浮条下方/上方的 5pt 间隙，防止滑向操作条途中误隐藏）
+    public static func bridgeCorridor(
+        pinFrame: CGRect,
+        barFrame: CGRect,
+        horizontalSlop: CGFloat = 6
+    ) -> CGRect {
+        let minX = barFrame.minX - horizontalSlop
+        let width = barFrame.width + horizontalSlop * 2
+        if barFrame.minY >= pinFrame.maxY {
+            return CGRect(x: minX, y: pinFrame.maxY - 2, width: width, height: (barFrame.minY - pinFrame.maxY) + 4)
+        }
+        if barFrame.maxY <= pinFrame.minY {
+            return CGRect(x: minX, y: barFrame.maxY - 2, width: width, height: (pinFrame.minY - barFrame.maxY) + 4)
+        }
+        return barFrame.insetBy(dx: -2, dy: -2)
+    }
+
+    /// 光标是否落在贴图本体、可见悬浮条本体或二者桥接走廊内
+    public static func isPointInHoverZone(
+        point: CGPoint,
+        pinFrame: CGRect,
+        barFrame: CGRect?,
+        isBarVisible: Bool
+    ) -> Bool {
+        if containsPointInclusive(pinFrame, point) { return true }
+        guard isBarVisible, let bar = barFrame else { return false }
+        return containsPointInclusive(bar, point)
+            || containsPointInclusive(bridgeCorridor(pinFrame: pinFrame, barFrame: bar), point)
+    }
+
+    /// 判断目标窗口在当前光标点是否未被更高层级窗口遮挡（同时兼容独立窗口圆角/透明 PNG 的透明像素穿透）
+    public static func isWindowUncovered(
+        pinWindowNumber: Int,
+        topWindowNumber: Int,
+        belowPinWindowNumber: Int
+    ) -> Bool {
+        topWindowNumber == pinWindowNumber || topWindowNumber == belowPinWindowNumber
+    }
+}

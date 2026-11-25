@@ -17,7 +17,12 @@ final class PinManager {
     var defaultGlowStrength: CGFloat = 0.45
 
     private var windows: [PinWindow] = []
+    private let hoverCoordinator = PinHoverCoordinator()
     private(set) var arePinsHidden = false
+
+    init() {
+        hoverCoordinator.windowsProvider = { [weak self] in self?.windows ?? [] }
+    }
 
     var count: Int { windows.count }
     var clickThroughCount: Int { windows.filter(\.isClickThrough).count }
@@ -54,12 +59,14 @@ final class PinManager {
         }
         win.onClose = { [weak self] closed in
             self?.windows.removeAll { $0 === closed }
+            self?.hoverCoordinator.syncMonitors()
             if let self { self.onCountChanged?(self.windows.count) }
         }
         win.onCloseAll = { [weak self] in
             self?.closeAll()
         }
         win.onStateChanged = { [weak self] in
+            self?.hoverCoordinator.syncMonitors()
             if let self { self.onCountChanged?(self.windows.count) }
         }
         win.onSavePNG = { [weak self] img, scale in
@@ -83,6 +90,8 @@ final class PinManager {
 
         windows.append(win)
         win.orderFrontRegardless()
+        hoverCoordinator.syncMonitors()
+        hoverCoordinator.reconcileSoon(delay: 0.05)
         onCountChanged?(windows.count)
         return win
     }
@@ -149,11 +158,14 @@ final class PinManager {
         }
         if !arePinsHidden && windows.contains(where: \.isVisible) {
             arePinsHidden = true
-            windows.forEach { $0.orderOut(nil) }
+            windows.forEach { $0.hideForToggle() }
+            hoverCoordinator.syncMonitors()
             ToastHUD.show(message: "已暂藏 \(windows.count) 张桌面贴图 · 再按快捷键恢复")
         } else {
             arePinsHidden = false
             windows.forEach { $0.orderFrontRegardless() }
+            hoverCoordinator.syncMonitors()
+            hoverCoordinator.reconcileSoon(delay: 0.05)
             ToastHUD.show(message: "已恢复显示 \(windows.count) 张桌面贴图")
         }
         onCountChanged?(windows.count)
@@ -169,6 +181,7 @@ final class PinManager {
         arePinsHidden = false
         let current = windows
         windows.removeAll()
+        hoverCoordinator.stop()
         for w in current {
             w.closePin()
         }

@@ -43,8 +43,13 @@ final class PinContentView: NSView, NSDraggingSource {
     }
 
     override func mouseEntered(with event: NSEvent) { isMouseInside = true; onHoverChanged?(true) }
-    override func mouseMoved(with event: NSEvent) { onMouseMoved?(convert(event.locationInWindow, from: nil)) }
+    override func mouseMoved(with event: NSEvent) {
+        let pt = convert(event.locationInWindow, from: nil)
+        if bounds.contains(pt), !isMouseInside { isMouseInside = true; onHoverChanged?(true) }
+        onMouseMoved?(pt)
+    }
     override func mouseExited(with event: NSEvent) { isMouseInside = false; onHoverChanged?(false) }
+    func syncMouseInsideFlag(_ inside: Bool) { if isMouseInside != inside { isMouseInside = inside } }
 
     private func updateBorderStyle() {
         layer?.borderWidth = 0
@@ -102,6 +107,7 @@ final class PinHoverBarPanel: NSPanel {
         self.level = NSWindow.Level(rawValue: NSWindow.Level.floating.rawValue + 1)
         self.becomesKeyOnlyIfNeeded = true
         self.hidesOnDeactivate = false
+        self.acceptsMouseMovedEvents = true
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = true
@@ -112,15 +118,21 @@ final class PinHoverBarPanel: NSPanel {
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
+    func hideCleanly() {
+        barView.resetHoverState()
+        orderOut(nil)
+    }
+
     func reposition(anchoringTo pinFrame: NSRect, on screen: NSScreen?) {
-        let scr = screen ?? NSScreen.main ?? NSScreen.screens.first
+        let center = NSPoint(x: pinFrame.midX, y: pinFrame.midY)
+        let scr = NSScreen.screens.first(where: { $0.frame.contains(center) })
+            ?? screen
+            ?? NSScreen.screens.first(where: { $0.frame.intersects(pinFrame) })
+            ?? NSScreen.main
+            ?? NSScreen.screens.first
         let vf = scr?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let sz = PinHoverBarView.barSize
-        let x = min(max(vf.minX + 4, round(pinFrame.maxX - sz.width)), vf.maxX - sz.width - 4)
-        let aboveY = round(pinFrame.maxY + 5)
-        let belowY = round(pinFrame.minY - sz.height - 5)
-        let y = (aboveY + sz.height <= vf.maxY - 2) ? aboveY : max(vf.minY + 4, belowY)
-        setFrame(NSRect(x: x, y: y, width: sz.width, height: sz.height), display: true)
+        let target = PinHoverGeometry.hoverBarFrame(anchoringTo: pinFrame, barSize: PinHoverBarView.barSize, visibleBounds: vf)
+        setFrame(target, display: true)
     }
 }
 
@@ -143,59 +155,25 @@ final class PinHoverBarView: NSView {
     }
 
     private let slots: [ActionSlot] = [
-        ActionSlot(
-            rect: CGRect(x: 4, y: 2, width: 28, height: 24),
-            symbol: "arrow.up.and.down.and.arrow.left.and.right",
-            tip: "按住拖动整张贴图（满屏文字无空白处时可直接拖这里）",
-            tint: MSnipUITheme.accent,
-            action: nil
-        ),
-        ActionSlot(
-            rect: CGRect(x: 38, y: 2, width: 25, height: 24),
-            symbol: "pencil.tip",
-            tip: "二次圈记标注贴图 (E)",
-            tint: MSnipUITheme.inkPrimary,
-            action: .annotate
-        ),
-        ActionSlot(
-            rect: CGRect(x: 64, y: 2, width: 25, height: 24),
-            symbol: "text.viewfinder",
-            tip: "提取图中文字 (T)",
-            tint: MSnipUITheme.inkPrimary,
-            action: .ocr
-        ),
-        ActionSlot(
-            rect: CGRect(x: 90, y: 2, width: 25, height: 24),
-            symbol: "character.bubble",
-            tip: "翻译图中文字 (Y)",
-            tint: MSnipUITheme.inkPrimary,
-            action: .translate
-        ),
-        ActionSlot(
-            rect: CGRect(x: 116, y: 2, width: 25, height: 24),
-            symbol: "doc.on.doc",
-            tip: "复制贴图图像 (⌘C)",
-            tint: MSnipUITheme.inkPrimary,
-            action: .copy
-        ),
-        ActionSlot(
-            rect: CGRect(x: 142, y: 2, width: 25, height: 24),
-            symbol: "square.and.arrow.down",
-            tip: "保存到默认目录 (⌘S · 按住 ⇧ 点击另存为)",
-            tint: MSnipUITheme.inkPrimary,
-            action: .save
-        ),
-        ActionSlot(
-            rect: CGRect(x: 168, y: 2, width: 24, height: 24),
-            symbol: "xmark",
-            tip: "关闭贴图 (Esc / 双击空白处)",
-            tint: MSnipUITheme.danger,
-            action: .close
-        )
+        ActionSlot(rect: CGRect(x: 4, y: 2, width: 28, height: 24), symbol: "arrow.up.and.down.and.arrow.left.and.right",
+                   tip: "按住拖动整张贴图（满屏文字无空白处时可直接拖这里）", tint: MSnipUITheme.accent, action: nil),
+        ActionSlot(rect: CGRect(x: 38, y: 2, width: 25, height: 24), symbol: "pencil.tip",
+                   tip: "二次圈记标注贴图 (E)", tint: MSnipUITheme.inkPrimary, action: .annotate),
+        ActionSlot(rect: CGRect(x: 64, y: 2, width: 25, height: 24), symbol: "text.viewfinder",
+                   tip: "提取图中文字 (T)", tint: MSnipUITheme.inkPrimary, action: .ocr),
+        ActionSlot(rect: CGRect(x: 90, y: 2, width: 25, height: 24), symbol: "character.bubble",
+                   tip: "翻译图中文字 (Y)", tint: MSnipUITheme.inkPrimary, action: .translate),
+        ActionSlot(rect: CGRect(x: 116, y: 2, width: 25, height: 24), symbol: "doc.on.doc",
+                   tip: "复制贴图图像 (⌘C)", tint: MSnipUITheme.inkPrimary, action: .copy),
+        ActionSlot(rect: CGRect(x: 142, y: 2, width: 25, height: 24), symbol: "square.and.arrow.down",
+                   tip: "保存到默认目录 (⌘S · 按住 ⇧ 点击另存为)", tint: MSnipUITheme.inkPrimary, action: .save),
+        ActionSlot(rect: CGRect(x: 168, y: 2, width: 24, height: 24), symbol: "xmark",
+                   tip: "关闭贴图 (Esc / 双击空白处)", tint: MSnipUITheme.danger, action: .close)
     ]
 
     private var hoveredIdx: Int? { didSet { if oldValue != hoveredIdx { needsDisplay = true } } }
     private var isDraggingPin = false { didSet { if oldValue != isDraggingPin { needsDisplay = true } } }
+    private var isMouseInsideBar = false
     override var isFlipped: Bool { true }
 
     override init(frame frameRect: NSRect = NSRect(origin: .zero, size: PinHoverBarView.barSize)) {
@@ -218,19 +196,35 @@ final class PinHoverBarView: NSView {
     }
 
     override func mouseEntered(with event: NSEvent) {
+        isMouseInsideBar = true
         onHoverChanged?(true)
         syncHover(at: convert(event.locationInWindow, from: nil))
     }
 
     override func mouseMoved(with event: NSEvent) {
-        syncHover(at: convert(event.locationInWindow, from: nil))
+        let pt = convert(event.locationInWindow, from: nil)
+        if bounds.contains(pt), !isMouseInsideBar { isMouseInsideBar = true; onHoverChanged?(true) }
+        syncHover(at: pt)
     }
 
     override func mouseExited(with event: NSEvent) {
+        resetHoverState()
+        onHoverChanged?(false)
+    }
+
+    func resetHoverState() {
+        isMouseInsideBar = false
         hoveredIdx = nil
         toolTip = nil
         if !isDraggingPin { NSCursor.arrow.set() }
-        onHoverChanged?(false)
+    }
+
+    func reconcileHover(screenPoint: NSPoint) {
+        guard let win = window else { return }
+        let pt = convert(win.convertPoint(fromScreen: screenPoint), from: nil)
+        guard bounds.contains(pt) else { return }
+        isMouseInsideBar = true
+        syncHover(at: pt)
     }
 
     private func syncHover(at pt: CGPoint) {

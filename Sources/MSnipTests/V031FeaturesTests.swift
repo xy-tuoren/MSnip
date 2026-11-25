@@ -179,6 +179,32 @@ func testV031Features() {
           && HotKeyPreset.fnKeys.defaultCombo(for: .toggleShelf)?.displayString == "F9"
           && HotKeyPreset.ctrlCmd.defaultCombo(for: .toggleShelf)?.displayString == "⌃⌘K",
           "4 套快捷键预设应为顶部暂存架分配零冲突默认键位")
+
+    // 12) 贴图外置悬浮操作条锚定、桥接走廊与遮挡/透明像素穿透判定
+    let vf = CGRect(x: 0, y: 0, width: 1440, height: 875)
+    let barSz = CGSize(width: 196, height: 28)
+    let normalPin = CGRect(x: 200, y: 300, width: 320, height: 200)
+    let aboveBar = PinHoverGeometry.hoverBarFrame(anchoringTo: normalPin, barSize: barSz, visibleBounds: vf)
+    check(aboveBar.minY == 505 && aboveBar.maxX == 520, "常规贴图悬浮条应右对齐并锚定于贴图上方 5pt 处，实际: \(aboveBar)")
+    check(PinHoverGeometry.isPointInHoverZone(point: CGPoint(x: 420, y: 502), pinFrame: normalPin, barFrame: aboveBar, isBarVisible: true),
+          "鼠标跨过贴图与悬浮条之间的 5pt 桥接走廊时应保持悬浮态不闪退")
+    check(!PinHoverGeometry.isPointInHoverZone(point: CGPoint(x: 210, y: 502), pinFrame: normalPin, barFrame: aboveBar, isBarVisible: true),
+          "远离悬浮条横向范围的贴图外空白区不应误入桥接热区")
+    check(PinHoverGeometry.isPointInHoverZone(point: CGPoint(x: 520, y: 500), pinFrame: normalPin, barFrame: nil, isBarVisible: false),
+          "贴图右上角精确物理边线 (maxX, maxY) 必须闭区间命中")
+
+    let topPin = CGRect(x: 200, y: 660, width: 320, height: 205) // 触顶
+    let belowBar = PinHoverGeometry.hoverBarFrame(anchoringTo: topPin, barSize: barSz, visibleBounds: vf)
+    check(belowBar.maxY == 655, "贴图贴顶时悬浮条应自动翻至贴图下方 5pt 处，实际: \(belowBar)")
+    check(PinHoverGeometry.isPointInHoverZone(point: CGPoint(x: 420, y: 658), pinFrame: topPin, barFrame: belowBar, isBarVisible: true),
+          "下置悬浮条的 5pt 桥接走廊同样应无缝衔接")
+
+    check(PinHoverGeometry.isWindowUncovered(pinWindowNumber: 101, topWindowNumber: 101, belowPinWindowNumber: 55),
+          "顶层窗口就是贴图自身时应判定未被遮挡")
+    check(PinHoverGeometry.isWindowUncovered(pinWindowNumber: 101, topWindowNumber: 55, belowPinWindowNumber: 55),
+          "悬停在透明圆角/透明 PNG 区域时 topWin == belowPinWin 应仍判定未被遮挡")
+    check(!PinHoverGeometry.isWindowUncovered(pinWindowNumber: 101, topWindowNumber: 202, belowPinWindowNumber: 55),
+          "上方存在菜单/Spotlight/另一张贴图时 topWin != belowPinWin 必须正确识别遮挡")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

@@ -149,7 +149,7 @@ extension PinWindow {
         overlay.removeFromSuperview()
         cropOverlay = nil
         pinContentView.isAnnotating = false
-        syncHoverBarVisibility()
+        reconcileHoverFromCurrentMouse()
     }
 
     private func commitCrop(normalizedTopLeft norm: CGRect) {

@@ -191,7 +191,10 @@ extension PinWindow {
     func attachResizeChrome() {
         let chrome = PinResizeChromeView(frame: pinContentView.bounds)
         chrome.autoresizingMask = [.width, .height]
-        chrome.onBorderHoverChanged = { [weak self] edge in self?.resizeState.hoveredEdge = edge }
+        chrome.onBorderHoverChanged = { [weak self] edge in
+            self?.resizeState.hoveredEdge = edge
+            if edge != nil { self?.updatePinHover(true) }
+        }
         pinContentView.addSubview(chrome)
         resizeState.chromeView = chrome
         pinContentView.onMouseMoved = { [weak self] pt in _ = self?.handleResizeHover(contentPoint: pt) }
@@ -262,6 +265,7 @@ extension PinWindow {
         if let chrome = resizeState.chromeView { invalidateCursorRects(for: chrome) }
         syncGlowState()
         if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
+        reconcileHoverFromCurrentMouse()
     }
 
     @objc func fitToScreen() {
@@ -272,6 +276,7 @@ extension PinWindow {
         setImageScreenFrame(NSRect(x: (fit.frame.origin.x * s).rounded() / s, y: (fit.frame.origin.y * s).rounded() / s, width: fit.frame.width, height: fit.frame.height))
         toolbarPanel?.reposition(anchoringTo: imageScreenFrame, on: screen)
         if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
+        reconcileHoverFromCurrentMouse()
     }
 
     private func updateResizeBadge() {

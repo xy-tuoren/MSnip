@@ -47,6 +47,7 @@ final class PinWindow: NSPanel {
     let glowContainer: PinGlowContainerView
     var highlightMenuItem: NSMenuItem?
 
+    var isActivelyDraggingOrResizing: Bool { isDraggingWindow || isDraggingFromBar || resizeState.activeEdge != nil }
     var imageScreenFrame: NSRect { frame.insetBy(dx: PinGlowContainerView.glowPadding, dy: PinGlowContainerView.glowPadding) }
     func setImageScreenFrame(_ imgFrame: NSRect) { let p = PinGlowContainerView.glowPadding; setFrame(imgFrame.insetBy(dx: -p, dy: -p), display: true) }
 
@@ -105,19 +106,9 @@ final class PinWindow: NSPanel {
         self.hasShadow = false
         self.contentView = glowContainer
 
-        pinContentView.onHoverChanged = { [weak self] inside in
-            self?.isMouseInPin = inside
-            if !inside { self?.clearResizeHoverCursorIfNeeded() }
-            self?.syncGlowState()
-            self?.syncHoverBarVisibility()
-            self?.syncResizeChromeVisibility()
-        }
+        pinContentView.onHoverChanged = { [weak self] inside in self?.updatePinHover(inside) }
         attachResizeChrome()
-        hoverBarPanel.barView.onHoverChanged = { [weak self] inside in
-            self?.isMouseInHoverBar = inside
-            self?.syncGlowState()
-            self?.syncHoverBarVisibility()
-        }
+        hoverBarPanel.barView.onHoverChanged = { [weak self] inside in self?.updateHoverBarHover(inside) }
         hoverBarPanel.barView.onAction = { [weak self] act in
             guard let self else { return }
             switch act {
@@ -148,7 +139,7 @@ final class PinWindow: NSPanel {
         hoverBarPanel.barView.onDragEnd = { [weak self] in
             guard let self else { return }
             self.isDraggingFromBar = false
-            self.syncHoverBarVisibility()
+            self.reconcileHoverFromCurrentMouse()
         }
 
         let menu = buildContextMenu()
@@ -175,6 +166,7 @@ final class PinWindow: NSPanel {
         switch event.type {
         case .mouseMoved:
             let cp = pinContentView.convert(event.locationInWindow, from: nil)
+            if pinContentView.bounds.contains(cp), !isMouseInPin { updatePinHover(true) }
             if handleResizeHover(contentPoint: cp) { return }
             super.sendEvent(event)
 
@@ -217,7 +209,7 @@ final class PinWindow: NSPanel {
 
         case .leftMouseUp:
             if resizeState.activeEdge != nil { endResizeDrag(); return }
-            if isDraggingWindow { isDraggingWindow = false; return }
+            if isDraggingWindow { isDraggingWindow = false; reconcileHoverFromCurrentMouse(); return }
             super.sendEvent(event)
 
         case .keyDown:
