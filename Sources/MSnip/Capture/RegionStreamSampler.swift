@@ -82,7 +82,7 @@ final class RegionStreamSampler {
                     cfg.width = pxW
                     cfg.height = pxH
                     cfg.pixelFormat = kCVPixelFormatType_32BGRA
-                    cfg.queueDepth = 8
+                    cfg.queueDepth = 4
                 } else {
                     // 视频编码模式：按清晰度预设在 GPU 采集端直接等比缩放并保持偶数像素，确保 H.264 零拷贝直通
                     let rawW = max(24, Int((clampedRect.width * scale).rounded()) & ~1)

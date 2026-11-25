@@ -1,6 +1,18 @@
 import CoreGraphics
 import Foundation
 
+/// 撤回上一段关键帧所需的完整画布与锚点快照
+struct ScrollUndoSnapshot {
+    let stripCount: Int
+    let bodyHeightPx: Int
+    let seamY: Int
+    let lockedTopFixed: Int
+    let lockedBottomFixed: Int
+    let anchorDigest: ScrollFrameDigest?
+    let liveTailStrip: CGImage?
+    let previewTailStrip: CGImage?
+}
+
 /// 滚动长截图无损切片画布存储（维护已提交洁净条带 + 动态可替换尾段，全程保留源帧 Display P3 / ICC 色域）
 struct ScrollStripCanvas {
     var strips: [CGImage] = []
@@ -100,6 +112,48 @@ struct ScrollStripCanvas {
             tail: liveTailStrip, previewTail: previewTailStrip,
             scaleDownToMaxSide: scaleDownToMaxSide, usePreviewSlices: usePreviewSlices
         )
+    }
+
+    /// 面向实时预览栏的智能尾部跟随合成：
+    /// 当长图高宽比超过 `maxAspectRatio`（默认 2.8×）时，仅以 O(1) 开销合成最新底部视窗，避免预览缩成不可读细线。
+    func composeTailPreview(widthPx: Int, maxSidePx: Int, maxAspectRatio: CGFloat = 2.8) -> CGImage? {
+        let fullH = totalHeightPx
+        guard widthPx > 0, fullH > 0 else { return nil }
+        let maxWindowH = max(widthPx, Int((CGFloat(widthPx) * maxAspectRatio).rounded()))
+        guard fullH > maxWindowH else {
+            return compose(widthPx: widthPx, scaleDownToMaxSide: maxSidePx, usePreviewSlices: true)
+        }
+
+        let targetW = min(widthPx, min(320, maxSidePx))
+        let scale = CGFloat(targetW) / CGFloat(widthPx)
+        let outH = max(1, Int((CGFloat(maxWindowH) * scale).rounded()))
+        guard let ctx = CGContext(
+            data: nil, width: targetW, height: outH, bitsPerComponent: 8, bytesPerRow: 0,
+            space: Self.resolvedColorSpace(for: liveTailStrip ?? strips.last),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ) else { return nil }
+
+        ctx.interpolationQuality = .medium
+        let windowTopPx = fullH - maxWindowH
+        var cursorTopPx = 0
+
+        func drawSlice(fullSliceH: Int, tex: CGImage) {
+            let sliceBotPx = cursorTopPx + fullSliceH
+            defer { cursorTopPx = sliceBotPx }
+            guard sliceBotPx > windowTopPx else { return }
+            let localTop = cursorTopPx - windowTopPx
+            let dstY = CGFloat(maxWindowH - localTop - fullSliceH) * scale
+            ctx.draw(tex, in: CGRect(x: 0, y: dstY, width: CGFloat(targetW), height: CGFloat(fullSliceH) * scale))
+        }
+
+        for i in strips.indices {
+            let tex = previewStrips.indices.contains(i) ? previewStrips[i] : strips[i]
+            drawSlice(fullSliceH: strips[i].height, tex: tex)
+        }
+        if let tail = liveTailStrip {
+            drawSlice(fullSliceH: tail.height, tex: previewTailStrip ?? tail)
+        }
+        return ctx.makeImage()
     }
 
     // MARK: - Lossless Pixel Helpers

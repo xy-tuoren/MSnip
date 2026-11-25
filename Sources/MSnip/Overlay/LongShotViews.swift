@@ -194,6 +194,7 @@ final class LongShotPreviewView: NSView {
     var pixelWidth: Int = 0 { didSet { needsDisplay = true } }
     var pixelHeight: Int = 0 { didSet { needsDisplay = true } }
     var baseHeightPx: Int = 1
+    var isFollowingTail: Bool = false { didSet { needsDisplay = true } }
 
     override var isFlipped: Bool { true }
 
@@ -239,6 +240,26 @@ final class LongShotPreviewView: NSView {
             )
             let nsImg = NSImage(cgImage: img, size: dst.size)
             nsImg.draw(in: dst, from: .zero, operation: .copy, fraction: 1.0, respectFlipped: true, hints: nil)
+
+            if isFollowingTail, dst.height >= 40 {
+                // 超长图尾部跟随模式：顶部轻渐隐提示上方仍有内容，并绘制底部进度游标
+                let fadeH: CGFloat = min(18, dst.height * 0.14)
+                if let grad = CGGradient(
+                    colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                    colors: [MSnipUITheme.subtleFill.withAlphaComponent(0.92).cgColor, MSnipUITheme.subtleFill.withAlphaComponent(0.0).cgColor] as CFArray,
+                    locations: [0.0, 1.0]
+                ) {
+                    ctx.saveGState()
+                    ctx.clip(to: CGRect(x: dst.minX, y: dst.minY, width: dst.width, height: fadeH))
+                    ctx.drawLinearGradient(grad, start: CGPoint(x: 0, y: dst.minY), end: CGPoint(x: 0, y: dst.minY + fadeH), options: [])
+                    ctx.restoreGState()
+                }
+                let thumbH: CGFloat = max(16, min(36, dst.height * 0.22))
+                let trackRect = CGRect(x: dst.maxX - 4.5, y: dst.maxY - thumbH - 3, width: 2.5, height: thumbH)
+                ctx.setFillColor(MSnipUITheme.accent.withAlphaComponent(0.75).cgColor)
+                ctx.addPath(CGPath(roundedRect: trackRect, cornerWidth: 1.25, cornerHeight: 1.25, transform: nil))
+                ctx.fillPath()
+            }
 
             ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
             ctx.setLineWidth(1.0)

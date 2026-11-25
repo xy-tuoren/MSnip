@@ -224,4 +224,62 @@ private func testScrollStitcherDarkModeFloatingDownButtonAndMicroScroll() {
     // 校验暗色模式跨整屏无关内容绝不会被 88% 黑底稀释误匹配
     let unrelated = renderDarkChatViewport(w: w, h: h, stickyBottomH: botH, scrollY: scrollY + 2400, showFloatingButton: true, cursorOn: true)
     check(stitcher.ingest(frame: unrelated) == .mismatchLostOverlap, "暗色模式无重叠跳跃帧应严格拦截为 mismatchLostOverlap")
+
+    // 校验长图实时尾随预览：超长图 (8× 高宽比) 仍保持清晰可读宽度，不压扁成细线
+    let tallPreview = stitcher.renderPreviewImage(maxSidePx: 680)
+    check(tallPreview != nil && tallPreview!.width >= 200, "长图实时预览应保持清晰可读宽度，实际: \(tallPreview?.width ?? 0)")
+
+    testScrollStitcherSparseMicroScrollAndRubberBand()
+}
+
+/// 校验极稀疏暗色页微小步进不被尾段静默刷新误吞 + macOS 触控板触底橡皮筋空白回弹自动撤消
+private func testScrollStitcherSparseMicroScrollAndRubberBand() {
+    let w = 320, h = 360
+    func renderSparseFrame(scrollY: Int, maxDocH: Int) -> CGImage {
+        let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+        let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                            space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+        ctx.translateBy(x: 0, y: CGFloat(h)); ctx.scaleBy(x: 1, y: -1)
+        ctx.setFillColor(CGColor(srgbRed: 33.0 / 255.0, green: 33.0 / 255.0, blue: 33.0 / 255.0, alpha: 1))
+        ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
+        // 仅在稀疏位置绘制少量高对比度文字条（超过 95% 区域为纯深灰背景）
+        let lines = [52, 134, 240, 345, 420]
+        ctx.setFillColor(CGColor(srgbRed: 0.92, green: 0.92, blue: 0.94, alpha: 1))
+        for (idx, docY) in lines.enumerated() where docY < maxDocH {
+            let vy = docY - scrollY
+            if vy >= 0 && vy + 6 <= h {
+                ctx.fill(CGRect(x: 24 + idx * 14, y: vy, width: 120 + (idx % 3) * 24, height: 5))
+            }
+        }
+        return ctx.makeImage()!
+    }
+
+    // 1) 极稀疏页面微滚动（每帧仅 +5px / +6px）绝不能被 isSettledTailRefresh 误吞
+    let s1 = ScrollStitcher()
+    _ = s1.ingest(frame: renderSparseFrame(scrollY: 0, maxDocH: 900))
+    var sy = 0
+    for step in [5, 6, 5, 6, 6, 5, 6, 5] {
+        sy += step
+        let res = s1.ingest(frame: renderSparseFrame(scrollY: sy, maxDocH: 900))
+        if case .appended = res {} else {
+            check(false, "极稀疏页面微小步进 +\(step)px 不应被误吞为 \(res)")
+            break
+        }
+    }
+    check(s1.totalHeightPx == h + sy, "极稀疏页面连续微滚总高度应精确等于 \(h + sy)px，实际: \(s1.totalHeightPx)px")
+
+    // 2) macOS 触控板触底橡皮筋回弹：滚到真实底部后多拉出 +54px 纯空白，紧接着弹回真实底部，空白应自动撤消
+    let s2 = ScrollStitcher()
+    let trueDocH = 480
+    let trueMaxScroll = trueDocH - h // 120px
+    _ = s2.ingest(frame: renderSparseFrame(scrollY: 0, maxDocH: trueDocH))
+    _ = s2.ingest(frame: renderSparseFrame(scrollY: 80, maxDocH: trueDocH))
+    _ = s2.ingest(frame: renderSparseFrame(scrollY: trueMaxScroll, maxDocH: trueDocH))
+    check(s2.totalHeightPx == trueDocH, "滚至真实底部时高度应为 \(trueDocH)px，实际: \(s2.totalHeightPx)px")
+    // 触控板惯性超滚 +54px（底部拉出 54px 纯空白橡皮筋区）
+    _ = s2.ingest(frame: renderSparseFrame(scrollY: trueMaxScroll + 54, maxDocH: trueDocH))
+    // 100ms 后系统自动弹回真实底部 trueMaxScroll
+    let bounce = s2.ingest(frame: renderSparseFrame(scrollY: trueMaxScroll, maxDocH: trueDocH))
+    check(bounce == .scrolledBackward && s2.totalHeightPx == trueDocH,
+          "触底橡皮筋纯空白回弹后应自动撤消多余空白并回归真实高度 \(trueDocH)px，实际: \(s2.totalHeightPx)px (\(bounce))")
 }

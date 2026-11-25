@@ -8,9 +8,9 @@ public enum ScrollStitchAxis: String, CaseIterable, Codable, Sendable {
 }
 
 /// 纯原生滚动长截图拼接状态机（零外部依赖）：
-/// - 采用「洁净中缝提交 + 动态尾段替换」架构，彻底消除底部悬浮按钮（如 `↓` 置底键）、渐变蒙版与固定底栏在正文中反复重影；
-/// - 采用关键帧步长提交，杜绝高帧率微小步进导致的累积亚像素漂移与文字切片重影；
-/// - 停滚后静默刷新尾段，自动吸收渐隐的置底按钮与系统滚动条。
+/// - 「洁净中缝提交 + 动态尾段替换」消除悬浮按钮（如 `↓` 置底键）与固定底栏反复重影；
+/// - 「关键帧步长 + 橡皮筋回弹撤消」杜绝高帧率微切片漂移与触控板触底多余空白；
+/// - 停滚后严格检验上区纹丝不动再静默刷新尾段，既吸收淡出图标又不误吞稀疏页微滚动。
 public final class ScrollStitcher: @unchecked Sendable {
     public enum StepResult: Equatable, Sendable {
         case initialized(widthPx: Int, heightPx: Int)
@@ -19,17 +19,6 @@ public final class ScrollStitcher: @unchecked Sendable {
         case appended(addedPx: Int, totalHeightPx: Int)
         case mismatchLostOverlap
         case reachedHeightLimit
-    }
-
-    private struct UndoSnapshot {
-        let stripCount: Int
-        let bodyHeightPx: Int
-        let seamY: Int
-        let lockedTopFixed: Int
-        let lockedBottomFixed: Int
-        let anchorDigest: ScrollFrameDigest?
-        let liveTailStrip: CGImage?
-        let previewTailStrip: CGImage?
     }
 
     public static let defaultMaxHeightPx = 24_000
@@ -48,7 +37,7 @@ public final class ScrollStitcher: @unchecked Sendable {
     private var resyncDigest: ScrollFrameDigest?
     private var seamY: Int = 0
     private var canvas = ScrollStripCanvas()
-    private var undoStack: [UndoSnapshot] = []
+    private var undoStack: [ScrollUndoSnapshot] = []
 
     public var totalHeightPx: Int { lock.lock(); defer { lock.unlock() }; return totalHeightPxUnlocked }
     private var totalHeightPxUnlocked: Int { canvas.isEmpty ? frameHeightPx : canvas.totalHeightPx }
@@ -77,11 +66,8 @@ public final class ScrollStitcher: @unchecked Sendable {
         lock.lock(); defer { lock.unlock() }
         if pendingDy > 0, let anchor = anchorDigest {
             pendingDy = 0; pendingDigest = nil; resyncDigest = nil
-            if canvas.strips.count <= 1 && undoStack.isEmpty {
-                canvas.removeAll(); seamY = 0
-            } else {
-                canvas.updateLiveTail(from: anchor.image, topY: seamY, width: widthPx, frameHeight: frameHeightPx)
-            }
+            if canvas.strips.count <= 1 && undoStack.isEmpty { canvas.removeAll(); seamY = 0 }
+            else { canvas.updateLiveTail(from: anchor.image, topY: seamY, width: widthPx, frameHeight: frameHeightPx) }
             return true
         }
         guard let snap = undoStack.popLast() else { return false }
@@ -99,16 +85,13 @@ public final class ScrollStitcher: @unchecked Sendable {
         return ok
     }
 
-    /// 喂入最新采集到的选区帧（横向模式自动执行 90° 无损转置，复用完整抗悬浮/抗固定栏引擎）
     public func ingest(frame rawFrame: CGImage) -> StepResult {
         lock.lock(); defer { lock.unlock() }
         let frame: CGImage
         if axis == .horizontal {
             guard let rotated = ImageTransform.rotateClockwise90(rawFrame) else { return .unchanged }
             frame = rotated
-        } else {
-            frame = rawFrame
-        }
+        } else { frame = rawFrame }
         let w = frame.width, h = frame.height
         guard w >= 24, h >= 32 else { return .unchanged }
 
@@ -125,11 +108,10 @@ public final class ScrollStitcher: @unchecked Sendable {
 
         let digest = ScrollFrameDigest.build(for: frame, detach: false)
         let latest = pendingDigest ?? anchor
-        var unchangedRows = 0
-        for y in 0..<h where latest.rows[y].fullDiff(to: digest.rows[y]) <= 2 { unchangedRows += 1 }
-        if unchangedRows == h { return .unchanged }
-        if !canvas.isEmpty, unchangedRows * 100 >= h * 94,
-           ScrollOverlapVerifier.isUpperRegionAligned(a: latest, b: digest, workTop: lockedTopFixed, seamY: seamY) {
+        var exactSame = true
+        for y in 0..<h where latest.rows[y].fullDiff(to: digest.rows[y]) > 2 { exactSame = false; break }
+        if exactSame { return .unchanged }
+        if !canvas.isEmpty, ScrollOverlapVerifier.isSettledTailRefresh(a: latest, b: digest, workTop: lockedTopFixed, seamY: seamY, height: h) {
             refreshSettledTail(from: frame, digest: digest)
             return .unchanged
         }
@@ -138,25 +120,19 @@ public final class ScrollStitcher: @unchecked Sendable {
             anchor: anchor, curr: digest, width: w, height: h, lockedTop: lockedTopFixed, lockedBottom: lockedBottomFixed
         ) {
             resyncDigest = nil
-            if match.dy == pendingDy {
-                if !canvas.isEmpty { refreshSettledTail(from: frame, digest: digest) }
-                return .unchanged
-            }
-            if match.dy < pendingDy { return .scrolledBackward }
+            if match.dy == pendingDy { if !canvas.isEmpty { refreshSettledTail(from: frame, digest: digest) }; return .unchanged }
+            if match.dy < pendingDy { rollbackRubberBandIfBlank(matchDy: match.dy, frame: frame, digest: digest); return .scrolledBackward }
             return processForwardMatch(frame: frame, digest: digest, dy: match.dy, margins: match.margins)
         }
-
         if let pending = pendingDigest, pendingDy > 0,
            let bridge = ScrollOverlapVerifier.matchDisplacement(
                anchor: pending, curr: digest, width: w, height: h, lockedTop: lockedTopFixed, lockedBottom: lockedBottomFixed
            ) {
             resyncDigest = nil
-            if bridge.dy == 0 { return .unchanged }
-            if bridge.dy < 0 { return .scrolledBackward }
+            if bridge.dy <= 0 { return bridge.dy == 0 ? .unchanged : .scrolledBackward }
             commitPendingAsKeyframe()
             return processForwardMatch(frame: frame, digest: digest, dy: bridge.dy, margins: bridge.margins)
         }
-
         if let resync = resyncDigest {
             var sameAsResync = 0
             for y in 0..<h where resync.rows[y].fullDiff(to: digest.rows[y]) <= 4 { sameAsResync += 1 }
@@ -165,10 +141,7 @@ public final class ScrollStitcher: @unchecked Sendable {
                 anchor: resync, curr: digest, width: w, height: h, lockedTop: lockedTopFixed, lockedBottom: lockedBottomFixed
             ) {
                 if rec.dy == 0 { return .unchanged }
-                if rec.dy >= 24 {
-                    resyncDigest = nil
-                    return applySelfResync(resyncBase: resync, currFrame: frame, currDigest: digest, dy: rec.dy)
-                }
+                if rec.dy >= 24 { resyncDigest = nil; return applySelfResync(resyncBase: resync, currFrame: frame, currDigest: digest, dy: rec.dy) }
             }
         }
         resyncDigest = ScrollFrameDigest.build(for: frame, detach: true)
@@ -182,6 +155,16 @@ public final class ScrollStitcher: @unchecked Sendable {
         }
     }
 
+    /// 检测并撤消 macOS 触控板触底橡皮筋回弹：仅当多拉出的底段确为纯空白且随即自动弹回时回退 `pendingDy`
+    private func rollbackRubberBandIfBlank(matchDy: Int, frame: CGImage, digest: ScrollFrameDigest) {
+        guard matchDy >= 0, let pending = pendingDigest else { return }
+        let rebound = pendingDy - matchDy
+        guard ScrollFrameDigest.isBlankRubberBand(rows: pending.rows, workBottom: frameHeightPx - lockedBottomFixed, depth: rebound) else { return }
+        pendingDy = matchDy
+        pendingDigest = matchDy > 0 ? digest.detachedCopy() : nil
+        canvas.updateLiveTail(from: frame, topY: max(lockedTopFixed, seamY - matchDy), width: widthPx, frameHeight: frameHeightPx)
+    }
+
     private func processForwardMatch(
         frame: CGImage, digest: ScrollFrameDigest, dy: Int,
         margins: (matchTop: Int, matchBottom: Int, stickyTop: Int, stickyBottom: Int)
@@ -190,7 +173,7 @@ public final class ScrollStitcher: @unchecked Sendable {
         let w = widthPx, h = frameHeightPx
         let clampedDelta = min(dy - pendingDy, maxHeightPx - totalHeightPxUnlocked)
         guard clampedDelta > 0 else { return .reachedHeightLimit }
-        let effectiveDy = pendingDy + clampedDelta
+        var effectiveDy = pendingDy + clampedDelta
 
         let isFirstScroll = canvas.isEmpty
         if isFirstScroll, let initial = firstFrame {
@@ -204,8 +187,21 @@ public final class ScrollStitcher: @unchecked Sendable {
             lockedTopFixed = min(lockedTopFixed, margins.stickyTop)
         }
 
-        let workH = max(32, h - lockedBottomFixed - lockedTopFixed)
+        let workBottom = h - lockedBottomFixed
+        let workH = max(32, workBottom - lockedTopFixed)
         let minCommitDy = max(24, min(workH * 22 / 100, 160))
+
+        // 若此前已挂起真实正文、而本次新增恰好是纯空白橡皮筋拉出且跨过步长，先固化真实正文，将空白留在 pending 等待回弹
+        if effectiveDy >= minCommitDy, pendingDy > 0,
+           ScrollFrameDigest.isBlankRubberBand(rows: digest.rows, workBottom: workBottom, depth: clampedDelta),
+           clampedDelta <= max(1, seamY - lockedTopFixed) {
+            commitPendingAsKeyframe()
+            effectiveDy = clampedDelta
+            pendingDy = effectiveDy; pendingDigest = digest.detachedCopy()
+            canvas.updateLiveTail(from: frame, topY: seamY - effectiveDy, width: w, frameHeight: h)
+            return totalHeightPxUnlocked >= maxHeightPx ? .reachedHeightLimit : .appended(addedPx: clampedDelta, totalHeightPx: totalHeightPxUnlocked)
+        }
+
         if effectiveDy < minCommitDy && effectiveDy <= max(1, seamY - lockedTopFixed) {
             pendingDy = effectiveDy; pendingDigest = digest.detachedCopy()
             canvas.updateLiveTail(from: frame, topY: seamY - effectiveDy, width: w, frameHeight: h)
@@ -239,9 +235,7 @@ public final class ScrollStitcher: @unchecked Sendable {
             canvas.appendBodyStrip(from: currFrame, y: seamY - dy, height: dy, width: w)
         } else {
             let currSpan = max(0, seamY - safeTop), anchorSpan = dy - currSpan
-            if anchorSpan > 0 {
-                canvas.appendBodyStrip(from: anchorImage, y: seamY, height: min(anchorSpan, max(0, workBottom - seamY)), width: w)
-            }
+            if anchorSpan > 0 { canvas.appendBodyStrip(from: anchorImage, y: seamY, height: min(anchorSpan, max(0, workBottom - seamY)), width: w) }
             if currSpan > 0 { canvas.appendBodyStrip(from: currFrame, y: safeTop, height: currSpan, width: w) }
         }
     }
@@ -270,30 +264,26 @@ public final class ScrollStitcher: @unchecked Sendable {
 
     private func pushUndoSnapshot(baseIsInitial: Bool) {
         if undoStack.count >= 12 { undoStack.removeFirst() }
-        if baseIsInitial {
-            undoStack.append(UndoSnapshot(
-                stripCount: 0, bodyHeightPx: 0, seamY: 0, lockedTopFixed: 0, lockedBottomFixed: 0,
-                anchorDigest: anchorDigest, liveTailStrip: nil, previewTailStrip: nil
-            ))
-        } else {
-            let cleanTail = anchorDigest.flatMap {
-                ScrollStripCanvas.detachCopy($0.image, rect: CGRect(x: 0, y: seamY, width: widthPx, height: frameHeightPx - seamY))
-            }
-            undoStack.append(UndoSnapshot(
-                stripCount: canvas.strips.count, bodyHeightPx: canvas.bodyHeightPx, seamY: seamY,
-                lockedTopFixed: lockedTopFixed, lockedBottomFixed: lockedBottomFixed,
-                anchorDigest: anchorDigest, liveTailStrip: cleanTail,
-                previewTailStrip: cleanTail.map { ScrollStripCanvas.makePreviewSlice($0) }
-            ))
+        let tail = baseIsInitial ? nil : anchorDigest.flatMap {
+            ScrollStripCanvas.detachCopy($0.image, rect: CGRect(x: 0, y: seamY, width: widthPx, height: frameHeightPx - seamY))
         }
+        undoStack.append(ScrollUndoSnapshot(
+            stripCount: baseIsInitial ? 0 : canvas.strips.count, bodyHeightPx: baseIsInitial ? 0 : canvas.bodyHeightPx,
+            seamY: baseIsInitial ? 0 : seamY, lockedTopFixed: baseIsInitial ? 0 : lockedTopFixed,
+            lockedBottomFixed: baseIsInitial ? 0 : lockedBottomFixed, anchorDigest: anchorDigest,
+            liveTailStrip: tail, previewTailStrip: tail.map { ScrollStripCanvas.makePreviewSlice($0) }
+        ))
     }
 
-    public func renderFinalImage() -> CGImage? { render(maxSidePx: nil, usePreview: false) }
-    public func renderPreviewImage(maxSidePx: Int = 680) -> CGImage? { render(maxSidePx: maxSidePx, usePreview: true) }
+    public func renderFinalImage() -> CGImage? { renderImage(previewMaxSide: nil) }
+    public func renderPreviewImage(maxSidePx: Int = 680) -> CGImage? { renderImage(previewMaxSide: maxSidePx) }
 
-    private func render(maxSidePx: Int?, usePreview: Bool) -> CGImage? {
+    private func renderImage(previewMaxSide: Int?) -> CGImage? {
         lock.lock(); defer { lock.unlock() }
-        let composed = canvas.isEmpty ? firstFrame : canvas.compose(widthPx: widthPx, scaleDownToMaxSide: maxSidePx, usePreviewSlices: usePreview)
+        let composed: CGImage?
+        if canvas.isEmpty { composed = firstFrame }
+        else if let maxSide = previewMaxSide { composed = canvas.composeTailPreview(widthPx: widthPx, maxSidePx: maxSide) }
+        else { composed = canvas.compose(widthPx: widthPx, scaleDownToMaxSide: nil, usePreviewSlices: false) }
         guard let img = composed else { return nil }
         return axis == .horizontal ? ImageTransform.rotateCounterClockwise90(img) : img
     }

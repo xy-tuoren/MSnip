@@ -261,4 +261,20 @@ struct ScrollFrameDigest {
         }
         return workTop + prefRel
     }
+
+    /// 检测可滚区最底端 `depth` 像素是否为几乎无纹理的纯色空白带（用于精准识别 macOS 触控板触底橡皮筋回弹空白）
+    static func isBlankRubberBand(rows: [ScrollRowSig], workBottom: Int, depth: Int) -> Bool {
+        guard depth >= 4, workBottom > depth, workBottom <= rows.count else { return false }
+        let startY = workBottom - depth
+        var uniformRows = 0
+        for y in startY..<workBottom {
+            let r = rows[y]
+            var maxEnergy: Int16 = 0
+            for b in 0..<16 { if r.energy[b] > maxEnergy { maxEnergy = r.energy[b] } }
+            let flatRow = r.grad <= 2 && maxEnergy <= 4
+            let smoothNext = (y + 1 >= workBottom) || (r.fullDiff(to: rows[y + 1]) <= 3)
+            if flatRow && smoothNext { uniformRows += 1 }
+        }
+        return uniformRows * 100 >= depth * 90
+    }
 }

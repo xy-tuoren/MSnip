@@ -35,6 +35,7 @@ final class LongShotSession {
     private var localKeyMonitor: Any?
     private var bottomWatchdog: Timer?
     private var lastAppendTimestamp: TimeInterval = 0
+    private var autoScrollStartHeightPx: Int = 0
 
     var targetScreen: NSScreen!
     var captureLocalRect: CGRect = .zero
@@ -65,6 +66,7 @@ final class LongShotSession {
             guard let self else { return }
             self.controlView?.isAutoScrolling = running
             if running {
+                self.autoScrollStartHeightPx = self.stitcher.totalHeightPx
                 self.lastAppendTimestamp = ProcessInfo.processInfo.systemUptime
                 self.startBottomWatchdog()
             } else {
@@ -87,7 +89,7 @@ final class LongShotSession {
         sampler.start(
             screen: screen,
             localTopLeftRect: rounded,
-            fps: 60,
+            fps: 36,
             losslessBGRA: true,
             onFrameBackground: { [weak self] frame in
                 let step = stitcherRef.ingest(frame: frame)
@@ -127,11 +129,14 @@ final class LongShotSession {
             }
             let primaryH = NSScreen.screens.first?.frame.height ?? targetScreen.frame.height
             let quartzOriginY = primaryH - targetScreen.frame.maxY + captureLocalRect.minY
-            let centerQuartz = CGPoint(
-                x: targetScreen.frame.minX + captureLocalRect.midX,
-                y: quartzOriginY + captureLocalRect.height * 0.5
+            // 优先落在右侧内容页边距（避开左侧固定侧边栏、右侧 16pt 滚动条与中央正文 Hover 高亮区）
+            let insetRight = min(32.0, max(18.0, captureLocalRect.width * 0.08))
+            let safeX = captureLocalRect.width >= 120 ? (captureLocalRect.maxX - insetRight) : captureLocalRect.midX
+            let targetQuartz = CGPoint(
+                x: targetScreen.frame.minX + safeX,
+                y: quartzOriginY + captureLocalRect.height * 0.62
             )
-            autoScroller.toggle(targetQuartzPoint: centerQuartz) {
+            autoScroller.toggle(targetQuartzPoint: targetQuartz) {
                 ToastHUD.show(message: "开启「辅助功能」后可用自动滚动，当前可直接手动滚轮")
                 _ = RegionDetector.checkAccessibilityPermission(prompt: true)
             }
@@ -149,6 +154,7 @@ final class LongShotSession {
                 previewView?.previewImage = initImg
                 previewView?.pixelWidth = initImg.width
                 previewView?.pixelHeight = initImg.height
+                previewView?.isFollowingTail = false
             }
         case .undoLast:
             performUndoLastAppend()
@@ -173,6 +179,7 @@ final class LongShotSession {
         previewView?.previewImage = stitcher.renderPreviewImage() ?? fallbackInitialFrame
         previewView?.pixelWidth = sz.width
         previewView?.pixelHeight = sz.height
+        previewView?.isFollowingTail = Double(max(sz.width, sz.height)) / Double(max(1, min(sz.width, sz.height))) > 2.8
         controlView?.canUndoLast = stitcher.canUndoAppend
         borderView?.statusStyle = .ready
         borderView?.statusText = "已撤回上一段 · \(sz.width) × \(sz.height) px · 可继续滚动"
@@ -184,6 +191,8 @@ final class LongShotSession {
         let sz = stitcher.outputSizePx
         previewView?.pixelWidth = sz.width
         previewView?.pixelHeight = sz.height
+        let longSide = max(sz.width, sz.height), shortSide = max(1, min(sz.width, sz.height))
+        previewView?.isFollowingTail = Double(longSide) / Double(shortSide) > 2.8
         controlView?.canUndoLast = stitcher.canUndoAppend
 
         switch step {
@@ -215,9 +224,15 @@ final class LongShotSession {
             MainActor.assumeIsolated {
                 guard let self, self.autoScroller.isRunning else { return }
                 if ProcessInfo.processInfo.systemUptime - self.lastAppendTimestamp >= 1.35 {
+                    let moved = self.stitcher.totalHeightPx > self.autoScrollStartHeightPx
                     self.autoScroller.stop()
-                    self.borderView?.statusStyle = .finishedBottom
-                    self.borderView?.statusText = "✓ 已滚动到底部 · \(self.stitcher.widthPx) × \(self.stitcher.totalHeightPx) px"
+                    if moved {
+                        self.borderView?.statusStyle = .finishedBottom
+                        self.borderView?.statusText = "✓ 已滚动到底部 · \(self.stitcher.widthPx) × \(self.stitcher.totalHeightPx) px"
+                    } else {
+                        self.borderView?.statusStyle = .warning
+                        self.borderView?.statusText = "⚠ 未检测到页面滚动：请确认窗口焦点或手动在框内滚轮"
+                    }
                 }
             }
         }

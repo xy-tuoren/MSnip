@@ -4,13 +4,16 @@ import CoreGraphics
 import Foundation
 
 /// 长截图平滑自动滚轮控制器：
-/// 以 30Hz 向选区几何中心投递像素级向下滚轮事件，无需鼠标一直停留在选框内；用户手动反向滚轮时自动中断。
+/// 启动时自动将光标移至选区内侧安静边缘（避免点完按钮光标留在选区外导致滚不动，也避开中央内容 Hover 高亮），
+/// 以 30Hz 投递像素级向下滚轮事件；触底停止若用户未挪动鼠标则礼貌还原原光标位，用户反向滚轮时立即中断。
 @MainActor
 final class AutoScroller {
     var onStateChanged: ((Bool) -> Void)?
 
     private var timer: Timer?
     private var wheelMonitor: Any?
+    private var savedCursorQuartz: CGPoint?
+    private var warpedCursorQuartz: CGPoint?
     private(set) var isRunning = false
 
     func toggle(targetQuartzPoint: CGPoint, onRequireAccessibility: () -> Void) {
@@ -27,6 +30,12 @@ final class AutoScroller {
             onRequireAccessibility()
             return
         }
+
+        // 记录原始光标并将光标落入目标可滚区域内部，确保 macOS 将 HID 滚轮事件准确路由到目标滚动视图
+        savedCursorQuartz = CGEvent(source: nil)?.location
+        CGWarpMouseCursorPosition(targetQuartzPoint)
+        CGAssociateMouseAndMouseCursorPosition(1)
+        warpedCursorQuartz = targetQuartzPoint
 
         isRunning = true
         onStateChanged?(true)
@@ -63,6 +72,15 @@ final class AutoScroller {
             NSEvent.removeMonitor(m)
             wheelMonitor = nil
         }
+        // 仅当用户未自行挪动鼠标时还原光标到原按钮位置，绝不与用户抢光标
+        if let saved = savedCursorQuartz, let warped = warpedCursorQuartz,
+           let cur = CGEvent(source: nil)?.location,
+           hypot(cur.x - warped.x, cur.y - warped.y) <= 18.0 {
+            CGWarpMouseCursorPosition(saved)
+            CGAssociateMouseAndMouseCursorPosition(1)
+        }
+        savedCursorQuartz = nil
+        warpedCursorQuartz = nil
         onStateChanged?(false)
     }
 }
