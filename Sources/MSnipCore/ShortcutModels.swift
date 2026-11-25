@@ -2,7 +2,7 @@ import AppKit
 import Carbon
 import Foundation
 
-/// 全局可配置的 11 项系统级热键动作
+/// 全局可配置的 12 项系统级热键动作（默认已绑定动作排在前面形成 F1–F9 / ⌃1–⌃9 连续序列，其余可选动作置于底部）
 public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
     case capture           = "capture"
     case pin               = "pin"
@@ -12,10 +12,10 @@ public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
     case record            = "record"
     case delayedCapture    = "delayedCapture"
     case ocr               = "ocr"
+    case toggleShelf       = "toggleShelf"
     case latex             = "latex"
     case togglePins        = "togglePins"
     case repeatCapture     = "repeatCapture"
-    case toggleShelf       = "toggleShelf"
 
     public var title: String {
         switch self {
