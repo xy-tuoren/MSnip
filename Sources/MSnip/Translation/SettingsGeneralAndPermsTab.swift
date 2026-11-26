@@ -94,47 +94,8 @@ extension TranslationSettingsWindow {
         }
         baseCard.addSubview(openDirBtn)
 
-        // 2) 识字与翻译面板（3 行：独立控制原位/双栏与 OCR 自动复制）
+        // 2) 格式与安全（6 行；识字、公式与翻译偏好已统一收口至「识字与翻译」标签页）
         y = baseCard.frame.maxY + sectionGap
-        addSectionHeader("识字与翻译面板", x: headerX, y: y, in: content)
-        let panelCard = GeekCardView(frame: NSRect(x: cardX, y: y + headerToCard, width: cardW, height: rowH * 3))
-        content.addSubview(panelCard)
-
-        addRowLabel("提取文字 (OCR) 默认方式", y: 0, height: rowH, in: panelCard)
-        let ocrSeg = GeekSegmentControl(items: OCRDefaultPresentation.allCases.map(\.title), selectedIndex: 0)
-        ocrSeg.toolTip = "原位划词：冻结画布直接拖选；双栏面板：弹出对照窗；静默直拷：松手即退出截图并后台识别直写剪贴板（按住 ⌥ 可临时切换）"
-        ocrSeg.frame = NSRect(x: cardW - insetX - 246, y: segY, width: 246, height: segH)
-        ocrSeg.onSelect = { [weak self] idx in
-            let all = OCRDefaultPresentation.allCases
-            guard all.indices.contains(idx) else { return }
-            self?.onAppConfigMutated? { $0.ocrPresentation = all[idx]; $0.ocrAutoOpenDualPane = (all[idx] == .dualPane) }
-        }
-        modeControls.ocrModeSegment = ocrSeg; panelCard.addSubview(ocrSeg)
-
-        panelCard.addHairline(atY: rowH)
-        addRowLabel("截图翻译默认方式", y: rowH, height: rowH, in: panelCard)
-        let trSeg = GeekSegmentControl(items: ["原位译文", "双栏面板"], selectedIndex: 0)
-        trSeg.toolTip = "选择截图翻译的默认交互方式（按住 ⌥ 触发可临时切换为另一种方式）"
-        trSeg.frame = NSRect(x: cardW - insetX - 196, y: rowH + segY, width: 196, height: segH)
-        trSeg.onSelect = { [weak self] idx in
-            let dual = (idx == 1)
-            self?.onAppConfigMutated? { $0.translateAutoOpenDualPane = dual }
-            self?.modeControls.transTabDualSwitch?.isOn = dual
-        }
-        modeControls.translateModeSegment = trSeg
-        panelCard.addSubview(trSeg)
-
-        panelCard.addHairline(atY: rowH * 2)
-        addRowLabel("识字完成后自动复制文本", y: rowH * 2, height: rowH, in: panelCard)
-        let ocrCopySw = GeekToggleSwitch(isOn: true)
-        ocrCopySw.toolTip = "关闭后，双栏 OCR 窗口仅展示识别结果，不会自动覆盖你当前剪贴板中的内容"
-        ocrCopySw.frame = NSRect(x: switchX, y: rowH * 2 + switchY, width: 38, height: switchH)
-        ocrCopySw.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.ocrAutoCopy = on } }
-        modeControls.ocrAutoCopySwitch = ocrCopySw
-        panelCard.addSubview(ocrCopySw)
-
-        // 3) 格式与安全（6 行）
-        y = panelCard.frame.maxY + sectionGap
         addSectionHeader("格式与安全", x: headerX, y: y, in: content)
         let fmtCard = GeekCardView(frame: NSRect(x: cardX, y: y + headerToCard, width: cardW, height: rowH * 6))
         content.addSubview(fmtCard)
@@ -201,7 +162,8 @@ extension TranslationSettingsWindow {
         keychainSwitch.frame = NSRect(x: switchX, y: rowH * 5 + switchY, width: 38, height: switchH)
         keychainSwitch.onToggle = { [weak self] on in
             guard let self else { return }
-            self.commitCurrentFormEdits(); self.draft.preferKeychainStorage = on; self.persistDraft()
+            self.commitCurrentFormEdits(); self.commitOCRAndLatexEdits()
+            self.draft.preferKeychainStorage = on; self.persistDraft(); self.saveOCRAndLatexConfigs()
         }
         fmtCard.addSubview(keychainSwitch)
 

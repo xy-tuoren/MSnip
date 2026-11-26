@@ -92,7 +92,7 @@ final class OverlaySession {
             view.toolbar.recordingFormat = recordingFormat
             view.toolbar.recordingHUDEnabled = recordingHUDEnabled
             view.toolbar.canvasKeyMap = canvasKeyMap
-            view.toolbar.ocrAutoOpenDualPane = (ocrPresentation == .dualPane)
+            view.toolbar.ocrPresentation = ocrPresentation
             view.toolbar.translateAutoOpenDualPane = translateAutoOpenDualPane
             view.saveFolderOptions = saveFolderOptions
             view.quickLaunchMode = launchMode

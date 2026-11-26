@@ -55,6 +55,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ResultWindowChrome.prefersDarkAppearance = GeekTheme.isDark
         SmartClipboardProjectionManager.shared.isAdaptiveEnabled = config.terminalPasteAdaptEnabled
         pinManager.defaultGlowStrength = config.pinGlowStrength
+        setupMainMenu()
         setupStatusBar()
         setupCallbacks()
         setupShelfAndRemoteIPC()

@@ -27,7 +27,7 @@ final class CollageStudioWindow: NSWindow {
         if let canvas = firstResponder as? PinAnnotationCanvasView {
             if flags == .command && ch == "s" { onSaveShortcut?(); return true }
             if flags == .command && ch == "c" && canvas.selectedIndex == nil { onCopyShortcut?(); return true }
-            return false
+            return canvas.performKeyEquivalent(with: event)
         }
         if flags == .command && ch == "c" { onCopyShortcut?(); return true }
         if flags == .command && ch == "v" { onPasteShortcut?(); return true }

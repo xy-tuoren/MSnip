@@ -21,7 +21,7 @@ enum LLMModelFetcher {
         let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let url: URL?
         switch profile.kind {
-        case .openAICompatible:
+        case .openAICompatible, .openAIResponses:
             url = LLMProtocolHelpers.resolveOpenAIModelsURL(profile.endpoint)
         case .anthropicCompatible:
             url = LLMProtocolHelpers.resolveAnthropicModelsURL(profile.endpoint)
@@ -35,11 +35,13 @@ enum LLMModelFetcher {
         var req = URLRequest(url: targetURL, timeoutInterval: 12)
         req.httpMethod = "GET"
         switch profile.kind {
-        case .openAICompatible:
+        case .openAICompatible, .openAIResponses:
             if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
         case .anthropicCompatible:
             if !key.isEmpty { req.setValue(key, forHTTPHeaderField: "x-api-key") }
             req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        case .geminiNative:
+            if !key.isEmpty { req.setValue(key, forHTTPHeaderField: "x-goog-api-key") }
         default:
             break
         }

@@ -119,10 +119,11 @@ public struct TranslationTargetLang: RawRepresentable, Codable, Equatable, Hasha
     }
 }
 
-/// 支持的 9 大类翻译协议族
+/// 支持的 10 大类翻译协议族（完整涵盖 CC Switch 常见 4 大 LLM 接口格式 + 系统离线 + 主流云翻译）
 public enum TranslationProviderKind: String, CaseIterable, Codable, Sendable {
     case appleNative = "apple_native"
     case openAICompatible = "openai_compatible"
+    case openAIResponses = "openai_responses"
     case anthropicCompatible = "anthropic_compatible"
     case geminiNative = "gemini_native"
     case tencent = "tencent_tmt"
@@ -131,11 +132,33 @@ public enum TranslationProviderKind: String, CaseIterable, Codable, Sendable {
     case deepl = "deepl"
     case customWebhook = "custom_webhook"
 
+    public static let llmProtocolCases: [TranslationProviderKind] = [
+        .openAICompatible, .openAIResponses, .anthropicCompatible, .geminiNative
+    ]
+
+    public var isLLMProtocol: Bool {
+        switch self {
+        case .openAICompatible, .openAIResponses, .anthropicCompatible, .geminiNative: return true
+        default: return false
+        }
+    }
+
+    public var llmFormatTitle: String {
+        switch self {
+        case .openAICompatible:    return "OpenAI Chat Completions (/v1/chat/completions)"
+        case .openAIResponses:     return "OpenAI Responses (/v1/responses)"
+        case .anthropicCompatible: return "Anthropic Messages (/v1/messages)"
+        case .geminiNative:        return "Google Gemini 原生 (/v1beta/models)"
+        default:                   return displayName
+        }
+    }
+
     public var displayName: String {
         switch self {
         case .appleNative:         return "macOS 原生离线翻译（免费 · 无需 Key）"
-        case .openAICompatible:    return "通用大模型 · OpenAI 兼容协议 (/v1/chat/completions)"
-        case .anthropicCompatible: return "通用大模型 · Anthropic Claude 协议 (/v1/messages)"
+        case .openAICompatible:    return "通用大模型 · OpenAI Chat Completions (/v1/chat/completions)"
+        case .openAIResponses:     return "通用大模型 · OpenAI Responses (/v1/responses)"
+        case .anthropicCompatible: return "通用大模型 · Anthropic Messages (/v1/messages)"
         case .geminiNative:        return "通用大模型 · Google Gemini 原生协议"
         case .tencent:             return "国内云接口 · 腾讯云机器翻译 TMT"
         case .baidu:               return "国内云接口 · 百度翻译开放平台"
@@ -145,13 +168,13 @@ public enum TranslationProviderKind: String, CaseIterable, Codable, Sendable {
         }
     }
 
-    public var supportsStreaming: Bool { self == .openAICompatible }
+    public var supportsStreaming: Bool { isLLMProtocol }
 }
 
 public extension TranslationProviderProfile {
     var isLocalNoKeyEndpoint: Bool {
         let lower = endpoint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if kind == .openAICompatible || kind == .anthropicCompatible {
+        if kind == .openAICompatible || kind == .openAIResponses || kind == .anthropicCompatible {
             return LLMProtocolHelpers.isLocalOrPrivateEndpoint(lower)
         }
         if kind == .deepl { return !lower.isEmpty && !lower.contains("deepl.com") }
@@ -168,7 +191,7 @@ public extension TranslationProviderProfile {
         case .baidu:               return "https://fanyi-api.baidu.com/manage/developer"
         case .youdao:              return "https://ai.youdao.com/console/"
         case .deepl:               return isLocalNoKeyEndpoint ? nil : "https://www.deepl.com/account/summary"
-        case .openAICompatible:    return LLMQuickPreset.match(endpoint: ep)?.consoleURL
+        case .openAICompatible, .openAIResponses: return LLMQuickPreset.match(endpoint: ep)?.consoleURL
         }
     }
 
@@ -182,7 +205,9 @@ public extension TranslationProviderProfile {
             }
             if endpoint.lowercased().contains("bigmodel") { return "智谱含免费 glm-4-flash · 填 Key 后测通即用" }
             if endpoint.lowercased().contains("siliconflow") { return "硅基流动含免费额度 · 填 Key 后可拉取模型列表" }
-            return "兼容 OpenAI 协议 · 填好地址、密钥与模型即可直连"
+            return "兼容 OpenAI Chat 协议 · 填好地址、密钥与模型即可直连"
+        case .openAIResponses:
+            return isLocalNoKeyEndpoint ? "局域网 OpenAI Responses 服务 · 填地址与模型即用" : "兼容 /v1/responses 协议（Codex / GPT-5 等）· 填入地址、Key 与模型即用"
         case .anthropicCompatible:
             return isLocalNoKeyEndpoint ? "局域网 Anthropic 兼容服务 · 填地址与模型即用" : "兼容 /v1/messages 协议 · 填入地址、Key 与模型即用"
         case .geminiNative:        return "Google AI Studio 含免费额度 · 粘贴 Key 即用"

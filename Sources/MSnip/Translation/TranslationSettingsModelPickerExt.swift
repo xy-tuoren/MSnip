@@ -79,17 +79,14 @@ extension TranslationSettingsWindow {
     }
 
     func onSelectLLMProtocolIndex(_ idx: Int) {
-        let kinds: [TranslationProviderKind] = [.openAICompatible, .anthropicCompatible, .geminiNative]
+        let kinds = TranslationProviderKind.llmProtocolCases
         guard kinds.indices.contains(idx), draft.profiles.indices.contains(selectedIndex) else { return }
         commitCurrentFormEdits()
         let nextKind = kinds[idx]
         var p = draft.profiles[selectedIndex]
         guard p.kind != nextKind else { return }
+        // 切换「接口格式」绝不擅自改写用户的接口地址、密钥、模型或预设归属
         p.kind = nextKind
-        if p.endpoint.isEmpty {
-            if nextKind == .anthropicCompatible { p.endpoint = "https://api.anthropic.com/v1" }
-            else if nextKind == .geminiNative { p.endpoint = "https://generativelanguage.googleapis.com/v1beta" }
-        }
         draft.profiles[selectedIndex] = p
         persistDraft()
         loadSelectedProfileIntoForm()
@@ -118,14 +115,52 @@ extension TranslationSettingsWindow {
         ProviderAddAndPresetPopover.shared.showLLMPresetPicker(anchoredTo: anchor, currentEndpoint: currentEndpoint) { [weak self] preset in
             guard let self, self.draft.profiles.indices.contains(self.selectedIndex) else { return }
             self.commitCurrentFormEdits()
-            self.draft.profiles[self.selectedIndex].kind = preset.providerKind
-            self.draft.profiles[self.selectedIndex].name = preset.shortName
-            self.draft.profiles[self.selectedIndex].endpoint = preset.baseURL
-            self.draft.profiles[self.selectedIndex].model = preset.defaultModel
+            var p = self.draft.profiles[self.selectedIndex]
+            if preset == .customOpenAI {
+                // 切换为「自定义 / 中转站」：完整保留当前「接口格式」，仅清理旧官网预设预填的地址与默认模型
+                if let prevOfficial = LLMQuickPreset.match(endpoint: p.endpoint) {
+                    p.endpoint = ""
+                    if p.model == prevOfficial.defaultModel { p.model = "" }
+                    if p.name == prevOfficial.shortName { p.name = preset.shortName }
+                }
+            } else {
+                p.kind = preset.providerKind
+                p.name = preset.shortName
+                p.endpoint = preset.baseURL
+                p.model = preset.defaultModel
+            }
+            self.draft.profiles[self.selectedIndex] = p
             self.persistDraft()
             self.loadSelectedProfileIntoForm()
             self.tableView.reloadData()
             self.tableView.selectRowIndexes(IndexSet(integer: self.selectedIndex), byExtendingSelection: false)
+            if preset == .customOpenAI && p.endpoint.isEmpty { self.window?.makeFirstResponder(self.endpointField) }
         }
+    }
+
+    func controlTextDidChange(_ obj: Notification) {
+        guard (obj.object as? NSTextField) === endpointField,
+              draft.profiles.indices.contains(selectedIndex),
+              draft.profiles[selectedIndex].kind.isLLMProtocol else { return }
+        let ep = endpointField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let matched = LLMQuickPreset.match(endpoint: ep)
+        llmPresetPill.customDisplayTitle = matched?.shortName ?? "自定义 / 中转站"
+        let hasLink = (matched?.consoleURL != nil)
+        presetGetKeyBtn.isHidden = !hasLink
+        let fullW = formScrollView.bounds.width - 114
+        llmPresetPill.frame.size.width = hasLink ? (fullW - 94) : fullW
+    }
+
+    func controlTextDidEndEditing(_ obj: Notification) {
+        if activeTab == .ocrAndLatex {
+            commitOCRAndLatexEdits(); saveOCRAndLatexConfigs()
+        } else if activeTab == .translation {
+            commitCurrentFormEdits(); persistDraft()
+        }
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        commitCurrentFormEdits(); commitOCRAndLatexEdits()
+        persistDraft(); saveOCRAndLatexConfigs()
     }
 }

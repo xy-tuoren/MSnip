@@ -51,7 +51,7 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
         switch kind {
         case .appleNative:
             return true
-        case .openAICompatible:
+        case .openAICompatible, .openAIResponses:
             guard !ep.isEmpty else { return false }
             return isLocalNoKeyEndpoint || !key.isEmpty
         case .anthropicCompatible:
@@ -81,6 +81,14 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
                 isEnabled: true,
                 endpoint: p.baseURL,
                 model: p.defaultModel
+            )
+        case .openAIResponses:
+            return TranslationProviderProfile(
+                name: "OpenAI Responses",
+                kind: .openAIResponses,
+                isEnabled: true,
+                endpoint: LLMQuickPreset.openai.baseURL,
+                model: "gpt-5-mini"
             )
         case .anthropicCompatible:
             return TranslationProviderProfile(

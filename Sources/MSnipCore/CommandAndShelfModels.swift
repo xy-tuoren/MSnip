@@ -14,6 +14,24 @@ public enum OCRDefaultPresentation: String, CaseIterable, Codable, Sendable {
         case .silentCopy: return "静默直拷"
         }
     }
+
+    /// 统一解析画布工具栏按钮与快捷键触发 OCR 时的最终动作（支持 `⌥` 临时切换与原位态退出）
+    public func resolvedTrigger(inPlaceActive: Bool, optionHeld: Bool) -> OCRResolvedTrigger {
+        if inPlaceActive { return optionHeld ? .openDualPane : .toggleInPlace }
+        if optionHeld { return self == .dualPane ? .toggleInPlace : .openDualPane }
+        switch self {
+        case .inPlace:    return .toggleInPlace
+        case .dualPane:   return .openDualPane
+        case .silentCopy: return .silentCopyAndClose
+        }
+    }
+}
+
+/// 截图画布触发 OCR 后的统一路由动作
+public enum OCRResolvedTrigger: Equatable, Sendable {
+    case toggleInPlace
+    case openDualPane
+    case silentCopyAndClose
 }
 
 /// 命令行参数与 `msnip://` URL Scheme 统一启动动作（适配 Raycast / Alfred / Apple Shortcuts / 终端联动）

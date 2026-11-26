@@ -40,6 +40,10 @@ enum LLMTranslator {
             return try await callOpenAICompatible(
                 system: sys, user: userPrompt, profile: profile, stream: onChunk != nil, onChunk: onChunk
             )
+        case .openAIResponses:
+            return try await callOpenAIResponses(
+                system: sys, user: userPrompt, profile: profile, stream: onChunk != nil, onChunk: onChunk
+            )
         case .anthropicCompatible:
             return try await callAnthropic(
                 system: sys, user: userPrompt, profile: profile, stream: onChunk != nil, onChunk: onChunk
@@ -75,6 +79,8 @@ enum LLMTranslator {
         switch profile.kind {
         case .openAICompatible:
             raw = try await callOpenAICompatible(system: sys, user: packed, profile: profile, stream: false, onChunk: nil)
+        case .openAIResponses:
+            raw = try await callOpenAIResponses(system: sys, user: packed, profile: profile, stream: false, onChunk: nil)
         case .anthropicCompatible:
             raw = try await callAnthropic(system: sys, user: packed, profile: profile, stream: false, onChunk: nil)
         case .geminiNative:
@@ -107,35 +113,44 @@ enum LLMTranslator {
         let modelName = profile.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "gpt-4o-mini"
             : profile.model.trimmingCharacters(in: .whitespacesAndNewlines)
-        let body: [String: Any] = [
-            "model": modelName,
-            "temperature": 0.2,
-            "stream": stream,
-            "messages": [
-                ["role": "system", "content": system],
-                ["role": "user", "content": user]
-            ]
-        ]
-        req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let omitTemp = LLMProtocolHelpers.modelRequiresDefaultTemperature(modelName)
+        let noSystem = LLMProtocolHelpers.modelDisallowsSystemRole(modelName)
 
-        if stream {
-            return try await consumeSSEStream(
-                request: req,
-                extractDelta: LLMProtocolHelpers.parseOpenAISSEChunk,
-                onChunk: onChunk
-            )
-        } else {
-            let (data, resp) = try await URLSession.shared.data(for: req)
-            try validateHTTP(resp, data: data)
-            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let choices = obj["choices"] as? [[String: Any]],
-                  let msg = choices.first?["message"] as? [String: Any],
-                  let content = msg["content"] as? String else {
-                throw LLMError.emptyResponse
+        func makeOpenAIRequest(includeTemp: Bool, includeSystem: Bool) throws -> URLRequest {
+            var r = req
+            let msgs: [[String: String]] = includeSystem
+                ? [["role": "system", "content": system], ["role": "user", "content": user]]
+                : [["role": "user", "content": "\(system)\n\n\(user)"]]
+            var body: [String: Any] = ["model": modelName, "stream": stream, "messages": msgs]
+            if includeTemp { body["temperature"] = 0.2 }
+            r.httpBody = try JSONSerialization.data(withJSONObject: body)
+            return r
+        }
+
+        func executeOpenAI(_ request: URLRequest) async throws -> String {
+            if stream {
+                return try await consumeSSEStream(
+                    request: request,
+                    extractDelta: LLMProtocolHelpers.parseOpenAISSEChunk,
+                    fallbackExtract: LLMProtocolHelpers.extractOpenAIResponseText,
+                    onChunk: onChunk
+                )
             }
-            let cleaned = LLMProtocolHelpers.stripThinkingTags(content)
-            if cleaned.isEmpty { throw LLMError.emptyResponse }
-            return cleaned
+            let (data, resp) = try await URLSession.shared.data(for: request)
+            try validateHTTP(resp, data: data)
+            if let cleaned = LLMProtocolHelpers.extractOpenAIResponseText(from: data) { return cleaned }
+            if let err = LLMProtocolHelpers.extractErrorMessage(from: data) { throw LLMError.httpError(200, err) }
+            throw LLMError.emptyResponse
+        }
+
+        do {
+            return try await executeOpenAI(try makeOpenAIRequest(includeTemp: !omitTemp, includeSystem: !noSystem))
+        } catch let LLMError.httpError(code, msg) where code == 400 {
+            let lower = msg.lowercased()
+            let dropTemp = !omitTemp && lower.contains("temperature")
+            let dropSys = !noSystem && lower.contains("system")
+            guard dropTemp || dropSys else { throw LLMError.httpError(code, msg) }
+            return try await executeOpenAI(try makeOpenAIRequest(includeTemp: !omitTemp && !dropTemp, includeSystem: !noSystem && !dropSys))
         }
     }
 
@@ -163,7 +178,7 @@ enum LLMTranslator {
             : profile.model.trimmingCharacters(in: .whitespacesAndNewlines)
         let body: [String: Any] = [
             "model": modelName,
-            "max_tokens": 2048,
+            "max_tokens": 4096,
             "stream": stream,
             "system": system,
             "messages": [["role": "user", "content": user]]
@@ -173,19 +188,15 @@ enum LLMTranslator {
             return try await consumeSSEStream(
                 request: req,
                 extractDelta: LLMProtocolHelpers.parseAnthropicSSEChunk,
+                fallbackExtract: LLMProtocolHelpers.extractAnthropicResponseText,
                 onChunk: onChunk
             )
         }
         let (data, resp) = try await URLSession.shared.data(for: req)
         try validateHTTP(resp, data: data)
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let contentArr = obj["content"] as? [[String: Any]],
-              let text = contentArr.first?["text"] as? String else {
-            throw LLMError.emptyResponse
-        }
-        let cleaned = LLMProtocolHelpers.stripThinkingTags(text)
-        if cleaned.isEmpty { throw LLMError.emptyResponse }
-        return cleaned
+        if let cleaned = LLMProtocolHelpers.extractAnthropicResponseText(from: data) { return cleaned }
+        if let err = LLMProtocolHelpers.extractErrorMessage(from: data) { throw LLMError.httpError(200, err) }
+        throw LLMError.emptyResponse
     }
 
     private static func callGemini(
@@ -195,16 +206,13 @@ enum LLMTranslator {
         stream: Bool,
         onChunk: (@Sendable (String) -> Void)?
     ) async throws -> String {
-        let base = profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "https://generativelanguage.googleapis.com/v1beta"
-            : profile.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/ "))
         let model = profile.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "gemini-2.0-flash"
+            ? "gemini-2.5-flash"
             : profile.model.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let encodedModel = model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? model
-        let action = stream ? "streamGenerateContent?alt=sse" : "generateContent"
-        guard let url = URL(string: "\(base)/models/\(encodedModel):\(action)") else { throw LLMError.invalidEndpoint(base) }
+        guard let url = LLMProtocolHelpers.resolveGeminiGenerateURL(endpoint: profile.endpoint, model: model, stream: stream) else {
+            throw LLMError.invalidEndpoint(profile.endpoint)
+        }
 
         var req = URLRequest(url: url, timeoutInterval: 35)
         req.httpMethod = "POST"
@@ -221,66 +229,25 @@ enum LLMTranslator {
             return try await consumeSSEStream(
                 request: req,
                 extractDelta: LLMProtocolHelpers.parseGeminiSSEChunk,
+                fallbackExtract: LLMProtocolHelpers.extractGeminiResponseText,
                 onChunk: onChunk
             )
         }
         let (data, resp) = try await URLSession.shared.data(for: req)
         try validateHTTP(resp, data: data)
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let cands = obj["candidates"] as? [[String: Any]],
-              let content = cands.first?["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]],
-              let text = parts.first?["text"] as? String else {
-            throw LLMError.emptyResponse
-        }
-        let cleaned = LLMProtocolHelpers.stripThinkingTags(text)
-        if cleaned.isEmpty { throw LLMError.emptyResponse }
-        return cleaned
+        if let cleaned = LLMProtocolHelpers.extractGeminiResponseText(from: data) { return cleaned }
+        if let err = LLMProtocolHelpers.extractErrorMessage(from: data) { throw LLMError.httpError(200, err) }
+        throw LLMError.emptyResponse
     }
 
-    /// 通用 SSE 流式消费器（40ms 合并节流，避免高频 token 触发主线程全量 NSTextStorage 重排）
-    private static func consumeSSEStream(
-        request: URLRequest,
-        extractDelta: (String) -> String?,
-        onChunk: (@Sendable (String) -> Void)?
-    ) async throws -> String {
-        let (bytes, resp) = try await URLSession.shared.bytes(for: request)
-        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            var errTxt = ""
-            for try await line in bytes.lines { errTxt += line; if errTxt.count > 400 { break } }
-            throw LLMError.httpError(http.statusCode, errTxt)
-        }
-        var full = ""
-        var lastEmitAt: TimeInterval = 0
-        for try await line in bytes.lines {
-            try Task.checkCancellation()
-            let t = line.trimmingCharacters(in: .whitespaces)
-            guard t.hasPrefix("data:") else { continue }
-            let payload = t.dropFirst(5).trimmingCharacters(in: .whitespaces)
-            if payload == "[DONE]" { break }
-            guard let delta = extractDelta(payload), !delta.isEmpty else { continue }
-            full += delta
-            let now = ProcessInfo.processInfo.systemUptime
-            if now - lastEmitAt >= 0.04 {
-                lastEmitAt = now
-                let visible = LLMProtocolHelpers.stripThinkingTags(full)
-                if !visible.isEmpty { onChunk?(visible) }
-            }
-        }
-        let cleaned = LLMProtocolHelpers.stripThinkingTags(full)
-        if cleaned.isEmpty { throw LLMError.emptyResponse }
-        onChunk?(cleaned)
-        return cleaned
-    }
-
-    private static func applyCustomHeaders(_ rawJSON: String, to req: inout URLRequest) {
+    static func applyCustomHeaders(_ rawJSON: String, to req: inout URLRequest) {
         let s = rawJSON.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !s.isEmpty, let d = s.data(using: .utf8),
               let dict = try? JSONSerialization.jsonObject(with: d) as? [String: String] else { return }
         for (k, v) in dict { req.setValue(v, forHTTPHeaderField: k) }
     }
 
-    private static func validateHTTP(_ resp: URLResponse, data: Data) throws {
+    static func validateHTTP(_ resp: URLResponse, data: Data) throws {
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
             let snippet = String(data: data.prefix(360), encoding: .utf8) ?? ""
             throw LLMError.httpError(http.statusCode, snippet)

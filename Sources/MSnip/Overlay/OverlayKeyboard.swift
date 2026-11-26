@@ -7,13 +7,34 @@ import MSnipCore
 /// 覆盖层极速单字母快捷键与鼠标右键取消路由（物理键码优先，中文输入法与大写锁定下同样零延迟生效）
 extension OverlayView {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard !isEditingText else { return super.performKeyEquivalent(with: event) }
+        if let pCombo = activePinCombo, KeyCombo.from(event: event) == pCombo { exportAndFinish(mode: .pin); return true }
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-        if flags == .command, event.charactersIgnoringModifiers?.lowercased() == "c",
-           toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() {
-            ToastHUD.show(message: "已复制划选文字")
+        if flags.contains(.command), !flags.contains(.control), !flags.contains(.option),
+           handleCommandShortcut(event, shift: flags.contains(.shift)) {
             return true
         }
         return super.performKeyEquivalent(with: event)
+    }
+
+    private func handleCommandShortcut(_ event: NSEvent, shift: Bool) -> Bool {
+        let letter = ansiLetter(for: event.keyCode) ?? (event.charactersIgnoringModifiers?.lowercased() ?? "")
+        switch letter {
+        case "c":
+            if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() { ToastHUD.show(message: "已复制划选文字") }
+            else if !shift, let idx = selectedObjectIndex, doc.objects.indices.contains(idx) {
+                copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0; ToastHUD.show(message: "已复制标注图形 · 按 ⌘V 粘贴（⌘D 直接克隆）")
+            } else { exportAndFinish(mode: shift ? .copyWithPath : .copy) }
+            return true
+        case "v": pasteCopiedAnnotationIfAny(); return true
+        case "d": duplicateSelectedAnnotationIfAny(); return true
+        case "s": if shift { exportAndFinish(mode: .save) } else { quickSaveInPlace() }; return true
+        case "b": toggleTextCapsuleMode(); return true
+        case "a": selection = bounds; return true
+        case "o": exportAndFinish(mode: ocrPresentation == .silentCopy ? .silentOCR : .extractText); return true
+        case "z", "y": performUndoRedo(isRedo: (letter == "y") || shift); return true
+        default: return false
+        }
     }
 
     override func flagsChanged(with event: NSEvent) {
@@ -60,30 +81,7 @@ extension OverlayView {
             return
         }
         if let pCombo = activePinCombo, KeyCombo.from(event: event) == pCombo { exportAndFinish(mode: .pin); return }
-
-        // 兼容系统通用 ⌘ 组合键（⌘C / ⌘V / ⌘D / ⌘S / ⌘Z / ⌘A / ⌘O / ⌘B）
-        if cmd {
-            switch letter {
-            case "c":
-                if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() {
-                    ToastHUD.show(message: "已复制划选文字")
-                } else if !shift, let idx = selectedObjectIndex, doc.objects.indices.contains(idx) {
-                    copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0
-                    ToastHUD.show(message: "已复制标注图形 · 按 ⌘V 粘贴（⌘D 直接克隆）")
-                } else {
-                    exportAndFinish(mode: shift ? .copyWithPath : .copy)
-                }
-                return
-            case "v": pasteCopiedAnnotationIfAny(); return
-            case "d": duplicateSelectedAnnotationIfAny(); return
-            case "s": if shift { exportAndFinish(mode: .save) } else { quickSaveInPlace() }; return
-            case "b": toggleTextCapsuleMode(); return
-            case "a": selection = bounds; return
-            case "o": exportAndFinish(mode: .extractText); return
-            case "z", "y": performUndoRedo(isRedo: (letter == "y") || shift); return
-            default: break
-            }
-        }
+        if cmd, !ctrl, !opt, handleCommandShortcut(event, shift: shift) { return }
 
         if event.keyCode == 51 || event.keyCode == 117 { // Delete / ForwardDelete
             if cmd && shift {
@@ -189,11 +187,13 @@ extension OverlayView {
         case .step:       toggleToolShortcut(.step)
         case .caliper:    if !shift && !opt && !isRepeat { caliperActive.toggle() }
         case .ocr:
-            if shift { exportAndFinish(mode: .recognizeLatex) }
-            else if opt { if ocrPresentation == .dualPane { toggleInPlaceOCR() } else { exportAndFinish(mode: .extractText) } }
-            else if ocrPresentation == .dualPane { exportAndFinish(mode: .extractText) }
-            else if ocrPresentation == .silentCopy { exportAndFinish(mode: .silentOCR) }
-            else { toggleInPlaceOCR() }
+            if shift { exportAndFinish(mode: .recognizeLatex) } else {
+                switch ocrPresentation.resolvedTrigger(inPlaceActive: toolbar.inPlaceOCRActive, optionHeld: opt) {
+                case .toggleInPlace:      toggleInPlaceOCR()
+                case .openDualPane:       exportAndFinish(mode: .extractText)
+                case .silentCopyAndClose: exportAndFinish(mode: .silentOCR)
+                }
+            }
         case .translate:
             if opt != translateAutoOpenDualPane { exportAndFinish(mode: .translateWindow) } else { toggleInPlaceTranslate() }
         case .longShot:   beginLongShot()

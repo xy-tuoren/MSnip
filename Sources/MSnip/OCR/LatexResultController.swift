@@ -7,7 +7,7 @@ import MSnipCore
 @MainActor
 final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegate {
     var onPinImage: ((CGImage, CGFloat, NSScreen) -> Void)?
-    var onOpenMainAISettings: (() -> Void)?
+    var onOpenLatexSettings: (() -> Void)?
 
     var window: OCRFloatingWindow?
     var titleLabel: NSTextField!
@@ -37,8 +37,8 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
     var pinButton: OCRPillButton!
     var copyButton: OCRPillButton!
 
-    lazy var configPanel = LatexConfigPanelController()
     lazy var config = LatexRecognitionConfig.load()
+    var configObserver: NSObjectProtocol?
     var currentImage: CGImage?
     var currentScale: CGFloat = 2.0
     var currentScreen: NSScreen?
@@ -89,11 +89,12 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
         relayout()
 
         let cfg = self.config
+        let activeID = TranslationService.shared.settings.activeProfileID
         let profiles = LatexRecognitionService.availableVisionLLMProfiles()
         recognitionTask = Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let res = try await LatexRecognitionService.recognize(image: img, config: cfg, visionProfiles: profiles)
+                let res = try await LatexRecognitionService.recognize(image: img, config: cfg, activeProfileID: activeID, visionProfiles: profiles)
                 guard !Task.isCancelled else { return }
                 self.codeTextView.string = res.rawLatex
                 self.previewView.render(latex: res.rawLatex)
@@ -169,7 +170,7 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
         recognitionTask = nil
         renderDebounceWork?.cancel()
         renderDebounceWork = nil
-        configPanel.closePanel()
+        if let obs = configObserver { NotificationCenter.default.removeObserver(obs); configObserver = nil }
         previewView?.teardown()
         previewView = nil
         imageView?.image = nil

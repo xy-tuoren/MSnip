@@ -2,63 +2,15 @@ import AppKit
 import Foundation
 import MSnipCore
 
-/// 对标 Bob / Easydict 的「两步极简」翻译设置页：
-/// 默认只呈现 1~2 个必填项（API 密钥 + 一键获取 Key + 一键粘贴 + 测试并启用），协议/地址/模型/提示词折叠进更多设置。
+/// 统一「模型与服务」管理页：集中管理大模型 API（OpenAI Chat/Responses、Anthropic、Gemini、Ollama）与各云翻译服务凭据，
+/// 同时供给截图翻译、AI 视觉识字 (OCR) 与 LaTeX 公式识别复用；翻译偏好已拆出至「识字与翻译」标签页。
 extension TranslationSettingsWindow {
     func buildTranslationPage(in page: GeekFlippedView) {
         let cardW = page.bounds.width - 56 // 724
 
-        // 1) 顶部偏好条（目标语言 + 自动复制，50px 舒适高度）
-        let topCard = GeekCardView(frame: NSRect(x: 28, y: 16, width: cardW, height: 50))
-        page.addSubview(topCard)
-
-        let langLbl = NSTextField(labelWithString: "目标语言")
-        langLbl.font = .systemFont(ofSize: 13.5, weight: .regular)
-        langLbl.textColor = GeekTheme.inkPrimary
-        GeekTheme.placeCentered(langLbl, x: 16, width: 60, centerY: 25.0)
-        topCard.addSubview(langLbl)
-
-        targetLangPill = GeekDropdownPill(symbol: "globe")
-        targetLangPill.customDisplayTitle = draft.targetLang.displayName
-        targetLangPill.frame = NSRect(x: 80, y: 9, width: 238, height: 32)
-        targetLangPill.onCustomClick = { [weak self] anchor in self?.presentTargetLanguagePicker(from: anchor) }
-        topCard.addSubview(targetLangPill)
-
-        let dualLbl = NSTextField(labelWithString: "默认打开双栏面板")
-        dualLbl.font = .systemFont(ofSize: 13.0, weight: .regular)
-        dualLbl.textColor = GeekTheme.inkPrimary
-        dualLbl.alignment = .right
-        GeekTheme.placeCentered(dualLbl, x: 332, width: 112, centerY: 25.0)
-        topCard.addSubview(dualLbl)
-
-        let dualSwitch = GeekToggleSwitch(isOn: appConfigProvider?().translateAutoOpenDualPane ?? false)
-        dualSwitch.toolTip = "开启后触发截图翻译直接打开双栏流式面板（关闭则为原位替换译文；按住 ⌥ 可临时切换）"
-        dualSwitch.frame = NSRect(x: 452, y: 14, width: 38, height: 22)
-        dualSwitch.onToggle = { [weak self] on in
-            self?.onAppConfigMutated? { $0.translateAutoOpenDualPane = on }
-            self?.modeControls.translateModeSegment?.selectedIndex = on ? 1 : 0
-        }
-        modeControls.transTabDualSwitch = dualSwitch
-        topCard.addSubview(dualSwitch)
-
-        let autoLbl = NSTextField(labelWithString: "自动复制译文")
-        autoLbl.font = .systemFont(ofSize: 13.0, weight: .regular)
-        autoLbl.textColor = GeekTheme.inkPrimary
-        autoLbl.alignment = .right
-        GeekTheme.placeCentered(autoLbl, x: cardW - 154, width: 92, centerY: 25.0)
-        topCard.addSubview(autoLbl)
-
-        autoCopySwitch = GeekToggleSwitch(isOn: draft.autoCopyTranslation)
-        autoCopySwitch.frame = NSRect(x: cardW - 54, y: 14, width: 38, height: 22)
-        autoCopySwitch.onToggle = { [weak self] on in
-            self?.draft.autoCopyTranslation = on
-            self?.persistDraft()
-        }
-        topCard.addSubview(autoCopySwitch)
-
-        // 2) 左侧服务列表（248px 宽敞栏宽，完整显示服务全称 + 底部添加/删除操作栏）
+        // 1) 左侧服务列表（248px 宽敞栏宽，完整显示服务全称 + 底部添加/删除操作栏）
         let listW: CGFloat = 248
-        let listCard = GeekCardView(frame: NSRect(x: 28, y: 78, width: listW, height: 364))
+        let listCard = GeekCardView(frame: NSRect(x: 28, y: 16, width: listW, height: 426))
         page.addSubview(listCard)
 
         let scroll = NSScrollView(frame: listCard.bounds.insetBy(dx: 4, dy: 6))
@@ -86,9 +38,9 @@ extension TranslationSettingsWindow {
         removeBtn.onClick = { [weak self] in self?.removeSelectedProvider() }
         page.addSubview(removeBtn)
 
-        // 3) 右侧详情配置卡片（462 × 406，宽敞零拥挤）
+        // 2) 右侧详情配置卡片（462 × 468，宽敞零拥挤）
         let detailW = cardW - listW - 14 // 462
-        let formCard = GeekCardView(frame: NSRect(x: 28 + listW + 14, y: 78, width: detailW, height: 406))
+        let formCard = GeekCardView(frame: NSRect(x: 28 + listW + 14, y: 16, width: detailW, height: 468))
         page.addSubview(formCard)
         self.detailContainer = formCard
         buildDetailCard(in: formCard)
@@ -114,7 +66,7 @@ extension TranslationSettingsWindow {
         setDefaultBtn.onClick = { [weak self] in self?.onSetAsPrimaryClicked() }
         cv.addSubview(setDefaultBtn); cv.addHairline(atY: 60, insetX: 0)
 
-        let bodyRect = NSRect(x: 0, y: 61, width: fw, height: 287)
+        let bodyRect = NSRect(x: 0, y: 61, width: fw, height: 349)
         let fScroll = NSScrollView(frame: bodyRect)
         fScroll.drawsBackground = false; fScroll.borderType = .noBorder
         fScroll.hasVerticalScroller = true; fScroll.autohidesScrollers = true
@@ -180,16 +132,16 @@ extension TranslationSettingsWindow {
         apiKeyRow.addSubview(eyeToggleBtn)
 
         llmProtocolRow = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 38))
-        addRowCaption("请求协议", rowHeight: 38, in: llmProtocolRow)
-        llmProtocolSegment = GeekSegmentControl(items: ["OpenAI 兼容", "Anthropic", "Gemini"], selectedIndex: 0, mono: true)
-        llmProtocolSegment.frame = NSRect(x: ctrlX, y: 4, width: ctrlW, height: 30)
-        llmProtocolSegment.onSelect = { [weak self] idx in self?.onSelectLLMProtocolIndex(idx) }
-        llmProtocolRow.addSubview(llmProtocolSegment)
+        addRowCaption("接口格式", rowHeight: 38, in: llmProtocolRow)
+        llmProtocolPill = GeekDropdownPill(symbol: "network", items: TranslationProviderKind.llmProtocolCases.map(\.llmFormatTitle))
+        llmProtocolPill.frame = NSRect(x: ctrlX, y: 4, width: ctrlW, height: 30)
+        llmProtocolPill.onSelect = { [weak self] idx in self?.onSelectLLMProtocolIndex(idx) }
+        llmProtocolRow.addSubview(llmProtocolPill)
 
         presetRowView = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 38))
-        addRowCaption("快捷模版", rowHeight: 38, in: presetRowView)
+        addRowCaption("服务预设", rowHeight: 38, in: presetRowView)
         llmPresetPill = GeekDropdownPill(symbol: "sparkles")
-        llmPresetPill.customDisplayTitle = "选择主流大模型官网预设…"
+        llmPresetPill.customDisplayTitle = "自定义 / 中转站"
         llmPresetPill.frame = NSRect(x: ctrlX, y: 4, width: ctrlW, height: 30)
         llmPresetPill.onCustomClick = { [weak self] anchor in self?.popLLMPresetMenu(from: anchor) }
         presetRowView.addSubview(llmPresetPill)
@@ -206,7 +158,8 @@ extension TranslationSettingsWindow {
         kindPill.onSelect = { [weak self] idx in self?.onSelectKindIndex(idx) }
         kindRow.addSubview(kindPill)
 
-        (endpointRow, endpointLabel, endpointField) = makeDynamicRow(label: "接口地址", placeholder: "https://your-api.com/v1（自动补全协议路径）", mono: true, width: fw)
+        (endpointRow, endpointLabel, endpointField) = makeDynamicRow(label: "接口地址", placeholder: "https://your-api.com（自动补全协议路径）", mono: true, width: fw)
+        endpointField.delegate = self
 
         modelRow = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 38))
         modelLabel = addRowCaption("模型名称", rowHeight: 38, in: modelRow)
@@ -234,16 +187,16 @@ extension TranslationSettingsWindow {
         content.addSubview(advancedToggleBtn)
         for r in [llmProtocolRow!, presetRowView!, appIdRow!, apiKeyRow!, endpointRow!, modelRow!, nameRow!, kindRow!, extra1Row!, extra2Row!] { content.addSubview(r) }
 
-        cv.addHairline(atY: 348, insetX: 0)
+        cv.addHairline(atY: 410, insetX: 0)
         testBtn = GeekButton(title: "测试并启用", symbol: "bolt.horizontal", style: .accent)
-        testBtn.frame = NSRect(x: 18, y: 362, width: 124, height: 30)
+        testBtn.frame = NSRect(x: 18, y: 424, width: 124, height: 30)
         testBtn.onClick = { [weak self] in self?.onTestClicked() }
         cv.addSubview(testBtn)
 
         testStatusLabel = NSTextField(labelWithString: "")
         testStatusLabel.font = .monospacedSystemFont(ofSize: 12.0, weight: .medium); testStatusLabel.textColor = GeekTheme.inkSecondary
         testStatusLabel.lineBreakMode = .byTruncatingTail
-        GeekTheme.placeCentered(testStatusLabel, x: 152, width: fw - 170, centerY: 377.0)
+        GeekTheme.placeCentered(testStatusLabel, x: 152, width: fw - 170, centerY: 439.0)
         cv.addSubview(testStatusLabel)
     }
 

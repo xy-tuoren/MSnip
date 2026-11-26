@@ -37,6 +37,7 @@ final class OCRFloatingWindow: NSPanel {
 final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate {
     var onPinImage: ((CGImage, CGFloat, NSScreen) -> Void)?
     var onRecognizeLatex: ((CGImage, CGFloat, NSScreen) -> Void)?
+    var onOpenOCRSettings: (() -> Void)?
     var onOpenSettings: (() -> Void)?
     var ocrAutoCopyProvider: (() -> Bool)?
 
@@ -70,6 +71,8 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var transTextView: NSTextView!
 
     var statsLabel: NSTextField!
+    var ocrEnginePill: LightDropdownPill!
+    var ocrSettingsBtn: OCRPillButton!
     var exactModeButton: OCRPillButton!
     var tableCopyButton: OCRPillButton!
     var pinButton: OCRPillButton!
@@ -82,23 +85,28 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     var layoutMode: OCRLayoutMode = .preserveLines
     var exactCodeMode: Bool = false
     var isTranslationActive: Bool = false
+    var selectedOCREngine: OCREngineKind = .appleVision
     var selectedEngineID: UUID?
     var selectedTargetLang: TranslationTargetLang?
     var translationTask: Task<Void, Never>?
+    var visionOCRTask: Task<Void, Never>?
+    var ocrConfigObserver: NSObjectProtocol?
     var userEditedManually = false
     var editorFontSize: CGFloat = 13.5
-    private var requestToken: UInt64 = 0
+    var requestToken: UInt64 = 0
 
     func present(cgImage: CGImage, scaleFactor: CGFloat, screen: NSScreen, autoTranslate: Bool = false) {
         self.requestToken &+= 1
         let token = self.requestToken
-        translationTask?.cancel()
+        translationTask?.cancel(); visionOCRTask?.cancel()
         self.currentCGImage = cgImage
         self.currentScale = max(1.0, scaleFactor)
         self.currentScreen = screen
         self.currentOutput = nil
         self.userEditedManually = false
         self.isTranslationActive = autoTranslate
+        self.selectedEngineID = nil; self.selectedTargetLang = nil
+        self.selectedOCREngine = OCRRecognitionConfig.load().engineKind
         if autoTranslate { self.layoutMode = .mergeParagraphs }
 
         ensureWindowCreated()
@@ -108,6 +116,8 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         translateButton.isToggledOn = isTranslationActive
         titleLabel.stringValue = isTranslationActive ? "截图识字与翻译" : "截图提取文字"
         copyButton.title = isTranslationActive ? "复制译文 (⌘↩)" : "复制文本 (⌘↩)"
+        ocrEnginePill?.selectedIndex = OCREngineKind.allCases.firstIndex(of: selectedOCREngine) ?? 0
+        exactModeButton?.isHidden = (selectedOCREngine != .appleVision)
         refreshTranslationPopups()
 
         let logicalSize = NSSize(
@@ -155,15 +165,11 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         runOCRPass(on: img, token: token)
     }
 
-    private func runOCRPass(on image: CGImage, token: UInt64) {
-        VisionTextExtractor.recognizeAsync(from: image, exactCodeMode: exactCodeMode) { [weak self] output in
-            guard let self, self.requestToken == token else { return }
-            self.applyRecognitionOutput(output)
-            self.liveImageView.applyPrecomputedAnalysis(output.liveAnalysisObject, highlightBlocks: self.highlightButton.isToggledOn)
-        }
+    func runOCRPass(on image: CGImage, token: UInt64) {
+        runSelectedOCREngine(on: image, token: token)
     }
 
-    private func applyRecognitionOutput(_ output: OCRRecognitionOutput) {
+    func applyRecognitionOutput(_ output: OCRRecognitionOutput) {
         self.currentOutput = output
         if output.isEmpty {
             statusBadgeLabel.stringValue = "未识别到文字或二维码"
@@ -279,7 +285,8 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     func windowWillClose(_ notification: Notification) {
         if let f = window?.frame { ResultWindowKind.ocr.saveFrame(f) }
         requestToken &+= 1
-        translationTask?.cancel(); translationTask = nil
+        translationTask?.cancel(); translationTask = nil; visionOCRTask?.cancel(); visionOCRTask = nil
+        if let obs = ocrConfigObserver { NotificationCenter.default.removeObserver(obs); ocrConfigObserver = nil }
         currentCGImage = nil; currentScreen = nil; currentOutput = nil
         liveImageView?.clearAll()
         textView?.string = ""; transTextView?.string = ""

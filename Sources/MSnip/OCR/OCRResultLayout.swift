@@ -157,6 +157,7 @@ extension OCRResultController {
 
         statsLabel = makeLabel("0 行 · 0 字", size: 11.5, weight: .medium, color: ResultTheme.inkSecondary)
         root.addSubview(statsLabel)
+        buildOCREngineControls(in: root)
 
         exactModeButton = OCRPillButton(title: "代码防纠错", symbol: "curlybraces")
         exactModeButton.isToggledOn = exactCodeMode
@@ -272,18 +273,21 @@ extension OCRResultController {
 
         statsLabel.sizeToFit()
         statsLabel.frame.origin = NSPoint(x: pad + 2, y: round((botH - statsLabel.frame.height) * 0.5))
-        let exSz = exactModeButton.intrinsicContentSize
-        exactModeButton.frame = NSRect(x: statsLabel.frame.maxX + 10, y: round((botH - exSz.height) * 0.5), width: exSz.width, height: exSz.height)
-        var nextFooterX = exactModeButton.frame.maxX + 8
+        var nextFooterX = statsLabel.frame.maxX + 10
+        if let eng = ocrEnginePill { eng.frame = NSRect(x: nextFooterX, y: round((botH - 28) * 0.5), width: 112, height: 28); nextFooterX = eng.frame.maxX + 6 }
+        if let cfgBtn = ocrSettingsBtn { cfgBtn.frame = NSRect(x: nextFooterX, y: round((botH - 28) * 0.5), width: 30, height: 28); nextFooterX = cfgBtn.frame.maxX + 8 }
+        if !exactModeButton.isHidden {
+            let exSz = exactModeButton.intrinsicContentSize
+            exactModeButton.frame = NSRect(x: nextFooterX, y: round((botH - exSz.height) * 0.5), width: exSz.width, height: exSz.height)
+            nextFooterX = exactModeButton.frame.maxX + 8
+        }
         if let tblBtn = tableCopyButton, !tblBtn.isHidden {
             let tsz = tblBtn.intrinsicContentSize
             tblBtn.frame = NSRect(x: nextFooterX, y: round((botH - tsz.height) * 0.5), width: tsz.width, height: tsz.height)
             nextFooterX = tblBtn.frame.maxX + 8
         }
-        let psz = pinButton.intrinsicContentSize
-        pinButton.frame = NSRect(x: nextFooterX, y: round((botH - psz.height) * 0.5), width: psz.width, height: psz.height)
-        let cpSz = copyButton.intrinsicContentSize
-        copyButton.frame = NSRect(x: W - pad - cpSz.width, y: round((botH - cpSz.height) * 0.5), width: cpSz.width, height: cpSz.height)
+        let psz = pinButton.intrinsicContentSize; pinButton.frame = NSRect(x: nextFooterX, y: round((botH - psz.height) * 0.5), width: psz.width, height: psz.height)
+        let cpSz = copyButton.intrinsicContentSize; copyButton.frame = NSRect(x: W - pad - cpSz.width, y: round((botH - cpSz.height) * 0.5), width: cpSz.width, height: cpSz.height)
     }
 
     private func makeLabel(_ text: String, size: CGFloat, weight: NSFont.Weight, color: NSColor) -> NSTextField {

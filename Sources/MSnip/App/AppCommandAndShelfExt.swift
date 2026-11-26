@@ -10,6 +10,7 @@ extension AppController {
         c.ocrAutoCopyProvider = { [weak self] in self?.config.ocrAutoCopy ?? true }
         c.onPinImage = { [weak self] img, scale, scr in self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr) }
         c.onRecognizeLatex = { [weak self] img, scale, scr in self?.latexController.present(cgImage: img, scaleFactor: scale, screen: scr) }
+        c.onOpenOCRSettings = { [weak self] in self?.translationSettings.show(tab: .ocrAndLatex) }
         c.onOpenSettings = { [weak self] in self?.translationSettings.show(tab: .translation) }
         return c
     }
@@ -17,7 +18,7 @@ extension AppController {
     func makeLatexController() -> LatexResultController {
         let c = LatexResultController()
         c.onPinImage = { [weak self] img, scale, scr in self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr) }
-        c.onOpenMainAISettings = { [weak self] in self?.translationSettings.show(tab: .translation) }
+        c.onOpenLatexSettings = { [weak self] in self?.translationSettings.show(tab: .ocrAndLatex) }
         return c
     }
 
@@ -203,6 +204,23 @@ extension AppController {
     @objc func toggleTopShelf() { shelfController.toggle() }
     @objc func openCollageStudioWindow() { collageStudio.present() }
 
+    /// 为纯代码 `.accessory` 菜单栏应用安装标准「编辑」主菜单，使全应用所有输入框（含 API 密钥密文框、文字标注与保存面板）原生支持 `⌘V / ⌘C / ⌘X / ⌘A / ⌘Z / ⌘⇧Z`
+    func setupMainMenu() {
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem(); appItem.submenu = NSMenu(title: "MSnip"); mainMenu.addItem(appItem)
+        let editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: "编辑")
+        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
+        let redoItem = NSMenuItem(title: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]; editMenu.addItem(redoItem)
+        editMenu.addItem(.separator())
+        editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = editMenu; mainMenu.addItem(editItem); NSApp.mainMenu = mainMenu
+    }
+
     /// 在 `NSStatusBarWindow` 分发鼠标按下事件前动态挂载 `statusItem.menu`：
     /// 彻底摒弃 `performClick(nil)` 合成点击与 `NSDragEventTracker` 嵌套模态循环，100% 走系统原生状态栏菜单通道
     func installStatusBarMenuPreHook() {
@@ -228,6 +246,30 @@ extension AppController {
     }
 
     func performSilentOCRCopy(img: CGImage, scale: CGFloat, screen: NSScreen) {
+        let ocrCfg = OCRRecognitionConfig.load()
+        if ocrCfg.engineKind != .appleVision {
+            let engine = ocrCfg.engineKind
+            let activeID = TranslationService.shared.settings.activeProfileID
+            let profiles = VisionLLMOCRService.availableVisionLLMProfiles()
+            ToastHUD.show(message: "正在用「\(engine.shortName)」识字…")
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let out = try await CloudOCRService.recognizeText(
+                        image: img, engine: engine, config: ocrCfg, activeProfileID: activeID, profiles: profiles
+                    )
+                    ClipboardAndSave.copyText(out.text); ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
+                    ToastHUD.show(message: "✓ 已用「\(out.providerName)」识别 \(out.text.count) 字并复制", actionTitle: "双栏查看 ›") { [weak self] in
+                        self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: screen, autoTranslate: false)
+                    }
+                } catch { self.performAppleVisionSilentOCR(img: img, scale: scale, screen: screen) }
+            }
+            return
+        }
+        performAppleVisionSilentOCR(img: img, scale: scale, screen: screen)
+    }
+
+    private func performAppleVisionSilentOCR(img: CGImage, scale: CGFloat, screen: NSScreen) {
         ToastHUD.show(message: "正在离线识字…")
         VisionTextExtractor.recognizeAsync(from: img) { [weak self] output in
             guard let self else { return }

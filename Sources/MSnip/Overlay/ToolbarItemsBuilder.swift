@@ -113,11 +113,12 @@ extension ToolbarView {
             // 3) 页面内交互与多模态功能键（长截图 / 录视频 / 页内实况识字 / 页内翻译）
             list.append(iconAction(x: &x, y: y, h: h, symbol: "scissors", tip: "滚动长截图 (\(keyUpper(.longShot)))", enabled: true, action: .startLongShot))
             list.append(iconAction(x: &x, y: y, h: h, symbol: "video", tip: "选区录制 GIF / MP4 视频 (\(keyUpper(.record)))", enabled: true, action: .startRecording))
-            let ocrTip: String = inPlaceOCRActive
-                ? "正在页内实况识字：可直接划词复制（再次点击返回标注 · ⌥+点击打开双栏面板）"
-                : (ocrAutoOpenDualPane
-                    ? "提取文字：直接打开双栏对照面板 (\(keyUpper(.ocr)) · ⌥+点击页内划词)"
-                    : "提取文字：在当前选区内直接划选文字 (\(keyUpper(.ocr)) · ⌥+点击打开双栏面板)")
+            let ocrTip: String = switch (inPlaceOCRActive, ocrPresentation) {
+            case (true, _):           "正在页内实况识字：可直接划词复制（再次点击返回标注 · ⌥+点击打开双栏面板）"
+            case (false, .inPlace):   "提取文字：在当前选区内直接划选文字 (\(keyUpper(.ocr)) · ⌥+点击打开双栏面板)"
+            case (false, .dualPane):  "提取文字：直接打开双栏对照面板 (\(keyUpper(.ocr)) · ⌥+点击页内划词)"
+            case (false, .silentCopy): "提取文字：直接关闭截图并静默识别复制 (\(keyUpper(.ocr)) · ⌥+点击打开双栏面板)"
+            }
             list.append(iconAction(
                 x: &x, y: y, h: h,
                 symbol: "text.viewfinder",

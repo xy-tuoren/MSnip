@@ -20,6 +20,7 @@ final class ToolbarView: NSView {
         case captureWindow
         case toggleInPlaceOCR
         case extractTextWindow
+        case silentOCR
         case recognizeLatex
         case toggleInPlaceTranslate
         case translateWindow
@@ -60,7 +61,7 @@ final class ToolbarView: NSView {
     var textCapsule: Bool = false { didSet { if oldValue != textCapsule { markItemsDirty() } } }
     var inPlaceOCRActive: Bool = false { didSet { if oldValue != inPlaceOCRActive { markItemsDirty() } } }
     var inPlaceTranslateActive: Bool = false { didSet { if oldValue != inPlaceTranslateActive { markItemsDirty() } } }
-    var ocrAutoOpenDualPane: Bool = false { didSet { if oldValue != ocrAutoOpenDualPane { markItemsDirty() } } }
+    var ocrPresentation: OCRDefaultPresentation = .inPlace { didSet { if oldValue != ocrPresentation { markItemsDirty() } } }
     var translateAutoOpenDualPane: Bool = false { didSet { if oldValue != translateAutoOpenDualPane { markItemsDirty() } } }
     var nextStepNumber: Int = 1 { didSet { if oldValue != nextStepNumber { markItemsDirty() } } }
     var colorIndex: Int = 0 { didSet { if oldValue != colorIndex { markItemsDirty() } } }
@@ -192,8 +193,11 @@ final class ToolbarView: NSView {
         if case .quickSave = item.action, event.modifierFlags.contains(.option) {
             onAction?(.save)
         } else if case .toggleInPlaceOCR = item.action {
-            let openDual = event.modifierFlags.contains(.option) ? !ocrAutoOpenDualPane : (ocrAutoOpenDualPane && !inPlaceOCRActive)
-            onAction?(openDual ? .extractTextWindow : .toggleInPlaceOCR)
+            switch ocrPresentation.resolvedTrigger(inPlaceActive: inPlaceOCRActive, optionHeld: event.modifierFlags.contains(.option)) {
+            case .toggleInPlace:      onAction?(.toggleInPlaceOCR)
+            case .openDualPane:       onAction?(.extractTextWindow)
+            case .silentCopyAndClose: onAction?(.silentOCR)
+            }
         } else if case .toggleInPlaceTranslate = item.action {
             let openDual = event.modifierFlags.contains(.option) ? !translateAutoOpenDualPane : (translateAutoOpenDualPane && !inPlaceTranslateActive)
             onAction?(openDual ? .translateWindow : .toggleInPlaceTranslate)

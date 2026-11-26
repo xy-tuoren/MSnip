@@ -1,6 +1,6 @@
 <div align="center">
 
-# MSnip `v0.9.2`
+# MSnip `v0.9.3`
 
 **Precision screenshots, desktop pins, a top-edge drop shelf, scrolling capture, high-frame-rate recording, offline OCR, and in-place translation — packed into a ~3.5 MB pure-native Swift app. Zero dependencies, MIT open source, no subscriptions.**
 
@@ -91,11 +91,11 @@ MSnip is built strictly on Apple's system frameworks so speed and efficiency sho
 - **High Frame Rate & 3 Quality Tiers**: MP4 offers **Standard (`≤1280px`) / HD (`≤1920px`) / Original (Retina 1:1)** at **30fps / 60fps / Native High Refresh Rate** with FPS-adaptive bitrate; GIF offers **Compact (`720px`) / Standard (`960px`) / HD (`1280px`)**.
 - **System Audio + Live Annotation + Lossless Trim**: Includes **macOS 13+ native system audio capture**, click ripples, modifier key HUD, **real-time laser/pen drawing during recording**, and lossless MP4 head/tail trimming.
 
-### 6. Offline OCR (with Silent Copy), Tables, QR/Barcode, LaTeX & Multi-Engine Translation (`⌥F` / `⌥D`)
-- **3 OCR Modes (In-Place Live Text / Dual-Pane / Silent Copy)**: Select text directly on the frozen canvas, open the dual-pane inspector, or switch to **Silent Copy** (dismisses overlay immediately on release and copies recognized text in the background without popping up a window); copy structured tables as **Markdown** or **TSV**.
+### 6. Multi-Engine OCR (Offline + Cloud + Vision LLM), Tables, LaTeX & Streaming Translation (`⌥F` / `⌥D`)
+- **3 OCR Modes & 6 OCR Engines**: Choose **In-Place Live Text**, **Dual-Pane Inspector**, or **Silent Copy** (dismisses overlay immediately and copies recognized text in the background; hold `⌥` to override). Alongside **Apple Offline Vision**, switch freely to **Vision LLMs**, **Baidu Cloud OCR**, **Tencent Cloud OCR**, **Youdao OCR**, or a **Universal Custom HTTP OCR** adapter (`{{image_base64}}` templates + `*` array wildcard JSON path extraction for Umi-OCR / PaddleOCR / RapidOCR / custom endpoints) with seamless offline fallback; copy structured tables as **Markdown** or **TSV**.
 - **Silent QR & Barcode Detection**: Scans locked selections in the background for 1-click Open URL or Copy Value.
-- **Paragraph In-Place & Streaming Translation**: Groups natural paragraphs and renders translations back in place (hold to peek original; right-click to switch language). Supports **macOS 15+ Apple Offline Translation**, plus OpenAI, Claude, Gemini, DeepSeek, Tencent, Baidu, Youdao, DeepL, and custom Webhooks with primary/fallback failover.
-- **LaTeX Formula Recognition**: Vision LLMs, SimpleTex, and Mathpix with built-in offline native WebKit MathML rendering and online KaTeX progressive enhancement.
+- **Paragraph In-Place & Streaming Translation**: Groups natural paragraphs and renders translations back in place (hold to peek original; right-click to switch language). Supports **macOS 15+ Apple Offline Translation**, plus all 4 major LLM protocols (**OpenAI Chat / OpenAI Responses `/v1/responses` / Anthropic Messages / Gemini Native**, with reasoning/thinking-block filtering) alongside Tencent, Baidu, Youdao, DeepL, Ollama, and custom relays with failover & streaming.
+- **LaTeX Formula Recognition**: Vision LLMs, SimpleTex, Mathpix, and offline fallback — cleanly unified under the **OCR & Translation** feature tab and **Models & Services** provider pool, with offline native WebKit MathML rendering and online KaTeX progressive enhancement.
 
 ### 7. Customizable Shortcuts, CLI & `msnip://` URL Scheme
 - Adaptive Light / Dark / System appearance, 12 customizable global hotkeys + 24 single-key canvas bindings, system/app conflict scanner, optional priority hotkey takeover, secret-stripped JSON config import/export, and 1-click diagnostic reports.

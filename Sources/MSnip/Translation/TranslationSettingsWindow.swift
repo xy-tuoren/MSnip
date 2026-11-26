@@ -4,14 +4,15 @@ import MSnipCore
 
 /// 极客简约 3 标签设置窗口（780×600 Carbon Dark HUD，高可读字阶、宽敞留白、实时自动保存）
 @MainActor
-final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate {
+final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDataSource, NSTableViewDelegate, NSTextFieldDelegate {
     enum SettingsTab: Int, CaseIterable {
-        case general = 0, shortcuts = 1, translation = 2
+        case general = 0, shortcuts = 1, ocrAndLatex = 2, translation = 3
         var title: String {
             switch self {
-            case .general: return "通用"
-            case .shortcuts: return "快捷键"
-            case .translation: return "翻译"
+            case .general:     return "通用"
+            case .shortcuts:   return "快捷键"
+            case .ocrAndLatex: return "识字与翻译"
+            case .translation: return "模型与服务"
             }
         }
     }
@@ -30,6 +31,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var tabSegment: GeekSegmentControl!
     var generalPage: GeekFlippedView!
     var shortcutsPage: GeekFlippedView!
+    var ocrAndLatexPage: GeekFlippedView!
     var translationPage: GeekFlippedView!
 
     // 通用页控件
@@ -39,6 +41,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var screenPermRow: GeekDotLabel!; var axPermRow: GeekDotLabel!
     var screenPermBtn: GeekButton!; var axPermBtn: GeekButton!
     let modeControls = GeneralModeControls()
+    let ocrLatex = OCRLatexSettingsControls()
 
     // 快捷键页控件（双子模式：全局热键 + 截图内按键）
     var shortcutSubMode: Int = 0
@@ -69,12 +72,8 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var addBtn: GeekButton!
     var removeBtn: GeekButton!
 
-    var detailContainer: GeekCardView!
-    var detailHeaderTitle: NSTextField!
-    var detailHeaderSubtitle: NSTextField!
-    var setDefaultBtn: GeekButton!
-    var formScrollView: NSScrollView!
-    var formContentView: GeekFlippedView!
+    var detailContainer: GeekCardView!; var detailHeaderTitle: NSTextField!; var detailHeaderSubtitle: NSTextField!
+    var setDefaultBtn: GeekButton!; var formScrollView: NSScrollView!; var formContentView: GeekFlippedView!
     var guideCard: GeekFlippedView!
     var guideLabel: NSTextField!
     var getKeyBtn: GeekButton!
@@ -83,7 +82,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     var kindRow: GeekFlippedView!
     var kindPill: GeekDropdownPill!
     var llmProtocolRow: GeekFlippedView!
-    var llmProtocolSegment: GeekSegmentControl!
+    var llmProtocolPill: GeekDropdownPill!
     var presetRowView: GeekFlippedView!
     var llmPresetPill: GeekDropdownPill!
     var presetGetKeyBtn: GeekButton!
@@ -138,6 +137,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
         loadSelectedProfileIntoForm()
         refreshGeneralAndPermissionsUI()
+        refreshOCRAndLatexUI()
         switchTab(tab)
 
         NSApp.activate(ignoringOtherApps: true)
@@ -179,16 +179,12 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
 
         buildTopBar(in: root, width: W)
         let bodyFrame = NSRect(x: 0, y: 58, width: W, height: H - 100)
-        generalPage = GeekFlippedView(frame: bodyFrame)
-        shortcutsPage = GeekFlippedView(frame: bodyFrame)
-        translationPage = GeekFlippedView(frame: bodyFrame)
-        root.addSubview(generalPage)
-        root.addSubview(shortcutsPage)
-        root.addSubview(translationPage)
+        generalPage = GeekFlippedView(frame: bodyFrame); shortcutsPage = GeekFlippedView(frame: bodyFrame)
+        ocrAndLatexPage = GeekFlippedView(frame: bodyFrame); translationPage = GeekFlippedView(frame: bodyFrame)
+        for p in [generalPage!, shortcutsPage!, ocrAndLatexPage!, translationPage!] { root.addSubview(p) }
 
-        buildGeneralPage(in: generalPage)
-        buildShortcutsPage(in: shortcutsPage)
-        buildTranslationPage(in: translationPage)
+        buildGeneralPage(in: generalPage); buildShortcutsPage(in: shortcutsPage)
+        buildOCRAndLatexPage(in: ocrAndLatexPage); buildTranslationPage(in: translationPage)
         buildFooterBar(in: root, width: W, y: H - 42)
         self.window = win
     }
@@ -198,15 +194,15 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         root.addSubview(bar)
 
         bar.addSubview(GeekWindowCloseButton(frame: NSRect(x: 20, y: 15, width: 28, height: 28)))
-        let appVer = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.9.2"
+        let appVer = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.9.3"
         bar.addSubview(GeekBrandTitleView(frame: NSRect(x: 48, y: 0, width: 164, height: 58), version: "v\(appVer)"))
 
         tabSegment = GeekSegmentControl(
             items: SettingsTab.allCases.map(\.title),
-            symbols: ["slider.horizontal.3", "command", "character.bubble"],
+            symbols: ["slider.horizontal.3", "command", "text.viewfinder", "cpu"],
             selectedIndex: 0
         )
-        tabSegment.frame = NSRect(x: round((W - 348) * 0.5), y: 12, width: 348, height: 34)
+        tabSegment.frame = NSRect(x: round((W - 444) * 0.5), y: 12, width: 444, height: 34)
         tabSegment.onSelect = { [weak self] idx in
             guard let tab = SettingsTab(rawValue: idx) else { return }
             self?.switchTab(tab)
@@ -246,13 +242,17 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         HotKeyConflictPopover.shared.closeIfShown(); ProviderAddAndPresetPopover.shared.closeIfShown()
         stopLiveHotKeyProbe(restoreHotKeys: true)
         cancelInlineHotKeyRecording(restoreHotKeys: true)
-        commitCurrentFormEdits(); persistDraft()
+        commitCurrentFormEdits(); commitOCRAndLatexEdits(); persistDraft(); saveOCRAndLatexConfigs()
         activeTab = tab; tabSegment.selectedIndex = tab.rawValue
         generalPage.isHidden = (tab != .general)
         shortcutsPage.isHidden = (tab != .shortcuts)
+        ocrAndLatexPage.isHidden = (tab != .ocrAndLatex)
         translationPage.isHidden = (tab != .translation)
         if tab == .shortcuts { _ = rescanHotKeyConflicts() }
-        if tab != .translation { refreshGeneralAndPermissionsUI() }
+        if tab == .ocrAndLatex { refreshOCRAndLatexUI() }
+        if tab == .translation {
+            tableView.reloadData(); tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false); loadSelectedProfileIntoForm()
+        } else { refreshGeneralAndPermissionsUI() }
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { draft.profiles.count }
@@ -283,10 +283,11 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     func windowWillClose(_ notification: Notification) {
         HotKeyConflictPopover.shared.closeIfShown(); ProviderAddAndPresetPopover.shared.closeIfShown()
         stopLiveHotKeyProbe(restoreHotKeys: true)
-        cancelInlineHotKeyRecording(restoreHotKeys: true); commitCurrentFormEdits(); persistDraft()
+        cancelInlineHotKeyRecording(restoreHotKeys: true); commitCurrentFormEdits(); commitOCRAndLatexEdits(); persistDraft(); saveOCRAndLatexConfigs()
     }
 
     func persistDraft() {
         TranslationService.shared.updateSettings { $0 = self.draft }
+        NotificationCenter.default.post(name: .msnipOCRLatexConfigChanged, object: nil)
     }
 }

@@ -65,6 +65,8 @@ extension OverlayView {
             toggleInPlaceOCR()
         case .extractTextWindow:
             exportAndFinish(mode: .extractText)
+        case .silentOCR:
+            exportAndFinish(mode: .silentOCR)
         case .recognizeLatex:
             exportAndFinish(mode: .recognizeLatex)
         case .toggleInPlaceTranslate:

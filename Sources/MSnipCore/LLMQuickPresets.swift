@@ -9,7 +9,7 @@ public enum LLMQuickPresetGroup: Int, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .custom:        return "通用自建"
+        case .custom:        return "自定义 / 中转"
         case .domestic:      return "国内主流大模型官网"
         case .international: return "国际主流厂商与聚合网关"
         case .local:         return "本机离线推理引擎（免 Key）"
@@ -50,33 +50,33 @@ public enum LLMQuickPreset: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .customOpenAI:  return "自建 / 兼容协议（手动填地址与模型）"
-        case .deepseek:      return "DeepSeek 官方 (deepseek-chat)"
-        case .zhipuFree:     return "智谱 BigModel · GLM (含免费 glm-4-flash)"
-        case .qwen:          return "阿里云百炼 · 通义千问 (qwen-mt-turbo)"
-        case .doubao:        return "火山方舟 · 豆包 (doubao / 接入点 ID)"
-        case .kimi:          return "Kimi · 月之暗面 (moonshot-v1-8k)"
-        case .hunyuan:       return "腾讯混元大模型 (含免费 hunyuan-lite)"
-        case .qianfan:       return "百度千帆 · 文心 (ernie-speed-128k)"
-        case .minimax:       return "MiniMax · 海螺 AI (MiniMax-Text-01)"
-        case .spark:         return "讯飞星火大模型 (含免费 lite)"
-        case .stepfun:       return "阶跃星辰 StepFun (step-2-mini)"
-        case .siliconflow:   return "硅基流动 SiliconFlow (含免费开源模型)"
-        case .openai:        return "OpenAI 官方 (gpt-4o-mini)"
-        case .claude:        return "Anthropic Claude (/v1/messages)"
-        case .gemini:        return "Google Gemini (AI Studio 免费额度)"
-        case .xai:           return "xAI Grok (grok-3-mini)"
-        case .groq:          return "Groq 极速推理 (含免费额度)"
-        case .mistral:       return "Mistral AI (mistral-small-latest)"
-        case .openrouter:    return "OpenRouter 全球聚合网关"
-        case .ollamaLocal:   return "本地 Ollama (127.0.0.1:11434 · 免 Key)"
-        case .lmStudioLocal: return "本地 LM Studio (127.0.0.1:1234 · 免 Key)"
+        case .customOpenAI:  return "自定义 / 中转站"
+        case .deepseek:      return "DeepSeek 官方"
+        case .zhipuFree:     return "智谱 BigModel · GLM"
+        case .qwen:          return "阿里云百炼 · 通义千问"
+        case .doubao:        return "火山方舟 · 豆包"
+        case .kimi:          return "Kimi · 月之暗面"
+        case .hunyuan:       return "腾讯混元大模型"
+        case .qianfan:       return "百度千帆 · 文心"
+        case .minimax:       return "MiniMax · 海螺 AI"
+        case .spark:         return "讯飞星火大模型"
+        case .stepfun:       return "阶跃星辰 StepFun"
+        case .siliconflow:   return "硅基流动 SiliconFlow"
+        case .openai:        return "OpenAI 官方"
+        case .claude:        return "Anthropic Claude"
+        case .gemini:        return "Google Gemini"
+        case .xai:           return "xAI Grok"
+        case .groq:          return "Groq"
+        case .mistral:       return "Mistral AI"
+        case .openrouter:    return "OpenRouter"
+        case .ollamaLocal:   return "本地 Ollama"
+        case .lmStudioLocal: return "本地 LM Studio"
         }
     }
 
     public var shortName: String {
         switch self {
-        case .customOpenAI:  return "LLM 大模型翻译"
+        case .customOpenAI:  return "自定义中转"
         case .deepseek:      return "DeepSeek"
         case .zhipuFree:     return "智谱 GLM"
         case .qwen:          return "通义千问"
@@ -131,7 +131,7 @@ public enum LLMQuickPreset: String, CaseIterable, Sendable {
         case .customOpenAI:  return ""
         case .deepseek:      return "deepseek-chat"
         case .zhipuFree:     return "glm-4-flash"
-        case .qwen:          return "qwen-mt-turbo"
+        case .qwen:          return "qwen-turbo"
         case .doubao:        return "doubao-1-5-lite-32k-250115"
         case .kimi:          return "moonshot-v1-8k"
         case .hunyuan:       return "hunyuan-lite"

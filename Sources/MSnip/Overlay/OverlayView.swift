@@ -53,7 +53,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var quickLaunchMode: OverlayQuickLaunchMode = .standard
     var canvasKeyMap: [CanvasAction: String] = CanvasAction.defaultMap
     var activePinCombo: KeyCombo?
-    var ocrPresentation: OCRDefaultPresentation = .inPlace; var ocrAutoOpenDualPane: Bool { ocrPresentation == .dualPane }
+    var ocrPresentation: OCRDefaultPresentation = .inPlace
     var translateAutoOpenDualPane: Bool = false; var ocrAutoCopy: Bool = true
     var backdropAspectRatio: BackdropAspectRatio = .auto; var backdropWatermark: String = ""
     var defaultPinGlowStrength: CGFloat = 0.45; var didAdjustGlow: Bool = false

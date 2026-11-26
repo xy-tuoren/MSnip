@@ -61,4 +61,49 @@ func testOCRTextFormatterModes() {
         mergedTrans.contains("native macOS apps."),
         "transcript 英文跨行连字符应自动消去: got \(mergedTrans)"
     )
+
+    // 4. 测试 OCR 三模式（原位划词 / 双栏面板 / 静默直拷）在工具栏与快捷键下的统一路由矩阵
+    check(OCRDefaultPresentation.inPlace.resolvedTrigger(inPlaceActive: false, optionHeld: false) == .toggleInPlace,
+          "原位划词默认触发应进入页内划词")
+    check(OCRDefaultPresentation.inPlace.resolvedTrigger(inPlaceActive: false, optionHeld: true) == .openDualPane,
+          "原位划词按住 ⌥ 应临时打开双栏面板")
+    check(OCRDefaultPresentation.dualPane.resolvedTrigger(inPlaceActive: false, optionHeld: false) == .openDualPane,
+          "双栏面板默认触发应打开双栏对照窗")
+    check(OCRDefaultPresentation.dualPane.resolvedTrigger(inPlaceActive: false, optionHeld: true) == .toggleInPlace,
+          "双栏面板按住 ⌥ 应临时进入页内划词")
+    check(OCRDefaultPresentation.dualPane.resolvedTrigger(inPlaceActive: true, optionHeld: false) == .toggleInPlace,
+          "已处于原位划词态时再次普通触发应退出原位态而非直接跳双栏")
+    check(OCRDefaultPresentation.silentCopy.resolvedTrigger(inPlaceActive: false, optionHeld: false) == .silentCopyAndClose,
+          "静默直拷默认触发应直接关闭截图窗口并后台静默识别复制")
+    check(OCRDefaultPresentation.silentCopy.resolvedTrigger(inPlaceActive: false, optionHeld: true) == .openDualPane,
+          "静默直拷按住 ⌥ 应临时打开双栏面板")
+    check(OCRDefaultPresentation.silentCopy.resolvedTrigger(inPlaceActive: true, optionHeld: true) == .openDualPane,
+          "原位划词激活态按住 ⌥ 应切换至双栏对照窗")
+
+    // 5. 测试统一 OCR 识字配置持久化与多模态大模型解析优先级（指定接口 → 当前活跃大模型 → 首个已就绪大模型）
+    let tmpOCR = FileManager.default.temporaryDirectory.appendingPathComponent("msnip_ocr_cfg_\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: tmpOCR) }
+    var appleProf = TranslationProviderProfile.makePreset(.appleNative)
+    var llm1 = TranslationProviderProfile(name: "Relay1", kind: .openAIResponses, isEnabled: true, endpoint: "https://relay.example.com", apiKey: "sk-1", model: "gpt-5-mini")
+    var llm2 = TranslationProviderProfile(name: "Relay2", kind: .anthropicCompatible, isEnabled: true, endpoint: "https://claude.example.com", apiKey: "sk-2", model: "claude-sonnet-4")
+    appleProf.isEnabled = true; llm1.isEnabled = true; llm2.isEnabled = true
+    let cfgToSave = OCRRecognitionConfig(engineKind: .visionLLM, visionProfileID: llm2.id, visionModelOverride: "qwen-vl-plus")
+    cfgToSave.save(to: tmpOCR)
+    let reloadedOCR = OCRRecognitionConfig.load(from: tmpOCR)
+    check(reloadedOCR == cfgToSave, "OCRRecognitionConfig 应完整支持本地 JSON 持久化与回读")
+    check(
+        OCRRecognitionConfig.resolveVisionProfile(preferredID: llm2.id, activeID: llm1.id, profiles: [appleProf, llm1, llm2])?.id == llm2.id
+            && OCRRecognitionConfig.resolveVisionProfile(preferredID: nil, activeID: llm1.id, profiles: [appleProf, llm1, llm2])?.id == llm1.id
+            && OCRRecognitionConfig.resolveVisionProfile(preferredID: nil, activeID: appleProf.id, profiles: [appleProf, llm1, llm2])?.id == llm1.id,
+        "多模态视觉接口解析应按「指定接口 → 当前活跃大模型 → 首个已就绪大模型」降级并自动跳过 Apple 离线翻译"
+    )
+    check(OCREngineKind.allCases.count == 6 && OCREngineKind.allCases.contains(.baiduOCR) && OCREngineKind.allCases.contains(.customHTTP),
+          "OCR 引擎列表应完整涵盖离线/视觉大模型/百度/腾讯/有道/自定义 HTTP 6 大选项")
+    let umiJSON = Data("{\"code\":100,\"data\":[{\"text\":\"第一行\"},{\"text\":\"第二行\"}]}".utf8)
+    let baiduLikeJSON = Data("{\"words_result\":[{\"words\":\"Hello\"},{\"words\":\"MSnip\"}]}".utf8)
+    check(
+        OCRRecognitionConfig.extractCustomOCRText(from: umiJSON, path: "data.*.text") == "第一行\n第二行"
+            && OCRRecognitionConfig.extractCustomOCRText(from: baiduLikeJSON, path: "words_result.*.words") == "Hello\nMSnip",
+        "通用自定义 HTTP OCR 路径提取器应支持 * 数组通配符并按行拼接"
+    )
 }

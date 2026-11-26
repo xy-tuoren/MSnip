@@ -4,20 +4,35 @@ import Foundation
 public enum LLMProtocolHelpers {
     /// 智能补全 OpenAI 兼容聊天端点（支持裸域名、`/v1`、`/v2`、`/v3`、`/v4` 及完整 `/chat/completions`）
     public static func resolveOpenAIChatURL(_ raw: String) -> URL? {
-        let base = stripTrailingSlashes(raw)
+        var base = stripTrailingSlashes(raw)
         guard !base.isEmpty else { return nil }
         if base.hasSuffix("/chat/completions") { return URL(string: base) }
+        if base.hasSuffix("/responses") { base = String(base.dropLast("/responses".count)) }
         if hasVersionSuffix(base) { return URL(string: base + "/chat/completions") }
         return URL(string: base + "/v1/chat/completions")
     }
 
-    /// 推导 OpenAI 兼容协议的 `/models` 枚举接口地址
+    /// 智能补全 OpenAI Responses API (`/v1/responses`) 端点（兼容裸域名、`/v1`、完整 `/responses` 或从 `/chat/completions` 切换）
+    public static func resolveOpenAIResponsesURL(_ raw: String) -> URL? {
+        var base = stripTrailingSlashes(raw)
+        guard !base.isEmpty else { return nil }
+        if base.hasSuffix("/responses") { return URL(string: base) }
+        if base.hasSuffix("/chat/completions") { base = String(base.dropLast("/chat/completions".count)) }
+        if hasVersionSuffix(base) { return URL(string: base + "/responses") }
+        return URL(string: base + "/v1/responses")
+    }
+
+    /// 推导 OpenAI 兼容协议（Chat / Responses）的 `/models` 枚举接口地址
     public static func resolveOpenAIModelsURL(_ raw: String) -> URL? {
         var base = stripTrailingSlashes(raw)
         guard !base.isEmpty else { return nil }
         if base.hasSuffix("/models") { return URL(string: base) }
         if base.hasSuffix("/chat/completions") {
             base = String(base.dropLast("/chat/completions".count))
+            return URL(string: base + "/models")
+        }
+        if base.hasSuffix("/responses") {
+            base = String(base.dropLast("/responses".count))
             return URL(string: base + "/models")
         }
         if hasVersionSuffix(base) { return URL(string: base + "/models") }
@@ -46,13 +61,48 @@ public enum LLMProtocolHelpers {
         return URL(string: base + "/v1/models")
     }
 
-    /// 推导 Gemini 原生协议的 `/models` 列表地址
+    /// 推导 Gemini 原生协议的 `/models` 列表地址（裸域名自动补全 `/v1beta`，已有 `/v1`/`/v1beta`/`/v1alpha` 不重复拼接）
     public static func resolveGeminiModelsURL(endpoint: String, apiKey: String) -> URL? {
-        let base = stripTrailingSlashes(endpoint).isEmpty
-            ? "https://generativelanguage.googleapis.com/v1beta"
-            : stripTrailingSlashes(endpoint)
+        let base = normalizedGeminiBase(endpoint)
         let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        return URL(string: "\(base)/models?key=\(key)")
+        if key.isEmpty { return URL(string: "\(base)/models") }
+        let encoded = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key
+        return URL(string: "\(base)/models?key=\(encoded)")
+    }
+
+    /// 推导 Gemini 原生协议的 `:generateContent` / `:streamGenerateContent` 端点（兼容官方与裸域名中转站）
+    public static func resolveGeminiGenerateURL(endpoint: String, model: String, stream: Bool) -> URL? {
+        let raw = stripTrailingSlashes(endpoint)
+        if raw.contains(":generateContent") || raw.contains(":streamGenerateContent") {
+            return URL(string: raw)
+        }
+        let base = normalizedGeminiBase(raw)
+        var cleanModel = model.trimmingCharacters(in: .whitespacesAndNewlines)
+        if cleanModel.hasPrefix("models/") { cleanModel = String(cleanModel.dropFirst("models/".count)) }
+        let encodedModel = cleanModel.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? cleanModel
+        let action = stream ? "streamGenerateContent?alt=sse" : "generateContent"
+        return URL(string: "\(base)/models/\(encodedModel):\(action)")
+    }
+
+    private static func normalizedGeminiBase(_ raw: String) -> String {
+        var base = stripTrailingSlashes(raw)
+        if base.isEmpty { return "https://generativelanguage.googleapis.com/v1beta" }
+        if base.hasSuffix("/models") { base = String(base.dropLast("/models".count)) }
+        return hasVersionSuffix(base) ? base : (base + "/v1beta")
+    }
+
+    /// 判定模型是否禁止传入自定义 `temperature`（如 OpenAI o1/o3/o4/gpt-5 及 Kimi K2.5）
+    public static func modelRequiresDefaultTemperature(_ model: String) -> Bool {
+        let leaf = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().split(separator: "/").last.map(String.init) ?? ""
+        return leaf == "o1" || leaf.hasPrefix("o1-") || leaf == "o3" || leaf.hasPrefix("o3-")
+            || leaf == "o4" || leaf.hasPrefix("o4-") || leaf == "gpt-5" || leaf.hasPrefix("gpt-5-")
+            || leaf.hasPrefix("gpt-5.") || leaf.hasPrefix("kimi-k2.5") || leaf.hasPrefix("qwen-mt")
+    }
+
+    /// 判定模型是否不支持 `role: "system"`（如早期 o1-mini/o1-preview、qwen-mt 系列）
+    public static func modelDisallowsSystemRole(_ model: String) -> Bool {
+        let leaf = model.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().split(separator: "/").last.map(String.init) ?? ""
+        return leaf.hasPrefix("o1-mini") || leaf.hasPrefix("o1-preview") || leaf.hasPrefix("qwen-mt")
     }
 
     /// 判定是否为本机或私有局域网自建地址（支持无 API Key 直接就绪）
@@ -77,19 +127,20 @@ public enum LLMProtocolHelpers {
         return false
     }
 
-    /// 清洗思考类模型（如 deepseek-reasoner / Qwen3）可能内联输出的 `<think>...</think>` 推理块（兼容流式未闭合前缀）
+    /// 清洗思考类模型（DeepSeek-R1 / Qwen3 / vLLM 等）内联输出的 `<think>...</think>`、孤立 `</think>` 及 `<thought>...</thought>` 推理块
     public static func stripThinkingTags(_ raw: String) -> String {
-        guard raw.range(of: "<think>", options: .caseInsensitive) != nil else {
-            return raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
         var text = raw
-        while let start = text.range(of: "<think>", options: .caseInsensitive) {
-            if let end = text.range(of: "</think>", options: .caseInsensitive, range: start.upperBound..<text.endIndex) {
-                text.removeSubrange(start.lowerBound..<end.upperBound)
-            } else {
-                // 流式输出尚未收到闭合 `</think>` 时暂不暴露思考草稿
-                text.removeSubrange(start.lowerBound..<text.endIndex)
-                break
+        for (openTag, closeTag) in [("<think>", "</think>"), ("<thought>", "</thought>")] {
+            while let start = text.range(of: openTag, options: .caseInsensitive) {
+                if let end = text.range(of: closeTag, options: .caseInsensitive, range: start.upperBound..<text.endIndex) {
+                    text.removeSubrange(start.lowerBound..<end.upperBound)
+                } else {
+                    text.removeSubrange(start.lowerBound..<text.endIndex)
+                    break
+                }
+            }
+            if let orphanClose = text.range(of: closeTag, options: .caseInsensitive) {
+                text.removeSubrange(text.startIndex..<orphanClose.upperBound)
             }
         }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -119,63 +170,6 @@ public enum LLMProtocolHelpers {
         return Array(Set(ids)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
     }
 
-    /// 解析 OpenAI 兼容 SSE `data:` 负载中的增量文本
-    public static func parseOpenAISSEChunk(_ payload: String) -> String? {
-        guard let data = payload.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let choices = obj["choices"] as? [[String: Any]],
-              let delta = choices.first?["delta"] as? [String: Any],
-              let content = delta["content"] as? String, !content.isEmpty else { return nil }
-        return content
-    }
-
-    /// 解析 Anthropic `/v1/messages` SSE `data:` 负载中的增量文本 (`content_block_delta` / `text_delta`)
-    public static func parseAnthropicSSEChunk(_ payload: String) -> String? {
-        guard let data = payload.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              (obj["type"] as? String) == "content_block_delta",
-              let delta = obj["delta"] as? [String: Any],
-              (delta["type"] as? String) == "text_delta",
-              let text = delta["text"] as? String, !text.isEmpty else { return nil }
-        return text
-    }
-
-    /// 解析 Google Gemini `:streamGenerateContent?alt=sse` `data:` 负载中的增量文本
-    public static func parseGeminiSSEChunk(_ payload: String) -> String? {
-        guard let data = payload.data(using: .utf8),
-              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let cands = obj["candidates"] as? [[String: Any]],
-              let content = cands.first?["content"] as? [String: Any],
-              let parts = content["parts"] as? [[String: Any]] else { return nil }
-        let joined = parts.compactMap { $0["text"] as? String }.joined()
-        return joined.isEmpty ? nil : joined
-    }
-
-    /// 解包批量多行翻译的 `⟦1⟧ ...` 编号行（保证返回数组长度与原文逐行严格对齐）
-    public static func unpackNumberedLines(_ raw: String, original: [String]) -> [String] {
-        var result = original
-        var matched = 0
-        for line in raw.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            guard trimmed.hasPrefix("⟦"), let closeIdx = trimmed.firstIndex(of: "⟧") else { continue }
-            let numStr = trimmed[trimmed.index(after: trimmed.startIndex)..<closeIdx]
-            if let n = Int(numStr), n >= 1, n <= result.count {
-                let content = trimmed[trimmed.index(after: closeIdx)...].trimmingCharacters(in: .whitespaces)
-                if !content.isEmpty {
-                    result[n - 1] = content
-                    matched += 1
-                }
-            }
-        }
-        if matched == 0 {
-            let fallback = raw.components(separatedBy: .newlines)
-                .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty }
-            for i in 0..<min(result.count, fallback.count) { result[i] = fallback[i] }
-        }
-        return result
-    }
-
     private static func stripTrailingSlashes(_ raw: String) -> String {
         var s = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         while s.hasSuffix("/") { s.removeLast() }
@@ -184,8 +178,14 @@ public enum LLMProtocolHelpers {
 
     private static func hasVersionSuffix(_ path: String) -> Bool {
         guard let slash = path.lastIndex(of: "/") else { return false }
-        let last = path[path.index(after: slash)...]
-        guard last.count >= 2, last.first == "v" || last.first == "V" else { return false }
-        return last.dropFirst().allSatisfy(\.isNumber)
+        let last = path[path.index(after: slash)...].lowercased()
+        guard last.count >= 2, last.first == "v" else { return false }
+        let rest = last.dropFirst()
+        if rest.allSatisfy(\.isNumber) { return true }
+        for suffix in ["beta", "alpha"] where rest.hasSuffix(suffix) {
+            let num = rest.dropLast(suffix.count)
+            if !num.isEmpty && num.allSatisfy(\.isNumber) { return true }
+        }
+        return false
     }
 }

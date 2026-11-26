@@ -44,18 +44,17 @@ enum LatexRecognitionService {
 
     @MainActor
     static func availableVisionLLMProfiles() -> [TranslationProviderProfile] {
-        TranslationService.shared.settings.profiles.filter { p in
-            p.isEnabled && (p.kind == .openAICompatible || p.kind == .anthropicCompatible || p.kind == .geminiNative)
-        }
+        VisionLLMOCRService.availableVisionLLMProfiles()
     }
 
     static func recognize(
         image: CGImage,
         config: LatexRecognitionConfig,
+        activeProfileID: UUID? = nil,
         visionProfiles: [TranslationProviderProfile]
     ) async throws -> LatexRecognitionOutcome {
         let t0 = CFAbsoluteTimeGetCurrent()
-        guard let pngData = encodePNG(image: image, maxLongSide: 1600) else {
+        guard let pngData = VisionLLMOCRService.encodePNG(image: image, maxLongSide: 1600) else {
             throw LatexError.imageEncodeFailed
         }
 
@@ -63,7 +62,7 @@ enum LatexRecognitionService {
         case .simpleTex:
             let token = config.simpleTexToken.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !token.isEmpty else {
-                return await offlineFallback(image: image, t0: t0, notice: "尚未填写 SimpleTex Token，已自动使用本地离线基础识别（点击「接口配置」填入免费 Token）")
+                return await offlineFallback(image: image, t0: t0, notice: "尚未填写 SimpleTex Token，已自动使用本地离线基础识别（点击「设置」填入免费 Token）")
             }
             let raw = try await callSimpleTex(pngData: pngData, token: token)
             return try makeOutcome(raw: raw, provider: "SimpleTex", t0: t0)
@@ -78,12 +77,21 @@ enum LatexRecognitionService {
             return try makeOutcome(raw: raw, provider: "Mathpix", t0: t0)
 
         case .autoVisionLLM:
-            let chosen = visionProfiles.first(where: { $0.id == config.visionProfileID && $0.isConfiguredReady })
-                ?? visionProfiles.first(where: { $0.isConfiguredReady })
-            guard let profile = chosen, profile.isConfiguredReady else {
-                return await offlineFallback(image: image, t0: t0, notice: "尚未配置视觉大模型或 SimpleTex，当前为离线基础识别（配置后支持复杂分式/积分/矩阵）")
+            guard let profile = OCRRecognitionConfig.resolveVisionProfile(
+                preferredID: config.visionProfileID,
+                activeID: activeProfileID,
+                profiles: visionProfiles
+            ) else {
+                return await offlineFallback(image: image, t0: t0, notice: "尚未配置视觉大模型或 SimpleTex，当前为离线基础识别（前往「设置 → 识字与翻译」配置）")
             }
-            let raw = try await callVisionLLM(pngData: pngData, profile: profile, modelOverride: config.visionModelOverride)
+            let raw = try await VisionLLMOCRService.callMultimodalVisionLLM(
+                pngData: pngData,
+                systemPrompt: visionSystemPrompt,
+                userPrompt: "Transcribe the formula in this image into pure LaTeX:",
+                profile: profile,
+                modelOverride: config.visionModelOverride,
+                maxTokens: 2048
+            )
             let modelTag = config.visionModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
             let label = modelTag.isEmpty ? profile.name : "\(profile.name) · \(modelTag)"
             return try makeOutcome(raw: raw, provider: label, t0: t0)
@@ -109,79 +117,6 @@ enum LatexRecognitionService {
         let latex = LatexPostProcessor.heuristicUnicodeToLatex(output.formattedText(for: .preserveLines))
         let ms = max(1, Int(((CFAbsoluteTimeGetCurrent() - t0) * 1000).rounded()))
         return LatexRecognitionOutcome(rawLatex: latex, providerName: "Apple Vision 离线基础", elapsedMs: ms, usedOfflineFallback: true, notice: notice)
-    }
-
-    // MARK: - Multimodal Vision LLM (OpenAI / Anthropic / Gemini)
-
-    private static func callVisionLLM(pngData: Data, profile: TranslationProviderProfile, modelOverride: String) async throws -> String {
-        let b64 = pngData.base64EncodedString()
-        let customModel = modelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
-        let model = customModel.isEmpty ? profile.model.trimmingCharacters(in: .whitespacesAndNewlines) : customModel
-        let userText = "Transcribe the formula in this image into pure LaTeX:"
-
-        switch profile.kind {
-        case .openAICompatible:
-            guard let url = TranslationSettingsConfig.resolveChatCompletionsURL(profile.endpoint) else { throw LatexError.invalidEndpoint(profile.endpoint) }
-            var req = URLRequest(url: url, timeoutInterval: 45); req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
-            let body: [String: Any] = [
-                "model": model.isEmpty ? "gpt-4o-mini" : model, "temperature": 0.1,
-                "messages": [
-                    ["role": "system", "content": visionSystemPrompt],
-                    ["role": "user", "content": [["type": "text", "text": userText], ["type": "image_url", "image_url": ["url": "data:image/png;base64,\(b64)"]]]]
-                ]
-            ]
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, resp) = try await URLSession.shared.data(for: req); try validateHTTP(resp, data: data)
-            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let msg = (obj["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any],
-                  let content = msg["content"] as? String else { throw LatexError.emptyResult }
-            return content
-
-        case .anthropicCompatible:
-            guard let url = LLMProtocolHelpers.resolveAnthropicMessagesURL(profile.endpoint) else {
-                throw LatexError.invalidEndpoint(profile.endpoint)
-            }
-            var req = URLRequest(url: url, timeoutInterval: 45); req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.setValue(profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "x-api-key")
-            req.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-            let body: [String: Any] = [
-                "model": model.isEmpty ? "claude-3-5-sonnet-latest" : model, "max_tokens": 1024, "system": visionSystemPrompt,
-                "messages": [["role": "user", "content": [["type": "image", "source": ["type": "base64", "media_type": "image/png", "data": b64]], ["type": "text", "text": userText]]]]
-            ]
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, resp) = try await URLSession.shared.data(for: req); try validateHTTP(resp, data: data)
-            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let txt = (obj["content"] as? [[String: Any]])?.first?["text"] as? String else { throw LatexError.emptyResult }
-            return txt
-
-        case .geminiNative:
-            let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            let useModel = (model.isEmpty ? "gemini-2.0-flash" : model).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? model
-            let base = profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? "https://generativelanguage.googleapis.com/v1beta"
-                : profile.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard let url = URL(string: "\(base)/models/\(useModel):generateContent") else { throw LatexError.invalidEndpoint(base) }
-            var req = URLRequest(url: url, timeoutInterval: 45); req.httpMethod = "POST"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            if !key.isEmpty { req.setValue(key, forHTTPHeaderField: "x-goog-api-key") }
-            let body: [String: Any] = [
-                "systemInstruction": ["parts": [["text": visionSystemPrompt]]],
-                "contents": [["role": "user", "parts": [["text": userText], ["inline_data": ["mime_type": "image/png", "data": b64]]]]]
-            ]
-            req.httpBody = try JSONSerialization.data(withJSONObject: body)
-            let (data, resp) = try await URLSession.shared.data(for: req); try validateHTTP(resp, data: data)
-            guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let content = (obj["candidates"] as? [[String: Any]])?.first?["content"] as? [String: Any],
-                  let txt = (content["parts"] as? [[String: Any]])?.first?["text"] as? String else { throw LatexError.emptyResult }
-            return txt
-
-        default:
-            throw LatexError.missingCredentials("当前选中接口不支持视觉识图")
-        }
     }
 
     // MARK: - SimpleTex & Mathpix Dedicated Formula APIs
@@ -244,29 +179,5 @@ enum LatexRecognitionService {
             let txt = String(data: data.prefix(300), encoding: .utf8) ?? ""
             throw LatexError.httpError(http.statusCode, txt)
         }
-    }
-
-    private static func encodePNG(image: CGImage, maxLongSide: Int) -> Data? {
-        let target: CGImage
-        let longSide = max(image.width, image.height)
-        if longSide > maxLongSide {
-            let scale = Double(maxLongSide) / Double(longSide)
-            let nw = max(32, Int((Double(image.width) * scale).rounded()))
-            let nh = max(32, Int((Double(image.height) * scale).rounded()))
-            let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
-            if let ctx = CGContext(data: nil, width: nw, height: nh, bitsPerComponent: 8, bytesPerRow: 0, space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
-                ctx.interpolationQuality = .high
-                ctx.draw(image, in: CGRect(x: 0, y: 0, width: nw, height: nh))
-                target = ctx.makeImage() ?? image
-            } else {
-                target = image
-            }
-        } else {
-            target = image
-        }
-        let buf = NSMutableData()
-        guard let dest = CGImageDestinationCreateWithData(buf, UTType.png.identifier as CFString, 1, nil) else { return nil }
-        CGImageDestinationAddImage(dest, target, nil)
-        return CGImageDestinationFinalize(dest) ? (buf as Data) : nil
     }
 }

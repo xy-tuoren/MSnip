@@ -5,10 +5,11 @@ import MSnipCore
 /// 翻译页两步极简状态绑定：默认仅露核心密钥框、一键获取 Key、一键粘贴、测通自动启用
 extension TranslationSettingsWindow {
     func refreshTopBarPopups() {
-        targetLangPill.customDisplayTitle = draft.targetLang.displayName
-        autoCopySwitch.isOn = draft.autoCopyTranslation
-        modeControls.transTabDualSwitch?.isOn = appConfigProvider?().translateAutoOpenDualPane ?? false
-        removeBtn.isEnabled = draft.profiles.count > 1
+        targetLangPill?.customDisplayTitle = draft.targetLang.displayName
+        autoCopySwitch?.isOn = draft.autoCopyTranslation
+        ocrLatex.transModeSegment?.selectedIndex = (appConfigProvider?().translateAutoOpenDualPane ?? false) ? 1 : 0
+        removeBtn?.isEnabled = draft.profiles.count > 1
+        refreshTranslationEnginePill()
     }
 
     func presentTargetLanguagePicker(from anchor: NSView) {
@@ -39,11 +40,13 @@ extension TranslationSettingsWindow {
         if let kIdx = TranslationProviderKind.allCases.firstIndex(of: p.kind) {
             kindPill.selectedIndex = kIdx
         }
-        llmProtocolSegment.selectedIndex = (p.kind == .anthropicCompatible) ? 1 : ((p.kind == .geminiNative) ? 2 : 0)
+        if let pIdx = TranslationProviderKind.llmProtocolCases.firstIndex(of: p.kind) {
+            llmProtocolPill.selectedIndex = pIdx
+        }
         if let matched = LLMQuickPreset.match(endpoint: p.endpoint) {
             llmPresetPill.customDisplayTitle = matched.shortName
         } else {
-            llmPresetPill.customDisplayTitle = "选择主流大模型官网预设…"
+            llmPresetPill.customDisplayTitle = "自定义 / 中转站"
         }
         appIdField.stringValue = p.appIdOrSecretId
         endpointField.stringValue = p.endpoint
@@ -57,7 +60,7 @@ extension TranslationSettingsWindow {
     private func makeSubtitle(for p: TranslationProviderProfile) -> String {
         switch p.kind {
         case .appleNative: return "macOS 内置神经网络 · 免费离线"
-        case .openAICompatible, .anthropicCompatible, .geminiNative:
+        case .openAICompatible, .openAIResponses, .anthropicCompatible, .geminiNative:
             let m = p.model.trimmingCharacters(in: .whitespacesAndNewlines)
             let tag = m.isEmpty ? "默认模型" : "模型 \(m)"
             return p.isLocalNoKeyEndpoint ? "\(tag) · 本机离线免密钥" : "\(tag) · 仅需填入 API 密钥"
@@ -70,6 +73,9 @@ extension TranslationSettingsWindow {
     }
 
     func toggleAPIKeyVisibility() {
+        let wasFocused = (window?.firstResponder as? NSTextView)?.delegate as AnyObject?
+            === (isAPIKeyRevealed ? apiKeyPlainField : apiKeySecureField)
+        window?.makeFirstResponder(nil)
         if isAPIKeyRevealed {
             apiKeySecureField.stringValue = apiKeyPlainField.stringValue
         } else {
@@ -79,6 +85,9 @@ extension TranslationSettingsWindow {
         eyeToggleBtn.symbolName = isAPIKeyRevealed ? "eye.slash" : "eye"
         apiKeySecureBox.isHidden = isAPIKeyRevealed
         apiKeyPlainBox.isHidden = !isAPIKeyRevealed
+        if wasFocused {
+            window?.makeFirstResponder(isAPIKeyRevealed ? apiKeyPlainField : apiKeySecureField)
+        }
     }
 
     func onPasteAPIKeyClicked() {
@@ -107,7 +116,7 @@ extension TranslationSettingsWindow {
         let kind = p.kind
         let isNative = (kind == .appleNative)
         let isCustom = (kind == .customWebhook)
-        let isLLMKind = (kind == .openAICompatible || kind == .anthropicCompatible || kind == .geminiNative)
+        let isLLMKind = kind.isLLMProtocol
 
         nativeCardBox.isHidden = !isNative
         guideCard.isHidden = isNative || isLLMKind
@@ -119,7 +128,7 @@ extension TranslationSettingsWindow {
             getKeyBtn.isHidden = !hasLink
             guideLabel.frame.size.width = hasLink ? (guideCard.bounds.width - 118) : (guideCard.bounds.width - 28)
         }
-        let hasLLMLink = isLLMKind && (p.consoleURL != nil)
+        let hasLLMLink = isLLMKind && (LLMQuickPreset.match(endpoint: p.endpoint)?.consoleURL != nil)
         presetGetKeyBtn.isHidden = !hasLLMLink
         llmPresetPill.frame.size.width = hasLLMLink ? (fullW - 94) : fullW
 
@@ -169,7 +178,7 @@ extension TranslationSettingsWindow {
             cursorY += 52
         }
         var primaryRows: [GeekFlippedView] = []
-        if isLLMKind { primaryRows.append(contentsOf: [llmProtocolRow, presetRowView]) }
+        if isLLMKind { primaryRows.append(contentsOf: [presetRowView, llmProtocolRow]) }
         if primaryNeedsAppId { primaryRows.append(appIdRow) }
         if primaryNeedsEndpoint { primaryRows.append(endpointRow) }
         if primaryNeedsKey { primaryRows.append(apiKeyRow) }
@@ -206,8 +215,10 @@ extension TranslationSettingsWindow {
                 let status = await AppleNativeTranslator.queryAvailabilitySummary()
                 self?.nativeInfoLabel.stringValue = "macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n\(status)"
             }
-        case .openAICompatible, .anthropicCompatible, .geminiNative:
+        case .openAICompatible, .openAIResponses, .anthropicCompatible, .geminiNative:
             endpointLabel.stringValue = "接口地址"; apiKeyLabel.stringValue = "API 密钥"; modelLabel.stringValue = "模型名称"
+            let epSuffix = p.kind == .openAIResponses ? "/v1/responses" : (p.kind == .anthropicCompatible ? "/v1/messages" : (p.kind == .geminiNative ? "/v1beta" : "/v1/chat/completions"))
+            endpointField.setGeekPlaceholder("https://your-relay.com（自动补全 \(epSuffix)）")
             extraLabel1.stringValue = "提示词"; extraField1.setGeekPlaceholder("留空使用内置精准截图翻译提示词")
             extraField1.stringValue = p.systemPrompt
             extraLabel2.stringValue = "请求头"; extraField2.setGeekPlaceholder("可选 JSON，如 {\"X-Key\":\"val\"}")
@@ -242,7 +253,7 @@ extension TranslationSettingsWindow {
         if p.kind == .customWebhook {
             p.customBodyTemplate = extraField1.stringValue
             p.customResponsePath = extraField2.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        } else if p.kind == .openAICompatible || p.kind == .anthropicCompatible || p.kind == .geminiNative {
+        } else if p.kind.isLLMProtocol {
             p.systemPrompt = extraField1.stringValue
             p.customHeadersJSON = extraField2.stringValue
         }
@@ -273,7 +284,7 @@ extension TranslationSettingsWindow {
             let res = await TranslationService.shared.testConnectivity(profile: prof, hostWindow: self.window)
             if res.ok && self.draft.activeProfileID != prof.id {
                 self.draft.activeProfileID = prof.id
-                self.persistDraft()
+                self.persistDraft(); self.refreshTopBarPopups()
                 self.loadSelectedProfileIntoForm()
                 self.testStatusLabel.setTextWithTooltip("\(res.message) · 已启用", color: GeekTheme.emerald)
             } else {

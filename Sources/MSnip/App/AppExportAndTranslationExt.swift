@@ -245,7 +245,11 @@ extension AppController {
                 pinWin.beginAnnotationEditing()
             case .extractText(let img, let scale, let targetScreen):
                 self.recordHistoryAndRefresh(img: img, scale: scale)
-                self.ocrController.present(cgImage: img, scaleFactor: scale, screen: targetScreen, autoTranslate: false)
+                if self.config.ocrPresentation == .silentCopy {
+                    self.performSilentOCRCopy(img: img, scale: scale, screen: targetScreen)
+                } else {
+                    self.ocrController.present(cgImage: img, scaleFactor: scale, screen: targetScreen, autoTranslate: false)
+                }
             case .translateText(let img, let scale, let targetScreen):
                 self.recordHistoryAndRefresh(img: img, scale: scale)
                 self.ocrController.present(cgImage: img, scaleFactor: scale, screen: targetScreen, autoTranslate: true)

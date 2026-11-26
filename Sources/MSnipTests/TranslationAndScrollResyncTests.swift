@@ -216,12 +216,72 @@ func testTranslationConfigAndModels() {
         }
     }
 
-    // 三协议 SSE 增量块解析、批量编号行解包与剪贴板文本便签卡渲染回归单测
+    // 三协议 SSE 增量块解析、非流式思考块过滤、批量编号行解包与剪贴板文本便签卡渲染回归单测
     check(
         LLMProtocolHelpers.parseOpenAISSEChunk("{\"choices\":[{\"delta\":{\"content\":\"你好\"}}]}") == "你好"
             && LLMProtocolHelpers.parseAnthropicSSEChunk("{\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"世界\"}}") == "世界"
-            && LLMProtocolHelpers.parseGeminiSSEChunk("{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"MSnip\"}]}}]}") == "MSnip",
-        "OpenAI / Anthropic / Gemini 三协议 SSE 增量文本解析应全部准确提取"
+            && LLMProtocolHelpers.parseGeminiSSEChunk("{\"candidates\":[{\"content\":{\"parts\":[{\"thought\":true,\"text\":\"reasoning\"},{\"text\":\"MSnip\"}]}}]}") == "MSnip",
+        "OpenAI / Anthropic / Gemini 三协议 SSE 增量文本解析应准确提取并过滤思考块"
+    )
+    let anthropicThinkingJSON = Data("""
+    {"content":[{"type":"thinking","thinking":"internal chain of thought"},{"type":"text","text":"截图翻译已准备就绪。"}]}
+    """.utf8)
+    check(
+        LLMProtocolHelpers.extractAnthropicResponseText(from: anthropicThinkingJSON) == "截图翻译已准备就绪。",
+        "Anthropic 非流式响应含前置 thinking 块时应跳过推理块并提取正文 text"
+    )
+    let geminiThinkingJSON = Data("""
+    {"candidates":[{"content":{"parts":[{"thought":true,"text":"plan"},{"text":"截图翻译已就绪。"}]}}]}
+    """.utf8)
+    check(
+        LLMProtocolHelpers.extractGeminiResponseText(from: geminiThinkingJSON) == "截图翻译已就绪。",
+        "Gemini 非流式响应含 thought:true 分片时应跳过思考块并提取正文"
+    )
+    let openAIPartsJSON = Data("""
+    {"choices":[{"message":{"content":[{"type":"reasoning","text":"think"},{"type":"text","text":"测试通过"}]}}]}
+    """.utf8)
+    check(
+        LLMProtocolHelpers.extractOpenAIResponseText(from: openAIPartsJSON) == "测试通过",
+        "OpenAI 非流式响应兼容分段内容数组并跳过 reasoning 块"
+    )
+    check(
+        LLMProtocolHelpers.resolveGeminiGenerateURL(endpoint: "https://proxy.example.com", model: "gemini-2.5-flash", stream: false)?.absoluteString
+            == "https://proxy.example.com/v1beta/models/gemini-2.5-flash:generateContent"
+            && LLMProtocolHelpers.resolveGeminiGenerateURL(endpoint: "https://proxy.example.com/v1beta", model: "models/gemini-2.5-pro", stream: true)?.absoluteString
+                == "https://proxy.example.com/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse"
+            && LLMProtocolHelpers.resolveGeminiModelsURL(endpoint: "https://proxy.example.com", apiKey: "k")?.absoluteString
+                == "https://proxy.example.com/v1beta/models?key=k",
+        "Gemini 裸域名中转站应自动补全 /v1beta 且不重复拼接已有版本段与 models/ 前缀"
+    )
+    check(
+        LLMProtocolHelpers.modelRequiresDefaultTemperature("gpt-5-mini")
+            && LLMProtocolHelpers.modelRequiresDefaultTemperature("openai/o4-mini")
+            && LLMProtocolHelpers.modelRequiresDefaultTemperature("kimi-k2.5")
+            && !LLMProtocolHelpers.modelRequiresDefaultTemperature("gpt-4o-mini")
+            && !LLMProtocolHelpers.modelRequiresDefaultTemperature("deepseek-chat"),
+        "固定温度推理模型应自动省略 temperature 参数，常规模型保持低温度精确翻译"
+    )
+    check(
+        LLMProtocolHelpers.stripThinkingTags("先分析句子结构\n</think>\n截图翻译已就绪。") == "截图翻译已就绪。"
+            && LLMProtocolHelpers.stripThinkingTags("<thought>plan</thought>你好") == "你好"
+            && LLMProtocolHelpers.extractErrorMessage(from: Data("{\"error\":{\"message\":\"quota exceeded\"}}".utf8)) == "quota exceeded",
+        "应兼容省略起始标签的孤立 </think>、<thought> 及 JSON 包装错误信息提取"
+    )
+    // OpenAI Responses API (/v1/responses) 端点补全、SSE 增量与非流式推理块跳过回归单测
+    check(
+        LLMProtocolHelpers.resolveOpenAIResponsesURL("https://proxy.example.com")?.absoluteString == "https://proxy.example.com/v1/responses"
+            && LLMProtocolHelpers.resolveOpenAIResponsesURL("https://proxy.example.com/v1/chat/completions")?.absoluteString == "https://proxy.example.com/v1/responses"
+            && LLMProtocolHelpers.resolveOpenAIModelsURL("https://proxy.example.com/v1/responses")?.absoluteString == "https://proxy.example.com/v1/models",
+        "OpenAI Responses 协议应智能补全 /v1/responses、互转 /chat/completions 并反推 /v1/models"
+    )
+    let respPayload = Data("""
+    {"output":[{"type":"reasoning","summary":[{"text":"think"}]},{"type":"message","role":"assistant","content":[{"type":"output_text","text":"截图翻译完成"}]}]}
+    """.utf8)
+    check(
+        LLMProtocolHelpers.extractOpenAIResponsesText(from: respPayload) == "截图翻译完成"
+            && LLMProtocolHelpers.parseOpenAIResponsesSSEChunk("{\"type\":\"response.output_text.delta\",\"delta\":\"你好\"}") == "你好"
+            && LLMProtocolHelpers.parseOpenAIResponsesSSEChunk("{\"type\":\"response.reasoning_summary_text.delta\",\"delta\":\"plan\"}") == nil,
+        "OpenAI Responses 非流式与 SSE 应跳过 reasoning 项并准确提取 output_text"
     )
     let unpacked = LLMProtocolHelpers.unpackNumberedLines("⟦2⟧ 第二行\n⟦1⟧ 第一行", original: ["Line 1", "Line 2"])
     check(unpacked == ["第一行", "第二行"], "批量多行译文解包应按 ⟦N⟧ 编号严格还原顺序")

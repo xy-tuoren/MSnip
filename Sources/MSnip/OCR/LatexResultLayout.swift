@@ -31,14 +31,14 @@ extension LatexResultController {
         buildUI(in: root)
         self.window = win
         applyWindowTheme(dark: ResultWindowChrome.prefersDarkAppearance)
-
-        configPanel.onSaved = { [weak self] updated in
-            guard let self else { return }
-            self.config = updated
-            self.enginePill.selectedIndex = LatexEngineKind.allCases.firstIndex(of: updated.engineKind) ?? 0
-            self.runRecognition()
+        configObserver = NotificationCenter.default.addObserver(forName: .msnipOCRLatexConfigChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.config = LatexRecognitionConfig.load()
+                self.enginePill?.selectedIndex = LatexEngineKind.allCases.firstIndex(of: self.config.engineKind) ?? 0
+                self.syncFormatPills()
+            }
         }
-        configPanel.onOpenMainAISettings = { [weak self] in self?.onOpenMainAISettings?() }
     }
 
     func applyWindowTheme(dark: Bool) {
@@ -74,8 +74,9 @@ extension LatexResultController {
         retryButton.onClick = { [weak self] in self?.runRecognition() }
         root.addSubview(retryButton)
 
-        configButton = OCRPillButton(title: "接口配置", symbol: "slider.horizontal.3")
-        configButton.onClick = { [weak self] in self?.configPanel.show(relativeTo: self?.window) }
+        configButton = OCRPillButton(title: "设置", symbol: "slider.horizontal.3")
+        configButton.toolTip = "前往「设置 → 识字与翻译」配置公式引擎与密钥"
+        configButton.onClick = { [weak self] in self?.onOpenLatexSettings?() }
         root.addSubview(configButton)
 
         themeButton = ResultWindowChrome.makeThemeButton { [weak self] dark in self?.applyWindowTheme(dark: dark) }
@@ -105,8 +106,8 @@ extension LatexResultController {
         noticeLabel = makeLabel("", size: 11, weight: .medium, color: ResultTheme.inkPrimary)
         noticeLabel.lineBreakMode = .byTruncatingTail
         noticeBanner.addSubview(noticeLabel)
-        noticeActionBtn = OCRPillButton(title: "去配置")
-        noticeActionBtn.onClick = { [weak self] in self?.configPanel.show(relativeTo: self?.window) }
+        noticeActionBtn = OCRPillButton(title: "去设置")
+        noticeActionBtn.onClick = { [weak self] in self?.onOpenLatexSettings?() }
         noticeBanner.addSubview(noticeActionBtn)
         noticeBanner.isHidden = true
         rightCard.addSubview(noticeBanner)

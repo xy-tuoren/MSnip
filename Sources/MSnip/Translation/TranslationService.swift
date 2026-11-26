@@ -164,7 +164,7 @@ final class TranslationService {
             let finalStr = merged.joined(separator: "\n")
             onStreamChunk?(finalStr)
             return finalStr
-        case .openAICompatible, .anthropicCompatible, .geminiNative:
+        case .openAICompatible, .openAIResponses, .anthropicCompatible, .geminiNative:
             return try await LLMTranslator.translateStream(
                 text: text,
                 target: target,
@@ -191,7 +191,7 @@ final class TranslationService {
         switch profile.kind {
         case .appleNative:
             return try await AppleNativeTranslator.translateBatch(lines: lines, target: target, hostWindow: hostWindow)
-        case .openAICompatible, .anthropicCompatible, .geminiNative:
+        case .openAICompatible, .openAIResponses, .anthropicCompatible, .geminiNative:
             return try await LLMTranslator.translateBatchLines(lines: lines, target: target, profile: profile)
         case .tencent, .baidu, .youdao, .deepl, .customWebhook:
             return try await CloudAPITranslator.translateLines(lines: lines, target: target, profile: profile)

@@ -85,7 +85,7 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
         sf.isBordered = false; sf.drawsBackground = false; sf.focusRingType = .none
         let sfFont = NSFont.systemFont(ofSize: 13.0)
         sf.font = sfFont; sf.textColor = GeekTheme.inkPrimary
-        sf.setGeekPlaceholder(isAdd ? "搜索厂商或服务（如 DeepSeek、豆包、腾讯、Ollama）…" : "搜索主流大模型官网预设（支持中英文 / 模型名）…")
+        sf.setGeekPlaceholder(isAdd ? "搜索厂商或服务（如 DeepSeek、豆包、腾讯、Ollama）…" : "搜索主流大模型官网预设（支持中英文 / 域名）…")
         sf.cell?.isScrollable = true; sf.cell?.wraps = false
         GeekTheme.placeCentered(sf, x: 30, width: searchBox.bounds.width - 40, centerY: 17.0)
         sf.delegate = self
@@ -153,17 +153,22 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
         }
 
         let currentMatch: LLMQuickPreset?
-        if case .pickLLMPreset(let ep) = mode { currentMatch = LLMQuickPreset.match(endpoint: ep) }
+        if case .pickLLMPreset(let ep) = mode { currentMatch = LLMQuickPreset.match(endpoint: ep) ?? .customOpenAI }
         else { currentMatch = nil }
 
         for group in LLMQuickPresetGroup.allCases {
             let opts = LLMQuickPreset.allCases.filter { $0.group == group }.map { preset -> PickOption in
                 let proto = Self.protocolBadge(for: preset)
-                let sym = (group == .local) ? "desktopcomputer" : (group == .international ? "globe" : "sparkles")
-                let host = URL(string: preset.baseURL)?.host ?? preset.baseURL
+                let sym = preset == .customOpenAI ? "slider.horizontal.3"
+                    : (group == .local ? "desktopcomputer" : (group == .international ? "globe" : "sparkles"))
+                let parsed = URL(string: preset.baseURL)
+                let host = parsed.map { u in
+                    let h = u.host ?? preset.baseURL
+                    return u.port.map { "\(h):\($0)" } ?? h
+                } ?? preset.baseURL
                 let sub = preset == .customOpenAI
-                    ? "支持 OpenAI / Anthropic / Gemini 协议，手动填地址与模型"
-                    : "\(host) · 默认模型 \(preset.defaultModel)"
+                    ? "支持 OpenAI Chat / Responses / Anthropic / Gemini 四种格式"
+                    : host
                 return PickOption(
                     title: preset.title,
                     subtitle: sub,
@@ -218,8 +223,10 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
     }
 
     private static func protocolBadge(for preset: LLMQuickPreset) -> (text: String, color: NSColor) {
+        if preset == .customOpenAI { return ("自定义", GeekTheme.inkSecondary) }
         if preset.group == .local { return ("本机免 Key", GeekTheme.emerald) }
         switch preset.providerKind {
+        case .openAIResponses:     return ("Responses", GeekTheme.accent)
         case .anthropicCompatible: return ("Anthropic", GeekTheme.amber)
         case .geminiNative:        return ("Gemini", GeekTheme.accent)
         default:                   return ("OpenAI", GeekTheme.accent)

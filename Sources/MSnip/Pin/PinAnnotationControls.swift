@@ -97,6 +97,46 @@ extension PinAnnotationCanvasView {
         }
     }
 
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard textField == nil, !isHidden else { return super.performKeyEquivalent(with: event) }
+        let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        if flags.contains(.command), !flags.contains(.control), !flags.contains(.option),
+           handlePinCommandShortcut(event, shift: flags.contains(.shift)) {
+            return true
+        }
+        return super.performKeyEquivalent(with: event)
+    }
+
+    private func handlePinCommandShortcut(_ event: NSEvent, shift: Bool) -> Bool {
+        let chars = CanvasAction.singleKeyToken(for: event.keyCode) ?? (event.charactersIgnoringModifiers?.lowercased() ?? "")
+        if chars == "z" || chars == "y" {
+            selectedIndex = nil
+            _ = ((chars == "y") || shift) ? doc.redo() : doc.undo()
+            onDocStateChanged?(); needsDisplay = true; return true
+        }
+        if chars == "c", let idx = selectedIndex, doc.objects.indices.contains(idx) {
+            copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0
+            ToastHUD.show(message: "已复制标注图形 · 按 ⌘V 粘贴"); return true
+        }
+        if chars == "v", let copied = copiedAnnotation {
+            pasteCascadeCount += 1
+            let off = CGFloat(pasteCascadeCount) * 14.0
+            if let newIdx = doc.pasteClone(of: copied, offset: CGPoint(x: off, y: off), within: CGRect(origin: .zero, size: baseSize)) {
+                selectedIndex = newIdx; onDocStateChanged?(); needsDisplay = true
+            }
+            return true
+        }
+        if chars == "d", let idx = selectedIndex, doc.objects.indices.contains(idx) {
+            if let newIdx = doc.duplicate(at: idx, offset: CGPoint(x: 14, y: 14), within: CGRect(origin: .zero, size: baseSize)) {
+                selectedIndex = newIdx; copiedAnnotation = doc.objects[newIdx]; pasteCascadeCount = 0
+                onDocStateChanged?(); needsDisplay = true
+            }
+            return true
+        }
+        if chars == "b" { togglePinTextCapsule(); return true }
+        return false
+    }
+
     override func keyDown(with event: NSEvent) {
         if textField != nil { return }
         let cmd = event.modifierFlags.contains(.command)
@@ -112,33 +152,7 @@ extension PinAnnotationCanvasView {
             onCommit?(doc)
             return
         }
-        if cmd && (chars == "z" || chars == "y") {
-            selectedIndex = nil
-            _ = ((chars == "y") || shift) ? doc.redo() : doc.undo()
-            onDocStateChanged?()
-            needsDisplay = true
-            return
-        }
-        if cmd && chars == "c", let idx = selectedIndex, doc.objects.indices.contains(idx) {
-            copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0
-            ToastHUD.show(message: "已复制标注图形 · 按 ⌘V 粘贴")
-            return
-        }
-        if cmd && chars == "v", let copied = copiedAnnotation {
-            pasteCascadeCount += 1
-            let off = CGFloat(pasteCascadeCount) * 14.0
-            if let newIdx = doc.pasteClone(of: copied, offset: CGPoint(x: off, y: off), within: CGRect(origin: .zero, size: baseSize)) {
-                selectedIndex = newIdx; onDocStateChanged?(); needsDisplay = true
-            }
-            return
-        }
-        if cmd && chars == "d", let idx = selectedIndex, doc.objects.indices.contains(idx) {
-            if let newIdx = doc.duplicate(at: idx, offset: CGPoint(x: 14, y: 14), within: CGRect(origin: .zero, size: baseSize)) {
-                selectedIndex = newIdx; copiedAnnotation = doc.objects[newIdx]; pasteCascadeCount = 0
-                onDocStateChanged?(); needsDisplay = true
-            }
-            return
-        }
+        if cmd, handlePinCommandShortcut(event, shift: shift) { return }
         if event.keyCode == 51 || event.keyCode == 117, let idx = selectedIndex {
             doc.remove(at: idx)
             selectedIndex = nil
