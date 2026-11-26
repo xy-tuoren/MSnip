@@ -13,22 +13,42 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var loginMenuItem: NSMenuItem?
     var historyRootItem: NSMenuItem?
     var historySubmenu: NSMenu?
+    var renderedHistoryMenuIDs: [UUID] = []
     var config = AppConfig.load()
     let hotKeyManager = HotKeyManager()
     let historyRing = CaptureHistoryRing(maxCount: 15)
     let pinManager = PinManager()
-    let ocrController = OCRResultController()
-    let latexController = LatexResultController()
-    let translationSettings = TranslationSettingsWindow()
-    let permissionGuide = PermissionGuideController()
-    let delayedCapture = DelayedCaptureController()
-    let collageStudio = CollageStudioController()
-    lazy var shelfController = ShelfPanelController(historyRing: historyRing)
+    var hasDelayedCapture = false
+    var hasShelfInitialized = false
+    var hasSettingsInitialized = false
+    lazy var ocrController: OCRResultController = makeOCRController()
+    lazy var latexController: LatexResultController = makeLatexController()
+    lazy var translationSettings: TranslationSettingsWindow = makeTranslationSettings()
+    lazy var permissionGuide: PermissionGuideController = makePermissionGuide()
+    lazy var delayedCapture: DelayedCaptureController = { hasDelayedCapture = true; return DelayedCaptureController() }()
+    lazy var collageStudio: CollageStudioController = makeCollageStudio()
+    lazy var shelfController: ShelfPanelController = makeShelfController()
     var activeSession: OverlaySession?
     var activeLongShot: LongShotSession?
     var activeRecording: RegionRecordingSession?
     var isCapturing = false
     var isStatusMenuOpen = false
+    var menuActivityToken: NSObjectProtocol?
+    var statusBarMouseMonitor: Any?
+    private var configSaveWork: DispatchWorkItem?
+
+    func scheduleConfigSave() {
+        configSaveWork?.cancel()
+        let snap = config
+        let work = DispatchWorkItem { snap.save() }
+        configSaveWork = work
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        if configSaveWork != nil { configSaveWork?.cancel(); configSaveWork = nil; config.save() }
+        historyRing.flushPendingWrites()
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         GeekTheme.currentMode = config.appearanceMode
@@ -61,8 +81,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.setAccessibilityLabel("MSnip（麦截）")
             button.target = self
             button.action = #selector(handleStatusBarClick(_:))
-            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.sendAction(on: [.leftMouseUp])
         }
+        installStatusBarMenuPreHook()
         rebuildMenu()
     }
 
@@ -73,57 +94,20 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func setupCallbacks() {
         hotKeyManager.onTrigger = { [weak self] action in Task { @MainActor in self?.handleGlobalHotKey(action) } }
         pinManager.onCountChanged = { [weak self] _ in self?.rebuildMenu() }
-        permissionGuide.onPermissionChanged = { [weak self] in
-            guard let self else { return }
-            self.hotKeyManager.apply(config: self.config); self.rebuildMenu()
-        }
         pinManager.onSaveImage = { [weak self] img, scale in self?.performInteractiveSave(img: img, scale: scale) }
         pinManager.onQuickSaveImage = { [weak self] img, scale in self?.performQuickSave(img: img, scale: scale) }
         pinManager.onExtractOCR = { [weak self] img, scale, scr in self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr) }
         pinManager.onTranslateImage = { [weak self] img, scale, scr in self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: true) }
-        pinManager.onGlowStrengthChanged = { [weak self] g in guard let self else { return }; self.config.pinGlowStrength = g; self.config.save() }
-        ocrController.ocrAutoCopyProvider = { [weak self] in self?.config.ocrAutoCopy ?? true }
-        ocrController.onPinImage = { [weak self] img, scale, scr in self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr) }
-        ocrController.onRecognizeLatex = { [weak self] img, scale, scr in self?.latexController.present(cgImage: img, scaleFactor: scale, screen: scr) }
-        ocrController.onOpenSettings = { [weak self] in self?.translationSettings.show(tab: .translation) }
-        latexController.onPinImage = { [weak self] img, scale, scr in self?.pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: nil, screen: scr) }
-        latexController.onOpenMainAISettings = { [weak self] in self?.translationSettings.show(tab: .translation) }
-        translationSettings.appConfigProvider = { [weak self] in
-            self?.config ?? AppConfig()
-        }
-        translationSettings.isPriorityTapActiveProvider = { [weak self] in
-            self?.hotKeyManager.isPriorityTapActive ?? false
-        }
-        translationSettings.shortcutAudit.failedHotKeyActionsProvider = { [weak self] in
-            self?.hotKeyManager.failedActions ?? []
-        }
-        translationSettings.onReapplyHotKeys = { [weak self] in
-            guard let self else { return }
-            self.hotKeyManager.apply(config: self.config)
-        }
-        translationSettings.onAppConfigMutated = { [weak self] mutate in
-            guard let self else { return }
-            let oldGlow = self.config.pinGlowStrength
-            mutate(&self.config)
-            self.config.save()
-            SmartClipboardProjectionManager.shared.isAdaptiveEnabled = self.config.terminalPasteAdaptEnabled
-            if abs(self.config.pinGlowStrength - oldGlow) > 0.001 {
-                self.pinManager.applyGlowStrengthToAll(self.config.pinGlowStrength)
-            }
-            self.shelfController.triggerMode = self.config.topShelfTriggerMode
-            self.hotKeyManager.apply(config: self.config)
-            self.rebuildMenu()
-        }
-        translationSettings.onBeginHotKeyRecording = { [weak self] in
-            self?.hotKeyManager.unregisterAll()
-        }
-        translationSettings.onEndHotKeyRecording = { [weak self] in
-            guard let self else { return }
-            self.hotKeyManager.apply(config: self.config)
-        }
-        translationSettings.onOpenPermissionGuide = { [weak self] in
-            self?.openPermissionGuide()
-        }
+        pinManager.onGlowStrengthChanged = { [weak self] g in self?.syncPinGlowStrength(g, applyToExistingPins: false) }
+    }
+
+    func syncPinGlowStrength(_ g: CGFloat, applyToExistingPins: Bool) {
+        let clamped = min(1.0, max(0.0, g))
+        config.pinGlowStrength = clamped
+        pinManager.defaultGlowStrength = clamped
+        if applyToExistingPins { pinManager.applyGlowStrengthToAll(clamped) }
+        if hasSettingsInitialized { translationSettings.modeControls.extra.pinGlowSlider?.value = clamped }
+        scheduleConfigSave()
     }
 
     // MARK: - Core Capture & LongShot Actions
@@ -138,16 +122,17 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             return
         }
-        delayedCapture.cancel()
+        if hasDelayedCapture { delayedCapture.cancel() }
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
         ToastHUD.dismissImmediate()
 
         isCapturing = true
         let primaryH = NSScreen.screens.first?.frame.height ?? 0
         let frontPID = NSWorkspace.shared.frontmostApplication?.processIdentifier
+        let selfSnap = RegionAXPreindexer.captureSelfWindows(primaryScreenHeight: primaryH)
         Task { @MainActor [weak self] in
             async let detectorTask = Task.detached(priority: .userInitiated) {
-                RegionDetector.captureBeforeOverlay(primaryScreenHeight: primaryH, frontmostPID: frontPID)
+                RegionDetector.captureBeforeOverlay(primaryScreenHeight: primaryH, frontmostPID: frontPID, selfWindows: selfSnap)
             }.value
             async let snapshotsTask = ScreenCapturer.captureAllScreens()
             let (regionDetector, snapshots) = await (detectorTask, snapshotsTask)
@@ -164,28 +149,21 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
             session.onStyleUpdated = { [weak self] cIdx, width in
                 guard let self else { return }
-                self.config.defaultColorIndex = cIdx
-                self.config.defaultLineWidth = width
-                self.config.save()
+                self.config.defaultColorIndex = cIdx; self.config.defaultLineWidth = width; self.scheduleConfigSave()
             }
             session.onCapsuleUpdated = { [weak self] cap in
-                guard let self else { return }
-                self.config.defaultTextCapsule = cap
-                self.config.save()
+                guard let self else { return }; self.config.defaultTextCapsule = cap; self.scheduleConfigSave()
             }
             session.onPrefsUpdated = { [weak self] fmt, showTips in
                 guard let self else { return }
-                self.config.colorCopyFormat = fmt
-                self.config.showShortcutTips = showTips
-                self.config.save()
+                self.config.colorCopyFormat = fmt; self.config.showShortcutTips = showTips; self.scheduleConfigSave()
             }
             session.onRecordingPrefsUpdated = { [weak self] fmt, hud in
                 guard let self else { return }
-                self.config.preferredRecordingFormat = fmt; self.config.recordInteractionHUD = hud; self.config.save()
+                self.config.preferredRecordingFormat = fmt; self.config.recordInteractionHUD = hud; self.scheduleConfigSave()
             }
             session.onGlowStrengthUpdated = { [weak self] g in
-                guard let self else { return }
-                self.config.pinGlowStrength = g; self.pinManager.defaultGlowStrength = g; self.config.save()
+                self?.syncPinGlowStrength(g, applyToExistingPins: true)
             }
             session.onQuickSaveInPlace = { [weak self] img, scale in
                 guard let self else { return }
@@ -246,9 +224,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .savedToFolder(let img, let scale, let dir):
             recordHistoryAndRefresh(img: img, scale: scale)
             performSaveToDirectory(img: img, scale: scale, directoryPath: dir)
-        case .pinned(let img, let scale, let origin, let screen):
+        case .pinned(let img, let scale, let origin, let screen, let glowOverride):
             recordHistoryAndRefresh(img: img, scale: scale)
-            pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
+            pinManager.pin(cgImage: img, scaleFactor: scale, topLeftOnScreen: origin, screen: screen, glowStrength: glowOverride)
         case .isolatedWindow(let winID, let scale, let backdrop, let shouldPin, let origin, let screen):
             captureAndExportIsolatedWindow(
                 windowID: winID, scale: scale, backdrop: backdrop,
@@ -283,7 +261,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func recordHistoryAndRefresh(img: CGImage, scale: CGFloat, isCollage: Bool = false) {
         historyRing.record(cgImage: img, scaleFactor: scale, isCollage: isCollage)
-        shelfController.notifyNewCaptureRecorded()
+        if hasShelfInitialized || config.topShelfTriggerMode == .alwaysShown {
+            shelfController.notifyNewCaptureRecorded()
+        }
         rebuildMenu()
     }
 }

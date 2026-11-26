@@ -28,7 +28,7 @@ final class PinHoverCoordinator {
         let mask: NSEvent.EventTypeMask = [.mouseMoved, .leftMouseUp, .rightMouseUp]
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] ev in
             let immediate = (ev.type != .mouseMoved)
-            Task { @MainActor [weak self] in self?.handlePointerEvent(immediate: immediate) }
+            MainActor.assumeIsolated { self?.handlePointerEvent(immediate: immediate) }
         }
         localMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] ev in
             self?.handlePointerEvent(immediate: ev.type != .mouseMoved)

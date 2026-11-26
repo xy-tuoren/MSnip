@@ -13,7 +13,7 @@ extension VisualDetector {
         let longOffsets = [-16, -8, 8, 16].map { Int((CGFloat($0) * scale).rounded()) }
         let shortOffsets = [-7, -3, 3, 7].map { Int((CGFloat($0) * scale).rounded()) }
 
-        while (dir > 0 ? x < toX - sharp : x > toX + sharp) && found.count < 7 {
+        while (dir > 0 ? x < toX - sharp : x > toX + sharp) && found.count < 16 {
             if abs(x - lastX) >= gap && edgeStrengthV(sampler, x: x, y: atY, sharp: sharp, wide: wide) >= 20 {
                 if passesVerticalLocalProbes(x: x, atY: atY, offsets: longOffsets, minY: minY, maxY: maxY, sharp: sharp, wide: wide, sampler: sampler)
                     || passesVerticalLocalProbes(x: x, atY: atY, offsets: shortOffsets, minY: minY, maxY: maxY, sharp: sharp, wide: wide, sampler: sampler) {
@@ -42,7 +42,7 @@ extension VisualDetector {
         let longOffsets = [-18, -9, 9, 18].map { Int((CGFloat($0) * scale).rounded()) }
         let shortOffsets = [-8, -4, 4, 8].map { Int((CGFloat($0) * scale).rounded()) }
 
-        while (dir > 0 ? y < toY - sharp : y > toY + sharp) && found.count < 7 {
+        while (dir > 0 ? y < toY - sharp : y > toY + sharp) && found.count < 16 {
             if abs(y - lastY) >= gap && edgeStrengthH(sampler, x: atX, y: y, sharp: sharp, wide: wide) >= 20 {
                 if passesHorizontalLocalProbes(y: y, atX: atX, offsets: longOffsets, minX: minX, maxX: maxX, sharp: sharp, wide: wide, sampler: sampler)
                     || passesHorizontalLocalProbes(y: y, atX: atX, offsets: shortOffsets, minX: minX, maxX: maxX, sharp: sharp, wide: wide, sampler: sampler) {
@@ -92,12 +92,22 @@ extension VisualDetector {
         y: Int, lx: Int, rx: Int, sharp: Int, wide: Int, scale: CGFloat, sampler: PixelSampler
     ) -> Bool {
         let w = rx - lx
-        let c1 = min(Int((10.0 * scale).rounded()), w / 6)
+        let c1 = min(Int((5.0 * scale).rounded()), w / 8)
         if checkHorizontalEdgeSpan(y: y, x0: lx + c1, x1: rx - c1, sharp: sharp, wide: wide, sampler: sampler) {
             return true
         }
         let c2 = min(Int((22.0 * scale).rounded()), w / 4)
         guard w >= Int((56.0 * scale).rounded()), c2 > c1 else { return false }
+        // 真圆角卡片/窗口的左右竖边不会在水平边外侧继续笔直延伸；防止把上下两张内缩卡片之间的空白缝隙误判成独立闭合框
+        let probeOut = max(4, Int((8.0 * scale).rounded()))
+        let outY1 = y - probeOut, outY2 = y + probeOut
+        let leftContinuesThrough = outY1 > 1 && outY2 < sampler.height - 2
+            && strongVerticalAt(x: lx, y: outY1, sharp: sharp, wide: wide, sampler: sampler)
+            && strongVerticalAt(x: lx, y: outY2, sharp: sharp, wide: wide, sampler: sampler)
+        let rightContinuesThrough = outY1 > 1 && outY2 < sampler.height - 2
+            && strongVerticalAt(x: rx, y: outY1, sharp: sharp, wide: wide, sampler: sampler)
+            && strongVerticalAt(x: rx, y: outY2, sharp: sharp, wide: wide, sampler: sampler)
+        if leftContinuesThrough && rightContinuesThrough { return false }
         return checkHorizontalEdgeSpan(y: y, x0: lx + c2, x1: rx - c2, sharp: sharp, wide: wide, sampler: sampler)
     }
 
@@ -105,12 +115,21 @@ extension VisualDetector {
         x: Int, ty: Int, by: Int, sharp: Int, wide: Int, scale: CGFloat, sampler: PixelSampler
     ) -> Bool {
         let h = by - ty
-        let c1 = min(Int((10.0 * scale).rounded()), h / 6)
+        let c1 = min(Int((5.0 * scale).rounded()), h / 8)
         if checkVerticalEdgeSpan(x: x, y0: ty + c1, y1: by - c1, sharp: sharp, wide: wide, sampler: sampler) {
             return true
         }
         let c2 = min(Int((22.0 * scale).rounded()), h / 4)
         guard h >= Int((56.0 * scale).rounded()), c2 > c1 else { return false }
+        let probeOut = max(4, Int((8.0 * scale).rounded()))
+        let outX1 = x - probeOut, outX2 = x + probeOut
+        let topContinuesThrough = outX1 > 1 && outX2 < sampler.width - 2
+            && strongHorizontalAt(x: outX1, y: ty, sharp: sharp, wide: wide, sampler: sampler)
+            && strongHorizontalAt(x: outX2, y: ty, sharp: sharp, wide: wide, sampler: sampler)
+        let botContinuesThrough = outX1 > 1 && outX2 < sampler.width - 2
+            && strongHorizontalAt(x: outX1, y: by, sharp: sharp, wide: wide, sampler: sampler)
+            && strongHorizontalAt(x: outX2, y: by, sharp: sharp, wide: wide, sampler: sampler)
+        if topContinuesThrough && botContinuesThrough { return false }
         return checkVerticalEdgeSpan(x: x, y0: ty + c2, y1: by - c2, sharp: sharp, wide: wide, sampler: sampler)
     }
 

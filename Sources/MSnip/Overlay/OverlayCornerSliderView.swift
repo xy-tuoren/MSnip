@@ -253,8 +253,9 @@ extension OverlayView {
 
         caliperView.ownerOverlay = self
         caliperView.frame = bounds
-        magnifierView.ownerOverlay = self
 
+        addSubview(hudPillView)
+        addSubview(shortcutTipsView)
         addSubview(sidePills)
         addSubview(cornerSlider)
         addSubview(toolbar)
@@ -275,7 +276,7 @@ extension OverlayView {
     func toggleGlowSlider(resetOnly: Bool = false) {
         if selection == nil, let snap = hoveredAutoRect { selection = snap }
         if resetOnly {
-            didAdjustGlow = true; glowStrength = 0
+            applyGlowStrength(0)
             if activeSideSlider == .glow { activeSideSlider = nil }
             updateToolbarLayout(); return
         }
@@ -286,13 +287,12 @@ extension OverlayView {
         updateToolbarLayout()
     }
 
+    /// 截图选框右侧的发光边滑条与「设置 → 贴图默认发光边」及桌面贴图实时双向同步（含归零 0%）
     func applyGlowStrength(_ raw: CGFloat) {
         let clamped = min(1.0, max(0.0, raw))
-        didAdjustGlow = true; glowStrength = clamped
-        // 仅在 >0% 时同步为全局贴图默认发光强度，避免截图内归零（0% / ⌥G）误把贴图常亮白边永久关掉
-        if clamped > 0.01 {
-            defaultPinGlowStrength = clamped
-            onGlowStrengthChanged?(clamped)
-        }
+        didAdjustGlow = true
+        glowStrength = clamped
+        defaultPinGlowStrength = clamped
+        onGlowStrengthChanged?(clamped)
     }
 }

@@ -63,6 +63,7 @@ extension OverlayView {
         }
         window?.makeFirstResponder(field)
         syncMagnifierView()
+        syncShortcutTipsView()
         needsDisplay = true
     }
 
@@ -113,6 +114,7 @@ extension OverlayView {
             doc.remove(at: idx)
         }
         updateToolbarLayout()
+        syncShortcutTipsView()
         needsDisplay = true
     }
 
@@ -122,6 +124,7 @@ extension OverlayView {
         editingTextOrigin = nil
         editingExistingIndex = nil
         window?.makeFirstResponder(self)
+        syncShortcutTipsView()
         needsDisplay = true
     }
 

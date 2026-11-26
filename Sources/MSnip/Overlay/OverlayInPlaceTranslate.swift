@@ -161,8 +161,9 @@ extension OverlayView {
                     hostWindow: hostWin
                 )
                 guard !Task.isCancelled, self.toolbar.inPlaceTranslateActive else { return }
+                let imgScale = max(1.0, self.snapshot.scaleFactor)
                 let rendered = await Task.detached(priority: .userInitiated) {
-                    InPlaceTranslateRenderer.bakeParagraphBlocks(onto: baked, blocks: blocks, translations: translatedLines)
+                    InPlaceTranslateRenderer.bakeParagraphBlocks(onto: baked, blocks: blocks, translations: translatedLines, scaleFactor: imgScale)
                 }.value
                 guard !Task.isCancelled, self.toolbar.inPlaceTranslateActive else { return }
                 overlay.statusBanner = nil

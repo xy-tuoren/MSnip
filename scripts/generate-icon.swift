@@ -93,6 +93,21 @@ func renderAppIcon(from source: CGImage, px: Int) -> CGImage? {
     ctx.strokePath()
     ctx.restoreGState()
 
+    // 4) 对大尺寸位图收敛不可见的纸纹高频随机底噪（视觉零损，显著提升 PNG Deflate 压缩率）
+    if px >= 256, let ptr = ctx.data?.assumingMemoryBound(to: UInt8.self) {
+        let total = ctx.bytesPerRow * px
+        let mask: UInt8 = (px >= 1024) ? 0xF8 : 0xFC
+        var i = 0
+        while i + 3 < total {
+            if ptr[i + 3] == 255 {
+                ptr[i]     = (ptr[i] & mask) | (ptr[i] >> 6)
+                ptr[i + 1] = (ptr[i + 1] & mask) | (ptr[i + 1] >> 6)
+                ptr[i + 2] = (ptr[i + 2] & mask) | (ptr[i + 2] >> 6)
+            }
+            i += 4
+        }
+    }
+
     return ctx.makeImage()
 }
 

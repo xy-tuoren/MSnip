@@ -55,8 +55,8 @@ public final class MediaClipEncoder: @unchecked Sendable {
     private var lastPTSTicks: Int64 = -1
     private var lastAudioPTS: CMTime = .invalid
     private var lastCGFrame: CGImage?
-    private var lastPixelBuffer: CVPixelBuffer?
-    private(set) public var capturedFrameCount: Int = 0
+    private var _capturedFrameCount: Int = 0
+    public var capturedFrameCount: Int { lock.lock(); defer { lock.unlock() }; return _capturedFrameCount }
 
     public init(
         format: RecordingFormat,
@@ -102,8 +102,7 @@ public final class MediaClipEncoder: @unchecked Sendable {
         if adaptor.append(pixelBuffer, withPresentationTime: CMTime(value: ptsTicks, timescale: Self.videoTimescale)) {
             lastPTSTicks = ptsTicks
             lastCGFrame = nil
-            lastPixelBuffer = pixelBuffer
-            capturedFrameCount += 1
+            _capturedFrameCount += 1
         }
         return true
     }
@@ -142,7 +141,7 @@ public final class MediaClipEncoder: @unchecked Sendable {
         case .gif:
             guard gifSpooler.frameCount < maxGIFFrames else { return }
             if let prev = gifSpooler.lastFrameTime, (elapsed - prev) < gifMinInterval { return }
-            if gifSpooler.append(cgImage, elapsed: elapsed) { capturedFrameCount = gifSpooler.frameCount }
+            if gifSpooler.append(cgImage, elapsed: elapsed) { _capturedFrameCount = gifSpooler.frameCount }
 
         case .mp4:
             if assetWriter == nil {
@@ -152,8 +151,7 @@ public final class MediaClipEncoder: @unchecked Sendable {
             if writeMP4Frame(cgImage, ptsTicks: ptsTicks) {
                 lastPTSTicks = ptsTicks
                 lastCGFrame = cgImage
-                lastPixelBuffer = nil
-                capturedFrameCount += 1
+                _capturedFrameCount += 1
             }
         }
     }
@@ -163,7 +161,12 @@ public final class MediaClipEncoder: @unchecked Sendable {
         guard let baseStart = markFinishedAndSnapshotStart(fallback: finalTimestamp) else { return nil }
         switch format {
         case .gif:
-            return gifSpooler.finalizeGIF(to: outputURL, totalElapsed: max(0.12, finalTimestamp - baseStart))
+            let outURL = outputURL, spooler = gifSpooler, dur = max(0.12, finalTimestamp - baseStart)
+            return await withCheckedContinuation { cont in
+                DispatchQueue.global(qos: .userInitiated).async {
+                    cont.resume(returning: spooler.finalizeGIF(to: outURL, totalElapsed: dur))
+                }
+            }
         case .mp4:
             return await finalizeMP4(finalTimestamp: finalTimestamp)
         }
@@ -187,8 +190,7 @@ public final class MediaClipEncoder: @unchecked Sendable {
         lock.lock()
         isCancelled = true
         let writer = assetWriter
-        assetWriter = nil; videoInput = nil; audioInput = nil; adaptor = nil
-        lastCGFrame = nil; lastPixelBuffer = nil
+        assetWriter = nil; videoInput = nil; audioInput = nil; adaptor = nil; lastCGFrame = nil
         gifSpooler.cleanup()
         lock.unlock()
 
@@ -261,29 +263,36 @@ public final class MediaClipEncoder: @unchecked Sendable {
     }
 
     private func finalizeMP4(finalTimestamp: TimeInterval) async -> URL? {
-        let pack: (AVAssetWriter, AVAssetWriterInput, AVAssetWriterInput?)? = {
+        let pack: (AVAssetWriter, AVAssetWriterInput, AVAssetWriterInput?, CMTime?)? = {
             lock.lock()
             defer { lock.unlock() }
             guard let writer = assetWriter, let input = videoInput else { return nil }
+            var endSessionTime: CMTime?
             if let s = startTime {
                 let rawEnd = Int64((max(0, finalTimestamp - s) * Double(Self.videoTimescale)).rounded())
                 let endTicks = max(lastPTSTicks + minVideoStepTicks, rawEnd)
                 if let tail = lastCGFrame {
                     _ = writeMP4Frame(tail, ptsTicks: endTicks)
-                } else if let tailPB = lastPixelBuffer, let adaptor, input.isReadyForMoreMediaData,
-                          endTicks > lastPTSTicks + Int64(Self.videoTimescale / 15) {
-                    _ = adaptor.append(tailPB, withPresentationTime: CMTime(value: endTicks, timescale: Self.videoTimescale))
+                } else {
+                    endSessionTime = CMTime(value: endTicks, timescale: Self.videoTimescale)
                 }
             }
-            lastCGFrame = nil; lastPixelBuffer = nil
-            return (writer, input, audioInput)
+            let aIn = audioInput
+            lastCGFrame = nil; assetWriter = nil; videoInput = nil; audioInput = nil; adaptor = nil
+            return (writer, input, aIn, endSessionTime)
         }()
-        guard let (writer, input, aInput) = pack else { return nil }
+        guard let (writer, input, aInput, endTime) = pack else { return nil }
         input.markAsFinished()
         aInput?.markAsFinished()
+        if let endTime { writer.endSession(atSourceTime: endTime) }
         await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
             writer.finishWriting { cont.resume() }
         }
-        return writer.status == .completed ? outputURL : nil
+        let cancelled: Bool = { lock.lock(); defer { lock.unlock() }; return isCancelled }()
+        if writer.status != .completed || cancelled {
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+        return outputURL
     }
 }

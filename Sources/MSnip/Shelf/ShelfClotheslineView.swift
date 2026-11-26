@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 
 /// 顶部紧凑暂存条根容器：负责高通透毛玻璃底衬、内圈微高光描边、右侧精致竖向分割线与拖入高亮
 final class ShelfClotheslineView: NSView {
@@ -148,6 +149,7 @@ extension ShelfPanelController {
         let totalW = max(0, x - (items.isEmpty ? 0 : Self.cardGap))
         stripView.frame = NSRect(x: 0, y: 0, width: max(scrollView.bounds.width, totalW), height: cardH)
         updateScrollNavButtons()
+        if isVisible { syncHoverWithCurrentMouse() }
     }
 
     func toggleSelection(for item: ShelfCardItem) {
@@ -162,5 +164,58 @@ extension ShelfPanelController {
             }
         }
         railView?.selectedCount = selectedItemIDs.count
+    }
+
+    /// 暂存条可见期间启用 O(1) 实时指针命中同步（彻底消除后台非激活 `.nonactivatingPanel` 下 `NSTrackingArea` 漏报与右上角按钮延迟弹出）
+    func startVisibleHoverMonitors() {
+        guard hoverGlobalMonitor == nil, hoverLocalMonitor == nil else { return }
+        hoverGlobalMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncHoverWithCurrentMouse() }
+        }
+        hoverLocalMonitor = NSEvent.addLocalMonitorForEvents(matching: .mouseMoved) { [weak self] ev in
+            self?.syncHoverWithCurrentMouse()
+            return ev
+        }
+    }
+
+    func stopVisibleHoverMonitors() {
+        if let m = hoverGlobalMonitor { NSEvent.removeMonitor(m); hoverGlobalMonitor = nil }
+        if let m = hoverLocalMonitor { NSEvent.removeMonitor(m); hoverLocalMonitor = nil }
+    }
+
+    func clearAllHoverStates() {
+        if let prev = activeHoveredCard { prev.clearHover(); activeHoveredCard = nil }
+        railView?.clearHover()
+    }
+
+    func syncHoverWithCurrentMouse() {
+        guard isVisible, let panel else { return }
+        let screenPt = NSEvent.mouseLocation
+        guard ShelfTriggerGeometry.containsInclusive(panel.frame.insetBy(dx: -4, dy: -4), point: screenPt) else {
+            clearAllHoverStates()
+            return
+        }
+        let winPt = panel.convertPoint(fromScreen: screenPt)
+        railView?.syncHover(atWindowPoint: winPt)
+
+        guard let sv = scrollView, let strip = stripView else { return }
+        let visibleScrollRect = sv.convert(sv.bounds, to: nil)
+        guard visibleScrollRect.contains(winPt) else {
+            if let prev = activeHoveredCard { prev.clearHover(); activeHoveredCard = nil }
+            return
+        }
+        let sp = strip.convert(winPt, from: nil)
+        let step = ShelfCardView.cardSize.width + Self.cardGap
+        let idx = Int(floor(sp.x / step))
+        if idx >= 0, idx < strip.subviews.count,
+           let card = strip.subviews[idx] as? ShelfCardView {
+            let lp = card.convert(winPt, from: nil)
+            if card.bounds.contains(lp) {
+                setActiveHoveredCard(card)
+                card.updateHover(at: lp)
+                return
+            }
+        }
+        if let prev = activeHoveredCard { prev.clearHover(); activeHoveredCard = nil }
     }
 }

@@ -9,9 +9,10 @@ enum InPlaceTranslateRenderer {
     static func bakeParagraphBlocks(
         onto base: CGImage,
         blocks: [OCRParagraphBlock],
-        translations: [String]
+        translations: [String],
+        scaleFactor: CGFloat = 2.0
     ) -> CGImage? {
-        let w = base.width, h = base.height
+        let w = base.width, h = base.height, sc = max(1.0, scaleFactor)
         let cs = (base.colorSpace?.model == .rgb && base.colorSpace?.supportsOutput == true)
             ? base.colorSpace!
             : (CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB())
@@ -53,12 +54,12 @@ enum InPlaceTranslateRenderer {
 
             // 独立单行小标签优先水平适度外扩，避免字号被过度压缩
             if isSingleShort {
-                let targetPt = min(max(11, lineHPx * 0.78), 44)
+                let targetPt = min(max(11 * sc, lineHPx * 0.78), 44 * sc)
                 let font = NSFont.systemFont(ofSize: targetPt, weight: .medium)
                 let neededW = ceil(CGFloat(CTLineGetTypographicBounds(
                     CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: [.font: font])),
                     nil, nil, nil
-                ))) + 12
+                ))) + 12 * sc
                 if neededW > rect.width && CGFloat(w) - 4 > rect.width {
                     let expand = min(CGFloat(w) - 4, neededW)
                     bx = max(2, min(CGFloat(w) - 2 - expand, rect.midX - expand * 0.5))
@@ -67,23 +68,23 @@ enum InPlaceTranslateRenderer {
                 }
             }
 
-            let radius = min(8, min(rect.width, rect.height) * 0.18)
+            let radius = min(8 * sc, min(rect.width, rect.height) * 0.18)
             let bgPath = CGPath(roundedRect: rect, cornerWidth: radius, cornerHeight: radius, transform: nil)
             ctx.saveGState()
             ctx.setFillColor(bgColor)
             ctx.addPath(bgPath); ctx.fillPath()
-            // 极淡柔和边框，防止纯白/纯黑重叠块视觉边界生硬
             let rimAlpha: CGFloat = (luma < 138) ? 0.10 : 0.06
             let rimGray: CGFloat = (luma < 138) ? 1.0 : 0.0
             ctx.setStrokeColor(CGColor(srgbRed: rimGray, green: rimGray, blue: rimGray, alpha: rimAlpha))
-            ctx.setLineWidth(1.0)
+            ctx.setLineWidth(sc)
             ctx.addPath(bgPath); ctx.strokePath()
             ctx.restoreGState()
 
             drawFittedParagraph(
                 text: text,
-                in: rect.insetBy(dx: 4, dy: 2),
+                in: rect.insetBy(dx: 4 * sc, dy: 2 * sc),
                 baseLineHeight: lineHPx,
+                scale: sc,
                 fgColor: fgColor,
                 centered: isSingleShort,
                 ctx: ctx
@@ -96,13 +97,14 @@ enum InPlaceTranslateRenderer {
         text: String,
         in box: CGRect,
         baseLineHeight: CGFloat,
+        scale sc: CGFloat,
         fgColor: CGColor,
         centered: Bool,
         ctx: CGContext
     ) {
-        guard box.width >= 6, box.height >= 6 else { return }
-        let maxPt = min(max(11.0, baseLineHeight * 0.80), 44.0)
-        let minPt: CGFloat = 8.5
+        guard box.width >= 6 * sc, box.height >= 6 * sc else { return }
+        let maxPt = min(max(11.0 * sc, baseLineHeight * 0.80), 44.0 * sc)
+        let minPt: CGFloat = 8.5 * sc
         let fgKey = NSAttributedString.Key(kCTForegroundColorAttributeName as String)
 
         func makeAttr(_ pt: CGFloat) -> NSAttributedString {

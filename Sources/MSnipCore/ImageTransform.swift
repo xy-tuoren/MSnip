@@ -3,6 +3,20 @@ import Foundation
 
 /// 无损像素几何变换与多贴图边缘磁吸对齐纯算法库（保留原生 Display P3 / RGB ICC 色彩空间）
 public enum ImageTransform {
+    /// 将 `CGImage.cropping(to:)` 子图拷贝为独立紧致内存缓冲，避免小截图强引用整块 5K 全屏 `CGDataProvider`（保留原生色域）
+    public static func detachedCopy(_ image: CGImage) -> CGImage {
+        let w = image.width, h = image.height
+        guard w > 0, h > 0,
+              let ctx = CGContext(
+                  data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: 0,
+                  space: resolvedOutputColorSpace(for: image),
+                  bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+              ) else { return image }
+        ctx.interpolationQuality = .none
+        ctx.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return ctx.makeImage() ?? image
+    }
+
     /// 顺时针无损旋转 90°（精确交换宽高物理像素，零插值模糊）
     public static func rotateClockwise90(_ image: CGImage) -> CGImage? {
         let srcW = image.width, srcH = image.height
@@ -169,33 +183,15 @@ public enum ImageTransform {
         let newW = max(24, (bw * clampedZoom).rounded())
         let newH = max(24, (bh * clampedZoom).rounded())
 
-        let originX: CGFloat
-        switch edge {
-        case .left, .topLeft, .bottomLeft:
-            originX = initialFrame.maxX - newW
-        case .right, .topRight, .bottomRight:
-            originX = initialFrame.minX
-        case .top, .bottom:
-            originX = initialFrame.midX - newW * 0.5
-        }
-
-        let originY: CGFloat
-        switch edge {
-        case .bottom, .bottomLeft, .bottomRight:
-            originY = initialFrame.maxY - newH
-        case .top, .topLeft, .topRight:
-            originY = initialFrame.minY
-        case .left, .right:
-            originY = initialFrame.midY - newH * 0.5
-        }
-
+        let originX: CGFloat = (edge == .left || edge == .topLeft || edge == .bottomLeft) ? (initialFrame.maxX - newW)
+            : (edge == .right || edge == .topRight || edge == .bottomRight) ? initialFrame.minX : (initialFrame.midX - newW * 0.5)
+        let originY: CGFloat = (edge == .bottom || edge == .bottomLeft || edge == .bottomRight) ? (initialFrame.maxY - newH)
+            : (edge == .top || edge == .topLeft || edge == .topRight) ? initialFrame.minY : (initialFrame.midY - newH * 0.5)
         return (CGRect(x: originX, y: originY, width: newW, height: newH), clampedZoom)
     }
 
     private static func resolvedOutputColorSpace(for image: CGImage) -> CGColorSpace {
-        if let cs = image.colorSpace, cs.model == .rgb, cs.supportsOutput {
-            return cs
-        }
+        if let cs = image.colorSpace, cs.model == .rgb, cs.supportsOutput { return cs }
         return CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
     }
 }

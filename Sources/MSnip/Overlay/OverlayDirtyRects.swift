@@ -36,24 +36,40 @@ extension OverlayView {
         ).intersection(bounds)
     }
 
+    /// 纯 GPU 刷新暗化遮罩四边图层、自动吸附边框、尺寸胶囊与快捷键提示卡（零 CPU 全屏位图重绘）
+    func syncGPUChromeLayers() {
+        let hideAllForCaliper = (selection == nil && caliperActive)
+        let activeRadius = (selection != nil && cornerRadiusPt > 0.5)
+            ? min(cornerRadiusPt, min(selection!.width, selection!.height) * 0.5)
+            : 0
+        let highlightRect = selection ?? autoSnap.displayedRect ?? hoveredAutoRect
+        let showGPUDim = !hideAllForCaliper && activeRadius <= 0.5
+        let showSnapBorder = !hideAllForCaliper && (selection == nil) && (hoveredAutoRect != nil)
+        let borderCol = (isRecordingMode ? MSnipUITheme.danger : MSnipUITheme.accent).withAlphaComponent(0.95).cgColor
+        dimSnapView.update(highlightRect: highlightRect, showDim: showGPUDim, showSnapBorder: showSnapBorder, borderColor: borderCol)
+
+        if hideAllForCaliper {
+            hudPillView.update(text: nil, anchorRect: nil, containerBounds: bounds)
+        } else if let sel = selection, sel.width >= 1, sel.height >= 1 {
+            hudPillView.update(text: selectionHudText(for: sel, cornerRadius: activeRadius), anchorRect: sel, containerBounds: bounds)
+        } else if let target = hoveredAutoRect {
+            let disp = autoSnap.displayedRect ?? target
+            hudPillView.update(text: autoSnapHudText(for: target), anchorRect: disp, containerBounds: bounds)
+        } else {
+            hudPillView.update(text: nil, anchorRect: nil, containerBounds: bounds)
+        }
+        syncShortcutTipsView()
+    }
+
     func invalidateAutoSnapTransition(from oldRect: CGRect?, to newRect: CGRect?) {
-        if let o = oldRect { setNeedsDisplay(autoSnapDirtyBounds(for: o)) }
-        if let n = newRect { setNeedsDisplay(autoSnapDirtyBounds(for: n)) }
+        syncGPUChromeLayers()
     }
 
     func invalidateSelectionTransition(from oldSel: CGRect?, to newSel: CGRect?) {
+        syncGPUChromeLayers()
         if (oldSel == nil) != (newSel == nil) {
             needsDisplay = true
             return
-        }
-        if showShortcutTips {
-            let zone = shortcutTipsBottomTriggerZone()
-            let oldHit = oldSel.map { !$0.intersection(zone).isNull } ?? false
-            let newHit = newSel.map { !$0.intersection(zone).isNull } ?? false
-            if oldHit != newHit {
-                needsDisplay = true
-                return
-            }
         }
         if let o = oldSel { setNeedsDisplay(selectionDirtyBounds(for: o)) }
         if let n = newSel { setNeedsDisplay(selectionDirtyBounds(for: n)) }
@@ -67,12 +83,11 @@ extension OverlayView {
             if let o = oldPt { setNeedsDisplay(CGRect(x: o.x - pad, y: o.y - pad, width: pad * 2, height: pad * 2)) }
             if let n = newPt { setNeedsDisplay(CGRect(x: n.x - pad, y: n.y - pad, width: pad * 2, height: pad * 2)) }
         }
-        if showShortcutTips {
-            let zone = shortcutTipsBottomTriggerZone()
-            let wasIn = oldPt.map { zone.contains($0) } ?? false
-            let nowIn = newPt.map { zone.contains($0) } ?? false
+        if showShortcutTips, !cachedTipsTriggerZone.isEmpty {
+            let wasIn = oldPt.map { cachedTipsTriggerZone.contains($0) } ?? false
+            let nowIn = newPt.map { cachedTipsTriggerZone.contains($0) } ?? false
             if wasIn != nowIn {
-                needsDisplay = true
+                syncShortcutTipsView()
             }
         }
     }
@@ -186,6 +201,7 @@ extension OverlayView {
 
         if let ocrV = inPlaceOCRView { ocrV.frame = sel }
         if let trV = inPlaceTranslateView { trV.frame = sel }
+        syncShortcutTipsView()
     }
 
     func clearSelectionFromSibling() {

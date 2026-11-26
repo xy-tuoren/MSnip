@@ -111,6 +111,15 @@ final class ShelfActionRailView: NSView {
 
     override func mouseExited(with event: NSEvent) { hoveredSlot = nil; pressedSlot = nil }
 
+    func clearHover() {
+        if hoveredSlot != nil { hoveredSlot = nil }
+    }
+
+    func syncHover(atWindowPoint winPt: CGPoint) {
+        let lp = convert(winPt, from: nil)
+        hoveredSlot = bounds.contains(lp) ? hitSlot(at: lp) : nil
+    }
+
     override func mouseDown(with event: NSEvent) {
         pressedSlot = hitSlot(at: convert(event.locationInWindow, from: nil))
     }

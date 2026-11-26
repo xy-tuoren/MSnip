@@ -63,7 +63,7 @@ extension GeekTheme {
     static func symbolEntry(_ name: String, pointSize: CGFloat = 12.0, weight: NSFont.Weight = .semibold) -> SymbolMaskEntry? {
         let key = "\(name)@\(pointSize)-\(weight.rawValue)"
         if let hit = symbolCache[key] { return hit }
-        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
+        guard let base = MSnipUITheme.systemSymbol(name) else { return nil }
         let cfg = NSImage.SymbolConfiguration(pointSize: pointSize, weight: weight)
         let img = base.withSymbolConfiguration(cfg) ?? base
         let scale: CGFloat = 2.0

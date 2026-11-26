@@ -8,7 +8,7 @@ final class GeneralExtraControls {
     var soundSwitch: GeekToggleSwitch?
     var filenameField: NSTextField?
     var filenamePreviewLabel: NSTextField?
-    var pinGlowSeg: GeekSegmentControl?
+    var pinGlowSlider: GeekProgressSlider?
     var shelfTriggerSeg: GeekSegmentControl?
     var delayPresetSeg: GeekSegmentControl?
     var delaySecondsField: NSTextField?
@@ -156,21 +156,18 @@ extension TranslationSettingsWindow {
         extCard.addSubview(fnBox)
 
         extCard.addHairline(atY: rowH)
-        let glowTip = "贴图默认呈现淡淡白光外缘、悬浮时亮起柔和蓝边（截图右侧第 2 颗圆钮或贴图上按住 ⌥+滚轮可精细调节 0%–100%）"
+        let glowTip = "拖动进度条精细调节贴图默认发光边（0% 为关闭，双击滑条复位 45%），与截图选框右侧发光边滑条及贴图 ⌥+滚轮实时双向同步"
         addRowLabel("贴图默认发光边", y: rowH, height: rowH, in: extCard, toolTip: glowTip)
-        let glowSeg = GeekSegmentControl(items: ["关闭", "柔和 45%", "明亮 80%"], selectedIndex: 1)
-        glowSeg.toolTip = glowTip
-        glowSeg.frame = NSRect(x: rightColX, y: rowH + segY, width: rightColW, height: segH)
-        glowSeg.onSelect = { [weak self] idx in
-            let levels: [CGFloat] = [0.0, 0.45, 0.80]
-            guard levels.indices.contains(idx) else { return }
-            self?.onAppConfigMutated? { $0.pinGlowStrength = levels[idx] }
-        }
-        modeControls.extra.pinGlowSeg = glowSeg
-        extCard.addSubview(glowSeg)
+        let glowSlider = GeekProgressSlider(value: 0.45, defaultValue: 0.45, zeroLabel: "关闭")
+        glowSlider.toolTip = glowTip
+        glowSlider.frame = NSRect(x: rightColX, y: rowH + segY, width: rightColW, height: segH)
+        glowSlider.onChange = { [weak self] v in self?.onPreviewPinGlow?(v) }
+        glowSlider.onCommit = { [weak self] v in self?.onAppConfigMutated? { $0.pinGlowStrength = v } }
+        modeControls.extra.pinGlowSlider = glowSlider
+        extCard.addSubview(glowSlider)
 
         extCard.addHairline(atY: rowH * 2)
-        let shelfTip = "悬停展开（推荐）：贴顶停留 0.55 秒或拖文件到顶边下拉，新截图自动探头 3 秒，点顶栏秒收；快捷键切换：仅热键或右键菜单呼出；常驻显示：紧凑悬浮条常驻顶部"
+        let shelfTip = "悬停展开（推荐）：贴顶停留 0.55 秒或拖文件到顶边下拉，截图静默收录不自动弹窗打扰；快捷键切换：仅热键或右键菜单呼出；常驻显示：紧凑悬浮条常驻顶部"
         addRowLabel("顶部暂存架显示方式", y: rowH * 2, height: rowH, in: extCard, toolTip: shelfTip)
         let shelfSeg = GeekSegmentControl(items: TopShelfTriggerMode.allCases.map(\.title), selectedIndex: 0)
         shelfSeg.toolTip = shelfTip
@@ -248,8 +245,7 @@ extension TranslationSettingsWindow {
         modeControls.recordAudioSwitch?.isOn = ro.captureSystemAudio
         modeControls.extra.filenameField?.stringValue = cfg.filenameTemplate
         updateFilenamePreview(template: cfg.filenameTemplate)
-        let g = cfg.pinGlowStrength
-        modeControls.extra.pinGlowSeg?.selectedIndex = g <= 0.01 ? 0 : (abs(g - 0.45) < 0.06 ? 1 : (abs(g - 0.80) < 0.06 ? 2 : -1))
+        modeControls.extra.pinGlowSlider?.value = cfg.pinGlowStrength
         if let sIdx = TopShelfTriggerMode.allCases.firstIndex(of: cfg.topShelfTriggerMode) { modeControls.extra.shelfTriggerSeg?.selectedIndex = sIdx }
         modeControls.extra.soundSwitch?.isOn = cfg.soundFeedbackEnabled
         refreshCaptureModesUI(with: cfg)

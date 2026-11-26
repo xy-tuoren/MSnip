@@ -62,7 +62,8 @@ extension AppController {
                 x: round(clamped.minX * s), y: round(clamped.minY * s),
                 width: max(2, round(clamped.width * s)), height: max(2, round(clamped.height * s))
             )
-            guard let cropped = snap.cgImage.cropping(to: pxRect) else { return }
+            guard let rawCropped = snap.cgImage.cropping(to: pxRect) else { return }
+            let cropped = ImageTransform.detachedCopy(rawCropped)
             ClipboardAndSave.copyToClipboard(cgImage: cropped, scaleFactor: s)
             self.recordHistoryAndRefresh(img: cropped, scale: s)
             ToastHUD.show(message: "✓ 已重截上次区域并复制", subtitle: "\(cropped.width) × \(cropped.height) px", preview: cropped)

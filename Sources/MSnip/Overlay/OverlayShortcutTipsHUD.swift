@@ -2,29 +2,10 @@ import AppKit
 import CoreGraphics
 import Foundation
 import MSnipCore
+import QuartzCore
 
-/// 高对比度清晰竖排双栏快捷键提示面板 (`ShortcutTipsWidget`) + 顶部选区坐标尺寸胶囊 (`drawHUDPill`)
-/// - 自动根据显示器 `visibleFrame` 避开底部程序坞 (Dock)、顶部菜单栏与屏幕物理边缘；
-/// - 采用高对比悬浮深蓝灰卡片 + 高亮描边 + 纯白立体键帽 + 全整数像素对齐排版，在 `@1x` (1080p) 与 `@2x` 暗色/亮色背景下均清晰醒目。
+/// 独立 GPU 快捷键提示卡布局调度 + 锁定选区描边与手柄绘制扩展（零全屏 `blur: 22` CPU 重绘）
 extension OverlayView {
-    private static let headerTitleAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 12.0, weight: .bold),
-        .foregroundColor: MSnipUITheme.accent
-    ]
-    private static let headerHintAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 11.0, weight: .medium),
-        .foregroundColor: MSnipUITheme.inkMuted
-    ]
-    private static let keycapKeyAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 12.5, weight: .bold),
-        .foregroundColor: MSnipUITheme.inkPrimary
-    ]
-    private static let keycapDescAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.systemFont(ofSize: 13.5, weight: .medium),
-        .foregroundColor: MSnipUITheme.inkPrimary
-    ]
-    private static var textSizeCache: [String: CGSize] = [:]
-
     /// 计算当前屏幕安全内边距（自动避让底部 Dock、侧边 Dock 与顶部菜单栏，并向屏幕内侧舒适内收防贴边）
     private func safeOverlayMargins() -> (left: CGFloat, right: CGFloat, top: CGFloat, bottom: CGFloat) {
         let sf = snapshot.screen.frame
@@ -58,170 +39,75 @@ extension OverlayView {
                 ("\(keyUpper(.eraser)) / \(keyUpper(.snapWindow))", "上次选区 / 对齐窗口"),
                 ("滚轮 / 方向键", "切层级 / 1px 微调")
             ]
-        } else {
-            let tools = [keyUpper(.rect), keyUpper(.arrow), keyUpper(.pen), keyUpper(.text), keyUpper(.mosaic), keyUpper(.eraser)].joined(separator: " ")
-            return [
-                ("\(keyUpper(.copy)) / ↩", "复制截图并退出"),
-                ("\(keyUpper(.pin)) / \(keyUpper(.quickSave))", "贴图 / 一键快存"),
-                (tools, "框 箭 笔 字 马赛克 橡皮"),
-                ("↑↓←→ / ⌘Z", "调工具大小 / 撤销"),
-                ("\(keyUpper(.ocr)) / ⇧\(keyUpper(.ocr)) / \(keyUpper(.translate))", "识字 / 公式 / 翻译"),
-                ("\(keyUpper(.longShot)) / \(keyUpper(.record))", "长截图 / 录制视频"),
-                ("右键 / Esc", "取消选框")
-            ]
         }
+        let tools = [keyUpper(.rect), keyUpper(.arrow), keyUpper(.pen), keyUpper(.text), keyUpper(.mosaic), keyUpper(.eraser)].joined(separator: " ")
+        return [
+            ("\(keyUpper(.copy)) / ↩", "复制截图并退出"),
+            ("\(keyUpper(.pin)) / \(keyUpper(.quickSave))", "贴图 / 一键快存"),
+            (tools, "框 箭 笔 字 马赛克 橡皮"),
+            ("↑↓←→ / ⌘Z", "调工具大小 / 撤销"),
+            ("\(keyUpper(.ocr)) / ⇧\(keyUpper(.ocr)) / \(keyUpper(.translate))", "识字 / 公式 / 翻译"),
+            ("\(keyUpper(.longShot)) / \(keyUpper(.record))", "长截图 / 录制视频"),
+            ("右键 / Esc", "取消选框")
+        ]
     }
 
-    private func measureTipsCardLayout(rows: [(key: String, desc: String)]) -> (size: CGSize, maxKeyCapW: CGFloat) {
-        let padX: CGFloat = 18
-        let headerH: CGFloat = 30
-        let padBottom: CGFloat = 15
-        let rowStride: CGFloat = 32
-        let colGap: CGFloat = 14
-
-        var maxCapW: CGFloat = 0
-        var maxDescW: CGFloat = 0
-        for row in rows {
-            let kSz = Self.cachedSize(row.key, isKey: true)
-            let dSz = Self.cachedSize(row.desc, isKey: false)
-            maxCapW = max(maxCapW, max(26, ceil(kSz.width + 16)))
-            maxDescW = max(maxDescW, ceil(dSz.width))
+    /// 更新独立 GPU 快捷键提示卡内容与避让位置（内容缓存零重复绘制，光标靠近时仅 GPU 平移坐标）
+    func syncShortcutTipsView() {
+        guard showShortcutTips, !isEditingText else {
+            if !shortcutTipsView.isHidden { shortcutTipsView.isHidden = true }
+            cachedTipsTriggerZone = .zero
+            return
         }
-        let w = ceil(padX * 2 + maxCapW + colGap + maxDescW)
-        let h = ceil(headerH + 10 + CGFloat(rows.count) * rowStride - 6 + padBottom)
-        return (CGSize(width: max(224, w), height: h), maxCapW)
-    }
-
-    func shortcutTipsBottomTriggerZone() -> CGRect {
-        let layout = measureTipsCardLayout(rows: currentShortcutTipRows())
-        let m = safeOverlayMargins()
-        let base = CGRect(
-            x: m.left,
-            y: max(m.top, bounds.height - m.bottom - layout.size.height),
-            width: layout.size.width,
-            height: layout.size.height
-        )
-        return base.insetBy(dx: -24, dy: -24)
-    }
-
-    func drawShortcutTipsHUD(ctx: CGContext, dirtyRect: CGRect) {
-        guard showShortcutTips, !isEditingText else { return }
         if let sel = selection, sel.width > bounds.width * 0.85, sel.height > bounds.height * 0.80 {
+            if !shortcutTipsView.isHidden { shortcutTipsView.isHidden = true }
             return
         }
 
-        let rows = currentShortcutTipRows()
-        let layout = measureTipsCardLayout(rows: rows)
-        let cardW = layout.size.width
-        let cardH = layout.size.height
+        let hideKey = keyUpper(.toggleTips)
+        let sig = "\(isRecordingMode)|\(selection != nil)|\(hideKey)|\(keyUpper(.copy))\(keyUpper(.caliper))\(keyUpper(.copyCoord))\(keyUpper(.backdropOrCoord))\(keyUpper(.toggleMagnifier))\(keyUpper(.pin))\(keyUpper(.quickSave))\(keyUpper(.ocr))\(keyUpper(.translate))\(keyUpper(.longShot))\(keyUpper(.record))\(keyUpper(.eraser))\(keyUpper(.snapWindow))\(keyUpper(.rect))\(keyUpper(.arrow))\(keyUpper(.pen))\(keyUpper(.text))\(keyUpper(.mosaic))"
+        let cardSize = shortcutTipsView.updateContentIfNeeded(signature: sig, rows: { currentShortcutTipRows() }, hideKey: hideKey)
         let m = safeOverlayMargins()
 
-        var origin = CGPoint(
-            x: m.left,
-            y: max(m.top, round(bounds.height - m.bottom - cardH))
-        )
-        let bottomTrigger = CGRect(origin: origin, size: layout.size).insetBy(dx: -24, dy: -24)
+        var origin = CGPoint(x: m.left, y: max(m.top, round(bounds.height - m.bottom - cardSize.height)))
+        let bottomTrigger = CGRect(origin: origin, size: cardSize).insetBy(dx: -24, dy: -24)
+        cachedTipsTriggerZone = bottomTrigger
+
         let cursorNearBottom = lastMousePoint.map { bottomTrigger.contains($0) } ?? false
         let selNearBottom = selection.map { !$0.intersection(bottomTrigger).isNull } ?? false
         let barNearBottom = (!toolbar.isHidden && !toolbar.frame.intersection(bottomTrigger).isNull)
             || (!subbar.isHidden && !subbar.frame.intersection(bottomTrigger).isNull)
         if cursorNearBottom || selNearBottom || barNearBottom {
             origin = CGPoint(x: m.left, y: m.top)
-            let topCandidate = CGRect(origin: origin, size: layout.size).insetBy(dx: -16, dy: -16)
+            let topCandidate = CGRect(origin: origin, size: cardSize).insetBy(dx: -16, dy: -16)
             if let sel = selection, !sel.intersection(topCandidate).isNull {
                 origin = CGPoint(
-                    x: max(m.left, round(bounds.width - m.right - cardW)),
-                    y: max(m.top, round(bounds.height - m.bottom - cardH))
+                    x: max(m.left, round(bounds.width - m.right - cardSize.width)),
+                    y: max(m.top, round(bounds.height - m.bottom - cardSize.height))
                 )
             }
         }
 
-        let rect = CGRect(origin: origin, size: layout.size)
-        guard rect.insetBy(dx: -26, dy: -26).intersects(dirtyRect) else { return }
-
-        let path = CGPath(roundedRect: rect, cornerWidth: 12, cornerHeight: 12, transform: nil)
-
-        // 1) 清爽浅色白底悬浮卡片 + 柔和投影 + 细腻深蓝灰边框（在截图半透明暗化遮罩上形成极高对比度）
-        ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: 8), blur: 22, color: NSColor.black.withAlphaComponent(0.28).cgColor)
-        ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
-        ctx.addPath(path)
-        ctx.fillPath()
-        ctx.restoreGState()
-
-        ctx.saveGState()
-        ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.addPath(path)
-        ctx.strokePath()
-
-        // 2) 卡片顶栏小标题与隐藏提示
-        let padX: CGFloat = 18
-        ("快捷键操作" as NSString).draw(
-            at: CGPoint(x: round(rect.minX + padX), y: round(rect.minY + 9)),
-            withAttributes: Self.headerTitleAttrs
-        )
-        let hideHint = "按 \(keyUpper(.toggleTips)) 隐藏" as NSString
-        let hideSz = hideHint.size(withAttributes: Self.headerHintAttrs)
-        hideHint.draw(
-            at: CGPoint(x: round(rect.maxX - padX - hideSz.width), y: round(rect.minY + 9)),
-            withAttributes: Self.headerHintAttrs
-        )
-        ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)
-        ctx.fill(CGRect(x: rect.minX + padX, y: rect.minY + 31, width: cardW - padX * 2, height: 1))
-
-        // 3) 整数像素对齐的双栏浅色立体键帽与说明行
-        let startY = rect.minY + 41
-        let rowStride: CGFloat = 32
-        let capH: CGFloat = 24
-        let keySpineRightX = round(rect.minX + padX + layout.maxKeyCapW)
-        let descLeftX = round(keySpineRightX + 14)
-
-        for (idx, row) in rows.enumerated() {
-            let rowTopY = round(startY + CGFloat(idx) * rowStride)
-            let kSz = Self.cachedSize(row.key, isKey: true)
-            let dSz = Self.cachedSize(row.desc, isKey: false)
-
-            let capW = max(26, ceil(kSz.width + 16))
-            let capRect = CGRect(x: keySpineRightX - capW, y: rowTopY, width: capW, height: capH)
-            let capPath = CGPath(roundedRect: capRect, cornerWidth: 5.5, cornerHeight: 5.5, transform: nil)
-
-            ctx.saveGState()
-            ctx.setShadow(offset: CGSize(width: 0, height: 1), blur: 1.0, color: NSColor.black.withAlphaComponent(0.08).cgColor)
-            ctx.setFillColor(MSnipUITheme.subtleFill.cgColor)
-            ctx.addPath(capPath)
-            ctx.fillPath()
-            ctx.restoreGState()
-
-            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
-            ctx.setLineWidth(1.0)
-            ctx.addPath(capPath)
-            ctx.strokePath()
-
-            (row.key as NSString).draw(
-                at: CGPoint(
-                    x: round(capRect.minX + (capW - kSz.width) * 0.5),
-                    y: round(capRect.minY + (capH - kSz.height) * 0.5)
-                ),
-                withAttributes: Self.keycapKeyAttrs
-            )
-            (row.desc as NSString).draw(
-                at: CGPoint(
-                    x: descLeftX,
-                    y: round(rowTopY + (capH - dSz.height) * 0.5)
-                ),
-                withAttributes: Self.keycapDescAttrs
-            )
-        }
-        ctx.restoreGState()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        if shortcutTipsView.frame.origin != origin { shortcutTipsView.setFrameOrigin(origin) }
+        if shortcutTipsView.isHidden { shortcutTipsView.isHidden = false }
+        CATransaction.commit()
     }
 
-    private static func cachedSize(_ str: String, isKey: Bool) -> CGSize {
-        let token = isKey ? "K:\(str)" : "D:\(str)"
-        if let hit = textSizeCache[token] { return hit }
-        let sz = (str as NSString).size(withAttributes: isKey ? keycapKeyAttrs : keycapDescAttrs)
-        textSizeCache[token] = sz
-        return sz
+    func selectionHudText(for sel: CGRect, cornerRadius: CGFloat) -> String {
+        let s = snapshot.scaleFactor
+        let pxX = Int((sel.minX * s).rounded()), pxY = Int((sel.minY * s).rounded())
+        let pxW = Int((sel.width * s).rounded()), pxH = Int((sel.height * s).rounded())
+        var parts = [isRecordingMode ? "录屏 · \(pxX),\(pxY)  \(pxW) × \(pxH) px" : "\(pxX),\(pxY)  \(pxW) × \(pxH) px"]
+        if isRecordingMode {
+            parts.append(toolbar.recordingFormat.badgeTitle)
+        } else {
+            if cornerRadius > 0.5 { parts.append("圆角 \(Int((cornerRadiusRatio * 100).rounded()))%") }
+            if glowStrength > 0.005 { parts.append("发光边 \(Int((glowStrength * 100).rounded()))%") }
+            if let trTag = inPlaceTranslateHUDTag { parts.append(trTag) }
+        }
+        return parts.joined(separator: "  ·  ")
     }
 
     func drawSelectionChrome(ctx: CGContext, sel: CGRect, cornerRadius: CGFloat) {
@@ -246,18 +132,5 @@ extension OverlayView {
             ctx.strokeEllipse(in: hr)
         }
         ctx.restoreGState()
-
-        let s = snapshot.scaleFactor
-        let pxX = Int((sel.minX * s).rounded()), pxY = Int((sel.minY * s).rounded())
-        let pxW = Int((sel.width * s).rounded()), pxH = Int((sel.height * s).rounded())
-        var parts = [isRecordingMode ? "录屏 · \(pxX),\(pxY)  \(pxW) × \(pxH) px" : "\(pxX),\(pxY)  \(pxW) × \(pxH) px"]
-        if isRecordingMode {
-            parts.append(toolbar.recordingFormat.badgeTitle)
-        } else {
-            if cornerRadius > 0.5 { parts.append("圆角 \(Int((cornerRadiusRatio * 100).rounded()))%") }
-            if glowStrength > 0.005 { parts.append("发光边 \(Int((glowStrength * 100).rounded()))%") }
-            if let trTag = inPlaceTranslateHUDTag { parts.append(trTag) }
-        }
-        drawHUDPill(ctx: ctx, anchorRect: sel, text: parts.joined(separator: "  ·  "))
     }
 }

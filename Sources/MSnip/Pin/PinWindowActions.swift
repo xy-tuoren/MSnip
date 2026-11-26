@@ -64,7 +64,7 @@ extension PinWindow {
     @objc func beginAnnotationEditing() {
         guard editorCanvas == nil, !isClickThrough else { return }
         pinContentView.liveTextView.clearSelection()
-        pinContentView.liveTextView.configure(cgImage: baseCGImage, logicalSize: imageScreenFrame.size)
+        pinContentView.liveTextView.setPreviewImageOnly(cgImage: baseCGImage, logicalSize: baseSize)
         pinContentView.isAnnotating = true
         syncGlowState()
         syncHoverBarVisibility()

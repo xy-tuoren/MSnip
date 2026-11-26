@@ -2,61 +2,6 @@ import AppKit
 import CoreGraphics
 import Foundation
 
-/// 零拷贝底图像素快速采样器（供马赛克工具实时 O(块数) 取色，避免逐像素卷积卡顿）
-public final class PixelSampler: @unchecked Sendable {
-    public let cgImage: CGImage
-    public let width: Int
-    public let height: Int
-    private let bytesPerRow: Int
-    private let bytesPerPixel: Int
-    private let rIdx: Int
-    private let gIdx: Int
-    private let bIdx: Int
-    private let data: CFData?
-    private let ptr: UnsafePointer<UInt8>?
-
-    public init(cgImage: CGImage) {
-        self.cgImage = cgImage
-        self.width = cgImage.width
-        self.height = cgImage.height
-        self.bytesPerRow = cgImage.bytesPerRow
-        self.bytesPerPixel = max(4, cgImage.bitsPerPixel / 8)
-        let info = cgImage.bitmapInfo
-        let isLittle32 = info.contains(.byteOrder32Little)
-        let alpha = CGImageAlphaInfo(rawValue: info.rawValue & CGBitmapInfo.alphaInfoMask.rawValue)
-        let alphaFirst = (alpha == .premultipliedFirst || alpha == .first || alpha == .noneSkipFirst)
-        if isLittle32 {
-            if alphaFirst { self.bIdx = 0; self.gIdx = 1; self.rIdx = 2 }
-            else          { self.bIdx = 1; self.gIdx = 2; self.rIdx = 3 }
-        } else {
-            if alphaFirst { self.rIdx = 1; self.gIdx = 2; self.bIdx = 3 }
-            else          { self.rIdx = 0; self.gIdx = 1; self.bIdx = 2 }
-        }
-        self.data = cgImage.dataProvider?.data
-        self.ptr = self.data.flatMap { CFDataGetBytePtr($0) }
-    }
-
-    /// 零分配读取物理像素 `(px, py)`（左上角为原点）的 RGB 分量 (0...255)
-    @inline(__always)
-    public func sampleRGB(px: Int, py: Int) -> (Int, Int, Int) {
-        guard let ptr, width > 0, height > 0 else { return (128, 128, 128) }
-        let cx = min(max(0, px), width - 1)
-        let cy = min(max(0, py), height - 1)
-        let offset = cy * bytesPerRow + cx * bytesPerPixel
-        return (Int(ptr[offset + rIdx]), Int(ptr[offset + gIdx]), Int(ptr[offset + bIdx]))
-    }
-
-    /// 按物理像素坐标 `(px, py)`（左上角为原点）读取原色域颜色（与源图色彩空间 1:1 一致）
-    public func sampleColor(px: Int, py: Int) -> CGColor {
-        let (r, g, b) = sampleRGB(px: px, py: py)
-        if let cs = cgImage.colorSpace, cs.model == .rgb, cs.supportsOutput,
-           let c = CGColor(colorSpace: cs, components: [CGFloat(r) / 255.0, CGFloat(g) / 255.0, CGFloat(b) / 255.0, 1.0]) {
-            return c
-        }
-        return CGColor(srgbRed: CGFloat(r) / 255.0, green: CGFloat(g) / 255.0, blue: CGFloat(b) / 255.0, alpha: 1.0)
-    }
-}
-
 /// 纯 CoreGraphics 标注渲染与高清图像烘焙器（屏幕预览与剪贴板/PNG 导出共用同一套绘制代码）
 public enum AnnotationRenderer {
     /// 释放渲染器内部瞬态图像缓存（如毛玻璃切片缓存），保证会话关闭后零闲置内存占用
@@ -218,8 +163,11 @@ public enum AnnotationRenderer {
         let outW = Int(pxRect.width), outH = Int(pxRect.height)
         guard outW > 0, outH > 0, let cropped = sampler.cgImage.cropping(to: pxRect) else { return nil }
 
-        // 无标注/无圆角/无衬底时零重绘直出原生裁剪块：保留 100% 原始像素与显示器原生 ICC 色彩空间，彻底零色差
-        if annotations.isEmpty && cornerRadiusPt <= 0.5 && backdropStyle == .none { return cropped }
+        // 无标注/无圆角/无衬底时：局部选区拷贝为独立紧致缓冲以彻底释放 5K 全屏 CGDataProvider，全屏抓图则直接零重绘返回
+        if annotations.isEmpty && cornerRadiusPt <= 0.5 && backdropStyle == .none {
+            let isSubRegion = outW * outH < (sampler.width * sampler.height * 3) / 4
+            return isSubRegion ? ImageTransform.detachedCopy(cropped) : cropped
+        }
 
         let colorSpace: CGColorSpace = (sampler.cgImage.colorSpace?.model == .rgb && sampler.cgImage.colorSpace?.supportsOutput == true)
             ? sampler.cgImage.colorSpace!

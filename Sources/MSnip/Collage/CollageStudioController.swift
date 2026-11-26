@@ -3,292 +3,268 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
-/// 轻量实用「多图拼接与合并 PDF」工作室：
-/// 顶部/右侧采用与设置中心一致的极客卡片分层，清晰区分「拼成一张图」与「合并多页 PDF」双模式，零黑底错位、所见即所得。
+/// 精致大画布「拼图与 PDF」工作室（892×568 一体化顶栏浮窗）：
+/// 左侧高清大预览画布 + 原窗口内嵌无弹窗图片编辑器（单张素材与合成拼图双阶段裁剪/旋转/11种标注打码）。
 @MainActor
-final class CollageStudioController: NSObject, NSWindowDelegate {
+final class CollageStudioController: NSObject, NSWindowDelegate, NSTextFieldDelegate {
     enum StudioMode: Int { case collage = 0, pdfMerge = 1 }
+
+    static let presets: [(title: String, gap: Int, pad: Int, radius: Int)] = [
+        ("紧贴", 0, 0, 0),
+        ("标准", 24, 32, 14),
+        ("展示", 28, 48, 18)
+    ]
 
     var onCopyCollage: ((CGImage, CGFloat) -> Void)?
     var onPinCollage: ((CGImage, CGFloat) -> Void)?
     var onSaveCollage: ((CGImage, CGFloat) -> Void)?
+    var onOptionsChanged: ((CollageOptions) -> Void)?
     var historyRingProvider: (() -> CaptureHistoryRing?)?
 
     var window: CollageStudioWindow?
-    var rootView: GeekSurfaceView?
+    var rootView, topBarView, topBarDivider: GeekSurfaceView?
+    var titleLabel: NSTextField?
+    var metaPill: CollageMetaPillView?
+    var modeSeg: GeekSegmentControl?
+
     var canvasView: CollagePreviewCanvasView?
     var stripCard: GeekCardView?
     var stripScrollView: ShelfHorizontalScrollView?
-    private var stripDocView: GeekFlippedView?
-    var stripHeaderLabel: NSTextField?
-    var addClipBtn: GeekButton?
-    var addRecentBtn: GeekButton?
-    var clearBtn: GeekButton?
+    var stripDivider: GeekSurfaceView?
+    var stripDocView: GeekFlippedView?
+    var addClipBtn, addRecentBtn, clearBtn: GeekButton?
 
-    var modeSeg: GeekSegmentControl?
-    var layoutCard: GeekCardView?
-    var layoutHeader: NSTextField?
-    var layoutSeg: GeekSegmentControl?
-    var colsHeader: NSTextField?
-    var colsSeg: GeekSegmentControl?
-
-    var paramsCard: GeekCardView?
-    var paramsHeader: NSTextField?
-    var gapRow: CollageSliderRow?
-    var padRow: CollageSliderRow?
-    var radiusRow: CollageSliderRow?
-    var bgHeader: NSTextField?
-    var bgSwatch: CollageBgSwatchView?
-    var pdfHintLabel: NSTextField?
-
-    var copyBtn: GeekButton?
-    var pinBtn: GeekButton?
-    var saveBtn: GeekButton?
-    var pdfBtn: GeekButton?
+    var inspectorCard: GeekCardView?
+    var layoutSeg, colsSeg, alignSeg, aspectSeg, badgeSeg, pdfPageNumSeg, watermarkSeg: GeekSegmentControl?
+    var div1, div2, div3, divExport: GeekSurfaceView?
+    var styleHeaderLabel, bgLabel, alignLabel, aspectLabel, badgeLabel, watermarkLabel, pdfHintLabel: NSTextField?
+    var presetBar: CollageInlinePresetBar?
+    var gapRow, padRow, radiusRow: CollageFineSliderRow?
+    var bgTrigger: CollageBgTriggerPill?
+    var bgEyedropperBtn: GeekButton?
+    var shadowPill: CollageMiniTogglePill?
+    var watermarkField: NSTextField?
+    var watermarkBox: GeekInputBox?
+    var copyBtn, annotateBtn, pinBtn, saveBtn, pdfBtn: GeekButton?
 
     var items: [CollageSourceItem] = []
     var options = CollageOptions()
     var studioMode: StudioMode = .collage
-    private let lightbox = CollageImageLightbox()
-    private var renderSeq: UInt64 = 0
+    var dragTargetIndex: Int?
+
+    var editedCollageOverride: CGImage?
+    var collageEditorBase: CGImage?
+    var collageEditorDoc = AnnotationDocument()
+    var collageEditorGeoModified = false
+
+    let colorPopover = CollageColorPickerPopover()
+    let inlineEditor = CollageInlineEditorView(frame: .zero)
+    let lightbox = CollageImageLightbox()
+    var renderSeq: UInt64 = 0
+    var isRenderingPreview = false
+    var hasPendingPreviewRender = false
 
     func present(initialEntries: [CaptureHistoryEntry] = [], initialImages: [(title: String, cgImage: CGImage, scale: CGFloat)] = []) {
         ensureWindowBuilt()
-        items.removeAll()
+        inlineEditor.dismissInline(); resetCollageEdits(); items.removeAll()
         if !initialImages.isEmpty {
-            for (title, cg, scale) in initialImages {
-                items.append(makeSourceItem(title: title, cgImage: cg, scaleFactor: scale))
-            }
+            items = initialImages.map { makeSourceItem(title: $0.title, cgImage: $0.cgImage, scaleFactor: $0.scale) }
         } else if let ring = historyRingProvider?() {
-            let sourceEntries = initialEntries.isEmpty ? Array(ring.originalEntries.prefix(2).reversed()) : initialEntries
+            let src = initialEntries.isEmpty ? Array(ring.originalEntries.prefix(2).reversed()) : initialEntries
             let tf = DateFormatter(); tf.dateFormat = "HH:mm:ss"
-            for entry in sourceEntries {
-                if let cg = ring.loadCGImage(for: entry) {
-                    items.append(makeSourceItem(title: "截图 \(tf.string(from: entry.createdAt))", cgImage: cg, scaleFactor: entry.scaleFactor))
-                }
-            }
+            items = src.compactMap { e in ring.loadCGImage(for: e).map { makeSourceItem(title: "截图 \(tf.string(from: e.createdAt))", cgImage: $0, scaleFactor: e.scaleFactor) } }
         }
-        applyTheme()
-        layoutUI()
-        reloadFilmstrip()
-        schedulePreviewRender()
-
+        syncControlsFromOptions(); applyTheme(); layoutUI(); reloadFilmstrip(); schedulePreviewRender()
         NSApp.activate(ignoringOtherApps: true)
-        if let win = window {
-            if !win.isVisible { MSnipUITheme.centerOnActiveScreen(win) }
-            win.makeKeyAndOrderFront(nil)
-        }
+        if let win = window { if !win.isVisible { MSnipUITheme.centerOnActiveScreen(win) }; win.makeKeyAndOrderFront(nil) }
     }
 
     func windowWillClose(_ notification: Notification) {
-        renderSeq &+= 1
-        lightbox.dismiss()
-        items.removeAll()
-        canvasView?.previewImage = nil
-        canvasView?.pdfPageItems = []
+        renderSeq &+= 1; isRenderingPreview = false; hasPendingPreviewRender = false; dragTargetIndex = nil
+        colorPopover.closeIfShown(); inlineEditor.dismissInline(); lightbox.dismiss()
+        resetCollageEdits(); items.removeAll()
+        canvasView?.previewImage = nil; canvasView?.pdfPageItems = []
         stripDocView?.subviews.forEach { $0.removeFromSuperview() }
     }
 
     func windowDidResize(_ notification: Notification) { layoutUI() }
 
-    // MARK: - Build & Layout
+    func controlTextDidChange(_ obj: Notification) {
+        guard let field = obj.object as? NSTextField, field === watermarkField else { return }
+        options.watermarkText = field.stringValue
+        invalidateCollageEditsAndRender()
+    }
 
     private func ensureWindowBuilt() {
         guard window == nil else { return }
         let win = CollageStudioWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 940, height: 630),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            contentRect: NSRect(x: 0, y: 0, width: 920, height: 580),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
-        win.title = "多图拼接与合并 PDF"
-        win.minSize = NSSize(width: 800, height: 540)
-        win.isReleasedWhenClosed = false
-        win.appearance = GeekTheme.windowAppearance
-        win.backgroundColor = GeekTheme.windowBg
-        win.delegate = self
-        win.onCopyShortcut = { [weak self] in
-            guard let self, self.studioMode == .collage else { return }
-            self.exportCollage(action: .copy)
+        win.title = "拼图与 PDF"; win.titleVisibility = .hidden; win.titlebarAppearsTransparent = true
+        win.isMovableByWindowBackground = true
+        win.minSize = NSSize(width: 720, height: 504); win.isReleasedWhenClosed = false
+        win.appearance = GeekTheme.windowAppearance; win.backgroundColor = GeekTheme.windowBg; win.delegate = self
+        win.onEscapeShortcut = { [weak self] in
+            guard let self, self.inlineEditor.isActive else { return false }
+            self.inlineEditor.cancelAndExit(); return true
         }
+        win.onCopyShortcut = { [weak self] in
+            guard let self else { return }
+            if self.inlineEditor.isActive {
+                if case .stitchedCollage = self.inlineEditor.mode { self.inlineEditor.finishWithExport(.copy) }
+            } else if self.studioMode == .collage { self.exportCollage(action: .copy) }
+        }
+        win.onPasteShortcut = { [weak self] in if let self, !self.inlineEditor.isActive { self.appendFromClipboard() } }
         win.onSaveShortcut = { [weak self] in
             guard let self else { return }
-            if self.studioMode == .pdfMerge { self.exportPDF() } else { self.exportCollage(action: .save) }
+            if self.inlineEditor.isActive {
+                if case .stitchedCollage = self.inlineEditor.mode { self.inlineEditor.finishWithExport(.save) }
+                else { self.inlineEditor.commitPrimaryAction() }
+            } else if self.studioMode == .pdfMerge { self.exportPDF() }
+            else { self.exportCollage(action: .save) }
         }
 
-        // 使用 GeekSurfaceView 在 draw(_:) 中按 window.appearance 动态填充背景，彻底消除浅色模式下黑底错位
-        let root = GeekSurfaceView(frame: win.contentLayoutRect, fill: GeekTheme.windowBg)
+        let root = GeekSurfaceView(frame: NSRect(x: 0, y: 0, width: 920, height: 580), fill: GeekTheme.windowBg)
+        let tBar = GeekSurfaceView(frame: .zero, fill: GeekTheme.barBg); root.addSubview(tBar)
+        let tDiv = GeekSurfaceView(frame: .zero, fill: GeekTheme.divider); root.addSubview(tDiv)
+        let tLbl = NSTextField(labelWithString: "拼图与 PDF"); tLbl.font = .systemFont(ofSize: 12.5, weight: .semibold); tBar.addSubview(tLbl)
+        let mPill = CollageMetaPillView(frame: .zero); tBar.addSubview(mPill)
+        tBar.addSubview(inlineEditor.topControlsView)
+
+        let mSeg = GeekSegmentControl(items: ["拼成一图", "多页 PDF"], symbols: ["rectangle.split.2x2", "doc.richtext"], selectedIndex: 0)
+        mSeg.onSelect = { [weak self] idx in
+            guard let self, let next = StudioMode(rawValue: idx) else { return }
+            self.colorPopover.closeIfShown(); self.studioMode = next
+            if next == .pdfMerge && self.options.background == .transparent {
+                self.options.background = .white; self.options.customBackgroundColor = nil
+            }
+            self.syncControlsFromOptions(); self.layoutUI(); self.schedulePreviewRender()
+        }
+        tBar.addSubview(mSeg)
 
         let canvas = CollagePreviewCanvasView(frame: .zero)
         canvas.onDropImageURLs = { [weak self] urls in self?.appendImageURLs(urls) }
         canvas.onInspectCollage = { [weak self] in self?.openCollageLightbox() }
+        canvas.onEditCollage = { [weak self] in self?.openCollageEditor() }
         canvas.onInspectPDFPage = { [weak self] idx in self?.openSourceLightbox(startIndex: idx) }
         root.addSubview(canvas)
+        root.addSubview(inlineEditor)
+        wireInlineEditorCallbacks()
 
-        lightbox.onCopyImage = { [weak self] img, scale in
+        lightbox.onCopyImage = { img, scale in
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
             ToastHUD.show(message: "✓ 已复制当前预览图到剪贴板 · \(img.width) × \(img.height) px")
-            _ = self
         }
 
-        // 底部素材卡片
-        let sCard = GeekCardView(frame: .zero)
-        root.addSubview(sCard)
-        let stripHdr = NSTextField(labelWithString: "素材顺序")
-        stripHdr.font = .systemFont(ofSize: 12.0, weight: .semibold); sCard.addSubview(stripHdr)
-
-        func addBtn(in parent: NSView, _ title: String, sym: String? = nil, style: GeekButton.Style = .subtle, action: @escaping () -> Void) -> GeekButton {
-            let b = GeekButton(title: title, symbol: sym, style: style); b.onClick = action; parent.addSubview(b); return b
+        func addBtn(in p: NSView, _ title: String, sym: String? = nil, style: GeekButton.Style = .subtle, tip: String? = nil, action: @escaping () -> Void) -> GeekButton {
+            let b = GeekButton(title: title, symbol: sym, style: style); b.toolTip = tip; b.onClick = action; p.addSubview(b); return b
         }
-        let cBtn = addBtn(in: sCard, "剪贴板", sym: "doc.on.clipboard") { [weak self] in self?.appendFromClipboard() }
-        let rBtn = addBtn(in: sCard, "最近截图", sym: "clock") { [weak self] in self?.showRecentCapturesPicker() }
-        let clrBtn = addBtn(in: sCard, "清空", style: .ghost) { [weak self] in self?.clearAllItems() }
+        func addDiv(in p: NSView) -> GeekSurfaceView { let d = GeekSurfaceView(frame: .zero, fill: GeekTheme.divider); p.addSubview(d); return d }
+        func addLbl(in p: NSView, _ text: String, size: CGFloat = 11.2) -> NSTextField {
+            let l = NSTextField(labelWithString: text); l.font = .systemFont(ofSize: size, weight: .medium); p.addSubview(l); return l
+        }
 
+        let sCard = GeekCardView(frame: .zero); root.addSubview(sCard)
         let sv = ShelfHorizontalScrollView(frame: .zero)
-        sv.drawsBackground = false; sv.borderType = .noBorder
-        sv.hasHorizontalScroller = false; sv.hasVerticalScroller = false
+        sv.drawsBackground = false; sv.borderType = .noBorder; sv.hasHorizontalScroller = false; sv.hasVerticalScroller = false
         let doc = GeekFlippedView(frame: .zero); sv.documentView = doc; sCard.addSubview(sv)
+        let sDiv = addDiv(in: sCard)
+        let cBtn = addBtn(in: sCard, "剪贴板", sym: "doc.on.clipboard", tip: "粘贴剪贴板图片或文件 (⌘V)") { [weak self] in self?.appendFromClipboard() }
+        let rBtn = addBtn(in: sCard, "最近", sym: "clock", tip: "从最近截图中挑选添加") { [weak self] in self?.showRecentCapturesPicker() }
+        let clrBtn = addBtn(in: sCard, "", sym: "trash", style: .ghost, tip: "清空所有素材") { [weak self] in self?.clearAllItems() }
 
-        // 右侧模式分段切换：拼成一张图 / 合并多页 PDF
-        let mSeg = GeekSegmentControl(items: ["拼成一张图", "合并多页 PDF"], symbols: ["rectangle.split.2x2", "doc.richtext"], selectedIndex: 0)
-        mSeg.onSelect = { [weak self] idx in
-            guard let self, let next = StudioMode(rawValue: idx) else { return }
-            self.studioMode = next
-            if next == .pdfMerge && self.options.background == .transparent { self.options.background = .white }
-            self.bgSwatch?.availableStyles = next == .pdfMerge ? [.white, .lightGray, .dark] : CollageBackgroundStyle.allCases
-            self.bgSwatch?.selected = self.options.background
-            self.layoutUI(); self.schedulePreviewRender()
-        }
-        root.addSubview(mSeg)
-
-        // 右侧卡片 1：布局方式
-        let lCard = GeekCardView(frame: .zero); root.addSubview(lCard)
-        let lHdr = NSTextField(labelWithString: "排列布局"); lHdr.font = .systemFont(ofSize: 11.5, weight: .semibold); lCard.addSubview(lHdr)
-        let lSeg = GeekSegmentControl(items: CollageLayoutMode.allCases.map(\.title), selectedIndex: 0)
+        let iCard = GeekCardView(frame: .zero); root.addSubview(iCard)
+        let lSeg = GeekSegmentControl(items: ["横向", "纵向", "网格"], symbols: ["rectangle.split.2x1", "rectangle.split.1x2", "square.grid.2x2"], selectedIndex: 0)
         lSeg.onSelect = { [weak self] idx in
             guard let self, CollageLayoutMode.allCases.indices.contains(idx) else { return }
-            self.options.layout = CollageLayoutMode.allCases[idx]; self.layoutUI(); self.schedulePreviewRender()
+            self.options.layout = CollageLayoutMode.allCases[idx]; self.layoutUI(); self.invalidateCollageEditsAndRender()
         }
-        lCard.addSubview(lSeg)
-        let cHdr = NSTextField(labelWithString: "网格列数"); cHdr.font = .systemFont(ofSize: 11.5, weight: .semibold); lCard.addSubview(cHdr)
+        iCard.addSubview(lSeg)
         let cSeg = GeekSegmentControl(items: ["2 列", "3 列", "4 列"], selectedIndex: 0)
-        cSeg.onSelect = { [weak self] idx in self?.options.gridColumns = idx + 2; self?.schedulePreviewRender() }
-        lCard.addSubview(cSeg)
+        cSeg.onSelect = { [weak self] idx in self?.options.gridColumns = idx + 2; self?.invalidateCollageEditsAndRender() }
+        iCard.addSubview(cSeg); let d1 = addDiv(in: iCard)
 
-        // 右侧卡片 2：画布参数 & 底色
-        let pCard = GeekCardView(frame: .zero); root.addSubview(pCard)
-        let pHdr = NSTextField(labelWithString: "画布样式"); pHdr.font = .systemFont(ofSize: 11.5, weight: .semibold); pCard.addSubview(pHdr)
-        let gRow = CollageSliderRow(title: "图片间距", min: 0, max: 80, value: options.gapPx)
-        gRow.onChange = { [weak self] v in self?.options.gapPx = v; self?.schedulePreviewRender() }
-        let pRow = CollageSliderRow(title: "外边距", min: 0, max: 100, value: options.padPx)
-        pRow.onChange = { [weak self] v in self?.options.padPx = v; self?.schedulePreviewRender() }
-        let rdRow = CollageSliderRow(title: "圆角弧度", min: 0, max: 40, value: Int(options.cornerRadiusPx))
-        rdRow.onChange = { [weak self] v in self?.options.cornerRadiusPx = CGFloat(v); self?.schedulePreviewRender() }
-        [gRow, pRow, rdRow].forEach { pCard.addSubview($0) }
+        let stHdr = addLbl(in: iCard, "留白与圆角", size: 10.8)
+        let pBar = CollageInlinePresetBar(items: Self.presets.map(\.title), selectedIndex: 1)
+        pBar.onSelect = { [weak self] idx in
+            guard let self, Self.presets.indices.contains(idx) else { return }
+            let p = Self.presets[idx]; self.options.gapPx = p.gap; self.options.padPx = p.pad; self.options.cornerRadiusPx = CGFloat(p.radius)
+            self.syncControlsFromOptions(); self.invalidateCollageEditsAndRender()
+        }
+        iCard.addSubview(pBar)
 
-        let bHdr = NSTextField(labelWithString: "背景底色"); bHdr.font = .systemFont(ofSize: 11.5, weight: .semibold); pCard.addSubview(bHdr)
-        let bg = CollageBgSwatchView(frame: .zero); bg.selected = options.background
-        bg.onSelect = { [weak self] st in self?.options.background = st; self?.schedulePreviewRender() }
-        pCard.addSubview(bg)
+        let gRow = CollageFineSliderRow(title: "间距", min: 0, max: 80, value: options.gapPx, defaultValue: 24)
+        gRow.onChange = { [weak self] v in self?.options.gapPx = v; self?.syncPresetHighlight(); self?.invalidateCollageEditsAndRender() }
+        let pRow = CollageFineSliderRow(title: "边距", min: 0, max: 100, value: options.padPx, defaultValue: 32)
+        pRow.onChange = { [weak self] v in self?.options.padPx = v; self?.syncPresetHighlight(); self?.invalidateCollageEditsAndRender() }
+        let rdRow = CollageFineSliderRow(title: "圆角", min: 0, max: 40, value: Int(options.cornerRadiusPx), defaultValue: 14)
+        rdRow.onChange = { [weak self] v in self?.options.cornerRadiusPx = CGFloat(v); self?.syncPresetHighlight(); self?.invalidateCollageEditsAndRender() }
+        [gRow, pRow, rdRow].forEach { iCard.addSubview($0) }
 
-        let pdfHint = NSTextField(wrappingLabelWithString: "每张素材自动生成独立一页，保留原图清晰度，可在底部素材条悬停调序。")
-        pdfHint.font = .systemFont(ofSize: 11.2, weight: .regular); pCard.addSubview(pdfHint)
+        let bgLbl = addLbl(in: iCard, "底色")
+        let bgTrig = CollageBgTriggerPill(frame: .zero)
+        bgTrig.toolTip = "点击打开极客取色板（2D 色盘 / #HEX / 精选纯色与多款渐变）"
+        bgTrig.onClick = { [weak self] in self?.presentBgColorPopover() }
+        iCard.addSubview(bgTrig)
+        let bgEye = addBtn(in: iCard, "", sym: "eyedropper", style: .subtle, tip: "从屏幕或截图中吸取背景色") { [weak self] in self?.pickBackgroundFromScreen() }
+        let shPill = CollageMiniTogglePill(title: "柔影", isOn: options.cardShadow)
+        shPill.onToggle = { [weak self] on in self?.options.cardShadow = on; self?.invalidateCollageEditsAndRender() }
+        iCard.addSubview(shPill); let d2 = addDiv(in: iCard)
 
-        // 底部主操作按钮组
-        let cpBtn = addBtn(in: root, "复制拼图 (⌘C)", sym: "doc.on.doc", style: .accent) { [weak self] in self?.exportCollage(action: .copy) }
-        let pnBtn = addBtn(in: root, "贴到桌面", sym: "pin", style: .subtle) { [weak self] in self?.exportCollage(action: .pin) }
-        let svBtn = addBtn(in: root, "保存图片 (⌘S)", sym: "square.and.arrow.down", style: .subtle) { [weak self] in self?.exportCollage(action: .save) }
-        let pdBtn = addBtn(in: root, "导出多页 PDF… (⌘S)", sym: "doc.richtext", style: .accent) { [weak self] in self?.exportPDF() }
+        let alLbl = addLbl(in: iCard, "对齐")
+        let alSeg = GeekSegmentControl(items: ["齐平", "居中", "顶齐"], selectedIndex: 0)
+        alSeg.onSelect = { [weak self] idx in self?.options.scaleAlignment = CollageScaleAlignment(rawValue: idx) ?? .uniformFill; self?.invalidateCollageEditsAndRender() }
+        iCard.addSubview(alSeg)
+
+        let asLbl = addLbl(in: iCard, "画幅")
+        let asSeg = GeekSegmentControl(items: ["自动", "16:9", "4:3", "1:1"], selectedIndex: 0)
+        asSeg.onSelect = { [weak self] idx in self?.options.aspectPreset = CollageAspectPreset(rawValue: idx) ?? .auto; self?.invalidateCollageEditsAndRender() }
+        iCard.addSubview(asSeg); let d3 = addDiv(in: iCard)
+
+        let bLbl = addLbl(in: iCard, "角标")
+        let bSeg = GeekSegmentControl(items: ["无", "序号", "对比"], selectedIndex: 0)
+        bSeg.onSelect = { [weak self] idx in self?.options.badge = CollageBadgeStyle(rawValue: idx) ?? .none; self?.invalidateCollageEditsAndRender() }
+        iCard.addSubview(bSeg)
+        let pnSeg = GeekSegmentControl(items: ["无", "1/N", "第N页"], selectedIndex: options.pdfPageNumber.rawValue)
+        pnSeg.onSelect = { [weak self] idx in self?.options.pdfPageNumber = CollagePDFPageNumberStyle(rawValue: idx) ?? .none; self?.schedulePreviewRender() }
+        iCard.addSubview(pnSeg)
+
+        let wLbl = addLbl(in: iCard, "水印")
+        let wSeg = GeekSegmentControl(items: ["关", "角标", "平铺"], selectedIndex: 0)
+        wSeg.onSelect = { [weak self] idx in
+            guard let self else { return }
+            self.options.watermark = CollageWatermarkStyle(rawValue: idx) ?? .none
+            self.layoutUI(); self.invalidateCollageEditsAndRender()
+            if self.options.watermark != .none, let f = self.watermarkField, f.stringValue.isEmpty { self.window?.makeFirstResponder(f) }
+        }
+        iCard.addSubview(wSeg)
+
+        let wmField = NSTextField(frame: .zero); wmField.delegate = self
+        let wmBox = GeekInputBox(frame: NSRect(x: 0, y: 0, width: 206, height: 25), field: wmField, placeholder: "水印文字（留空默认 MSnip）", mono: false)
+        iCard.addSubview(wmBox)
+
+        let pdfHint = NSTextField(wrappingLabelWithString: "点击底部缩略图左下角 ✎ 可在窗内直接裁剪/打码单页；页码与水印以原生矢量写入。")
+        pdfHint.font = .systemFont(ofSize: 10.6, weight: .regular); iCard.addSubview(pdfHint)
+        let dExp = addDiv(in: iCard)
+
+        let cpBtn = addBtn(in: iCard, "复制拼图 (⌘C)", sym: "doc.on.doc", style: .accent) { [weak self] in self?.exportCollage(action: .copy) }
+        let anBtn = addBtn(in: iCard, "标注", sym: "pencil", style: .subtle, tip: "直接在当前窗口内对合成拼图画箭头/红框/裁剪/打码") { [weak self] in self?.openCollageEditor() }
+        let pnBtn = addBtn(in: iCard, "贴图", sym: "pin", style: .subtle, tip: "将合成拼图贴到桌面") { [weak self] in self?.exportCollage(action: .pin) }
+        let svBtn = addBtn(in: iCard, "保存", sym: "square.and.arrow.down", style: .subtle, tip: "保存高清拼图文件 (⌘S)") { [weak self] in self?.exportCollage(action: .save) }
+        let pdBtn = addBtn(in: iCard, "导出多页 PDF… (⌘S)", sym: "doc.richtext", style: .accent) { [weak self] in self?.exportPDF() }
 
         win.contentView = root
-        window = win; rootView = root; canvasView = canvas; stripCard = sCard
-        stripScrollView = sv; stripDocView = doc; stripHeaderLabel = stripHdr
-        addClipBtn = cBtn; addRecentBtn = rBtn; clearBtn = clrBtn; modeSeg = mSeg
-        layoutCard = lCard; layoutHeader = lHdr; layoutSeg = lSeg; colsHeader = cHdr; colsSeg = cSeg
-        paramsCard = pCard; paramsHeader = pHdr; gapRow = gRow; padRow = pRow; radiusRow = rdRow
-        bgHeader = bHdr; bgSwatch = bg; pdfHintLabel = pdfHint
-        copyBtn = cpBtn; pinBtn = pnBtn; saveBtn = svBtn; pdfBtn = pdBtn
+        window = win; rootView = root; topBarView = tBar; topBarDivider = tDiv; titleLabel = tLbl; metaPill = mPill; modeSeg = mSeg
+        canvasView = canvas; stripCard = sCard; stripScrollView = sv; stripDocView = doc; stripDivider = sDiv
+        addClipBtn = cBtn; addRecentBtn = rBtn; clearBtn = clrBtn; inspectorCard = iCard
+        layoutSeg = lSeg; colsSeg = cSeg; div1 = d1; styleHeaderLabel = stHdr; presetBar = pBar
+        gapRow = gRow; padRow = pRow; radiusRow = rdRow; bgLabel = bgLbl; bgTrigger = bgTrig; bgEyedropperBtn = bgEye; shadowPill = shPill; div2 = d2
+        alignLabel = alLbl; alignSeg = alSeg; aspectLabel = asLbl; aspectSeg = asSeg; div3 = d3
+        badgeLabel = bLbl; badgeSeg = bSeg; pdfPageNumSeg = pnSeg; watermarkLabel = wLbl; watermarkSeg = wSeg
+        watermarkField = wmField; watermarkBox = wmBox; pdfHintLabel = pdfHint; divExport = dExp
+        copyBtn = cpBtn; annotateBtn = anBtn; pinBtn = pnBtn; saveBtn = svBtn; pdfBtn = pdBtn
         layoutUI()
-    }
-
-    func reloadFilmstrip() {
-        guard let doc = stripDocView, let sv = stripScrollView else { return }
-        doc.subviews.forEach { $0.removeFromSuperview() }
-        stripHeaderLabel?.stringValue = "素材列表（\(items.count) 张 · 悬停可调序/移除）"
-        let hasItems = !items.isEmpty
-        [copyBtn, pinBtn, saveBtn, pdfBtn, clearBtn].forEach { $0?.isEnabled = hasItems }
-
-        var x: CGFloat = 0
-        for (i, item) in items.enumerated() {
-            let card = CollageFilmstripCardView(index: i, totalCount: items.count, item: item)
-            card.frame = NSRect(x: x, y: 2, width: CollageFilmstripCardView.cardSize.width, height: CollageFilmstripCardView.cardSize.height)
-            card.onInspect = { [weak self] idx in self?.openSourceLightbox(startIndex: idx) }
-            card.onMoveLeft = { [weak self] idx in self?.moveItem(from: idx, to: idx - 1) }
-            card.onMoveRight = { [weak self] idx in self?.moveItem(from: idx, to: idx + 1) }
-            card.onRemove = { [weak self] idx in self?.removeItem(at: idx) }
-            doc.addSubview(card)
-            x += CollageFilmstripCardView.cardSize.width + 8
-        }
-        let addTile = CollageAddTileView(frame: NSRect(x: x, y: 2, width: 64, height: CollageFilmstripCardView.cardSize.height))
-        addTile.onClick = { [weak self] in self?.pickImageFiles() }
-        doc.addSubview(addTile)
-        x += 68
-        doc.frame = NSRect(x: 0, y: 0, width: max(sv.bounds.width, x), height: sv.bounds.height)
-    }
-
-    private func openSourceLightbox(startIndex: Int) {
-        let list = items.map { CollageImageLightbox.Entry(title: $0.title, cgImage: $0.cgImage, scaleFactor: $0.scaleFactor) }
-        lightbox.show(entries: list, startIndex: startIndex, showsCheckerboard: false)
-    }
-
-    private func openCollageLightbox() {
-        let imgs = items.map(\.cgImage), opts = options, refScale = items.last?.scaleFactor ?? 2.0
-        guard !imgs.isEmpty else { return }
-        Task { @MainActor [weak self] in
-            let hd = await Task.detached(priority: .userInitiated) {
-                ImageCollageStitcher.stitch(images: imgs, options: opts, maxRefSide: 2400)
-            }.value
-            guard let self, let hd else { return }
-            let entry = CollageImageLightbox.Entry(title: "\(opts.layout.title)拼图预览", cgImage: hd, scaleFactor: refScale)
-            self.lightbox.show(entries: [entry], startIndex: 0, showsCheckerboard: opts.background == .transparent)
-        }
-    }
-
-    private func moveItem(from: Int, to: Int) {
-        guard items.indices.contains(from), items.indices.contains(to) else { return }
-        items.swapAt(from, to); reloadFilmstrip(); schedulePreviewRender()
-    }
-
-    private func removeItem(at idx: Int) {
-        guard items.indices.contains(idx) else { return }
-        items.remove(at: idx); reloadFilmstrip(); schedulePreviewRender()
-    }
-
-    func schedulePreviewRender() {
-        renderSeq &+= 1
-        let seq = renderSeq
-        let isPDF = (studioMode == .pdfMerge)
-        canvasView?.isPDFMode = isPDF
-        canvasView?.pdfBgStyle = options.background == .transparent ? .white : options.background
-        canvasView?.pdfPageItems = items
-        canvasView?.showsCheckerboard = (options.background == .transparent)
-
-        if isPDF {
-            canvasView?.statusBadgeText = items.isEmpty ? "" : "PDF 预览 · 共 \(items.count) 页（原图无损）"
-            return
-        }
-        let imgs = items.map(\.cgImage), opts = options
-        guard !imgs.isEmpty else {
-            canvasView?.previewImage = nil; canvasView?.statusBadgeText = ""; return
-        }
-        Task { @MainActor [weak self] in
-            let preview = await Task.detached(priority: .userInitiated) {
-                ImageCollageStitcher.stitch(images: imgs, options: opts, maxRefSide: 960)
-            }.value
-            guard let self, self.renderSeq == seq else { return }
-            self.canvasView?.previewImage = preview
-            if let preview {
-                self.canvasView?.statusBadgeText = "\(opts.layout.title) · \(imgs.count) 张 · 预览 \(preview.width)×\(preview.height)"
-            }
-        }
     }
 }

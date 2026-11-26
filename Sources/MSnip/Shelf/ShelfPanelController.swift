@@ -4,7 +4,7 @@ import Foundation
 import MSnipCore
 
 /// 顶部高密度实用暂存条（MSnip Shelf）控制器：
-/// 仅 `98pt` 紧凑高度、零浪费顶栏、右侧 3 行规整工具列与自适应宽度卡片带，兼顾 550ms 悬停防误触、新截图 3s 自动探头与 3 模式切换。
+/// 仅 `98pt` 紧凑高度、零浪费顶栏、右侧 3 行规整工具列与自适应宽度卡片带，兼顾 550ms 顶边悬停呼出与 3 模式切换（截图静默入架不弹窗打扰）。
 @MainActor
 final class ShelfPanelController {
     static let panelHeight: CGFloat = 98.0
@@ -12,8 +12,12 @@ final class ShelfPanelController {
     static let cardGap: CGFloat = 7.0
 
     var onCopyHistory: ((CaptureHistoryEntry) -> Void)?
+    var onEditHistory: ((CaptureHistoryEntry) -> Void)?
     var onPinHistory: ((CaptureHistoryEntry) -> Void)?
     var onOCRHistory: ((CaptureHistoryEntry) -> Void)?
+    var onEditImage: ((CGImage, CGFloat) -> Void)?
+    var onPinImage: ((CGImage, CGFloat) -> Void)?
+    var onOCRImage: ((CGImage, CGFloat) -> Void)?
     var onPinText: ((String) -> Void)?
     var onOpenCollageStudio: (([CaptureHistoryEntry], [(String, CGImage, CGFloat)]) -> Void)?
     var onOpenSettings: (() -> Void)?
@@ -39,6 +43,9 @@ final class ShelfPanelController {
     private var manuallyHidden = false
     private(set) var isVisible = false
     private var activeScreenFrame: NSRect?
+    var hoverGlobalMonitor: Any?
+    var hoverLocalMonitor: Any?
+    private var interactiveActivityToken: NSObjectProtocol?
 
     var triggerMode: TopShelfTriggerMode {
         get { edgeWatcher.triggerMode }
@@ -52,7 +59,7 @@ final class ShelfPanelController {
         edgeWatcher.onTriggerHide = { [weak self] in self?.hide(manual: false) }
         edgeWatcher.hasItemsProvider = { [weak self] in
             guard let self else { return false }
-            return !self.store.mergedItems(historyRing: self.historyRing).isEmpty
+            return !self.historyRing.entries.isEmpty || !self.store.customItems.isEmpty
         }
         edgeWatcher.panelFrameProvider = { [weak self] in self?.panel?.frame }
         edgeWatcher.panelScreenFrameProvider = { [weak self] in self?.activeScreenFrame }
@@ -96,12 +103,9 @@ final class ShelfPanelController {
     func notifyNewCaptureRecorded() {
         if isVisible {
             reloadCards()
-            if triggerMode == .topEdgeHover { edgeWatcher.extendPeek(duration: 3.0) }
             return
         }
-        if triggerMode == .topEdgeHover, !(isSuppressed?() ?? false) {
-            show(on: screenUnderCursor(), peekDuration: 3.0, fromHotkey: false)
-        } else if triggerMode == .alwaysShown && !manuallyHidden {
+        if triggerMode == .alwaysShown && !manuallyHidden {
             show(on: screenUnderCursor(), peekDuration: 0, fromHotkey: false)
         }
     }
@@ -116,24 +120,37 @@ final class ShelfPanelController {
         let targetRect = computePanelFrame(forItemCount: items.count, on: targetScreen)
         layoutSubviews(width: targetRect.width, height: targetRect.height)
         populateCards(items)
+        if interactiveActivityToken == nil && triggerMode != .alwaysShown {
+            let opts: ProcessInfo.ActivityOptions = { if #available(macOS 13.0, *) { return [.userInteractive, .latencyCritical] }; return [.userInitiated, .latencyCritical] }()
+            interactiveActivityToken = ProcessInfo.processInfo.beginActivity(options: opts, reason: "MSnip Top Shelf Hover Tracking")
+        }
+        startVisibleHoverMonitors()
 
         if !isVisible {
             panel.setFrame(targetRect.offsetBy(dx: 0, dy: 14), display: false)
             panel.alphaValue = 0.0; panel.orderFrontRegardless(); isVisible = true
-            NSAnimationContext.runAnimationGroup { ctx in
+            NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = 0.17; ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 panel.animator().setFrame(targetRect, display: true); panel.animator().alphaValue = 1.0
-            }
+            }, completionHandler: { [weak self] in
+                MainActor.assumeIsolated { self?.syncHoverWithCurrentMouse() }
+            })
         } else {
             panel.setFrame(targetRect, display: true); panel.orderFrontRegardless()
+            syncHoverWithCurrentMouse()
         }
         edgeWatcher.startAutoHideWatch(peekDuration: peekDuration, fromHotkey: fromHotkey)
     }
 
     func hide(manual: Bool = false) {
         edgeWatcher.stopTransientTimers()
+        stopVisibleHoverMonitors()
+        if let tok = interactiveActivityToken {
+            ProcessInfo.processInfo.endActivity(tok)
+            interactiveActivityToken = nil
+        }
         if manual { manuallyHidden = true }
-        activeHoveredCard?.clearHover(); activeHoveredCard = nil
+        clearAllHoverStates()
         guard isVisible, let panel else { return }
         isVisible = false
         let endRect = panel.frame.offsetBy(dx: 0, dy: 14)
@@ -192,9 +209,10 @@ final class ShelfPanelController {
         guard panel == nil else { return }
         let initRect = NSRect(x: 0, y: 0, width: 640, height: Self.panelHeight)
         let p = NSPanel(contentRect: initRect, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-        p.level = .statusBar; p.isFloatingPanel = true; p.hidesOnDeactivate = false
+        p.isFloatingPanel = true; p.level = .statusBar; p.hidesOnDeactivate = false
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         p.isOpaque = false; p.backgroundColor = .clear; p.hasShadow = true; p.animationBehavior = .none
+        p.acceptsMouseMovedEvents = true
 
         let ev = NSVisualEffectView(frame: initRect)
         ev.material = .popover; ev.blendingMode = .behindWindow; ev.state = .active
@@ -215,7 +233,10 @@ final class ShelfPanelController {
         let sv = ShelfHorizontalScrollView(frame: .zero)
         sv.drawsBackground = false; sv.borderType = .noBorder
         sv.hasHorizontalScroller = false; sv.hasVerticalScroller = false
-        sv.onScrollOffsetChanged = { [weak self] in self?.updateScrollNavButtons() }
+        sv.onScrollOffsetChanged = { [weak self] in
+            self?.updateScrollNavButtons()
+            self?.syncHoverWithCurrentMouse()
+        }
         let strip = GeekFlippedView(frame: .zero)
         sv.documentView = strip; root.addSubview(sv)
 

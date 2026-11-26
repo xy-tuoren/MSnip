@@ -78,7 +78,7 @@ enum LatexRecognitionService {
             return try makeOutcome(raw: raw, provider: "Mathpix", t0: t0)
 
         case .autoVisionLLM:
-            let chosen = visionProfiles.first(where: { $0.id == config.visionProfileID })
+            let chosen = visionProfiles.first(where: { $0.id == config.visionProfileID && $0.isConfiguredReady })
                 ?? visionProfiles.first(where: { $0.isConfiguredReady })
             guard let profile = chosen, profile.isConfiguredReady else {
                 return await offlineFallback(image: image, t0: t0, notice: "尚未配置视觉大模型或 SimpleTex，当前为离线基础识别（配置后支持复杂分式/积分/矩阵）")
@@ -141,10 +141,9 @@ enum LatexRecognitionService {
             return content
 
         case .anthropicCompatible:
-            var ep = profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-            if ep.isEmpty { ep = "https://api.anthropic.com/v1/messages" }
-            else if !ep.hasSuffix("/messages") { ep = ep.trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/v1/messages" }
-            guard let url = URL(string: ep) else { throw LatexError.invalidEndpoint(ep) }
+            guard let url = LLMProtocolHelpers.resolveAnthropicMessagesURL(profile.endpoint) else {
+                throw LatexError.invalidEndpoint(profile.endpoint)
+            }
             var req = URLRequest(url: url, timeoutInterval: 45); req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.setValue(profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines), forHTTPHeaderField: "x-api-key")
@@ -161,13 +160,14 @@ enum LatexRecognitionService {
 
         case .geminiNative:
             let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-            let useModel = model.isEmpty ? "gemini-2.0-flash" : model
+            let useModel = (model.isEmpty ? "gemini-2.0-flash" : model).addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? model
             let base = profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? "https://generativelanguage.googleapis.com/v1beta"
                 : profile.endpoint.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-            guard let url = URL(string: "\(base)/models/\(useModel):generateContent?key=\(key)") else { throw LatexError.invalidEndpoint(base) }
+            guard let url = URL(string: "\(base)/models/\(useModel):generateContent") else { throw LatexError.invalidEndpoint(base) }
             var req = URLRequest(url: url, timeoutInterval: 45); req.httpMethod = "POST"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            if !key.isEmpty { req.setValue(key, forHTTPHeaderField: "x-goog-api-key") }
             let body: [String: Any] = [
                 "systemInstruction": ["parts": [["text": visionSystemPrompt]]],
                 "contents": [["role": "user", "parts": [["text": userText], ["inline_data": ["mime_type": "image/png", "data": b64]]]]]
@@ -192,9 +192,9 @@ enum LatexRecognitionService {
         }
         let boundary = "MSnip-\(UUID().uuidString)"
         var body = Data()
-        body.append("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"formula.png\"\r\nContent-Type: image/png\r\n\r\n".data(using: .utf8)!)
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"formula.png\"\r\nContent-Type: image/png\r\n\r\n".utf8))
         body.append(pngData)
-        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        body.append(Data("\r\n--\(boundary)--\r\n".utf8))
 
         var req = URLRequest(url: url, timeoutInterval: 30)
         req.httpMethod = "POST"

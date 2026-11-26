@@ -1,6 +1,6 @@
 <div align="center">
 
-# MSnip `v0.9.1`
+# MSnip `v0.9.2`
 
 **Precision screenshots, desktop pins, a top-edge drop shelf, scrolling capture, high-frame-rate recording, offline OCR, and in-place translation — packed into a ~3.5 MB pure-native Swift app. Zero dependencies, MIT open source, no subscriptions.**
 
@@ -77,11 +77,11 @@ MSnip is built strictly on Apple's system frameworks so speed and efficiency sho
 - **1-Click Offline Auto-Redact**: Detects and masks API keys/JWTs, emails, phone numbers, 18-digit IDs, non-loopback IPv4 addresses, and bank cards locally — undoable in one `⌘Z`.
 - **Post-Edit Handles, `⌘C/⌘V/⌘D` Cloning & 100-Step Undo**: Select any shape to adjust corners, endpoints, or step tails; press **`⌘C` / `⌘V`** to copy-paste or **`⌘D`** to duplicate in place (duplicating step badge `①` automatically increments to `②`), backed by a 100-step Copy-on-Write Undo/Redo stack.
 
-### 3. Desktop Pin Workflow, Top Shelf & Multi-Image Comparison
-- **Compact Top Drop Shelf (MSnip Shelf)**: Supports **Hover to Expand** (`0.55s` dwell anti-misfire, `80ms` instant open when dragging files, automatic 3s peek on new captures, click top bar to dismiss), **Hotkey Toggle**, and **Always Shown** modes. At just `98pt` tall with adaptive width (up to 9 cards at once), it supports mouse-wheel horizontal scrolling, click-to-copy, `⌘ + Click` ordered multi-select for collage, drag-out sharing, per-card deletion, and `+ Clipboard`. Menu bar icon supports **Left-Click to open Settings, Right-Click for the action menu**.
-- **Soft Luminous Outer Glow**: Subtle white halo at rest (clear contrast on both dark and light wallpapers) transitioning smoothly to a soft blue glow on hover or focus; adjust live anytime with `⌥ + Scroll` or in Settings.
+### 3. Desktop Pin Workflow, Top Shelf & Collage Studio
+- **Compact Top Drop Shelf (MSnip Shelf)**: Supports **Hover to Expand** (strict top-edge `≤ 1.5pt` `0.55s` dwell anti-misfire, `80ms` instant open when dragging files, silent capture recording without auto-popping, click top bar to dismiss), **Hotkey Toggle**, and **Always Shown** modes. At just `98pt` tall with adaptive width (up to 9 cards at once), it supports mouse-wheel horizontal scrolling, click-to-copy, 1-click `✎` annotate, `⌘ + Click` ordered multi-select for collage, drag-out sharing, per-card deletion, and `+ Clipboard`. Menu bar icon supports **Left-Click to open Settings, Right-Click for the action menu**.
+- **Soft Luminous Outer Glow**: Subtle white halo at rest (clear contrast on both dark and light wallpapers) transitioning smoothly to a soft blue glow on hover or focus; tuned via a continuous `0%–100%` slider in Settings with live pin preview, bidirectionally synced with the selection glow slider and `⌥ + Scroll` on pins.
 - **8-Way Clean Edge & Corner Resizing**: Completely uncluttered at rest; hovering the outer luminous border or any of the 4 corners reveals subtle directional indicators with native macOS resize cursors and aspect-locked scaling.
-- **Multi-Image Collage & PDF Merge Studio**: Open from the Top Shelf (with optional `⌘ + Click` multi-select) or Recent Captures menu. Supports drag-in, add from clipboard/history, reordering, and two clear modes — **Stitch Image** (Horizontal / Vertical / 2–4 Col Grid with live gap, padding, corner radius, and Light/White/Dark/Transparent background) and **Merge Multi-Page PDF** (lossless native CoreGraphics multi-page `.pdf` export with page preview). Oversized collages and long captures auto-scale to fit inside screen bounds while preserving full-resolution pixels underneath.
+- **Multi-Image Collage & PDF Merge Studio**: Open from the Top Shelf (with optional `⌘ + Click` multi-select) or Recent Captures menu. Supports drag-in, add from clipboard/history, reordering, and **embedded in-window annotation editing** for both single images and the stitched collage (preserving vector edits with 1-click reset). Provides two clear modes — **Stitch Image** (Horizontal / Vertical / 2–4 Col Grid, Fill/Center/Top alignment, Auto/16:9/4:3/1:1 aspect presets, live gap/padding/corner radius/card shadow, 2D color picker + screen eyedropper/gradients/transparent backdrop, step badges & watermarks) and **Merge Multi-Page PDF** (lossless native CoreGraphics multi-page `.pdf` export with live margin & page number preview). Oversized collages and long captures auto-scale to fit inside screen bounds while preserving full-resolution pixels underneath.
 - **Unobstructed Floating Bar**: `[ ✥ Drag | ✎ Annotate | OCR | Translate | Copy | ↓ Save | ✕ Close ]` sits outside the image. Includes native Live Text selection directly on the pin, `⌘ + Drag` out as a `.png` file, 1-click `↓` quick-save (`⇧ + Click` Save As), Crop (`C`), Rotate (`R`), Flip (`H`), Click-Through Ghost Mode (`P`), and `8pt` magnetic snapping.
 
 ### 4. Vertical & Horizontal Scrolling Capture (`⌥E` / `L`)
@@ -95,7 +95,7 @@ MSnip is built strictly on Apple's system frameworks so speed and efficiency sho
 - **3 OCR Modes (In-Place Live Text / Dual-Pane / Silent Copy)**: Select text directly on the frozen canvas, open the dual-pane inspector, or switch to **Silent Copy** (dismisses overlay immediately on release and copies recognized text in the background without popping up a window); copy structured tables as **Markdown** or **TSV**.
 - **Silent QR & Barcode Detection**: Scans locked selections in the background for 1-click Open URL or Copy Value.
 - **Paragraph In-Place & Streaming Translation**: Groups natural paragraphs and renders translations back in place (hold to peek original; right-click to switch language). Supports **macOS 15+ Apple Offline Translation**, plus OpenAI, Claude, Gemini, DeepSeek, Tencent, Baidu, Youdao, DeepL, and custom Webhooks with primary/fallback failover.
-- **LaTeX Formula Recognition**: Vision LLMs, SimpleTex, and Mathpix with built-in KaTeX live preview.
+- **LaTeX Formula Recognition**: Vision LLMs, SimpleTex, and Mathpix with built-in offline native WebKit MathML rendering and online KaTeX progressive enhancement.
 
 ### 7. Customizable Shortcuts, CLI & `msnip://` URL Scheme
 - Adaptive Light / Dark / System appearance, 12 customizable global hotkeys + 24 single-key canvas bindings, system/app conflict scanner, optional priority hotkey takeover, secret-stripped JSON config import/export, and 1-click diagnostic reports.

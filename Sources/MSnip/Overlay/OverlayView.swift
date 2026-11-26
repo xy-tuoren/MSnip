@@ -14,9 +14,15 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     let saveMenu = OverlaySaveMenuView()
     let caliperView = OverlayCaliperLayerView()
     let magnifierView = OverlayMagnifierLayerView()
+    let dimSnapView = OverlayDimAndSnapView()
+    let hudPillView = OverlayHudPillView()
+    let shortcutTipsView = OverlayShortcutTipsView()
     var inPlaceOCRView: LiveTextImageView?
     var inPlaceTranslateView: InPlaceTranslationOverlayView?
     var manualToolbarOrigin: NSPoint?
+    var appliedCursorKind: OverlayCursorKind?
+    var lastMagnifierKey: String = ""
+    var cachedTipsTriggerZone: CGRect = .zero
 
     // 外部会话回调
     var onSelectionActivated: ((OverlayView) -> Void)?
@@ -25,7 +31,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var onFinishSave: ((CGImage, CGFloat, CGRect) -> Void)?
     var onFinishSaveToFolder: ((CGImage, CGFloat, String, CGRect) -> Void)?
     var onQuickSaveInPlace: ((CGImage, CGFloat, CGRect) -> Void)?
-    var onFinishPin: ((CGImage, CGFloat, CGPoint, NSScreen, CGRect) -> Void)?
+    var onFinishPin: ((CGImage, CGFloat, CGPoint, NSScreen, CGRect, CGFloat?) -> Void)?
     var onFinishIsolatedWindow: ((CGWindowID, CGFloat, BackdropStyle, Bool, CGPoint, NSScreen) -> Void)?
     var onFinishCopyColor: ((String, RGBAColor, NSPoint) -> Void)?
     var onFinishCopyText: ((String, NSPoint) -> Void)?
@@ -65,7 +71,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     // 取色放大镜、快捷键提示与选区增强状态
     var lastMousePoint: CGPoint?
     var colorCopyFormat: ColorCopyFormat { didSet { syncMagnifierView() } }
-    var showShortcutTips: Bool { didSet { needsDisplay = true } }
+    var showShortcutTips: Bool { didSet { syncShortcutTipsView() } }
     var lastHistorySelection: CGRect?
     var activeSideSlider: OverlaySideSliderMode?
     var isSaveMenuVisible = false
@@ -75,16 +81,17 @@ final class OverlayView: NSView, NSTextFieldDelegate {
             toolbar.cornerRadiusPt = cornerRadiusPt
             sidePills.hasCorner = (cornerRadiusRatio > 0.005 || activeSideSlider == .corner)
             if activeSideSlider == .corner { cornerSlider.ratio = cornerRadiusRatio }
-            if let sel = selection { setNeedsDisplay(selectionDirtyBounds(for: sel)) }
-            else { needsDisplay = true }
+            syncGPUChromeLayers()
+            if (oldValue > 0.005) != (cornerRadiusRatio > 0.005) { needsDisplay = true }
+            else if let sel = selection { setNeedsDisplay(selectionDirtyBounds(for: sel)) }
         }
     }
     var glowStrength: CGFloat = 0 {
         didSet {
             sidePills.hasGlow = (glowStrength > 0.005 || activeSideSlider == .glow)
             if activeSideSlider == .glow { cornerSlider.ratio = glowStrength }
+            syncGPUChromeLayers()
             if let sel = selection { setNeedsDisplay(selectionDirtyBounds(for: sel)) }
-            else { needsDisplay = true }
         }
     }
     var cornerRadiusPt: CGFloat {
@@ -111,7 +118,7 @@ final class OverlayView: NSView, NSTextFieldDelegate {
     var caliperActive = false {
         didSet {
             if oldValue != caliperActive {
-                syncCaliperView(); syncMagnifierView(); needsDisplay = true
+                syncCaliperView(); syncMagnifierView(); syncGPUChromeLayers()
             }
         }
     }
@@ -198,12 +205,14 @@ final class OverlayView: NSView, NSTextFieldDelegate {
 
     override func viewWillMove(toWindow newWindow: NSWindow?) {
         super.viewWillMove(toWindow: newWindow)
-        if newWindow == nil { stopSnapGlide() }
+        if newWindow == nil { stopOverlayVSync() }
     }
 
     // MARK: - Drawing
 
     override func draw(_ dirtyRect: NSRect) {
+        // 未锁定选区期间：暗化遮罩、蓝框、尺寸胶囊、快捷键提示卡、放大镜与卡尺均由独立 GPU 图层承载，零主画布重绘！
+        guard let sel = selection, sel.width >= 1, sel.height >= 1 else { return }
         let clip = dirtyRect.intersection(bounds)
         guard !clip.isNull, clip.width > 0, clip.height > 0,
               let ctx = NSGraphicsContext.current?.cgContext else { return }
@@ -212,50 +221,19 @@ final class OverlayView: NSView, NSTextFieldDelegate {
         defer { ctx.restoreGState() }
         ctx.clip(to: clip)
 
-        if selection == nil && caliperActive {
-            drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
-            return
-        }
-
-        let highlightRect = selection ?? autoSnap.displayedRect ?? hoveredAutoRect
-        let activeRadius = (selection != nil && cornerRadiusPt > 0.5)
-            ? min(cornerRadiusPt, min(selection!.width, selection!.height) * 0.5)
-            : 0
-        drawDimmedMask(ctx: ctx, clip: clip, highlightRect: highlightRect, cornerRadius: activeRadius)
-
-        if selection == nil {
-            if let target = hoveredAutoRect {
-                let disp = autoSnap.displayedRect ?? target
-                if autoSnapDirtyBounds(for: disp).intersects(clip) {
-                    drawAutoSnapChrome(ctx: ctx, displayRect: disp, targetRect: target)
-                }
-            }
-            drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
-            return
-        }
-
-        guard let sel = selection, sel.width >= 1, sel.height >= 1 else {
-            drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
-            return
+        let activeRadius = (cornerRadiusPt > 0.5) ? min(cornerRadiusPt, min(sel.width, sel.height) * 0.5) : 0
+        if activeRadius > 0.5 {
+            drawRoundedDimmedMask(ctx: ctx, clip: clip, highlightRect: sel, cornerRadius: activeRadius)
         }
         drawLockedSelectionBody(ctx: ctx, clip: clip, sel: sel, activeRadius: activeRadius)
-        drawShortcutTipsHUD(ctx: ctx, dirtyRect: clip)
     }
 
-    private func drawDimmedMask(ctx: CGContext, clip: CGRect, highlightRect: CGRect?, cornerRadius: CGFloat) {
+    private func drawRoundedDimmedMask(ctx: CGContext, clip: CGRect, highlightRect hl: CGRect, cornerRadius: CGFloat) {
         ctx.saveGState()
         ctx.setFillColor(NSColor.black.withAlphaComponent(0.46).cgColor)
-        if let hl = highlightRect, hl.width > 0, hl.height > 0 {
-            ctx.addRect(clip.insetBy(dx: -2, dy: -2))
-            if cornerRadius > 0.5 {
-                ctx.addPath(CGPath(roundedRect: hl, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil))
-            } else {
-                ctx.addRect(hl)
-            }
-            ctx.fillPath(using: .evenOdd)
-        } else {
-            ctx.fill(clip)
-        }
+        ctx.addRect(clip.insetBy(dx: -2, dy: -2))
+        ctx.addPath(CGPath(roundedRect: hl, cornerWidth: cornerRadius, cornerHeight: cornerRadius, transform: nil))
+        ctx.fillPath(using: .evenOdd)
         ctx.restoreGState()
     }
 

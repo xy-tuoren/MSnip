@@ -17,7 +17,7 @@ extension AppController {
             }
             return
         }
-        delayedCapture.cancel()
+        if hasDelayedCapture { delayedCapture.cancel() }
         guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
         let effectiveAction: FullScreenCaptureAction = (fromMenu && NSEvent.modifierFlags.contains(.option))
             ? .save

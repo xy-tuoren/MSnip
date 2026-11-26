@@ -17,6 +17,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
     }
 
     var onAppConfigMutated: (((inout AppConfig) -> Void) -> Void)?
+    var onPreviewPinGlow: ((CGFloat) -> Void)?
     var appConfigProvider: (() -> AppConfig)?
     var isPriorityTapActiveProvider: (() -> Bool)?
     var onReapplyHotKeys: (() -> Void)?
@@ -197,7 +198,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         root.addSubview(bar)
 
         bar.addSubview(GeekWindowCloseButton(frame: NSRect(x: 20, y: 15, width: 28, height: 28)))
-        let appVer = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.9.1"
+        let appVer = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.9.2"
         bar.addSubview(GeekBrandTitleView(frame: NSRect(x: 48, y: 0, width: 164, height: 58), version: "v\(appVer)"))
 
         tabSegment = GeekSegmentControl(

@@ -27,10 +27,20 @@ public final class ClipboardFileBox: @unchecked Sendable {
             return existing
         }
         lock.unlock()
-
         guard let pngData = ClipboardImagePromise.encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) else {
             return nil
         }
+        return materializeURL(pngData: pngData)
+    }
+
+    public func materializeURL(pngData: Data) -> URL? {
+        lock.lock()
+        if let existing = cachedURL, FileManager.default.fileExists(atPath: existing.path) {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
+
         let fm = FileManager.default
         // 使用系统临时目录（macOS 下为 /var/folders/.../T/，无论用户名是否含空格均无空格）
         let dir = fm.temporaryDirectory.appendingPathComponent("MSnipClipboard", isDirectory: true)

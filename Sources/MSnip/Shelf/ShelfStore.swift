@@ -110,16 +110,18 @@ final class ShelfStore {
     }
 
     static func loadCardThumbnail(fileURL: URL, maxPixelSize: Int = 224) -> NSImage? {
+        let srcOpts: [CFString: Any] = [kCGImageSourceShouldCache: false]
         let opts: [CFString: Any] = [
+            kCGImageSourceShouldCache: false,
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize,
-            kCGImageSourceShouldCacheImmediately: true
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
         ]
-        guard let src = CGImageSourceCreateWithURL(fileURL as CFURL, nil),
-              let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else {
+        guard let src = CGImageSourceCreateWithURL(fileURL as CFURL, srcOpts as CFDictionary),
+              let rawCG = CGImageSourceCreateThumbnailAtIndex(src, 0, opts as CFDictionary) else {
             return nil
         }
+        let cg = ImageTransform.detachedCopy(rawCG)
         return NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) * 0.5, height: CGFloat(cg.height) * 0.5))
     }
 
@@ -155,8 +157,7 @@ extension ShelfPanelController {
         let thumb: NSImage?, title: String, sub: String, sym: String?, snippet: String?, canOCR: Bool
         switch item {
         case .history(let e):
-            let url = historyRing.fileURL(for: e)
-            thumb = url.flatMap { ShelfStore.loadCardThumbnail(fileURL: $0) } ?? historyRing.menuThumbnail(for: e)
+            thumb = historyRing.shelfThumbnail(for: e)
             title = e.isCollage ? "并排对比" : timeFormatter.string(from: e.createdAt)
             sub = "\(e.pixelWidth)×\(e.pixelHeight)"; sym = "photo"; snippet = nil; canOCR = true
         case .custom(let c):
@@ -174,6 +175,7 @@ extension ShelfPanelController {
         }
         let card = ShelfCardView(item: item, thumbnail: thumb, title: title, subtitle: sub, symbol: sym, textSnippet: snippet, canOCR: canOCR)
         card.onCopy = { [weak self] it in self?.handleCopy(it) }
+        card.onEdit = { [weak self] it in self?.handleEdit(it) }
         card.onPin = { [weak self] it in self?.handlePin(it) }
         card.onOCR = { [weak self] it in self?.handleOCR(it) }
         card.onRemove = { [weak self] it in self?.handleRemove(it) }
@@ -192,13 +194,24 @@ extension ShelfPanelController {
         }
     }
 
+    private func handleEdit(_ item: ShelfCardItem) {
+        switch item {
+        case .history(let e): onEditHistory?(e)
+        case .custom(let c):
+            if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p) {
+                onEditImage?(cg, NSScreen.main?.backingScaleFactor ?? 2.0)
+            }
+        }
+    }
+
     private func handlePin(_ item: ShelfCardItem) {
         switch item {
         case .history(let e): onPinHistory?(e)
         case .custom(let c):
             if c.kind == .text, let txt = c.textContent { onPinText?(txt) }
-            else if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p),
-                    let e = historyRing.record(cgImage: cg, scaleFactor: NSScreen.main?.backingScaleFactor ?? 2.0) { onPinHistory?(e) }
+            else if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p) {
+                onPinImage?(cg, NSScreen.main?.backingScaleFactor ?? 2.0)
+            }
         }
     }
 
@@ -206,8 +219,9 @@ extension ShelfPanelController {
         switch item {
         case .history(let e): onOCRHistory?(e)
         case .custom(let c):
-            if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p),
-               let e = historyRing.record(cgImage: cg, scaleFactor: 2.0) { onOCRHistory?(e) }
+            if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p) {
+                onOCRImage?(cg, NSScreen.main?.backingScaleFactor ?? 2.0)
+            }
         }
     }
 
@@ -231,7 +245,9 @@ extension ShelfPanelController {
     }
 
     private func loadImage(at path: String) -> CGImage? {
-        CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, nil).flatMap { CGImageSourceCreateImageAtIndex($0, 0, nil) }
+        let opts: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let src = CGImageSourceCreateWithURL(URL(fileURLWithPath: path) as CFURL, opts as CFDictionary) else { return nil }
+        return CGImageSourceCreateImageAtIndex(src, 0, opts as CFDictionary)
     }
 
     func screenUnderCursor() -> NSScreen {

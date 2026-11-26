@@ -74,7 +74,7 @@ extension OverlayView {
         case .pin:
             let s = max(1.0, snapshot.scaleFactor)
             let snappedOrigin = CGPoint(x: round(targetRect.minX * s) / s, y: round(targetRect.minY * s) / s)
-            onFinishPin?(baked, snapshot.scaleFactor, snappedOrigin, snapshot.screen, targetRect)
+            onFinishPin?(baked, snapshot.scaleFactor, snappedOrigin, snapshot.screen, targetRect, didAdjustGlow ? glowStrength : nil)
         case .extractText:     onFinishExtractText?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         case .silentOCR:       onFinishSilentOCR?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
         case .recognizeLatex:  onFinishRecognizeLatex?(baked, snapshot.scaleFactor, snapshot.screen, targetRect)
@@ -173,6 +173,7 @@ extension OverlayView {
             let screenOriginTopY = primaryH - snapshot.screen.frame.maxY
             let globalQuartz = CGPoint(x: snapshot.screen.frame.minX + nextLocal.x, y: screenOriginTopY + nextLocal.y)
             CGWarpMouseCursorPosition(globalQuartz)
+            CGAssociateMouseAndMouseCursorPosition(1)
         }
 
         if selection == nil {

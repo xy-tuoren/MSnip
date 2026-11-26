@@ -138,7 +138,7 @@ final class SettingsDockOverlay {
         cardView?.setPane(pane)
         syncPosition()
         guard trackTimer == nil else { return }
-        let timer = Timer(timeInterval: 1.0 / 30.0, repeats: true) { [weak self] _ in
+        let timer = Timer(timeInterval: 0.10, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.syncPosition() }
         }
         RunLoop.main.add(timer, forMode: .common)
@@ -171,12 +171,12 @@ final class SettingsDockOverlay {
         let card = SettingsAccessoryCardView(frame: NSRect(origin: .zero, size: size))
         card.onBackClicked = { [weak self] in
             self?.manuallyDismissed = true
-            self?.hidePanels()
+            self?.stopAndHide()
             self?.onBackRequested?()
         }
         card.onCloseClicked = { [weak self] in
             self?.manuallyDismissed = true
-            self?.hidePanels()
+            self?.stopAndHide()
             self?.onBackRequested?()
         }
         card.onDragStateChanged = { [weak self] dragging in

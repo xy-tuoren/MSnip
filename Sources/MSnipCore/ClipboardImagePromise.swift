@@ -124,17 +124,62 @@ public enum ClipboardImagePromise {
         return rep.tiffRepresentation
     }
 
-    private final class Provider: NSObject, NSPasteboardItemDataProvider {
-        let cgImage: CGImage
+    private final class Provider: NSObject, NSPasteboardItemDataProvider, @unchecked Sendable {
+        private let stateLock = NSLock()
+        private var rawImage: CGImage?
+        private var compactedPNG: Data?
         let scaleFactor: CGFloat
         let fileBox: ClipboardFileBox
         let probe: ClipboardConsumptionProbe?
 
         init(cgImage: CGImage, scaleFactor: CGFloat, fileBox: ClipboardFileBox, probe: ClipboardConsumptionProbe?) {
-            self.cgImage = cgImage
+            self.rawImage = cgImage
             self.scaleFactor = scaleFactor
             self.fileBox = fileBox
             self.probe = probe
+            super.init()
+            scheduleIdleCompaction()
+        }
+
+        /// 空闲 2.5 秒后在后台把未压缩大图（5K 约 58MB）无损压为轻量 PNG 数据并立即释放原始 `CGImage`
+        private func scheduleIdleCompaction() {
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2.5) { [weak self] in
+                guard let self else { return }
+                let imgToCompact: CGImage? = {
+                    self.stateLock.lock(); defer { self.stateLock.unlock() }
+                    return (self.compactedPNG == nil) ? self.rawImage : nil
+                }()
+                guard let img = imgToCompact,
+                      let png = ClipboardImagePromise.encodePNG(cgImage: img, scaleFactor: self.scaleFactor) else { return }
+                self.stateLock.lock()
+                self.compactedPNG = png
+                self.rawImage = nil
+                self.stateLock.unlock()
+            }
+        }
+
+        private func obtainPNGData() -> Data? {
+            stateLock.lock()
+            if let png = compactedPNG { stateLock.unlock(); return png }
+            let img = rawImage
+            stateLock.unlock()
+            guard let img, let png = ClipboardImagePromise.encodePNG(cgImage: img, scaleFactor: scaleFactor) else { return nil }
+            stateLock.lock()
+            compactedPNG = png
+            rawImage = nil
+            stateLock.unlock()
+            return png
+        }
+
+        private func obtainTransientCGImage() -> CGImage? {
+            stateLock.lock()
+            if let img = rawImage { stateLock.unlock(); return img }
+            let png = compactedPNG
+            stateLock.unlock()
+            guard let png else { return nil }
+            let opts: [CFString: Any] = [kCGImageSourceShouldCache: false]
+            guard let src = CGImageSourceCreateWithData(png as CFData, opts as CFDictionary) else { return nil }
+            return CGImageSourceCreateImageAtIndex(src, 0, opts as CFDictionary)
         }
 
         func pasteboard(
@@ -142,31 +187,33 @@ public enum ClipboardImagePromise {
             item: NSPasteboardItem,
             provideDataForType type: NSPasteboard.PasteboardType
         ) {
-            // AppKit 将 setData 数据交给系统剪贴板服务托管且每种类型至多回调一次，无需在进程堆内双份驻留 PNG/TIFF 字节
             if type == .png {
                 probe?.markImageRequested()
-                if let data = ClipboardImagePromise.encodePNG(cgImage: cgImage, scaleFactor: scaleFactor) {
-                    item.setData(data, forType: .png)
-                }
+                if let data = obtainPNGData() { item.setData(data, forType: .png) }
             } else if type == .tiff {
                 probe?.markImageRequested()
-                if let data = ClipboardImagePromise.encodeTIFF(cgImage: cgImage, scaleFactor: scaleFactor) {
+                if let cg = obtainTransientCGImage(),
+                   let data = ClipboardImagePromise.encodeTIFF(cgImage: cg, scaleFactor: scaleFactor) {
                     item.setData(data, forType: .tiff)
                 }
             } else if type == .fileURL {
                 probe?.markImageRequested()
-                if let url = fileBox.materializeURL(cgImage: cgImage, scaleFactor: scaleFactor) {
+                if let png = obtainPNGData(), let url = fileBox.materializeURL(pngData: png) {
                     item.setData(url.dataRepresentation, forType: .fileURL)
                 }
             } else if type == .string {
                 probe?.markStringRequested()
-                if let url = fileBox.materializeURL(cgImage: cgImage, scaleFactor: scaleFactor) {
+                if let png = obtainPNGData(), let url = fileBox.materializeURL(pngData: png) {
                     item.setString(url.path, forType: .string)
                 }
             }
         }
 
         func pasteboardFinishedWithDataProvider(_ pasteboard: NSPasteboard) {
+            stateLock.lock()
+            rawImage = nil
+            compactedPNG = nil
+            stateLock.unlock()
             let id = ObjectIdentifier(self)
             ClipboardImagePromise.lock.lock()
             ClipboardImagePromise.activeProviders.removeValue(forKey: id)

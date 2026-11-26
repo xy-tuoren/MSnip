@@ -34,7 +34,37 @@ struct OCRRecognitionOutput: @unchecked Sendable {
 @available(macOS 13.0, *)
 @MainActor
 enum SharedLiveAnalyzer {
-    static let instance = ImageAnalyzer()
+    private static var cached: ImageAnalyzer?
+    private static var inFlightCount: Int = 0
+    private static var releaseWork: DispatchWorkItem?
+
+    /// 按需懒加载并在闲置 25s 后自动释放 VisionKit / Neural Engine 神经缓冲（省去 ~80–120 MB 常驻脏内存）
+    static var instance: ImageAnalyzer {
+        let inst = cached ?? { let a = ImageAnalyzer(); cached = a; return a }()
+        scheduleIdleRelease()
+        return inst
+    }
+
+    static func analyze(_ image: CGImage, configuration: ImageAnalyzer.Configuration) async throws -> ImageAnalysis {
+        inFlightCount += 1
+        releaseWork?.cancel()
+        defer {
+            inFlightCount = max(0, inFlightCount - 1)
+            if inFlightCount == 0 { scheduleIdleRelease() }
+        }
+        return try await instance.analyze(image, orientation: .up, configuration: configuration)
+    }
+
+    private static func scheduleIdleRelease() {
+        releaseWork?.cancel()
+        let work = DispatchWorkItem {
+            MainActor.assumeIsolated {
+                if inFlightCount == 0 { cached = nil }
+            }
+        }
+        releaseWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 25.0, execute: work)
+    }
 }
 
 /// 高精度离线文字与二维码双管线并行提取引擎：
@@ -168,7 +198,7 @@ enum VisionTextExtractor {
         guard #available(macOS 13.0, *), ImageAnalyzer.isSupported else { return nil }
         var cfg = ImageAnalyzer.Configuration([.text, .machineReadableCode])
         cfg.locales = ["zh-Hans", "zh-Hant", "en-US", "ja-JP"]
-        return (try? await SharedLiveAnalyzer.instance.analyze(cgImage, orientation: .up, configuration: cfg)) as AnyObject?
+        return (try? await SharedLiveAnalyzer.analyze(cgImage, configuration: cfg)) as AnyObject?
     }
 
     private static func performAccurateVisionOCR(

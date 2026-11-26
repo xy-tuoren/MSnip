@@ -158,9 +158,10 @@ extension PinWindow {
         let pxY = max(0, Int((norm.minY * CGFloat(img.height)).rounded()))
         let pxW = max(12, min(img.width - pxX, Int((norm.width * CGFloat(img.width)).rounded())))
         let pxH = max(12, min(img.height - pxY, Int((norm.height * CGFloat(img.height)).rounded())))
-        guard let cropped = img.cropping(to: CGRect(x: pxX, y: pxY, width: pxW, height: pxH)) else {
+        guard let rawCropped = img.cropping(to: CGRect(x: pxX, y: pxY, width: pxW, height: pxH)) else {
             endCropEditing(); return
         }
+        let cropped = ImageTransform.detachedCopy(rawCropped)
         let oldFrame = imageScreenFrame
         endCropEditing()
 

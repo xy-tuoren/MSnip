@@ -36,6 +36,7 @@ struct AppConfig: Codable {
     var pinGlowStrength: CGFloat = 0.45
     var topShelfHoverEnabled: Bool = true
     var topShelfTriggerMode: TopShelfTriggerMode = .topEdgeHover
+    var collageOptions: CollageOptions = CollageOptions()
 
     private enum CodingKeys: String, CodingKey {
         case hotKeyPreset, hotKeysEnabled, forcePriorityHotKeys, globalHotKeyOverrides, customCanvasKeys
@@ -45,7 +46,7 @@ struct AppConfig: Codable {
         case ocrAutoOpenDualPane, ocrPresentation, translateAutoOpenDualPane, ocrAutoCopy
         case exportImageFormat, exportAt1xScale, appearanceMode, terminalPasteAdaptEnabled
         case filenameTemplate, soundFeedbackEnabled, backdropAspectRatio, backdropWatermark
-        case delayedCaptureSeconds, fullScreenCaptureAction, pinGlowStrength, topShelfHoverEnabled, topShelfTriggerMode
+        case delayedCaptureSeconds, fullScreenCaptureAction, pinGlowStrength, topShelfHoverEnabled, topShelfTriggerMode, collageOptions
     }
 
     init() {}
@@ -102,6 +103,7 @@ struct AppConfig: Codable {
         topShelfTriggerMode = (try? c.decodeIfPresent(TopShelfTriggerMode.self, forKey: .topShelfTriggerMode))
             ?? (legacyShelfHover ? .topEdgeHover : .manualOnly)
         topShelfHoverEnabled = (topShelfTriggerMode != .manualOnly)
+        collageOptions = (try? c.decodeIfPresent(CollageOptions.self, forKey: .collageOptions)) ?? CollageOptions()
     }
 
     func encode(to encoder: Encoder) throws {
@@ -138,6 +140,7 @@ struct AppConfig: Codable {
         try c.encode(min(1.0, max(0.0, pinGlowStrength)), forKey: .pinGlowStrength)
         try c.encode(topShelfTriggerMode != .manualOnly, forKey: .topShelfHoverEnabled)
         try c.encode(topShelfTriggerMode, forKey: .topShelfTriggerMode)
+        try c.encode(collageOptions, forKey: .collageOptions)
     }
 
     func activeCombo(for action: GlobalHotKeyAction) -> KeyCombo? {

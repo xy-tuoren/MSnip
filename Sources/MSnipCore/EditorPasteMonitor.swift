@@ -25,6 +25,22 @@ public final class EditorPasteMonitor {
 
     public init() {}
 
+    deinit {
+        if let obs = axObserver {
+            if let appEl = axAppElement {
+                AXObserverRemoveNotification(obs, appEl, kAXFocusedUIElementChangedNotification as CFString)
+            }
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .commonModes)
+        }
+        if let tap = eventTap {
+            CGEvent.tapEnable(tap: tap, enable: false)
+            CFMachPortInvalidate(tap)
+        }
+        if let src = eventTapSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), src, .commonModes)
+        }
+    }
+
     /// 启动对指定编辑器进程的按需焦点监听与 `⌘V` 被动感应（未授权辅助功能时静默跳过）
     public func start(forPID pid: pid_t) {
         guard AXIsProcessTrusted(), pid > 0 else {
@@ -159,7 +175,8 @@ public final class EditorPasteMonitor {
                     monitor?.onCommandVPressed?()
                 }
             }
-        } else {
+        } else if mods.contains(.maskCommand) && !isRepeat {
+            // 仅在按下 ⌘ 组合键（如 ⌘C / ⌘X 等可能改写剪贴板的快捷键）时通知复核，普通打字零唤醒、零 IPC
             DispatchQueue.main.async { [weak monitor] in
                 monitor?.onOtherKeyPressed?()
             }

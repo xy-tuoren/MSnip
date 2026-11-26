@@ -46,7 +46,7 @@ extension OverlayView {
         let opt = flags.contains(.option)
         let letter = ansiLetter(for: event.keyCode) ?? (event.charactersIgnoringModifiers?.lowercased() ?? "")
 
-        if event.keyCode == 49 { if dragOp != nil { spacePressed = true }; return }
+        if event.keyCode == 49 { if dragOp != nil || selection != nil { spacePressed = true }; return }
         if event.keyCode == 53 {
             if event.cgEvent?.getIntegerValueField(.eventSourceUserData) == OverlayMenuFocusGuard.syntheticEscMagic { return }
             handleEscapeStepBack(); return

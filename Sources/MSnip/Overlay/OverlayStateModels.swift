@@ -50,8 +50,12 @@ struct OverlayAutoSnapState {
     var querySeq: UInt64 = 0
     var appliedSeq: UInt64 = 0
     var cancelToken: UInt64 = 0
-    var animTimer: Timer?
-    var displayLink: AnyObject?
+    var lastQueryDispatchUptime: TimeInterval = 0
+    var settleTimer: Timer?
+    var isGliding: Bool = false
+    var vsyncTimer: Timer?
+    var vsyncLink: AnyObject?
+    var lastPolledScreenPoint: CGPoint?
 
     func hoveredRect(hasSelection: Bool) -> CGRect? {
         guard !hasSelection, stack.indices.contains(index) else { return nil }
@@ -101,6 +105,8 @@ final class OverlayWindow: NSPanel {
         host.layer?.contentsGravity = .resize
         host.layer?.magnificationFilter = .nearest
         host.layer?.contentsScale = max(1.0, contentView.snapshot.scaleFactor)
+        contentView.dimSnapView.frame = host.bounds
+        host.addSubview(contentView.dimSnapView)
         contentView.frame = host.bounds
         contentView.wantsLayer = true
         contentView.layer?.isOpaque = false
@@ -111,69 +117,4 @@ final class OverlayWindow: NSPanel {
     override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
-}
-
-/// 独立 GPU 图层承载的 120fps 零全屏重绘光标放大镜视图（彻底隔离放大镜移动与全屏主画布脏区）
-final class OverlayMagnifierLayerView: NSView {
-    weak var ownerOverlay: OverlayView?
-    override var isFlipped: Bool { true }
-
-    init() {
-        super.init(frame: NSRect(x: 0, y: 0, width: OverlayView.loupeCardW, height: OverlayView.loupeCardH))
-        wantsLayer = true
-        layer?.masksToBounds = false
-        layer?.shadowColor = NSColor.black.cgColor
-        layer?.shadowOpacity = 0.22
-        layer?.shadowRadius = 10
-        layer?.shadowOffset = CGSize(width: 0, height: 4)
-        isHidden = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError() }
-
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-
-    override func draw(_ dirtyRect: NSRect) {
-        guard let ctx = NSGraphicsContext.current?.cgContext,
-              let owner = ownerOverlay else { return }
-        owner.renderMagnifierContent(in: ctx, cardRect: bounds)
-    }
-}
-
-/// 覆盖层顶部坐标/状态胶囊绘制扩展
-extension OverlayView {
-    private static let sharedHudPillAttrs: [NSAttributedString.Key: Any] = [
-        .font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .semibold),
-        .foregroundColor: MSnipUITheme.inkPrimary
-    ]
-
-    func drawHUDPill(ctx: CGContext, anchorRect: CGRect, text: String) {
-        let nsText = text as NSString
-        let textSize = nsText.size(withAttributes: Self.sharedHudPillAttrs)
-        let badgeW = ceil(textSize.width + 16)
-        let badgeH: CGFloat = 24
-        let badgeX = round(min(max(8, anchorRect.minX), bounds.width - badgeW - 8))
-        let badgeY = round(anchorRect.minY >= (badgeH + 10) ? (anchorRect.minY - badgeH - 7) : (anchorRect.minY + 7))
-        let badgeRect = CGRect(x: badgeX, y: badgeY, width: badgeW, height: badgeH)
-
-        ctx.saveGState()
-        let pill = CGPath(roundedRect: badgeRect, cornerWidth: 6.0, cornerHeight: 6.0, transform: nil)
-        ctx.setShadow(offset: CGSize(width: 0, height: 2), blur: 6, color: NSColor.black.withAlphaComponent(0.18).cgColor)
-        ctx.setFillColor(MSnipUITheme.cardBg.cgColor)
-        ctx.addPath(pill)
-        ctx.fillPath()
-        ctx.restoreGState()
-
-        ctx.saveGState()
-        ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor)
-        ctx.setLineWidth(1.0)
-        ctx.addPath(pill)
-        ctx.strokePath()
-        nsText.draw(
-            at: CGPoint(x: round(badgeRect.minX + 8), y: round(badgeRect.minY + (badgeH - textSize.height) * 0.5)),
-            withAttributes: Self.sharedHudPillAttrs
-        )
-        ctx.restoreGState()
-    }
 }

@@ -4,6 +4,13 @@ import CoreGraphics
 import Foundation
 import MSnipCore
 
+/// MSnip 自身可见窗口与内部卡片/控件的零 IPC 预快照（Quartz 全局坐标）
+struct SelfWindowsSnapshot: Sendable {
+    let windowBoundsByID: [CGWindowID: CGRect]
+    let subviewRects: [CGRect]
+    static let empty = SelfWindowsSnapshot(windowBoundsByID: [:], subviewRects: [])
+}
+
 /// 系统程序坞（Dock）与顶部菜单栏的预索引几何快照（Quartz 全局坐标）
 struct SystemChromeSnapshot {
     let dockBarRect: CGRect?
@@ -238,5 +245,47 @@ enum RegionAXPreindexer {
         var pt = CGPoint.zero, sz = CGSize.zero
         guard AXValueGetValue(posObj as! AXValue, .cgPoint, &pt), AXValueGetValue(sizeObj as! AXValue, .cgSize, &sz) else { return nil }
         return CGRect(origin: pt, size: sz)
+    }
+
+    /// 在 `@MainActor` 抓屏瞬间直接提取 MSnip 自身可见窗口（如设置窗、拼图窗、OCR 窗、贴图窗）及内部有界控件（0.02ms 纯内存，免自进程 AX 死锁）
+    @MainActor
+    static func captureSelfWindows(primaryScreenHeight: CGFloat) -> SelfWindowsSnapshot {
+        var winMap: [CGWindowID: CGRect] = [:]
+        var rects: [CGRect] = []
+        func toQuartz(_ sr: NSRect) -> CGRect {
+            CGRect(x: sr.minX, y: primaryScreenHeight - sr.maxY, width: sr.width, height: sr.height)
+        }
+        for win in NSApp.windows where win.isVisible && win.alphaValue > 0.05 {
+            guard win.windowNumber > 0, let winID = CGWindowID(exactly: win.windowNumber) else { continue }
+            if win is OverlayWindow || win.level.rawValue >= NSWindow.Level.statusBar.rawValue { continue }
+            let screenWinFrame = (win as? PinWindow)?.imageScreenFrame ?? win.frame
+            guard screenWinFrame.width >= 24, screenWinFrame.height >= 24 else { continue }
+            let qWin = toQuartz(screenWinFrame)
+            winMap[winID] = qWin
+            guard !(win is PinWindow), let root = win.contentView else { continue }
+            collectVisualSubviewRects(in: root, window: win, windowQuartz: qWin, toQuartz: toQuartz, into: &rects)
+        }
+        return SelfWindowsSnapshot(windowBoundsByID: winMap, subviewRects: rects)
+    }
+
+    @MainActor
+    private static func collectVisualSubviewRects(
+        in view: NSView, window: NSWindow, windowQuartz: CGRect,
+        toQuartz: (NSRect) -> CGRect, into out: inout [CGRect]
+    ) {
+        guard !view.isHidden, view.alphaValue > 0.05, out.count < 200 else { return }
+        let isPureLayoutWrapper = (view is NSScrollView) || (view is NSClipView) || (view is NSTextField)
+            || (view is GeekFlippedView) || (view === window.contentView)
+        if !isPureLayoutWrapper && view.bounds.width >= 18 && view.bounds.height >= 16 {
+            let inWin = view.convert(view.bounds, to: nil).intersection(window.contentView?.bounds ?? .zero)
+            if !inWin.isNull && inWin.width >= 18 && inWin.height >= 16 {
+                let q = toQuartz(window.convertToScreen(inWin)).intersection(windowQuartz)
+                let areaRatio = (q.width * q.height) / max(1, windowQuartz.width * windowQuartz.height)
+                if !q.isNull && areaRatio < 0.94 { out.append(q) }
+            }
+        }
+        for sub in view.subviews {
+            collectVisualSubviewRects(in: sub, window: window, windowQuartz: windowQuartz, toQuartz: toQuartz, into: &out)
+        }
     }
 }

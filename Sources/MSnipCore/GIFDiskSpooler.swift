@@ -3,9 +3,9 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
-/// 基于 LZ4 磁盘流式暂存的 GIF 帧缓冲池：
-/// 录制期间内存中仅保留单帧复用字节缓冲与 40B/帧偏移索引，彻底消除驻留数百张 `CGImage` 造成的内存峰值。
-final class GIFDiskSpooler {
+/// 基于 LZ4 磁盘流式暂存的线程安全 GIF 帧缓冲池：
+/// 录制期间内存中仅保留单帧复用字节缓冲与 40B/帧偏移索引，彻底消除驻留数百张 `CGImage` 造成的内存峰值，支持安全并发取消。
+final class GIFDiskSpooler: @unchecked Sendable {
     private struct FrameMeta {
         let offset: UInt64
         let byteCount: Int
@@ -19,31 +19,32 @@ final class GIFDiskSpooler {
 
     let spoolFileURL: URL
     let maxLongSide: Int
+    private let lock = NSLock()
+    private var isCancelled = false
     private var metaList: [FrameMeta] = []
     private var scratchRGBA: [UInt8] = []
     private var writeHandle: FileHandle?
     private var writeOffset: UInt64 = 0
 
-    var frameCount: Int { metaList.count }
-    var lastFrameTime: TimeInterval? { metaList.last?.time }
+    var frameCount: Int { lock.lock(); defer { lock.unlock() }; return metaList.count }
+    var lastFrameTime: TimeInterval? { lock.lock(); defer { lock.unlock() }; return metaList.last?.time }
 
     init(spoolFileURL: URL, maxLongSide: Int = GIFDiskSpooler.defaultMaxLongSide) {
         self.spoolFileURL = spoolFileURL
         self.maxLongSide = max(320, maxLongSide)
     }
 
-    deinit {
-        cleanup()
-    }
+    deinit { cleanup() }
 
     func append(_ src: CGImage, elapsed: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isCancelled, src.width >= 2, src.height >= 2 else { return false }
+
         let longSide = max(src.width, src.height)
-        guard src.width >= 2, src.height >= 2 else { return false }
-        let outW: Int
-        let outH: Int
+        let outW: Int, outH: Int
         if longSide <= maxLongSide {
-            outW = src.width
-            outH = src.height
+            outW = src.width; outH = src.height
         } else {
             let ratio = Double(maxLongSide) / Double(longSide)
             outW = max(16, Int((Double(src.width) * ratio).rounded()) & ~1)
@@ -51,9 +52,7 @@ final class GIFDiskSpooler {
         }
 
         let rawLen = outW * outH * 4
-        if scratchRGBA.count != rawLen {
-            scratchRGBA = [UInt8](repeating: 0, count: rawLen)
-        }
+        if scratchRGBA.count != rawLen { scratchRGBA = [UInt8](repeating: 0, count: rawLen) }
         let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         let rendered: Bool = scratchRGBA.withUnsafeMutableBytes { buf in
             guard let base = buf.baseAddress,
@@ -97,18 +96,26 @@ final class GIFDiskSpooler {
     }
 
     func finalizeGIF(to outputURL: URL, totalElapsed: TimeInterval) -> URL? {
-        let frames = metaList
-        try? writeHandle?.close()
-        writeHandle = nil
-        metaList.removeAll()
-        scratchRGBA.removeAll(keepingCapacity: false)
-        defer { cleanup() }
+        let frames: [FrameMeta] = {
+            lock.lock()
+            defer { lock.unlock() }
+            if isCancelled { return [] }
+            let copy = metaList
+            try? writeHandle?.close(); writeHandle = nil
+            metaList.removeAll()
+            scratchRGBA.removeAll(keepingCapacity: false)
+            return copy
+        }()
+        defer { cleanup(markCancelled: false) }
 
         guard !frames.isEmpty,
               let readHandle = try? FileHandle(forReadingFrom: spoolFileURL),
               let dest = CGImageDestinationCreateWithURL(
                   outputURL as CFURL, UTType.gif.identifier as CFString, frames.count, nil
-              ) else { return nil }
+              ) else {
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
         defer { try? readHandle.close() }
 
         let fileProps: [CFString: Any] = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]]
@@ -116,6 +123,9 @@ final class GIFDiskSpooler {
         let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
 
         for i in frames.indices {
+            let cancelled: Bool = { lock.lock(); defer { lock.unlock() }; return isCancelled }()
+            if cancelled { try? FileManager.default.removeItem(at: outputURL); return nil }
+
             let ok: Bool = autoreleasepool {
                 let m = frames[i]
                 guard (try? readHandle.seek(toOffset: m.offset)) != nil,
@@ -133,9 +143,7 @@ final class GIFDiskSpooler {
                           provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent
                       ) else { return false }
 
-                let rawDelay = (i + 1 < frames.count)
-                    ? (frames[i + 1].time - m.time)
-                    : max(0.10, totalElapsed - m.time)
+                let rawDelay = (i + 1 < frames.count) ? (frames[i + 1].time - m.time) : max(0.10, totalElapsed - m.time)
                 let clampedDelay = min(1.5, max(0.06, rawDelay))
                 let frameProps: [CFString: Any] = [
                     kCGImagePropertyGIFDictionary: [
@@ -146,16 +154,25 @@ final class GIFDiskSpooler {
                 CGImageDestinationAddImage(dest, cg, frameProps as CFDictionary)
                 return true
             }
-            if !ok { return nil }
+            if !ok { try? FileManager.default.removeItem(at: outputURL); return nil }
         }
-        return CGImageDestinationFinalize(dest) ? outputURL : nil
+        let finalized = CGImageDestinationFinalize(dest)
+        let cancelledEnd: Bool = { lock.lock(); defer { lock.unlock() }; return isCancelled }()
+        if !finalized || cancelledEnd {
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+        return outputURL
     }
 
-    func cleanup() {
+    func cleanup(markCancelled: Bool = true) {
+        lock.lock()
+        if markCancelled { isCancelled = true }
         try? writeHandle?.close()
         writeHandle = nil
         metaList.removeAll()
         scratchRGBA.removeAll(keepingCapacity: false)
+        lock.unlock()
         try? FileManager.default.removeItem(at: spoolFileURL)
     }
 }

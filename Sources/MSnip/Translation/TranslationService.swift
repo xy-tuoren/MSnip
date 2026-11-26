@@ -69,6 +69,9 @@ final class TranslationService {
             let ms = Int(((ProcessInfo.processInfo.systemUptime - t0) * 1000).rounded())
             return RunResult(translatedText: out, providerName: primary.name, usedFallback: false, elapsedMs: ms)
         } catch {
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                throw error
+            }
             if let fbID = settings.fallbackProfileID,
                fbID != primary.id,
                let fb = settings.profiles.first(where: { $0.id == fbID && $0.isEnabled && $0.isConfiguredReady }) {
@@ -99,6 +102,9 @@ final class TranslationService {
             let res = try await runBatch(lines: lines, target: target, profile: primary, hostWindow: hostWindow)
             return (res, primary.name)
         } catch {
+            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
+                throw error
+            }
             if let fbID = settings.fallbackProfileID,
                fbID != primary.id,
                let fb = settings.profiles.first(where: { $0.id == fbID && $0.isEnabled && $0.isConfiguredReady }) {

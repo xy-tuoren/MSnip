@@ -241,10 +241,54 @@ func testV031Features() {
     } else { check(false, "网格透明底拼图不应失败") }
     let pdfURL = FileManager.default.temporaryDirectory.appendingPathComponent("msnip-test-merge-\(UUID().uuidString).pdf")
     defer { try? FileManager.default.removeItem(at: pdfURL) }
-    let pdfOK = ImageCollageStitcher.exportMultiPagePDF(images: [c1, c2, c3], padPx: 16, background: .white, to: pdfURL)
+    let pdfOK = ImageCollageStitcher.exportMultiPagePDF(
+        images: [c1, c2, c3], padPx: 16, background: .gradient,
+        watermark: .tiled, watermarkText: "@MSnip", pageNumber: .fraction, to: pdfURL
+    )
     let pdfBytes = (try? Data(contentsOf: pdfURL)) ?? Data()
     check(pdfOK && pdfBytes.count > 200 && String(data: pdfBytes.prefix(5), encoding: .ascii) == "%PDF-",
-          "多图合并 PDF 应输出有效原生 PDF 文件，字节数: \(pdfBytes.count)")
+          "多图合并 PDF（含极光渐变+矢量页码+斜向水印）应输出有效原生 PDF 文件，字节数: \(pdfBytes.count)")
+
+    // 15) 极光渐变衬底 + Before/After 角标 + 水印渲染验证
+    let proOpts = CollageOptions(
+        layout: .horizontal, gapPx: 20, padPx: 32, cornerRadiusPx: 14,
+        background: .gradient, cardShadow: false, badge: .beforeAfter,
+        watermark: .corner, watermarkText: "MSnip Pro"
+    )
+    if let proImg = ImageCollageStitcher.stitch(images: [c1, c2], options: proOpts) {
+        check(proImg.width == 32 * 2 + 200 * 2 + 20 && proImg.height == 32 * 2 + 120,
+              "极光渐变+对比角标+水印拼图尺寸应精准对齐，实际: \(proImg.width)x\(proImg.height)")
+    } else { check(false, "极光渐变+对比角标+水印拼图不应失败") }
+    check(CollagePDFPageNumberStyle.fraction.label(index: 1, total: 5) == "2 / 5"
+          && CollagePDFPageNumberStyle.chinese.label(index: 0, total: 3) == "第 1 页"
+          && CollagePDFPageNumberStyle.none.label(index: 0, total: 3) == nil,
+          "PDF 矢量页码格式化应准确")
+
+    // 16) PixelSampler 8-bit 灰度图防越界采样 & ImageTransform.detachedCopy 独立裁剪校验
+    let grayCS = CGColorSpaceCreateDeviceGray()
+    if let gCtx = CGContext(data: nil, width: 64, height: 48, bitsPerComponent: 8, bytesPerRow: 64, space: grayCS, bitmapInfo: CGImageAlphaInfo.none.rawValue) {
+        gCtx.setFillColor(gray: 0.75, alpha: 1.0)
+        gCtx.fill(CGRect(x: 0, y: 0, width: 64, height: 48))
+        if let grayImg = gCtx.makeImage() {
+            let gs = PixelSampler(cgImage: grayImg)
+            let cornerRGB = gs.sampleRGB(px: 63, py: 47)
+            check(cornerRGB.0 >= 180 && cornerRGB.0 <= 205 && cornerRGB.0 == cornerRGB.1 && cornerRGB.1 == cornerRGB.2,
+                  "8-bit 单通道灰度图右下角采样不应越界且亮度应准确，实际: \(cornerRGB)")
+        }
+    }
+    if let sub = c1.cropping(to: CGRect(x: 10, y: 10, width: 40, height: 30)) {
+        let detached = ImageTransform.detachedCopy(sub)
+        check(detached.width == 40 && detached.height == 30, "detachedCopy 应保留精确像素尺寸")
+    }
+
+    // 17) HSV ↔ RGB 互转、无井号 HEX 解析与自定义底色/多渐变拼图渲染
+    let coral = ColorCopyFormat.hsvToRGB(h: 12, s: 0.72, v: 0.96)
+    let backHSV = ColorCopyFormat.rgbToHSV(r: Int(coral.r), g: Int(coral.g), b: Int(coral.b))
+    check(abs(backHSV.h - 12) <= 2 && abs(backHSV.s - 72) <= 2 && abs(backHSV.v - 96) <= 2, "HSV ↔ RGB 往返转换应准确，实际: \(backHSV)")
+    check(RGBAColor.parseColorString("1E293B") == RGBAColor(0x1E, 0x29, 0x3B), "无 # 前缀 6 位 HEX 应可解析")
+    let customBgOpts = CollageOptions(padPx: 20, background: .lightGray, customBackgroundColor: RGBAColor(0x1E, 0x29, 0x3B))
+    check(customBgOpts.effectiveIsDarkBackground && ImageCollageStitcher.stitch(images: [c1, c2], options: customBgOpts) != nil,
+          "自定义深色背景应自动判定为暗色并成功合成拼图")
 }
 
 private func makeSolidTestImage(w: Int, h: Int, r: CGFloat, g: CGFloat, b: CGFloat) -> CGImage {

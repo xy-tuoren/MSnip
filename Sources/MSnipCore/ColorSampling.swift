@@ -67,6 +67,29 @@ public enum ColorCopyFormat: String, CaseIterable, Codable, Sendable {
         return (Int(hDeg.rounded()) % 360, Int((s * 100.0).rounded()), Int((maxC * 100.0).rounded()))
     }
 
+    /// 将 HSV (`h: 0...360`, `s: 0...1`, `v: 0...1`) 转换为 8-bit `RGBAColor`
+    public static func hsvToRGB(h: Double, s: Double, v: Double) -> RGBAColor {
+        let ch = ((h.truncatingRemainder(dividingBy: 360.0)) + 360.0).truncatingRemainder(dividingBy: 360.0)
+        let cs = min(1.0, max(0.0, s)), cv = min(1.0, max(0.0, v))
+        let c = cv * cs
+        let x = c * (1.0 - abs((ch / 60.0).truncatingRemainder(dividingBy: 2.0) - 1.0))
+        let m = cv - c
+        let (r1, g1, b1): (Double, Double, Double)
+        switch ch {
+        case 0..<60:    (r1, g1, b1) = (c, x, 0)
+        case 60..<120:  (r1, g1, b1) = (x, c, 0)
+        case 120..<180: (r1, g1, b1) = (0, c, x)
+        case 180..<240: (r1, g1, b1) = (0, x, c)
+        case 240..<300: (r1, g1, b1) = (x, 0, c)
+        default:        (r1, g1, b1) = (c, 0, x)
+        }
+        return RGBAColor(
+            UInt8(min(255, max(0, Int(((r1 + m) * 255.0).rounded())))),
+            UInt8(min(255, max(0, Int(((g1 + m) * 255.0).rounded())))),
+            UInt8(min(255, max(0, Int(((b1 + m) * 255.0).rounded()))))
+        )
+    }
+
     private static func computeHueDegrees(rf: Double, gf: Double, bf: Double, maxC: Double, delta: Double) -> Double {
         var raw: Double
         if maxC == rf {
@@ -94,21 +117,16 @@ public extension RGBAColor {
     /// 解析剪贴板中的 `#RRGGBB` / `#RGB` / `rgb(r, g, b)` 色值文本（供 `⌘2` 一键生成色彩贴图卡）
     static func parseColorString(_ raw: String) -> RGBAColor? {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.count >= 4, trimmed.count <= 32 else { return nil }
+        guard trimmed.count >= 3, trimmed.count <= 32 else { return nil }
 
-        if trimmed.hasPrefix("#") {
-            let hex = String(trimmed.dropFirst())
-            if hex.count == 6, let val = UInt32(hex, radix: 16) {
-                return RGBAColor(UInt8((val >> 16) & 0xFF), UInt8((val >> 8) & 0xFF), UInt8(val & 0xFF))
-            }
-            if hex.count == 3, let val = UInt32(hex, radix: 16) {
-                let r = UInt8(((val >> 8) & 0xF) * 17)
-                let g = UInt8(((val >> 4) & 0xF) * 17)
-                let b = UInt8((val & 0xF) * 17)
-                return RGBAColor(r, g, b)
-            }
-            return nil
+        let hexCandidate = trimmed.hasPrefix("#") ? String(trimmed.dropFirst()) : trimmed
+        if hexCandidate.count == 6, hexCandidate.allSatisfy(\.isHexDigit), let val = UInt32(hexCandidate, radix: 16) {
+            return RGBAColor(UInt8((val >> 16) & 0xFF), UInt8((val >> 8) & 0xFF), UInt8(val & 0xFF))
         }
+        if hexCandidate.count == 3, hexCandidate.allSatisfy(\.isHexDigit), let val = UInt32(hexCandidate, radix: 16) {
+            return RGBAColor(UInt8(((val >> 8) & 0xF) * 17), UInt8(((val >> 4) & 0xF) * 17), UInt8((val & 0xF) * 17))
+        }
+        if trimmed.hasPrefix("#") { return nil }
 
         let lower = trimmed.lowercased()
         if lower.hasPrefix("rgb("), lower.hasSuffix(")") {

@@ -194,7 +194,8 @@ enum CloudAPITranslator {
 
     static func splitPreservingCount(_ text: String, expected: [String]) -> [String] {
         if expected.count <= 1 { return [text.trimmingCharacters(in: .whitespacesAndNewlines)] }
-        let parts = text.components(separatedBy: .newlines)
+        let normalized = text.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
+        let parts = normalized.components(separatedBy: "\n")
         if parts.count == expected.count { return parts }
         var out = expected
         for i in 0..<min(out.count, parts.count) { out[i] = parts[i] }

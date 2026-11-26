@@ -12,7 +12,7 @@ final class OverlaySession {
         case saved(CGImage, CGFloat)
         case quickSaved(CGImage, CGFloat)
         case savedToFolder(CGImage, CGFloat, String)
-        case pinned(CGImage, CGFloat, CGPoint, NSScreen)
+        case pinned(CGImage, CGFloat, CGPoint, NSScreen, CGFloat?)
         case isolatedWindow(CGWindowID, CGFloat, BackdropStyle, Bool, CGPoint, NSScreen)
         case copiedColor(String, RGBAColor, NSPoint)
         case copiedCoordinate(String, NSPoint)
@@ -46,6 +46,7 @@ final class OverlaySession {
     private var views: [OverlayView] = []
     private weak var activeView: OverlayView?
     private let focusGuard = OverlayMenuFocusGuard()
+    private var interactiveActivityToken: NSObjectProtocol?
     private var finished = false
 
     func start(
@@ -71,6 +72,8 @@ final class OverlaySession {
         pinGlowStrength: CGFloat = 0.45
     ) {
         let mouse = NSEvent.mouseLocation
+        let actOpts: ProcessInfo.ActivityOptions = { if #available(macOS 13.0, *) { return [.userInteractive, .latencyCritical] }; return [.userInitiated, .latencyCritical] }()
+        interactiveActivityToken = ProcessInfo.processInfo.beginActivity(options: actOpts, reason: "MSnip Interactive Overlay Capture")
         var targetWindowToFocus: OverlayWindow?
 
         for snap in snapshots {
@@ -151,9 +154,9 @@ final class OverlaySession {
                 Self.rememberSelection(rect, on: snap.displayID)
                 self?.finish(.quickSaved(img, scale))
             }
-            view.onFinishPin = { [weak self] img, scale, origin, screen, rect in
+            view.onFinishPin = { [weak self] img, scale, origin, screen, rect, glowOverride in
                 Self.rememberSelection(rect, on: snap.displayID)
-                self?.finish(.pinned(img, scale, origin, screen))
+                self?.finish(.pinned(img, scale, origin, screen, glowOverride))
             }
             view.onFinishIsolatedWindow = { [weak self] winID, scale, backdrop, pin, origin, screen in
                 self?.finish(.isolatedWindow(winID, scale, backdrop, pin, origin, screen))
@@ -192,6 +195,7 @@ final class OverlaySession {
         }
 
         // 1) 上屏前以 0.001ms 窗口级命中完成首帧冻结布局，不等待整屏像素解包
+        for v in views { v.syncGPUChromeLayers() }
         let initialView = activeView ?? views.first
         if let initialView {
             let sf = initialView.snapshot.screen.frame
@@ -223,6 +227,7 @@ final class OverlaySession {
             initialView: initialView
         ) { [weak self] in self?.cancel() }
         NSCursor.crosshair.push()
+        for v in views { v.startOverlayVSync() }
 
         // 3) 冻结窗口已上屏后再在后台预热主屏 PixelSampler，就绪后自动补齐视觉子框、放大镜与副屏采样器
         if let initialView {
@@ -251,24 +256,22 @@ final class OverlaySession {
     }
 
     private func activateView(_ selected: OverlayView) {
+        guard activeView !== selected else { return }
         activeView = selected
         for v in views where v !== selected {
-            if v.selection != nil {
-                v.clearSelectionFromSibling()
-            } else {
-                v.lastMousePoint = nil
-                v.needsDisplay = true
-            }
+            if v.selection != nil { v.clearSelectionFromSibling() }
+            else { v.lastMousePoint = nil; v.syncMagnifierView(); v.syncGPUChromeLayers() }
         }
     }
 
     private func finish(_ outcome: Outcome) {
         guard !finished else { return }
         finished = true
+        if let tok = interactiveActivityToken { ProcessInfo.processInfo.endActivity(tok); interactiveActivityToken = nil }
         NSCursor.pop()
 
         for v in views {
-            v.stopSnapGlide()
+            v.stopOverlayVSync()
             v.barcodeScanTask?.cancel(); v.barcodeScanTask = nil
             v.deactivateInPlaceOCR()
             v.deactivateInPlaceTranslate()

@@ -79,6 +79,7 @@ extension OverlayView {
             toolbar.recordingFormat = fmt
             onRecordingPrefsChanged?(fmt, toolbar.recordingHUDEnabled)
             updateToolbarLayout()
+            syncGPUChromeLayers()
             needsDisplay = true
         case .toggleRecordingHUD:
             toolbar.recordingHUDEnabled.toggle()
@@ -131,7 +132,7 @@ extension OverlayView {
             width: CGFloat(max(24, Int((rect.width * s).rounded()))),
             height: CGFloat(max(32, Int((rect.height * s).rounded())))
         )
-        onStartLongShot?(snapshot.screen, rect, snapshot.cgImage.cropping(to: pxRect))
+        onStartLongShot?(snapshot.screen, rect, snapshot.cgImage.cropping(to: pxRect).map(ImageTransform.detachedCopy))
     }
 
     func toggleSaveDirectoryMenu() {
@@ -186,6 +187,7 @@ extension OverlayView {
         }
         toolbar.isRecordingMode = enabled
         updateToolbarLayout()
+        syncGPUChromeLayers()
         needsDisplay = true
         if notifySiblings { onRecordingModeChanged?(enabled) }
     }
@@ -230,7 +232,7 @@ extension OverlayView {
             width: CGFloat(Int((rect.width * s).rounded()) & ~1),
             height: CGFloat(Int((rect.height * s).rounded()) & ~1)
         )
-        onStartRecording?(snapshot.screen, rect, snapshot.cgImage.cropping(to: pxRect))
+        onStartRecording?(snapshot.screen, rect, snapshot.cgImage.cropping(to: pxRect).map(ImageTransform.detachedCopy))
     }
 
     /// 离线一键隐私智能打码：扫描选区敏感字段并合并为单步 Undo 事务批量添加马赛克/毛玻璃遮罩

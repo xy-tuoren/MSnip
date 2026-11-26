@@ -188,7 +188,7 @@ final class PermissionBadgeView: NSView {
             symbolView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 15.5, weight: .medium)
             symbolView.contentTintColor = .labelColor
         case .accessibility:
-            symbolView.image = NSImage(systemSymbolName: "figure.arms.open", accessibilityDescription: nil)
+            symbolView.image = MSnipUITheme.systemSymbol("figure.arms.open")
             symbolView.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 13, weight: .bold)
             symbolView.contentTintColor = .white
         }

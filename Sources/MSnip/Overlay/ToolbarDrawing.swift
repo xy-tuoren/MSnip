@@ -68,7 +68,7 @@ extension ToolbarView {
         if let cached = symbolMaskCache[name] {
             entry = cached
         } else {
-            guard let baseImg = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return }
+            guard let baseImg = MSnipUITheme.systemSymbol(name) else { return }
             let cfg = NSImage.SymbolConfiguration(pointSize: 13.5, weight: .medium)
             let configured = baseImg.withSymbolConfiguration(cfg) ?? baseImg
             guard let cg = configured.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return }

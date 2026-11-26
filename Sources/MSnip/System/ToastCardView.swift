@@ -21,7 +21,12 @@ final class ToastCardView: NSView {
     private let onHoverChanged: ((Bool) -> Void)?
 
     var hasAction: Bool { actionTitle != nil }
-    var remainingProgress: CGFloat = 1.0 { didSet { needsDisplay = true } }
+    var remainingProgress: CGFloat = 1.0 {
+        didSet {
+            guard hasAction, cardRect.width > 0 else { return }
+            setNeedsDisplay(CGRect(x: cardRect.minX, y: cardRect.maxY - 4, width: cardRect.width, height: 4))
+        }
+    }
     private var cardRect: CGRect = .zero
     private var actionBtnRect: CGRect = .zero
     private var closeBtnRect: CGRect = .zero
@@ -49,7 +54,7 @@ final class ToastCardView: NSView {
         }
         self.cleanMessage = trimmed
         self.subtitle = subtitle?.trimmingCharacters(in: .whitespacesAndNewlines)
-        self.preview = preview
+        self.preview = preview.flatMap { Self.makeCompactThumb($0) }
         self.swatch = swatch
         self.actionTitle = actionTitle
         self.onTrigger = onTrigger
@@ -244,5 +249,18 @@ final class ToastCardView: NSView {
         ctx.setFillColor(badgeColor.cgColor); ctx.addPath(bPath); ctx.fillPath()
         ToolbarView.drawSymbol(statusSymbol, in: bRect.insetBy(dx: sz * 0.24, dy: sz * 0.24), alpha: 1.0, tint: .white)
         return bRect.maxX + 12
+    }
+
+    /// 初始化时一次性降采样为 `100×80 px` 微缩略图，立即释放外部传入的 5K 全屏 `CGImage`（省去 ~60 MB 驻留与 30fps 重缩放开销）
+    private static func makeCompactThumb(_ src: CGImage) -> CGImage? {
+        guard src.width > 120 || src.height > 96 else { return src }
+        let w = 100, h = 80
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return src }
+        let sc = max(CGFloat(w) / CGFloat(src.width), CGFloat(h) / CGFloat(src.height))
+        let dw = CGFloat(src.width) * sc, dh = CGFloat(src.height) * sc
+        ctx.interpolationQuality = .medium
+        ctx.draw(src, in: CGRect(x: (CGFloat(w) - dw) * 0.5, y: (CGFloat(h) - dh) * 0.5, width: dw, height: dh))
+        return ctx.makeImage() ?? src
     }
 }

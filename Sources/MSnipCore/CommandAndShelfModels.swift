@@ -159,11 +159,11 @@ public enum ShelfTriggerGeometry {
             && point.y >= rect.minY - 1.0 && point.y <= rect.maxY + 2.0
     }
 
-    /// 判断光标是否命中屏幕顶部中央触发热区（避开左侧系统菜单与右侧状态栏图标）
+    /// 判断光标是否严格贴紧屏幕物理最顶边中央触发热区（仅当光标真正推到顶边 `≤ 1.5pt` 时才触发，差一点不到顶绝不误弹）
     public static func hitsTopCenterTrigger(point: CGPoint, screenFrame: CGRect, isDragging: Bool) -> Bool {
         guard containsInclusive(screenFrame, point: point) else { return false }
         let topDist = screenFrame.maxY - point.y
-        let topThreshold: CGFloat = isDragging ? 24.0 : 10.0
+        let topThreshold: CGFloat = isDragging ? 2.0 : 1.5
         let halfBand = max(240.0, screenFrame.width * 0.22)
         return topDist <= topThreshold && abs(point.x - screenFrame.midX) <= halfBand
     }

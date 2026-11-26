@@ -127,13 +127,45 @@ enum MSnipUITheme {
         ctx.restoreGState()
     }
 
+    private static let legacySymbolFallbacks: [String: String] = [
+        "eraser": "delete.left",
+        "figure.arms.open": "hand.raised",
+        "apple.logo": "laptopcomputer"
+    ]
+
+    /// 跨版本加载 SF Symbol：优先返回原符号，在 macOS 12 缺失 macOS 13+ 符号时自动回落兼容图标
+    static func systemSymbol(_ name: String) -> NSImage? {
+        if let img = NSImage(systemSymbolName: name, accessibilityDescription: nil) { return img }
+        guard let fallback = legacySymbolFallbacks[name] else { return nil }
+        return NSImage(systemSymbolName: fallback, accessibilityDescription: nil)
+    }
+
     static func menuSymbol(_ name: String, pt: CGFloat = 13) -> NSImage? {
-        guard let base = NSImage(systemSymbolName: name, accessibilityDescription: nil) else { return nil }
+        guard let base = systemSymbol(name) else { return nil }
         let cfg = NSImage.SymbolConfiguration(pointSize: pt, weight: .medium)
         let img = base.withSymbolConfiguration(cfg) ?? base
         img.isTemplate = true
         return img
     }
+}
+
+extension NSMenuItem {
+    private static let setImageVisSel = Selector(("setPreferredImageVisibility:"))
+    private static let setImageVisIMP: (@convention(c) (AnyObject, Selector, Int) -> Void)? = {
+        guard let m = class_getInstanceMethod(NSMenuItem.self, setImageVisSel) else { return nil }
+        return unsafeBitCast(method_getImplementation(m), to: (@convention(c) (AnyObject, Selector, Int) -> Void).self)
+    }()
+
+    /// 设置菜单项图标或缩略图，并在 macOS 27+ 显式声明 `preferredImageVisibility = .visible (1)`，避免 `sdk 27.0` 默认隐藏子菜单图标与位图缩略图
+    func setVisibleImage(_ img: NSImage?) {
+        self.image = img
+        if img != nil, let fn = Self.setImageVisIMP {
+            fn(self, Self.setImageVisSel, 1)
+        }
+    }
+}
+
+extension MSnipUITheme {
 
     /// 将窗口精确置于鼠标当前所在显示器可视区域的几何正中心（解决 AppKit 原生 `center()` 垂直偏上与多屏错位问题）
     @MainActor

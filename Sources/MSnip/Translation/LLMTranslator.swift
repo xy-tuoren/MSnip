@@ -202,12 +202,14 @@ enum LLMTranslator {
             ? "gemini-2.0-flash"
             : profile.model.trimmingCharacters(in: .whitespacesAndNewlines)
         let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        let action = stream ? "streamGenerateContent?alt=sse&key=\(key)" : "generateContent?key=\(key)"
-        guard let url = URL(string: "\(base)/models/\(model):\(action)") else { throw LLMError.invalidEndpoint(base) }
+        let encodedModel = model.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? model
+        let action = stream ? "streamGenerateContent?alt=sse" : "generateContent"
+        guard let url = URL(string: "\(base)/models/\(encodedModel):\(action)") else { throw LLMError.invalidEndpoint(base) }
 
         var req = URLRequest(url: url, timeoutInterval: 35)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if !key.isEmpty { req.setValue(key, forHTTPHeaderField: "x-goog-api-key") }
         applyCustomHeaders(profile.customHeadersJSON, to: &req)
 
         let body: [String: Any] = [

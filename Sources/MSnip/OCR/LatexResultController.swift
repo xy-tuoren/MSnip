@@ -37,8 +37,8 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
     var pinButton: OCRPillButton!
     var copyButton: OCRPillButton!
 
-    let configPanel = LatexConfigPanelController()
-    var config = LatexRecognitionConfig.load()
+    lazy var configPanel = LatexConfigPanelController()
+    lazy var config = LatexRecognitionConfig.load()
     var currentImage: CGImage?
     var currentScale: CGFloat = 2.0
     var currentScreen: NSScreen?
@@ -176,10 +176,10 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
         imageView = nil
         currentImage = nil
         currentScreen = nil
+        codeTextView?.string = ""
+        codeTextView = nil; leftCard = nil; rightCard = nil
         formatButtons.removeAll()
-        window?.delegate = nil
-        window?.contentView = nil
-        window = nil
+        window?.delegate = nil; window?.contentView = nil; window = nil
     }
 
     func textDidChange(_ notification: Notification) {
@@ -187,8 +187,8 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
         renderDebounceWork?.cancel()
         let work = DispatchWorkItem { [weak self] in
             MainActor.assumeIsolated {
-                guard let self else { return }
-                self.previewView.render(latex: self.codeTextView.string)
+                guard let self, let tv = self.codeTextView else { return }
+                self.previewView?.render(latex: tv.string)
             }
         }
         renderDebounceWork = work

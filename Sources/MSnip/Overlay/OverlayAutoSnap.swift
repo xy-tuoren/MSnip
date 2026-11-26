@@ -42,8 +42,25 @@ extension OverlayView {
             autoSnap.activeWindowRect = fast.winRect
             applyDetectedSnapStack(fast.stack, immediate: immediate || autoSnap.displayedRect == nil)
         }
-        if fast.isComplete || fastWindowOnly == true { return }
+        if fast.isComplete || fastWindowOnly == true {
+            autoSnap.settleTimer?.invalidate(); autoSnap.settleTimer = nil
+            return
+        }
 
+        let now = ProcessInfo.processInfo.systemUptime
+        let dist = previousPoint.map { hypot(localPoint.x - $0.x, localPoint.y - $0.y) } ?? 0
+        let minInterval: TimeInterval = (dist > 14.0) ? 0.042 : 0.022
+        let elapsed = now - autoSnap.lastQueryDispatchUptime
+        if immediate || elapsed >= minInterval {
+            dispatchRefinedSnapQuery(at: localPoint, immediate: immediate)
+        } else {
+            scheduleTrailingSnapSettle(after: max(0.016, minInterval - elapsed))
+        }
+    }
+
+    private func dispatchRefinedSnapQuery(at localPoint: CGPoint, immediate: Bool) {
+        autoSnap.settleTimer?.invalidate(); autoSnap.settleTimer = nil
+        autoSnap.lastQueryDispatchUptime = ProcessInfo.processInfo.systemUptime
         autoSnap.querySeq &+= 1
         let seq = autoSnap.querySeq
         let token = autoSnap.cancelToken
@@ -55,6 +72,20 @@ extension OverlayView {
             self.autoSnap.activeWindowRect = winRect
             self.applyDetectedSnapStack(refined, immediate: immediate && self.autoSnap.displayedRect == nil)
         }
+    }
+
+    private func scheduleTrailingSnapSettle(after delay: TimeInterval) {
+        guard autoSnap.settleTimer == nil else { return }
+        let t = Timer(timeInterval: delay, repeats: false) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.autoSnap.settleTimer = nil
+                guard self.selection == nil, let pt = self.lastMousePoint, self.bounds.contains(pt) else { return }
+                self.dispatchRefinedSnapQuery(at: pt, immediate: false)
+            }
+        }
+        RunLoop.main.add(t, forMode: .common)
+        autoSnap.settleTimer = t
     }
 
     private func applyDetectedSnapStack(_ newStack: [CGRect], immediate: Bool) {
@@ -91,26 +122,46 @@ extension OverlayView {
         }
     }
 
+    /// 启动统一 VSync 驱动循环（macOS 14+ 锁定屏幕最高刷新率 `CADisplayLink`，每帧直读实时硬件指针 `NSEvent.mouseLocation`，消除非激活面板事件队列拖尾）
+    func startOverlayVSync() {
+        guard autoSnap.vsyncLink == nil, autoSnap.vsyncTimer == nil else { return }
+        if #available(macOS 14.0, *) {
+            let link = self.displayLink(target: self, selector: #selector(onOverlayVSyncTick(_:)))
+            let maxFPS = Float(max(60, snapshot.screen.maximumFramesPerSecond))
+            link.preferredFrameRateRange = CAFrameRateRange(minimum: maxFPS, maximum: maxFPS, preferred: maxFPS)
+            link.add(to: .main, forMode: .common)
+            autoSnap.vsyncLink = link
+            return
+        }
+        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.stepOverlayVSync(dt: 1.0 / 60.0) }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        autoSnap.vsyncTimer = timer
+    }
+
+    func stopOverlayVSync() {
+        stopSnapGlide(cancelPendingQuery: true)
+        autoSnap.vsyncTimer?.invalidate(); autoSnap.vsyncTimer = nil
+        if #available(macOS 14.0, *), let dl = autoSnap.vsyncLink as? CADisplayLink {
+            dl.invalidate()
+        }
+        autoSnap.vsyncLink = nil
+        autoSnap.lastPolledScreenPoint = nil
+    }
+
+    var isOverlayVSyncActive: Bool { autoSnap.vsyncLink != nil || autoSnap.vsyncTimer != nil }
+
     func stopSnapGlide(cancelPendingQuery: Bool = true) {
         if cancelPendingQuery {
             autoSnap.cancelToken &+= 1
+            autoSnap.settleTimer?.invalidate()
+            autoSnap.settleTimer = nil
         }
-        autoSnap.animTimer?.invalidate()
-        autoSnap.animTimer = nil
-        if #available(macOS 14.0, *), let dl = autoSnap.displayLink as? CADisplayLink {
-            dl.invalidate()
-        }
-        autoSnap.displayLink = nil
+        autoSnap.isGliding = false
     }
 
-    func drawAutoSnapChrome(ctx: CGContext, displayRect: CGRect, targetRect: CGRect) {
-        ctx.saveGState()
-        let borderCol = isRecordingMode ? MSnipUITheme.danger : MSnipUITheme.accent
-        ctx.setStrokeColor(borderCol.withAlphaComponent(0.95).cgColor)
-        ctx.setLineWidth(2.0)
-        ctx.stroke(displayRect.insetBy(dx: 0.5, dy: 0.5))
-        ctx.restoreGState()
-
+    func autoSnapHudText(for targetRect: CGRect) -> String {
         let pxW = Int((targetRect.width * snapshot.scaleFactor).rounded())
         let pxH = Int((targetRect.height * snapshot.scaleFactor).rounded())
         let prefix = isRecordingMode ? "录屏 · " : quickLaunchMode.hudPrefix
@@ -123,7 +174,7 @@ extension OverlayView {
             let pxY = Int((targetRect.minY * snapshot.scaleFactor).rounded())
             tierInfo = "  (\(pxX),\(pxY))"
         }
-        drawHUDPill(ctx: ctx, anchorRect: displayRect, text: "\(prefix)\(pxW) × \(pxH) px\(tierInfo)")
+        return "\(prefix)\(pxW) × \(pxH) px\(tierInfo)"
     }
 
     private func semanticTierLabel(for rect: CGRect) -> String {
@@ -139,26 +190,34 @@ extension OverlayView {
             invalidateAutoSnapTransition(from: nil, to: target)
             return
         }
-        if autoSnap.displayLink != nil || autoSnap.animTimer != nil { return }
-
-        if #available(macOS 14.0, *) {
-            let link = self.displayLink(target: self, selector: #selector(onSnapDisplayLinkTick(_:)))
-            link.add(to: .main, forMode: .common)
-            autoSnap.displayLink = link
-            return
-        }
-
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.advanceSnapGlide(dt: 1.0 / 60.0) }
-        }
-        RunLoop.main.add(timer, forMode: .common)
-        autoSnap.animTimer = timer
+        autoSnap.isGliding = true
+        if !isOverlayVSyncActive { startOverlayVSync() }
     }
 
     @available(macOS 14.0, *)
-    @objc private func onSnapDisplayLinkTick(_ link: CADisplayLink) {
+    @objc private func onOverlayVSyncTick(_ link: CADisplayLink) {
         let dt = min(0.05, max(0.004, link.duration))
-        advanceSnapGlide(dt: dt)
+        stepOverlayVSync(dt: dt)
+    }
+
+    private func stepOverlayVSync(dt: TimeInterval) {
+        let screenPt = NSEvent.mouseLocation
+        let sf = snapshot.screen.frame
+        if sf.contains(screenPt) {
+            let localPt = CGPoint(x: screenPt.x - sf.minX, y: sf.maxY - screenPt.y)
+            if autoSnap.lastPolledScreenPoint != screenPt {
+                autoSnap.lastPolledScreenPoint = screenPt
+                if dragOp == nil {
+                    processLiveHoverPoint(localPt)
+                } else {
+                    lastMousePoint = localPt
+                    syncMagnifierView()
+                }
+            }
+        }
+        if autoSnap.isGliding {
+            advanceSnapGlide(dt: dt)
+        }
     }
 
     private func advanceSnapGlide(dt: TimeInterval) {

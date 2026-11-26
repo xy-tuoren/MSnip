@@ -7,45 +7,41 @@ import MSnipCore
 extension OverlayView {
     // MARK: - Mouse & Auto-Snap Interaction
 
+    private func applyCursor(_ kind: OverlayCursorKind) {
+        if appliedCursorKind != kind { appliedCursorKind = kind; kind.apply() }
+    }
+
     override func mouseMoved(with event: NSEvent) {
-        let prevPt = lastMousePoint
+        if isOverlayVSyncActive { return }
         let p = convert(event.locationInWindow, from: nil)
+        processLiveHoverPoint(p)
+    }
+
+    /// 统一 VSync / 悬停入口：优先零延迟同步 GPU 放大镜位置与切片，再做光标去重与自动吸附
+    func processLiveHoverPoint(_ p: CGPoint) {
+        let prevPt = lastMousePoint
         lastMousePoint = p
         let onChrome = (!toolbar.isHidden && toolbar.frame.contains(p))
             || (!subbar.isHidden && subbar.frame.contains(p))
             || (!sidePills.isHidden && sidePills.frame.contains(p))
             || (!cornerSlider.isHidden && cornerSlider.frame.contains(p))
             || (!saveMenu.isHidden && saveMenu.frame.contains(p))
-        if onChrome {
-            NSCursor.arrow.set()
-            invalidateMagnifierMove(from: prevPt, to: p)
-            return
-        }
-        if toolbar.inPlaceOCRActive, let sel = selection, sel.contains(p) {
-            invalidateMagnifierMove(from: prevPt, to: p)
-            return
-        }
-        if eyedropperActive {
-            NSCursor.crosshair.set()
-            invalidateMagnifierMove(from: prevPt, to: p)
-            return
-        }
+        if onChrome { applyCursor(.arrow); invalidateMagnifierMove(from: prevPt, to: p); return }
+        if toolbar.inPlaceOCRActive, let sel = selection, sel.contains(p) { invalidateMagnifierMove(from: prevPt, to: p); return }
+        if eyedropperActive { applyCursor(.crosshair); invalidateMagnifierMove(from: prevPt, to: p); return }
         if let sel = selection {
-            if Geometry.hitHandle(at: p, in: sel) != nil {
-                NSCursor.crosshair.set()
-            } else if spacePressed || (activeTool == nil && sel.contains(p) && !optionPressed) {
-                NSCursor.openHand.set()
-            } else {
-                NSCursor.crosshair.set()
-            }
+            if Geometry.hitHandle(at: p, in: sel) != nil { applyCursor(.crosshair) }
+            else if spacePressed || (activeTool == nil && sel.contains(p) && !optionPressed) { applyCursor(.openHand) }
+            else { applyCursor(.crosshair) }
             invalidateMagnifierMove(from: prevPt, to: p)
             return
         }
 
-        onSelectionActivated?(self)
-        updateAutoSnap(at: p, previousPoint: prevPt)
-        NSCursor.crosshair.set()
+        // 优先于 autoSnap 更新纯 GPU 放大镜，确保小面板 1:1 紧贴硬件光标零拖尾
         invalidateMagnifierMove(from: prevPt, to: p)
+        onSelectionActivated?(self)
+        applyCursor(.crosshair)
+        updateAutoSnap(at: p, previousPoint: prevPt)
     }
 
     override func mouseDown(with event: NSEvent) {

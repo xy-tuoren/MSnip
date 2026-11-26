@@ -279,14 +279,12 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     func windowWillClose(_ notification: Notification) {
         if let f = window?.frame { ResultWindowKind.ocr.saveFrame(f) }
         requestToken &+= 1
-        translationTask?.cancel()
-        translationTask = nil
-        currentCGImage = nil
-        currentScreen = nil
-        currentOutput = nil
+        translationTask?.cancel(); translationTask = nil
+        currentCGImage = nil; currentScreen = nil; currentOutput = nil
         liveImageView?.clearAll()
-        textView?.string = ""
-        transTextView?.string = ""
+        textView?.string = ""; transTextView?.string = ""
+        window?.delegate = nil; window?.contentView = nil; window = nil
+        liveImageView = nil; textView = nil; transTextView = nil; leftCard = nil; rightCard = nil
     }
 
     func textDidChange(_ notification: Notification) { userEditedManually = true; updateStatsLabel() }
