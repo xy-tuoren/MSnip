@@ -44,20 +44,20 @@ extension TranslationSettingsWindow {
 
         let prioTitle = NSTextField(labelWithString: "冲突时强制优先接管")
         prioTitle.font = .systemFont(ofSize: 13.5, weight: .semibold); prioTitle.textColor = GeekTheme.inkPrimary
-        GeekTheme.placeCentered(prioTitle, x: 54, width: 136, centerY: 22.0)
+        GeekTheme.placeCentered(prioTitle, x: 54, width: 146, centerY: 22.0)
         prioCard.addSubview(prioTitle)
 
         let prioStatus = NSTextField(labelWithString: "已关闭 · 零底层监听（一键开关无副作用）")
         prioStatus.font = .systemFont(ofSize: 12.0, weight: .regular); prioStatus.textColor = GeekTheme.inkMuted
         prioStatus.lineBreakMode = .byTruncatingTail
-        GeekTheme.placeCentered(prioStatus, x: 194, width: cardW - 332, centerY: 22.0)
+        GeekTheme.placeCentered(prioStatus, x: 204, width: cardW - 344, centerY: 22.0)
         shortcutAudit.priorityStatusLabel = prioStatus
         prioCard.addSubview(prioStatus)
 
         let permBtn = GeekButton(title: "去授权", style: .amberSoft)
         permBtn.frame = NSRect(x: cardW - 128, y: 9, width: 64, height: 26)
         permBtn.isHidden = true
-        permBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?() }
+        permBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?(.accessibility) }
         shortcutAudit.priorityPermBtn = permBtn
         prioCard.addSubview(permBtn)
 
@@ -68,7 +68,7 @@ extension TranslationSettingsWindow {
             guard let self else { return }
             self.onAppConfigMutated? { $0.forcePriorityHotKeys = on; if on { $0.hotKeysEnabled = true } }
             if on && !(self.isPriorityTapActiveProvider?() ?? false) {
-                self.onOpenPermissionGuide?()
+                self.onOpenPermissionGuide?(.accessibility)
             }
             self.refreshGeneralAndPermissionsUI()
         }

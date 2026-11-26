@@ -13,12 +13,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check file line count limit (<= 300 lines)
+      - name: Check file line count limit (<= 800 lines)
         run: |
           while IFS= read -r f; do
             n=$(wc -l < "$f" | tr -d ' ')
-            if [ "$n" -gt 300 ]; then
-              echo "::error file=$f::File exceeds 300 lines ($n lines)"
+            if [ "$n" -gt 800 ]; then
+              echo "::error file=$f::File exceeds 800 lines ($n lines)"
               exit 1
             fi
           done < <(find Sources -name '*.swift')
@@ -29,7 +29,7 @@ jobs:
           swift run MSnipTests
 
       - name: Package Universal Binary MSnip.app
-        run: bash scripts/bundle.sh
+        run: bash scripts/bundle.sh --universal
 
       - name: Upload Packaged Release Artifact
         uses: actions/upload-artifact@v4

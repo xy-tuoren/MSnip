@@ -52,13 +52,17 @@ enum CloudAPITranslator {
         let secretKey = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !secretId.isEmpty, !secretKey.isEmpty else { throw CloudError.badConfig("请填写腾讯云 SecretId 与 SecretKey") }
 
-        let host = "tmt.tencentcloudapi.com"
+        let customHost = URL(string: profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines))?.host
+            ?? profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        let host = (!customHost.isEmpty && !customHost.contains("/")) ? customHost : "tmt.tencentcloudapi.com"
         let service = "tmt"
         let region = profile.model.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? "ap-guangzhou"
             : profile.model.trimmingCharacters(in: .whitespacesAndNewlines)
         let timestamp = Int(Date().timeIntervalSince1970)
         let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.calendar = Calendar(identifier: .gregorian)
         fmt.dateFormat = "yyyy-MM-dd"
         fmt.timeZone = TimeZone(secondsFromGMT: 0)
         let dateStr = fmt.string(from: Date(timeIntervalSince1970: TimeInterval(timestamp)))
@@ -90,7 +94,10 @@ enum CloudAPITranslator {
         req.setValue(region, forHTTPHeaderField: "X-TC-Region")
         req.setValue(auth, forHTTPHeaderField: "Authorization")
 
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw CloudError.apiError("HTTP \(http.statusCode)")
+        }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let resp = root["Response"] as? [String: Any] else {
             throw CloudError.apiError("响应解析失败")
@@ -121,18 +128,19 @@ enum CloudAPITranslator {
             : profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: ep) else { throw CloudError.badConfig(ep) }
 
-        var comps = URLComponents()
-        comps.queryItems = [
-            URLQueryItem(name: "q", value: q), URLQueryItem(name: "from", value: "auto"),
-            URLQueryItem(name: "to", value: target.baiduCode), URLQueryItem(name: "appid", value: appid),
-            URLQueryItem(name: "salt", value: salt), URLQueryItem(name: "sign", value: sign)
-        ]
+        let bodyStr = formBody([
+            ("q", q), ("from", "auto"), ("to", target.baiduCode),
+            ("appid", appid), ("salt", salt), ("sign", sign)
+        ])
         var req = URLRequest(url: url, timeoutInterval: 20)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        req.httpBody = comps.percentEncodedQuery?.data(using: .utf8)
+        req.httpBody = Data(bodyStr.utf8)
 
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw CloudError.apiError("HTTP \(http.statusCode)")
+        }
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw CloudError.apiError("百度响应格式异常")
         }
@@ -169,19 +177,20 @@ enum CloudAPITranslator {
             : profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: ep) else { throw CloudError.badConfig(ep) }
 
-        var comps = URLComponents()
-        comps.queryItems = [
-            URLQueryItem(name: "q", value: text), URLQueryItem(name: "from", value: "auto"),
-            URLQueryItem(name: "to", value: target.youdaoCode), URLQueryItem(name: "appKey", value: appKey),
-            URLQueryItem(name: "salt", value: salt), URLQueryItem(name: "sign", value: sign),
-            URLQueryItem(name: "signType", value: "v3"), URLQueryItem(name: "curtime", value: curtime)
-        ]
+        let bodyStr = formBody([
+            ("q", text), ("from", "auto"), ("to", target.youdaoCode),
+            ("appKey", appKey), ("salt", salt), ("sign", sign),
+            ("signType", "v3"), ("curtime", curtime)
+        ])
         var req = URLRequest(url: url, timeoutInterval: 20)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        req.httpBody = comps.percentEncodedQuery?.data(using: .utf8)
+        req.httpBody = Data(bodyStr.utf8)
 
-        let (data, _) = try await URLSession.shared.data(for: req)
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw CloudError.apiError("HTTP \(http.statusCode)")
+        }
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw CloudError.apiError("有道响应解析失败")
         }
@@ -202,6 +211,15 @@ enum CloudAPITranslator {
         return out
     }
 
+    private static let formAllowed: CharacterSet = {
+        var cs = CharacterSet.alphanumerics
+        cs.insert(charactersIn: "-._~")
+        return cs
+    }()
+    private static func formEncode(_ s: String) -> String { s.addingPercentEncoding(withAllowedCharacters: formAllowed) ?? s }
+    private static func formBody(_ pairs: [(String, String)]) -> String {
+        pairs.map { "\($0.0)=\(formEncode($0.1))" }.joined(separator: "&")
+    }
     private static func md5Hex(_ s: String) -> String {
         Insecure.MD5.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined()
     }
@@ -213,5 +231,106 @@ enum CloudAPITranslator {
     }
     private static func hexString(_ data: Data) -> String {
         data.map { String(format: "%02x", $0) }.joined()
+    }
+}
+
+// MARK: - Webhook 与 DeepL 翻译适配器
+
+/// DeepL 官方 API / DeepLX 自建免 Key 接口与自定义通用 JSON 模版请求适配器
+private enum WebhookAndDeepLTranslator {
+    static func callDeepLOrDeepLX(
+        lines: [String],
+        target: TranslationTargetLang,
+        profile: TranslationProviderProfile
+    ) async throws -> [String] {
+        let key = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        var ep = profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
+        if ep.isEmpty {
+            ep = key.hasSuffix(":fx") ? "https://api-free.deepl.com/v2/translate" : "https://api.deepl.com/v2/translate"
+        }
+        guard let url = URL(string: ep) else { throw CloudAPITranslator.CloudError.badConfig(ep) }
+
+        var req = URLRequest(url: url, timeoutInterval: 20)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        if ep.lowercased().contains("deepl.com") {
+            req.setValue("DeepL-Auth-Key \(key)", forHTTPHeaderField: "Authorization")
+            req.httpBody = try JSONSerialization.data(withJSONObject: ["text": lines, "target_lang": target.deeplCode])
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                throw CloudAPITranslator.CloudError.apiError("HTTP \(http.statusCode)")
+            }
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let arr = obj["translations"] as? [[String: Any]] {
+                return arr.compactMap { $0["text"] as? String }
+            }
+            throw CloudAPITranslator.CloudError.apiError("DeepL 响应无 translations 字段")
+        } else {
+            if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
+            let joined = lines.joined(separator: "\n")
+            let dlxTarget = target.deeplCode.hasPrefix("ZH") ? "ZH" : target.deeplCode
+            req.httpBody = try JSONSerialization.data(withJSONObject: [
+                "text": joined, "source_lang": "auto", "target_lang": dlxTarget
+            ])
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+                throw CloudAPITranslator.CloudError.apiError("HTTP \(http.statusCode)")
+            }
+            if let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let txt = obj["data"] as? String, !txt.isEmpty {
+                return CloudAPITranslator.splitPreservingCount(txt, expected: lines)
+            }
+            throw CloudAPITranslator.CloudError.apiError("DeepLX 响应未包含 data 译文")
+        }
+    }
+
+    static func callCustomWebhook(
+        text: String,
+        target: TranslationTargetLang,
+        profile: TranslationProviderProfile
+    ) async throws -> String {
+        guard let url = URL(string: profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            throw CloudAPITranslator.CloudError.badConfig(profile.endpoint)
+        }
+        var req = URLRequest(url: url, timeoutInterval: 25)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let cleanKey = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanKey.isEmpty {
+            req.setValue("Bearer \(cleanKey)", forHTTPHeaderField: "Authorization")
+        }
+        if let hdData = profile.customHeadersJSON.data(using: .utf8),
+           let dict = try? JSONSerialization.jsonObject(with: hdData) as? [String: String] {
+            for (k, v) in dict { req.setValue(v, forHTTPHeaderField: k) }
+        }
+        let escaped = jsonEscape(text)
+        let bodyStr = profile.customBodyTemplate
+            .replacingOccurrences(of: "{{text}}", with: escaped)
+            .replacingOccurrences(of: "{{to}}", with: target.tencentCode)
+            .replacingOccurrences(of: "{{from}}", with: "auto")
+        req.httpBody = Data(bodyStr.utf8)
+
+        let (data, resp) = try await URLSession.shared.data(for: req)
+        if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
+            throw CloudAPITranslator.CloudError.apiError("HTTP \(http.statusCode)")
+        }
+        let path = profile.customResponsePath.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let json = try? JSONSerialization.jsonObject(with: data) {
+            if let extracted = TranslationSettingsConfig.extractJSONPath(json, path: path), !extracted.isEmpty {
+                return extracted
+            }
+            throw CloudAPITranslator.CloudError.apiError("未能按路径「\(path)」提取译文")
+        }
+        if path.isEmpty, let rawStr = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !rawStr.isEmpty {
+            return rawStr
+        }
+        throw CloudAPITranslator.CloudError.apiError("响应非有效 JSON 或未能按路径「\(path)」提取译文")
+    }
+
+    private static func jsonEscape(_ s: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [s]),
+              let raw = String(data: data, encoding: .utf8), raw.count >= 4 else { return s }
+        return String(raw.dropFirst(2).dropLast(2))
     }
 }

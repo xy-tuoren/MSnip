@@ -161,36 +161,53 @@ extension OverlayView {
         liveView.isHidden = false
         liveView.setPreviewImageOnly(cgImage: baked, logicalSize: sel.size, highlightBlocks: false)
 
-        VisionTextExtractor.recognizeAsync(from: baked) { [weak self, weak liveView] output in
-            guard let self, let liveView, self.toolbar.inPlaceOCRActive else { return }
-            liveView.applyPrecomputedAnalysis(output.liveAnalysisObject, highlightBlocks: false)
-            if let qr = output.qrPayloads.first, output.preservedText.isEmpty {
-                Self.presentBarcodeToast(qr)
-                return
-            }
-            let text = output.initialClipboardText
-            if !text.isEmpty {
-                let count = text.count
-                let msg: String
-                if self.ocrAutoCopy {
-                    ClipboardAndSave.copyText(text)
-                    msg = "已识别 \(count) 字并复制 · 可直接在框内划词或点工具继续标注"
-                } else {
-                    msg = "已识别 \(count) 字 · 可直接在框内划词或按 ⌘C 复制"
+        inPlaceOCRToken &+= 1
+        let ocrTok = inPlaceOCRToken
+        let ocrCfg = OCRRecognitionConfig.load()
+        if ocrCfg.engineKind != .appleVision {
+            let engine = ocrCfg.engineKind
+            let activeID = TranslationService.shared.settings.activeProfileID
+            let profiles = VisionLLMOCRService.availableVisionLLMProfiles()
+            ToastHUD.show(message: "正在用「\(engine.shortName)」识字…")
+            Task { @MainActor [weak self, weak liveView] in
+                async let liveObj = VisionTextExtractor.analyzeLiveTextOverlay(cgImage: baked)
+                if let live = await liveObj, let self, let liveView, self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive {
+                    liveView.applyPrecomputedAnalysis(live, highlightBlocks: false)
                 }
-                ToastHUD.show(
-                    message: msg,
-                    actionTitle: "双栏对照窗 ›",
-                    onAction: { [weak self] in
-                        self?.exportAndFinish(mode: .extractText)
-                    }
-                )
-            } else {
-                ToastHUD.show(message: "选区内未检测到可识别文字或二维码")
+            }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let out = try await CloudOCRService.recognizeText(image: baked, engine: engine, config: ocrCfg, activeProfileID: activeID, profiles: profiles)
+                    guard self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive else { return }
+                    if self.ocrAutoCopy { ClipboardAndSave.copyText(out.text) }
+                    let verb = self.ocrAutoCopy ? "已用「\(out.providerName)」识别 \(out.text.count) 字并复制" : "已用「\(out.providerName)」识别 \(out.text.count) 字"
+                    ToastHUD.show(message: "\(verb) · 框内仍可划词", actionTitle: "双栏对照窗 ›") { [weak self] in self?.exportAndFinish(mode: .extractText) }
+                } catch {
+                    guard self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive else { return }
+                    let output = await VisionTextExtractor.recognizeTextOnlyOffMain(cgImage: baked)
+                    guard self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive else { return }
+                    self.presentInPlaceOCROutput(output, fallbackNote: "⚠ \(engine.shortName)失败，已回退离线：\(error.localizedDescription)")
+                }
+            }
+        } else {
+            VisionTextExtractor.recognizeAsync(from: baked) { [weak self, weak liveView] output in
+                guard let self, let liveView, self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive else { return }
+                liveView.applyPrecomputedAnalysis(output.liveAnalysisObject, highlightBlocks: false)
+                self.presentInPlaceOCROutput(output, fallbackNote: nil)
             }
         }
         updateToolbarLayout()
         needsDisplay = true
+    }
+
+    private func presentInPlaceOCROutput(_ output: OCRRecognitionOutput, fallbackNote: String?) {
+        if let qr = output.qrPayloads.first, output.preservedText.isEmpty { Self.presentBarcodeToast(qr); return }
+        let text = output.initialClipboardText
+        guard !text.isEmpty else { ToastHUD.show(message: "选区内未检测到可识别文字或二维码", subtitle: fallbackNote); return }
+        let msg = ocrAutoCopy ? { ClipboardAndSave.copyText(text); return "已识别 \(text.count) 字并复制 · 可直接在框内划词或点工具继续标注" }()
+            : "已识别 \(text.count) 字 · 可直接在框内划词或按 ⌘C 复制"
+        ToastHUD.show(message: msg, subtitle: fallbackNote, actionTitle: "双栏对照窗 ›") { [weak self] in self?.exportAndFinish(mode: .extractText) }
     }
 
     /// 选区锁定后静默探测二维码/条码，命中即弹出一键打开链接/复制码值提示（未命中零干扰）
@@ -234,6 +251,7 @@ extension OverlayView {
     }
 
     func deactivateInPlaceOCR() {
+        inPlaceOCRToken &+= 1
         guard toolbar.inPlaceOCRActive || inPlaceOCRView != nil else { return }
         toolbar.inPlaceOCRActive = false
         inPlaceOCRView?.clearSelection()

@@ -1,105 +1,146 @@
 <div align="center">
 
-# MSnip `v0.9.3`
+# MSnip
 
-**Precision screenshots, desktop pins, a top-edge drop shelf, scrolling capture, high-frame-rate recording, offline OCR, and in-place translation — packed into a ~3.5 MB pure-native Swift app. Zero dependencies, MIT open source, no subscriptions.**
+### A Sub-3 MB Pure-Native macOS Screenshot, Annotation, Pin, Recorder, OCR & Translation Utility
 
-[简体中文](README.md) · [English](README_EN.md)
+**Only `2.6 MB` native (`1.3 MB` zipped), zero third-party dependencies, `0%` idle CPU, and zero idle bitmap retention — packing 12 annotation tools, offline privacy auto-redaction, desktop pins, a top drop shelf, vertical & horizontal scrolling capture, high-FPS recording, multi-engine OCR/LaTeX, and in-place translation into one MIT open-source Swift app.**
 
-[![macOS](https://img.shields.io/badge/macOS-12.0%2B-0C6EF3?style=flat-square&logo=apple&logoColor=white)](https://github.com/xy-tuoren/MSnip)
-[![Swift](https://img.shields.io/badge/Pure_Native-Swift_5.9%2B-F05138?style=flat-square&logo=swift&logoColor=white)](Package.swift)
-[![Zero Dependencies](https://img.shields.io/badge/Third--Party_Deps-0-10B981?style=flat-square)](Package.swift)
-[![Bundle Size](https://img.shields.io/badge/App_Size-~3.5_MB-6366F1?style=flat-square)](scripts/bundle.sh)
-[![License](https://img.shields.io/badge/License-MIT-64748B?style=flat-square)](LICENSE)
+<p align="center">
+  <a href="https://github.com/xy-tuoren/MSnip/releases"><img alt="Release" src="https://img.shields.io/github/v/release/xy-tuoren/MSnip?style=flat-square&label=release&color=0C6EF3"></a>
+  <a href="https://github.com/xy-tuoren/MSnip/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/xy-tuoren/MSnip/ci.yml?style=flat-square&label=CI"></a>
+  <a href="https://github.com/xy-tuoren/MSnip/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/xy-tuoren/MSnip?style=flat-square&color=E3B341"></a>
+  <img alt="macOS" src="https://img.shields.io/badge/macOS-12.0%2B-111827?style=flat-square&logo=apple&logoColor=white">
+  <img alt="Native Size" src="https://img.shields.io/badge/Native_App-2.6_MB-6366F1?style=flat-square">
+  <img alt="Swift" src="https://img.shields.io/badge/Pure_Native-Swift_5.9%2B-F05138?style=flat-square&logo=swift&logoColor=white">
+  <img alt="Zero Dependencies" src="https://img.shields.io/badge/3rd--Party_Deps-0-10B981?style=flat-square">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-MIT-64748B?style=flat-square"></a>
+</p>
+
+[简体中文](README.md) · **English**
+
+**[Why MSnip](#-why-msnip) · [Comparison](#-comparison) · [Performance Budget](#-performance-budget-measured) · [Screenshots](#-screenshots) · [Core Features](#-core-capabilities) · [Installation](#-installation) · [Shortcuts](#-keyboard-shortcuts) · [Architecture](#-architecture--testing)**
 
 </div>
 
 <br/>
 
-![MSnip Overview](docs/msnip-showcase.jpg)
+![MSnip Capture Overlay: frozen screen, 12 annotation tools, offline privacy redaction, and pixel magnifier](docs/msnip-hero.jpg)
+
+*Pressing `⌥A`: instant frozen canvas, smart window/control snapping, dual-layer floating toolbar, 1-click offline redaction of API keys / emails / phone numbers, live corner radius & luminous glow pills, and a zero-copy 15×7 GPU pixel loupe.*
 
 ---
 
-## Why Switch to MSnip?
+## Why MSnip?
 
-Many macOS power users end up running 3–4 separate menu bar utilities just to cover daily visual work: one for screenshots and annotation, one for desktop pinning, one for scrolling capture or screen recording, and another for OCR and translation. **MSnip brings the entire workflow into a single ~3.5 MB native Swift app — fast, inspectable, and free forever.**
+Most macOS power users end up running 3–4 menu bar utilities just to cover everyday visual workflows (screenshots + pins + recording/scrolling + OCR/translation), paying yearly subscriptions for closed-source suites, or carrying 100+ MB Electron/Qt wrappers with bundled `ffmpeg`.
 
-- **One ~3.5 MB App Replaces Multiple Utilities**: Capture, 12 annotation tools, floating pins, vertical & horizontal scrolling capture, high-frame-rate GIF/MP4 recording, offline OCR & table extraction, LaTeX formulas, and multi-engine in-place translation — MIT licensed with no accounts, no watermarks, and no paywalls.
+**MSnip refuses to trade power for lightness**: zero external packages, written strictly in native Swift, weighing just **2.6 MB** as a native build — fast, inspectable, and MIT open source forever.
+
+- **One App Replaces Four, Open & Uncluttered**: Screenshots, 12 annotation tools, offline auto-redact, desktop pins, top drop shelf, multi-image collage & PDF merge, vertical & horizontal scrolling capture, high-FPS GIF/MP4 recording (with system audio), multi-engine OCR/tables, LaTeX formulas, and in-place translation — no accounts, no watermarks, no paywalls.
 - **Built for Developers & AI Coding Workflows**:
-  - **Smart Terminal & AI IDE Paste**: Copy any screenshot and press `⌘V` inside standalone terminals or embedded IDE terminals (VS Code / Cursor / Zed / JetBrains) to automatically paste a space-free temporary `.png` file path ready for CLI tools and AI assistants — while still pasting clean raw images into chat apps and files into Finder.
-  - **1-Click Offline Auto-Redact**: On-device Vision scans your selection and masks API keys/JWTs, emails, phone numbers, 18-digit IDs, non-loopback IPv4 addresses, and bank cards in one undoable step before you share a screenshot.
-  - **Instant Markdown & TSV Tables**: Extract structured tables straight into Markdown or spreadsheet columns (Excel / Numbers).
-- **True Native Performance, Not a Heavy Wrapper**: Zero third-party packages, no Electron, no WebView shell, no bundled `ffmpeg`. **0% idle CPU**, immediate memory release after every capture or recording session, hardware-accelerated pipelines, and smooth high-frame-rate interaction.
-- **Privacy You Can Actually Verify**: Screenshot apps hold macOS's highest-trust *Screen Recording* permission. MSnip is 100% open source with zero external dependencies; capturing, annotation, redaction, OCR, QR/barcode scanning, scrolling stitch, recording, and macOS 15+ Apple native translation all run **entirely on-device**. Optional cloud translation/formula keys stay isolated in `0600` local files or macOS Keychain.
+  - **Smart Terminal & AI IDE Paste**: Copy a screenshot and press `⌘V` in standalone terminals or embedded IDE terminals (VS Code / Cursor / Zed / JetBrains / Claude Code / Codex) to automatically paste a space-free temporary `.png` file path — while still pasting raw images into chat apps and files into Finder.
+  - **1-Click Offline Privacy Auto-Redact**: On-device Vision locates and masks API keys/JWTs, emails, phone numbers, 18-digit IDs, non-loopback IPv4 addresses, and bank cards in one undoable step.
+  - **Instant Markdown & TSV Tables**: Extract multi-column tables straight into Markdown or Excel / Numbers columns.
+- **Verifiable Local-First Privacy**: Screenshot tools hold macOS's highest-trust *Screen Recording* permission. MSnip is 100% open source; capture, annotation, auto-redact, OCR, QR/barcode scanning, scrolling stitch, recording, and macOS 15+ Apple native translation all run **entirely on-device**. Optional cloud translation/OCR keys stay isolated in `0600` local files or macOS Keychain.
 
 ---
 
-## How MSnip Compares
+## Comparison
 
-| Capability | Built-in macOS | Typical Lightweight Tools | Commercial All-in-One Suites | **MSnip** |
-| :--- | :---: | :---: | :---: | :---: |
-| License & Pricing | Built-in | Free or paid (mostly closed) | Paid or subscription (closed) | **Free · MIT Open Source** |
-| App Size & Dependencies | Built-in | 10–60 MB | 50–250 MB (often bundled runtimes) | **~3.5 MB · 0 External Deps** |
-| Idle Footprint & Memory | Light | Light | Higher resident memory | **0% Idle CPU · Zero Memory Retention** |
-| Annotation & Auto-Redact | Basic markup | Strong markup, rare auto-redact | Full markup | **12 Tools + Offline Auto-Redact** |
-| Desktop Pinning & Compare | None | Basic pin | Partial | **Luminous Glow + 8-Way Resize + Live Text + Multi-Image Collage** |
-| Scrolling Capture | None | Partial (usually vertical only) | Supported | **Vertical & Horizontal + Undo Step + Sticky Bar Rejection** |
-| High-FPS Recording & Audio | Basic only | Often missing or capped | Supported | **High-FPS Hardware H.264 + System Audio + Live Draw + Lossless Trim** |
-| Offline OCR / Translation / LaTeX | Preview only | Basic OCR only | Usually needs separate app | **OCR + Markdown Tables + In-Place Translate + LaTeX** |
-| Smart Terminal / AI IDE Path Paste | None | None | None | **Context-Aware (Path in Terminals / Raw Image in Chat)** |
+> Summarized from publicly documented capabilities across popular macOS screenshot tools.
+
+| Capability | Built-in macOS | Shottr | Snipaste | CleanShot X | PixPin | **MSnip** |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: |
+| **License & Pricing** | Built-in | Free / Paid Pro (Closed) | Free / Paid Pro (Closed) | $29 + Renewals (Closed) | Free / Subscription (Closed) | **Free Forever · MIT Open Source** |
+| **Stack & Dependencies** | Built-in | Native Swift | Qt / C++ | Native Swift + Closed SDKs | Qt / C++ + External Engines | **Pure Native Swift · 0 External Deps** |
+| **App Footprint** | Built-in | ~10 MB | ~55 MB | ~50+ MB | ~120+ MB | **Native `2.6 MB` (Universal `6.0 MB`)** |
+| **Annotations & Auto-Redact** | Basic | Rich markup | Rich markup | Rich + manual redact | Rich markup | **12 Tools + Offline Auto-Redact** |
+| **Desktop Pinning** | None | Single-image pin | Strong pin | Supported | Strong pin | **Luminous Glow + 8-Way Resize + Live Text + Ghost Mode** |
+| **Top Drop Shelf & Collage/PDF** | None | None | None | None | None | **98pt Top Shelf + Multi-Image Collage + PDF Merge** |
+| **Scrolling Capture** | None | Vertical only | None | Vertical only | Supported | **Vertical & Horizontal + Undo Step + Sticky Bar Rejection** |
+| **High-FPS Recording & Audio** | Basic | None | None | Paid | GIF / Video | **High-FPS Hardware H.264 + System Audio + Live Draw + Lossless Trim** |
+| **OCR / Tables / Translate / LaTeX** | Preview only | Offline OCR | None | Offline OCR | OCR + Pin Translate | **6 OCR Engines + Markdown Tables + In-Place Translate + LaTeX** |
+| **Smart Terminal / AI IDE Paste** | None | None | None | None | None | **Context-Aware (Path in Terminals / Raw Image in Chat)** |
 
 ---
 
-## Performance Advantages
+## Performance Budget (Measured)
 
-MSnip is built strictly on Apple's system frameworks so speed and efficiency show up in every interaction:
+| Metric | Measured Result | Engineering Notes |
+| :--- | :--- | :--- |
+| **Native App Bundle (`arm64`)** | **`2.6 MB`** (`1.3 MB` zipped) | `2,696 KB` via `scripts/bundle.sh` (hard gate `≤ 3.0 MiB`) |
+| **Universal Bundle (`arm64` + `x86_64`)** | **`6.0 MB`** (`2.8 MB` zipped) | Dual-arch Universal Binary for GitHub Releases & Homebrew |
+| **App Icon (`AppIcon.icns`)** | **`64 KB`** | Pure CoreGraphics vector + adaptive 5-filter `zlib-9` + 8 `sRGB` slices |
+| **Idle CPU Usage** | **`0.0%`** | Strictly event-driven — zero background polling timers |
+| **Post-Session Memory Retention** | **Immediate Release** | Full-screen `CGImage`, tile caches, and WebKit processes freed on close |
+| **Overlay & Magnifier Rendering** | **High-Refresh Smooth** | Static GPU layer + dirty-rect partial redraws + zero-copy loupe sampling |
+| **Hardware Recording Pipeline** | **60 / 120 fps** | Zero-copy VideoToolbox H.264 MP4; LZ4 disk-spooled GIF prevents RAM spikes |
+| **Retina & Color Accuracy** | **Native Display P3** | Decoupled logical/physical coordinates with end-to-end display ICC preservation |
 
-- **~3.5 MB Footprint & Instant Trigger**: No cross-platform runtime or embedded binary bloat — pressing a hotkey freezes the screen almost instantaneously.
-- **0% Idle CPU & Zero Memory Retention**: At rest, MSnip stays a tiny menu bar citizen. As soon as a capture, pin, or recording session closes, full-screen bitmaps, slice caches, and temporary buffers are freed immediately — no memory creep over days of uptime.
-- **Smooth High-Frame-Rate Interaction**: The frozen canvas is backed by a static GPU layer with dirty-rect partial redraws and a zero-copy pixel loupe, keeping selection dragging, eyedropper inspection, and markup fluid on high-refresh-rate displays.
-- **Hardware-Accelerated Encoding & Low-Memory Recording**: MP4 capture streams directly through macOS's zero-copy hardware H.264 pipeline at **high frame rates** (matching your display's refresh rate) without bogging down active apps; GIF recording spools compressed LZ4 frames to disk to avoid RAM spikes; Gaussian blur runs on SIMD vector acceleration.
-- **Pixel-Exact Retina & Wide-Gamut Accuracy**: Interaction coordinates and physical pixel output stay strictly decoupled, preserving native Display P3 / ICC color profiles end-to-end with zero washed-out colors or blurry text.
+**How does MSnip stay at `2.6 MB` without cutting features or runtime safety?**
+1. **Zero Third-Party Dependencies**: No Electron, no WebView shell, no Qt, no bundled `ffmpeg` — built directly on macOS `AppKit`, `ScreenCaptureKit`, `Accelerate/vImage`, `Vision`, `VideoToolbox`, and `Translation`.
+2. **Whole-Module Single-Unit LLVM Optimization**: Release builds pair `-Osize` + `-cross-module-optimization` + `-enable-single-module-llvm-emission` (cross-file LLVM outlining & function merging) + `-exported_symbol _main` (trimming 165 KB from `LC_DYLD_EXPORTS_TRIE`) while **preserving full Swift reflection metadata** for 100% safe SwiftUI / `Translation` / `VisionKit` interop.
+3. **Pure-Vector High-Compression Icon**: [generate-icon.swift](scripts/generate-icon.swift) renders every resolution sharply in CoreGraphics and packs a `64 KB` tagged `sRGB` `.icns` directly without raster bloat.
+
+---
+
+## Who Is It For?
+
+- **Developers & AI Coding Power Users**: Copy any screenshot and `⌘V` straight into Terminal / Cursor / Claude Code / Codex as a space-free file path; auto-redact API keys and emails offline before sharing bug reports.
+- **Product, Design & Technical Writers**: 12 crisp annotation tools, auto-incrementing step badges `①②③`, rounded corners & luminous borders, clean isolated window shadows, multi-image collage, and lossless multi-page PDF merge.
+- **Cross-Language Readers & Researchers**: Paragraph-level in-place translation (macOS 15+ Apple offline + streaming LLMs), multi-engine OCR, Markdown table extraction, and LaTeX formula recognition.
+- **Minimalists Tired of Bloat & Subscriptions**: Replace 3–4 menu bar utilities with one inspectable `2.6 MB` native Swift app.
+
+---
+
+## Screenshots
+
+### Core Workflows (Desktop Pin · Top Drop Shelf & Collage · OCR / Translation / LaTeX · Developer Tools)
+
+![MSnip Core Workflows: Desktop Pin, Top Drop Shelf & Collage Studio, Multi-Engine OCR/Translate/LaTeX, Smart Terminal Paste & High-FPS Recording](docs/msnip-workflow.jpg)
+
+### Geek Settings Center (Live App Capture · 4 Unified Tabs · Zero Horizontal Scrollbars)
+
+<p align="center">
+  <img src="docs/msnip-settings.png" alt="MSnip Live Geek Settings Window" width="840"/>
+</p>
+
+*All preferences organized across 4 clean tabs (**General / Shortcuts / OCR & Translation / Models & Services**) with adaptive Light/Dark appearance, auto-save, optional Keychain secret storage, and sanitized JSON config export/import.*
 
 ---
 
 ## Core Capabilities
 
 ### 1. Precision Capture, Custom Delay & Instant Fullscreen
-- **Smart Element Snapping**: Automatically detects Dock items, menu bar items, window layers, UI accessibility controls, and closed visual edges. Scroll or press `[` / `]` before locking to step cleanly between *UI element ↔ parent container ↔ full window*.
-- **Custom Delayed Capture (`⌥W`, `1–60s`)**: Floating countdown ring (click to capture immediately; press `Esc` or the same hotkey to cancel) with modal-menu focus guarding so open dropdown menus and hover states capture cleanly without hanging.
-- **Instant Fullscreen Capture (`⌥S`)**: Immediately captures the display under your cursor with configurable default behavior (**Copy / Save / Copy & Save**).
-- **Isolated Clean Window Capture (`F` / `⇧↩`)**: Strips desktop clutter and exports a single window with native macOS transparent drop shadow.
-- **Corner Radius & Luminous Glow (`B` / `G`)**: Drag or scroll the two top-right side pills to tune `0%–100%` rounded corners and soft luminous outer glow live.
-- **Multi-Format Export & Custom Filenames**: Auto-probes hardware-supported `PNG / JPG / HEIC / AVIF / BMP / TIFF`, supports Retina `1×` downscaling, customizable filename templates (`MSnip-{date}-{time}-{w}x{h}`), and subtle audio feedback.
+- **Smart Multi-Level Snapping**: Detects Dock items, menu bar items, windows, UI accessibility controls, and closed visual edges; scroll or press `[` / `]` to step between *UI element ↔ parent container ↔ full window*.
+- **Custom Delayed Capture (`⌥W`, `1–60s`)**: Floating countdown ring (click to shoot immediately; `Esc` cancels) with modal-menu focus guards so open dropdown menus capture cleanly.
+- **Instant Fullscreen Capture (`⌥S`)**: Captures the display under your cursor with configurable default action (**Copy / Save / Copy & Save**).
+- **Isolated Clean Window (`F` / `⇧↩`)**: Strips desktop clutter and exports a single window with native macOS transparent shadow.
+- **Corner Radius & Luminous Glow (`B` / `G`)**: Drag or scroll the top-right side pills to tune `0%–100%` rounded corners and soft outer glow live.
+- **Multi-Format Export & Custom Filenames**: Auto-probes `PNG / JPG / HEIC / AVIF / BMP / TIFF`, Retina `1×` downscaling, custom filename templates (`MSnip-{date}-{time}-{w}x{h}`), and a floating Quick-Access card.
 
-### 2. 12 Annotation Tools, Spotlight & Offline Auto-Redact
-- **Complete Toolkit**: Rectangle, Ellipse, Arrow, Line, Bézier Pen, Highlighter, auto-incrementing Step badges `①②③`, Mosaic, SIMD Gaussian Blur, **Spotlight highlight**, Capsule Text, and segmented Eraser.
+### 2. 12 Annotation Tools, Spotlight & 1-Click Offline Auto-Redact
+- **Full Toolkit**: Rectangle, Ellipse, Arrow, Line, Bézier Pen, Highlighter, auto-incrementing Step badges `①②③`, Mosaic, SIMD Gaussian Blur, **Spotlight highlight**, Capsule Text, and segmented Eraser.
 - **1-Click Offline Auto-Redact**: Detects and masks API keys/JWTs, emails, phone numbers, 18-digit IDs, non-loopback IPv4 addresses, and bank cards locally — undoable in one `⌘Z`.
-- **Post-Edit Handles, `⌘C/⌘V/⌘D` Cloning & 100-Step Undo**: Select any shape to adjust corners, endpoints, or step tails; press **`⌘C` / `⌘V`** to copy-paste or **`⌘D`** to duplicate in place (duplicating step badge `①` automatically increments to `②`), backed by a 100-step Copy-on-Write Undo/Redo stack.
+- **Post-Edit Handles, Cloning & 100-Step Undo**: Select any shape to refine corners/endpoints; **`⌘C` / `⌘V`** copy-paste and **`⌘D`** duplicate in place (auto-incrementing step numbers), backed by a 100-step Copy-on-Write Undo/Redo stack.
 
-### 3. Desktop Pin Workflow, Top Shelf & Collage Studio
-- **Compact Top Drop Shelf (MSnip Shelf)**: Supports **Hover to Expand** (strict top-edge `≤ 1.5pt` `0.55s` dwell anti-misfire, `80ms` instant open when dragging files, silent capture recording without auto-popping, click top bar to dismiss), **Hotkey Toggle**, and **Always Shown** modes. At just `98pt` tall with adaptive width (up to 9 cards at once), it supports mouse-wheel horizontal scrolling, click-to-copy, 1-click `✎` annotate, `⌘ + Click` ordered multi-select for collage, drag-out sharing, per-card deletion, and `+ Clipboard`. Menu bar icon supports **Left-Click to open Settings, Right-Click for the action menu**.
-- **Soft Luminous Outer Glow**: Subtle white halo at rest (clear contrast on both dark and light wallpapers) transitioning smoothly to a soft blue glow on hover or focus; tuned via a continuous `0%–100%` slider in Settings with live pin preview, bidirectionally synced with the selection glow slider and `⌥ + Scroll` on pins.
-- **8-Way Clean Edge & Corner Resizing**: Completely uncluttered at rest; hovering the outer luminous border or any of the 4 corners reveals subtle directional indicators with native macOS resize cursors and aspect-locked scaling.
-- **Multi-Image Collage & PDF Merge Studio**: Open from the Top Shelf (with optional `⌘ + Click` multi-select) or Recent Captures menu. Supports drag-in, add from clipboard/history, reordering, and **embedded in-window annotation editing** for both single images and the stitched collage (preserving vector edits with 1-click reset). Provides two clear modes — **Stitch Image** (Horizontal / Vertical / 2–4 Col Grid, Fill/Center/Top alignment, Auto/16:9/4:3/1:1 aspect presets, live gap/padding/corner radius/card shadow, 2D color picker + screen eyedropper/gradients/transparent backdrop, step badges & watermarks) and **Merge Multi-Page PDF** (lossless native CoreGraphics multi-page `.pdf` export with live margin & page number preview). Oversized collages and long captures auto-scale to fit inside screen bounds while preserving full-resolution pixels underneath.
-- **Unobstructed Floating Bar**: `[ ✥ Drag | ✎ Annotate | OCR | Translate | Copy | ↓ Save | ✕ Close ]` sits outside the image. Includes native Live Text selection directly on the pin, `⌘ + Drag` out as a `.png` file, 1-click `↓` quick-save (`⇧ + Click` Save As), Crop (`C`), Rotate (`R`), Flip (`H`), Click-Through Ghost Mode (`P`), and `8pt` magnetic snapping.
+### 3. Desktop Pins, Top Drop Shelf & Collage / PDF Studio
+- **Compact Top Drop Shelf (MSnip Shelf)**: Supports **Hover to Expand** (strict top-edge `≤ 1.5pt` `0.55s` dwell anti-misfire, `80ms` drag-to-top reveal), **Hotkey Toggle**, and **Always Shown**; `98pt` height holding up to 9 cards with click-to-copy, `✎` annotate, `⌘ + Click` ordered multi-select for collage, and drag-out sharing. Menu bar icon opens the action menu on **left- or right-click**, with **`⌥ + Left-Click`** toggling the Top Shelf.
+- **Desktop Pins**: Soft white/blue luminous outer glow synced `0%–100%` across Settings, selection overlay, and `⌥ + Scroll`; 8-way hover resizing, on-pin Live Text selection, `⌘ + Drag` out as `.png`, Click-Through Ghost Mode (`P`), `8pt` magnetic snapping, and an unobstructed floating action bar.
+- **Multi-Image Collage & PDF Merge Studio**: Drag-in, reorder, **embedded in-window annotation editing**, **Stitch Image** mode (Horizontal / Vertical / 2–4 Col Grid, aspect presets, gap/padding/radius/shadow/2D color picker + eyedropper/gradients/badges/watermark), and lossless **Merge Multi-Page PDF** mode.
 
-### 4. Vertical & Horizontal Scrolling Capture (`⌥E` / `L`)
-- Lossless live frame sampling that strips sticky headers, footers, and static sidebars — supporting both **Vertical Down** and **Horizontal Right** stitching, **`⌘Z` undo last stitch**, automatic desync recovery, and 1-click handoff to Pin Annotation.
+### 4. Vertical & Horizontal Scrolling Capture (`⌥E` / `L`) & High-FPS Recording (`⌥R` / `V`)
+- **Scrolling Capture**: Lossless live sampling that rejects sticky headers, footers, and static sidebars — supporting **Vertical Down** and **Horizontal Right** stitching, **`⌘Z` undo last step**, and desync auto-recovery.
+- **High-FPS GIF / MP4 Recording**: MP4 offers **Standard / HD / Original (Retina 1:1)** at **30fps / 60fps / Native High Refresh Rate**, **macOS 13+ native system audio capture**, click ripples, keystroke HUD, **live pen annotation during recording**, and **lossless MP4 head/tail trimming**; GIF offers **Compact / Standard / HD**.
 
-### 5. High-Frame-Rate Region Recording — GIF & MP4 (`⌥R` / `V`)
-- **High Frame Rate & 3 Quality Tiers**: MP4 offers **Standard (`≤1280px`) / HD (`≤1920px`) / Original (Retina 1:1)** at **30fps / 60fps / Native High Refresh Rate** with FPS-adaptive bitrate; GIF offers **Compact (`720px`) / Standard (`960px`) / HD (`1280px`)**.
-- **System Audio + Live Annotation + Lossless Trim**: Includes **macOS 13+ native system audio capture**, click ripples, modifier key HUD, **real-time laser/pen drawing during recording**, and lossless MP4 head/tail trimming.
+### 5. Multi-Engine Translation, OCR (Offline + Cloud + Vision LLM) & LaTeX (`⌥D` / `⌥F`)
+- **Paragraph In-Place & Streaming Translation**: Supports **macOS 15+ Apple Native Offline Translation**, plus **OpenAI Chat / OpenAI Responses (`/v1/responses`) / Anthropic Messages / Gemini Native** (with reasoning-block filtering) alongside DeepSeek, Zhipu, Qwen, Doubao, Kimi, Tencent, Baidu, Youdao, DeepL, Ollama, and custom relays with failover.
+- **3 OCR Modes & 6 OCR Engines**: **In-Place Live Text / Dual-Pane / Silent Copy**; alongside **Apple Offline Vision**, switch freely to **Vision LLMs / Baidu / Tencent / Youdao / Custom HTTP** (compatible with Umi-OCR / PaddleOCR / RapidOCR), export tables as **Markdown / TSV**, and detect QR/barcodes silently.
+- **LaTeX Formula Recognition**: Vision LLMs, SimpleTex, Mathpix, and offline fallback with instant offline native WebKit MathML rendering and online KaTeX progressive enhancement.
 
-### 6. Multi-Engine OCR (Offline + Cloud + Vision LLM), Tables, LaTeX & Streaming Translation (`⌥F` / `⌥D`)
-- **3 OCR Modes & 6 OCR Engines**: Choose **In-Place Live Text**, **Dual-Pane Inspector**, or **Silent Copy** (dismisses overlay immediately and copies recognized text in the background; hold `⌥` to override). Alongside **Apple Offline Vision**, switch freely to **Vision LLMs**, **Baidu Cloud OCR**, **Tencent Cloud OCR**, **Youdao OCR**, or a **Universal Custom HTTP OCR** adapter (`{{image_base64}}` templates + `*` array wildcard JSON path extraction for Umi-OCR / PaddleOCR / RapidOCR / custom endpoints) with seamless offline fallback; copy structured tables as **Markdown** or **TSV**.
-- **Silent QR & Barcode Detection**: Scans locked selections in the background for 1-click Open URL or Copy Value.
-- **Paragraph In-Place & Streaming Translation**: Groups natural paragraphs and renders translations back in place (hold to peek original; right-click to switch language). Supports **macOS 15+ Apple Offline Translation**, plus all 4 major LLM protocols (**OpenAI Chat / OpenAI Responses `/v1/responses` / Anthropic Messages / Gemini Native**, with reasoning/thinking-block filtering) alongside Tencent, Baidu, Youdao, DeepL, Ollama, and custom relays with failover & streaming.
-- **LaTeX Formula Recognition**: Vision LLMs, SimpleTex, Mathpix, and offline fallback — cleanly unified under the **OCR & Translation** feature tab and **Models & Services** provider pool, with offline native WebKit MathML rendering and online KaTeX progressive enhancement.
-
-### 7. Customizable Shortcuts, CLI & `msnip://` URL Scheme
-- Adaptive Light / Dark / System appearance, 12 customizable global hotkeys + 24 single-key canvas bindings, system/app conflict scanner, optional priority hotkey takeover, secret-stripped JSON config import/export, and 1-click diagnostic reports.
-- **CLI & `msnip://` URL Scheme Automation** (Raycast / Alfred / Apple Shortcuts): Trigger any workflow via `open msnip://capture`, `msnip://ocr`, `msnip://silent-ocr`, `msnip://shelf`, `msnip://long`, `msnip://record`, `msnip://pin`, `msnip://translate`, or `MSnip --enter=ocr|shelf|long|video|pin` with instant single-instance IPC handoff.
+### 6. CLI & `msnip://` URL Scheme Automation
+- Integrates seamlessly with Raycast, Alfred, Apple Shortcuts, and shell scripts via `open msnip://capture`, `msnip://translate`, `msnip://ocr`, `msnip://silent-ocr`, `msnip://shelf`, `msnip://long`, `msnip://record`, `msnip://pin`, `msnip://settings`, or `MSnip --enter=ocr|shelf|long|video|pin`.
 
 ---
 
@@ -110,11 +151,9 @@ MSnip is built strictly on Apple's system frameworks so speed and efficiency sho
   - Live Text & MP4 native system audio capture: macOS 13.0+
   - `ScreenCaptureKit` fast silent capture: macOS 14.0+ (automatic fallback on macOS 12–13)
   - Apple native offline translation: macOS 15.0+
-- **Permissions**:
-  - **Screen Recording** (Required): Capturing displays and recording screen regions.
-  - **Accessibility** (Optional): UI-control snapping, IDE terminal focus detection, and priority hotkey takeover.
+- **Permissions**: **Screen Recording** (Required for capture/recording); **Accessibility** (Optional for UI-control snapping, IDE terminal detection, and priority hotkey takeover).
 
-### Option 1: Build & Install from Source to `/Applications` (Recommended)
+### Option 1: Build & Install Native `2.6 MB` App from Source (Recommended)
 
 Requires Xcode Command Line Tools (`xcode-select --install`):
 
@@ -125,9 +164,13 @@ bash scripts/install.sh --rebuild
 ```
 
 > [!TIP]
-> If you rebuild from source frequently, run `bash scripts/setup-cert.sh` once to create a persistent local signing certificate in your Keychain — future rebuilds keep macOS Screen Recording and Accessibility permissions intact without re-granting.
+> Run `bash scripts/setup-cert.sh` once to generate a persistent local signing certificate in your Keychain so future rebuilds preserve macOS Screen Recording and Accessibility permissions automatically.
 
-### Option 2: Homebrew Cask
+### Option 2: Direct Download from GitHub Releases (Universal Binary)
+
+Download `MSnip-v*-macOS.zip` from **[GitHub Releases](https://github.com/xy-tuoren/MSnip/releases)**, unzip, and move `MSnip.app` to `/Applications`.
+
+### Option 3: Homebrew Cask
 
 ```bash
 brew tap xy-tuoren/msnip https://github.com/xy-tuoren/MSnip
@@ -138,7 +181,7 @@ brew install --cask msnip
 
 ## Keyboard Shortcuts
 
-### Global Hotkeys (4 Built-in Presets + Full Custom Recording)
+### Global Hotkeys (4 Built-in Presets + Conflict Scanner & Custom Recording)
 
 | Action | Left-Hand (Default) | Number Keys | Function Keys | Classic 3-Key |
 | :--- | :---: | :---: | :---: | :---: |
@@ -189,22 +232,42 @@ brew install --cask msnip
 
 ## Architecture & Testing
 
-MSnip enforces strict modularity and zero-dependency hygiene in CI: every `.swift` source file is gated at `≤ 300` lines, core algorithms are decoupled from AppKit UI, and the repo ships with a zero-dependency unit test suite (**347 assertions**).
+MSnip enforces cohesive modularity and zero third-party dependencies: **111 `.swift` files** gated at `≤ 800` lines in CI, pure core algorithms decoupled from AppKit UI, and a zero-dependency unit test suite (**414 assertions**).
 
 ```bash
-swift run MSnipTests   # Run all 347 zero-dependency core unit test assertions
+swift build                             # Debug compile check
+swift run MSnipTests                    # Run all 414 core unit test assertions
+bash scripts/bundle.sh                  # Native single-arch build (2.6 MB)
+bash scripts/bundle.sh --universal      # Dual-arch Universal Binary (6.0 MB, CI/Releases)
 ```
 
 ```text
 Sources/
-├── MSnipCore/      # Pure algorithms & models (geometry, annotations, vImage renderer, scroll stitcher, GIF/MP4 encoder, OCR formatters, hotkey conflict engine, credential vault)
-├── MSnip/          # macOS AppKit layer (menu bar, ScreenCaptureKit capture, frozen overlay, pin pool, recorder, OCR/LaTeX, translation & settings UI)
-└── MSnipTests/     # Zero-dependency automated test suite (326 assertions)
+├── MSnipCore/      # Pure algorithms & models (geometry, 12 annotations, vImage SIMD renderer, scroll stitcher, GIF/MP4 encoder, OCR/PII detector, hotkeys & credential vault)
+├── MSnip/          # macOS AppKit layer (menu bar, ScreenCaptureKit capture, frozen overlay, pin pool, shelf, collage, recorder, OCR/LaTeX, translation & settings UI)
+└── MSnipTests/     # Zero-dependency automated test suite (414 assertions)
 scripts/
-├── bundle.sh       # <=300-line gate, Release -Osize build, vector .icns icon generator & code signing
+├── bundle.sh       # <=800-line gate, Release -Osize single-unit LLVM build, size gate & code signing
+├── generate-icon.swift  # Zero-dependency pure-vector sRGB AppIcon.icns generator (64 KB)
 ├── install.sh      # One-command install & launch to /Applications/MSnip.app
 └── setup-cert.sh   # Local persistent signing certificate helper (keeps TCC permissions across rebuilds)
 ```
+
+---
+
+<div align="center">
+
+### Star History
+
+<a href="https://www.star-history.com/#xy-tuoren/MSnip&Date">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=xy-tuoren/MSnip&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=xy-tuoren/MSnip&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=xy-tuoren/MSnip&type=Date" />
+ </picture>
+</a>
+
+</div>
 
 ---
 

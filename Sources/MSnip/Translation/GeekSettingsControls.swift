@@ -82,11 +82,13 @@ final class GeekSegmentControl: NSView {
                let entry = GeekTheme.symbolEntry(syms[i], pointSize: 11.5, weight: active ? .semibold : .regular) {
                 let textW = GeekTheme.measureTextWidth(label, font: font)
                 let gap: CGFloat = 5.0
-                let totalW = entry.pointSize.width + gap + textW
+                let innerMax = max(16, sr.width - 8)
+                let clampedTextW = min(textW + 2, max(10, innerMax - entry.pointSize.width - gap))
+                let totalW = entry.pointSize.width + gap + clampedTextW
                 let sx = GeekTheme.snap(sr.midX - totalW * 0.5)
                 let symTint = active ? GeekTheme.accent : GeekTheme.inkMuted
                 GeekTheme.drawSymbol(syms[i], pointSize: 11.5, weight: active ? .semibold : .regular, in: CGRect(x: sx, y: sr.minY, width: entry.pointSize.width, height: sr.height), alpha: 0.96, tint: symTint)
-                GeekTheme.drawText(label, in: CGRect(x: sx + entry.pointSize.width + gap, y: sr.minY, width: textW + 2, height: sr.height), font: font, color: fg)
+                GeekTheme.drawText(label, in: CGRect(x: sx + entry.pointSize.width + gap, y: sr.minY, width: clampedTextW, height: sr.height), font: font, color: fg)
             } else {
                 GeekTheme.drawText(label, in: sr.insetBy(dx: 4, dy: 0), font: font, color: fg, align: .center)
             }
@@ -283,6 +285,400 @@ final class GeekDropdownPill: NSView {
         ctx.addLine(to: CGPoint(x: cx, y: cy + 1.6))
         ctx.addLine(to: CGPoint(x: cx + 3.2, y: cy - 1.6))
         ctx.strokePath()
+        ctx.restoreGState()
+    }
+}
+
+// MARK: - 设置页表单行与输入框组件
+
+/// 翻译服务列表行视图（38px 行高 + 悬停柔和底色 + 清晰「使用中 / 已就绪 / 填 Key」状态胶囊）
+final class ProviderRowCellView: NSTableCellView {
+    private let titleText: String
+    private let isPrimary: Bool
+    private let isReady: Bool
+    private let isRowSelected: Bool
+    private let dotColor: NSColor
+    private var hovered = false { didSet { if oldValue != hovered { needsDisplay = true } } }
+    override var isFlipped: Bool { true }
+
+    init(title: String, isPrimary: Bool, isReady: Bool, isSelected: Bool, dotColor: NSColor, fullTooltip: String? = nil) {
+        self.titleText = title
+        self.isPrimary = isPrimary
+        self.isReady = isReady
+        self.isRowSelected = isSelected
+        self.dotColor = dotColor
+        super.init(frame: .zero)
+        self.toolTip = fullTooltip ?? title
+        addTrackingArea(NSTrackingArea(rect: .zero, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        if isRowSelected || hovered {
+            let bg = CGPath(roundedRect: bounds.insetBy(dx: 4, dy: 2), cornerWidth: 7.5, cornerHeight: 7.5, transform: nil)
+            ctx.setFillColor((isRowSelected ? GeekTheme.controlHover : GeekTheme.hoverSoft).cgColor)
+            ctx.addPath(bg); ctx.fillPath()
+            if isRowSelected {
+                ctx.setStrokeColor(GeekTheme.borderStrong.cgColor)
+                ctx.setLineWidth(1.0); ctx.addPath(bg); ctx.strokePath()
+            }
+        }
+        MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 14, y: bounds.midY), color: dotColor, halo: isPrimary)
+
+        let badgeText: String = isPrimary ? "使用中" : (isReady ? "已就绪" : "填 Key")
+        let badgeBg: NSColor = isPrimary ? GeekTheme.emeraldSoft : (isReady ? GeekTheme.accentSoft : GeekTheme.pillSubtle)
+        let badgeFg: NSColor = isPrimary ? GeekTheme.emerald : (isReady ? GeekTheme.accent : GeekTheme.inkMuted)
+        let bw: CGFloat = 44, bh: CGFloat = 20
+        let br = CGRect(x: bounds.width - bw - 8, y: GeekTheme.snap((bounds.height - bh) * 0.5), width: bw, height: bh)
+        ctx.setFillColor(badgeBg.cgColor)
+        ctx.addPath(CGPath(roundedRect: br, cornerWidth: 5.0, cornerHeight: 5.0, transform: nil)); ctx.fillPath()
+        GeekTheme.drawText(badgeText, in: br, font: .systemFont(ofSize: 10.5, weight: .semibold), color: badgeFg, align: .center)
+
+        let titleFont = NSFont.systemFont(ofSize: 13.0, weight: (isRowSelected || isPrimary) ? .semibold : .medium)
+        let titleFg = (isRowSelected || hovered) ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
+        GeekTheme.drawText(titleText, in: CGRect(x: 24, y: 0, width: max(30, br.minX - 28), height: bounds.height), font: titleFont, color: titleFg)
+    }
+}
+
+/// 极客暗色文本输入壳（即时响应 firstResponder 蓝框焦点反馈 + 悬停显示完整内容提示）
+final class GeekInputBox: NSView, NSViewToolTipOwner {
+    override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+    let field: NSTextField
+    var hintToolTip: String?
+    private var hovered = false { didSet { if oldValue != hovered { refreshBorder() } } }
+    private var focused = false { didSet { if oldValue != focused { refreshBorder() } } }
+    private var responderObservation: NSKeyValueObservation?
+    private var tooltipTag: NSView.ToolTipTag?
+
+    init(frame: NSRect, field: NSTextField, placeholder: String, mono: Bool) {
+        self.field = field
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.backgroundColor = GeekTheme.inputBg.cgColor
+        layer?.cornerRadius = 7.5
+        layer?.borderWidth = 1.0
+        layer?.borderColor = GeekTheme.border.cgColor
+
+        field.isBordered = false; field.isBezeled = false; field.drawsBackground = false; field.focusRingType = .none
+        field.font = mono ? .monospacedSystemFont(ofSize: 12.5, weight: .regular) : .systemFont(ofSize: 13.0, weight: .regular)
+        field.textColor = GeekTheme.inkPrimary
+        field.setGeekPlaceholder(placeholder)
+        field.lineBreakMode = .byTruncatingTail
+        field.cell?.isScrollable = true; field.cell?.wraps = false
+        let fh = ceil(field.cell?.cellSize(forBounds: NSRect(x: 0, y: 0, width: 400, height: 40)).height ?? 18)
+        field.frame = NSRect(x: 10, y: GeekTheme.snap((frame.height - fh) * 0.5 - 0.25), width: frame.width - 20, height: fh)
+        addSubview(field)
+        refreshTooltipRect()
+    }
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        refreshTooltipRect()
+    }
+
+    private func refreshTooltipRect() {
+        if let tag = tooltipTag { removeToolTip(tag) }
+        tooltipTag = addToolTip(bounds, owner: self, userData: nil)
+    }
+
+    func view(_ view: NSView, stringForToolTip tag: NSView.ToolTipTag, point: NSPoint, userData data: UnsafeMutableRawPointer?) -> String {
+        guard !(field is NSSecureTextField) else { return "" }
+        if let hint = hintToolTip, !hint.isEmpty { return hint }
+        return field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        layer?.backgroundColor = GeekTheme.resolvedCGColor(GeekTheme.inputBg, for: self)
+        refreshBorder()
+        responderObservation?.invalidate()
+        responderObservation = nil
+        guard let win = window else { focused = false; return }
+        responderObservation = win.observe(\.firstResponder, options: [.initial, .new]) { [weak self] window, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if let editor = window.firstResponder as? NSTextView, (editor.delegate as AnyObject?) === self.field {
+                    self.focused = true
+                } else {
+                    self.focused = (window.firstResponder === self.field)
+                }
+            }
+        }
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach { removeTrackingArea($0) }
+        addTrackingArea(NSTrackingArea(rect: bounds, options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect], owner: self, userInfo: nil))
+    }
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+    override func mouseDown(with event: NSEvent) { window?.makeFirstResponder(field) }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        layer?.backgroundColor = GeekTheme.resolvedCGColor(GeekTheme.inputBg, for: self)
+        refreshBorder()
+        if let ph = field.placeholderAttributedString?.string, !ph.isEmpty { field.setGeekPlaceholder(ph) }
+    }
+
+    private func refreshBorder() {
+        layer?.borderWidth = focused ? 1.25 : 1.0
+        let col = focused ? GeekTheme.accent.withAlphaComponent(0.80) : (hovered ? GeekTheme.borderStrong : GeekTheme.border)
+        layer?.borderColor = GeekTheme.resolvedCGColor(col, for: self)
+    }
+}
+
+extension NSTextField {
+    func setGeekPlaceholder(_ text: String) {
+        placeholderAttributedString = NSAttributedString(
+            string: text,
+            attributes: [.font: font ?? NSFont.systemFont(ofSize: 13.0), .foregroundColor: GeekTheme.inkMuted]
+        )
+    }
+
+    func setTextWithTooltip(_ text: String, color: NSColor? = nil) {
+        if let color { textColor = color }
+        stringValue = text
+        toolTip = text.isEmpty ? nil : text
+    }
+}
+
+/// 权限状态行视图（14pt 主标题 + 右侧或紧邻清晰语义状态）
+final class GeekDotLabel: NSView {
+    var dotColor: NSColor = GeekTheme.emerald { didSet { needsDisplay = true } }
+    var text: String = "" { didSet { needsDisplay = true } }
+    var detail: String = "" { didSet { needsDisplay = true } }
+    var alignDetailRight: Bool = true
+    override var isFlipped: Bool { true }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 6, y: bounds.midY), color: dotColor, halo: true)
+
+        let titleFont = NSFont.systemFont(ofSize: 13.5, weight: .regular)
+        let tW = GeekTheme.measureTextWidth(text, font: titleFont)
+        GeekTheme.drawText(text, in: CGRect(x: 20, y: 0, width: max(20, bounds.width - 22), height: bounds.height), font: titleFont, color: GeekTheme.inkPrimary)
+
+        if !detail.isEmpty {
+            let detFont = NSFont.systemFont(ofSize: 12.5, weight: .medium)
+            if alignDetailRight {
+                GeekTheme.drawText(detail, in: CGRect(x: 20 + tW + 8, y: 0, width: max(20, bounds.width - 28 - tW), height: bounds.height), font: detFont, color: dotColor, align: .right)
+            } else {
+                GeekTheme.drawText(detail, in: CGRect(x: 20 + tW + 12, y: 0, width: max(20, bounds.width - 32 - tW), height: bounds.height), font: detFont, color: dotColor)
+            }
+        }
+    }
+}
+
+/// 设置窗口暗黑/明亮/跟随系统外观切换联动与统一竖向滚动容器配置扩展
+extension TranslationSettingsWindow {
+    func configureVerticalScroll(_ scroll: NSScrollView) {
+        scroll.drawsBackground = false
+        scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true
+        scroll.scrollerStyle = .overlay
+        scroll.horizontalScrollElasticity = .none
+    }
+
+    func toggleDarkLightQuick() {
+        AppAppearanceCoordinator.shared.toggleDarkLight()
+    }
+
+    func applyAppearanceMode(_ mode: AppAppearanceMode, persist: Bool) {
+        if !AppAppearanceCoordinator.shared.setMode(mode, persist: persist) {
+            refreshSettingsWindowAppearance()
+        }
+    }
+
+    func refreshSettingsWindowAppearance() {
+        let mode = GeekTheme.currentMode
+        HotKeyConflictPopover.shared.closeIfShown()
+        ProviderAddAndPresetPopover.shared.closeIfShown()
+        LanguagePickerPopover.shared.closeIfShown()
+        if let win = window {
+            win.appearance = GeekTheme.windowAppearance
+            win.backgroundColor = GeekTheme.windowBg
+            if let root = win.contentView { ResultWindowChrome.invalidateSubtree(root) }
+        }
+        tableView?.reloadData()
+        if let idx = AppAppearanceMode.allCases.firstIndex(of: mode) {
+            modeControls.appearanceSegment?.selectedIndex = idx
+        }
+        let dark = GeekTheme.isDark
+        modeControls.themeToggleBtn?.title = dark ? "明亮" : "暗黑"
+        modeControls.themeToggleBtn?.symbolName = dark ? "sun.max" : "moon"
+        modeControls.themeToggleBtn?.toolTip = dark ? "当前暗黑模式 · 点击一键切换明亮模式" : "当前明亮模式 · 点击一键切换暗黑模式"
+    }
+}
+
+// MARK: - 极客风格进度滑块控件
+
+/// 极客设置页连续可拖拽进度滑条（`0%` 显示为「关闭」，支持点击/拖拽实时预览、松手提交、滚轮微调与双击复位默认）
+final class GeekProgressSlider: NSView {
+    var value: CGFloat = 0.45 {
+        didSet {
+            let c = min(1.0, max(0.0, value))
+            if abs(c - value) > 0.0001 { value = c; return }
+            if abs(oldValue - value) > 0.0005 { needsDisplay = true }
+        }
+    }
+    var defaultValue: CGFloat = 0.45
+    var zeroLabel: String = "关闭"
+    var onChange: ((CGFloat) -> Void)?
+    var onCommit: ((CGFloat) -> Void)?
+
+    private var hovered = false { didSet { if oldValue != hovered { needsDisplay = true } } }
+    private var dragging = false { didSet { if oldValue != dragging { needsDisplay = true } } }
+
+    override var isFlipped: Bool { true }
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    init(value: CGFloat = 0.45, defaultValue: CGFloat = 0.45, zeroLabel: String = "关闭") {
+        self.value = min(1.0, max(0.0, value))
+        self.defaultValue = defaultValue
+        self.zeroLabel = zeroLabel
+        super.init(frame: .zero)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach { removeTrackingArea($0) }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) { hovered = true }
+    override func mouseExited(with event: NSEvent) { hovered = false }
+
+    private var trackRange: (minX: CGFloat, maxX: CGFloat) {
+        let labelW: CGFloat = 44
+        let left: CGFloat = 7
+        let right = max(left + 40, bounds.width - labelW - 10)
+        return (left, right)
+    }
+
+    private func valueFromPoint(_ pt: NSPoint) -> CGFloat {
+        let r = trackRange
+        let raw = (pt.x - r.minX) / max(1, r.maxX - r.minX)
+        let pct = (min(1.0, max(0.0, raw)) * 100.0).rounded()
+        return pct <= 1.0 ? 0.0 : pct / 100.0
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount == 2 {
+            value = defaultValue
+            onChange?(value)
+            onCommit?(value)
+            return
+        }
+        dragging = true
+        let next = valueFromPoint(convert(event.locationInWindow, from: nil))
+        value = next
+        onChange?(next)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard dragging else { return }
+        let next = valueFromPoint(convert(event.locationInWindow, from: nil))
+        if abs(next - value) > 0.001 {
+            value = next
+            onChange?(next)
+        }
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        guard dragging else { return }
+        dragging = false
+        let next = valueFromPoint(convert(event.locationInWindow, from: nil))
+        value = next
+        onChange?(next)
+        onCommit?(next)
+    }
+
+    override func scrollWheel(with event: NSEvent) {
+        let delta = abs(event.scrollingDeltaY) >= abs(event.scrollingDeltaX) ? event.scrollingDeltaY : event.scrollingDeltaX
+        guard abs(delta) > 0.01 else { return }
+        let step: CGFloat = delta > 0 ? 0.02 : -0.02
+        let pct = (min(1.0, max(0.0, value + step)) * 100.0).rounded()
+        let next = pct <= 1.0 ? 0.0 : pct / 100.0
+        if abs(next - value) > 0.001 {
+            value = next
+            onChange?(next)
+            onCommit?(next)
+        }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let r = trackRange
+        let trackH: CGFloat = 4.0
+        let trackY = round((bounds.height - trackH) * 0.5)
+        let trackRect = CGRect(x: r.minX, y: trackY, width: r.maxX - r.minX, height: trackH)
+        let trackPath = CGPath(roundedRect: trackRect, cornerWidth: 2.0, cornerHeight: 2.0, transform: nil)
+
+        ctx.saveGState()
+        // 1) 背景轨道
+        ctx.setFillColor(GeekTheme.segTrackBg.cgColor)
+        ctx.addPath(trackPath); ctx.fillPath()
+        ctx.setStrokeColor(GeekTheme.border.cgColor)
+        ctx.setLineWidth(0.75)
+        ctx.addPath(trackPath); ctx.strokePath()
+
+        // 2) 默认刻度微提示线（45%）
+        let defX = round(r.minX + (r.maxX - r.minX) * defaultValue)
+        ctx.setFillColor(GeekTheme.inkMuted.withAlphaComponent(0.32).cgColor)
+        ctx.fill(CGRect(x: defX, y: trackY - 2, width: 1, height: trackH + 4))
+
+        // 3) 蓝色高亮进度填充
+        let fillW = max(0, (r.maxX - r.minX) * value)
+        if fillW > 0.5 {
+            let fillRect = CGRect(x: r.minX, y: trackY, width: fillW, height: trackH)
+            let fillPath = CGPath(roundedRect: fillRect, cornerWidth: 2.0, cornerHeight: 2.0, transform: nil)
+            ctx.setFillColor(GeekTheme.accent.cgColor)
+            ctx.addPath(fillPath); ctx.fillPath()
+        }
+
+        // 4) 圆形滑块手柄
+        let knobD: CGFloat = (dragging || hovered) ? 15.0 : 13.5
+        let knobX = r.minX + fillW - knobD * 0.5
+        let knobY = round((bounds.height - knobD) * 0.5)
+        let knobRect = CGRect(x: knobX, y: knobY, width: knobD, height: knobD)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: 1.0), blur: 3.0, color: NSColor.black.withAlphaComponent(dragging ? 0.28 : 0.18).cgColor)
+        ctx.setFillColor(GeekTheme.segActiveBg.cgColor)
+        ctx.fillEllipse(in: knobRect)
+        ctx.restoreGState()
+        ctx.setStrokeColor((dragging ? GeekTheme.accent : GeekTheme.borderStrong).cgColor)
+        ctx.setLineWidth(dragging ? 1.4 : 0.9)
+        ctx.strokeEllipse(in: knobRect.insetBy(dx: 0.45, dy: 0.45))
+
+        // 5) 右侧等宽数值读数（0% 显示「关闭」）
+        let pct = Int((value * 100.0).rounded())
+        let text = pct == 0 ? zeroLabel : "\(pct)%"
+        let font: NSFont = pct == 0
+            ? .systemFont(ofSize: 12.0, weight: .medium)
+            : .monospacedDigitSystemFont(ofSize: 12.0, weight: .semibold)
+        let color: NSColor = dragging ? GeekTheme.accent : (pct == 0 ? GeekTheme.inkMuted : GeekTheme.inkPrimary)
+        let labelRect = CGRect(x: r.maxX + 6, y: 0, width: bounds.width - r.maxX - 6, height: bounds.height)
+        GeekTheme.drawText(text, in: labelRect, font: font, color: color, align: .right)
         ctx.restoreGState()
     }
 }

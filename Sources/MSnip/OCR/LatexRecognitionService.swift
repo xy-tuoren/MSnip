@@ -54,9 +54,6 @@ enum LatexRecognitionService {
         visionProfiles: [TranslationProviderProfile]
     ) async throws -> LatexRecognitionOutcome {
         let t0 = CFAbsoluteTimeGetCurrent()
-        guard let pngData = VisionLLMOCRService.encodePNG(image: image, maxLongSide: 1600) else {
-            throw LatexError.imageEncodeFailed
-        }
 
         switch config.engineKind {
         case .simpleTex:
@@ -64,7 +61,8 @@ enum LatexRecognitionService {
             guard !token.isEmpty else {
                 return await offlineFallback(image: image, t0: t0, notice: "尚未填写 SimpleTex Token，已自动使用本地离线基础识别（点击「设置」填入免费 Token）")
             }
-            let raw = try await callSimpleTex(pngData: pngData, token: token)
+            guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 1600, maxBytes: 2_800_000) else { throw LatexError.imageEncodeFailed }
+            let raw = try await callSimpleTex(payload: imgPayload, token: token)
             return try makeOutcome(raw: raw, provider: "SimpleTex", t0: t0)
 
         case .mathpix:
@@ -73,7 +71,8 @@ enum LatexRecognitionService {
             guard !appID.isEmpty, !appKey.isEmpty else {
                 return await offlineFallback(image: image, t0: t0, notice: "尚未填写 Mathpix App ID / Key，已自动使用本地离线基础识别")
             }
-            let raw = try await callMathpix(pngData: pngData, appID: appID, appKey: appKey)
+            guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 1600, maxBytes: 2_800_000) else { throw LatexError.imageEncodeFailed }
+            let raw = try await callMathpix(payload: imgPayload, appID: appID, appKey: appKey)
             return try makeOutcome(raw: raw, provider: "Mathpix", t0: t0)
 
         case .autoVisionLLM:
@@ -84,8 +83,10 @@ enum LatexRecognitionService {
             ) else {
                 return await offlineFallback(image: image, t0: t0, notice: "尚未配置视觉大模型或 SimpleTex，当前为离线基础识别（前往「设置 → 识字与翻译」配置）")
             }
+            guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 1600, maxBytes: 2_800_000) else { throw LatexError.imageEncodeFailed }
             let raw = try await VisionLLMOCRService.callMultimodalVisionLLM(
-                pngData: pngData,
+                imageData: imgPayload.data,
+                mimeType: imgPayload.mimeType,
                 systemPrompt: visionSystemPrompt,
                 userPrompt: "Transcribe the formula in this image into pure LaTeX:",
                 profile: profile,
@@ -109,11 +110,7 @@ enum LatexRecognitionService {
     }
 
     private static func offlineFallback(image: CGImage, t0: CFAbsoluteTime, notice: String) async -> LatexRecognitionOutcome {
-        let output: OCRRecognitionOutput = await withCheckedContinuation { cont in
-            Task { @MainActor in
-                VisionTextExtractor.recognizeAsync(from: image) { cont.resume(returning: $0) }
-            }
-        }
+        let output = await VisionTextExtractor.recognizeTextOnlyOffMain(cgImage: image)
         let latex = LatexPostProcessor.heuristicUnicodeToLatex(output.formattedText(for: .preserveLines))
         let ms = max(1, Int(((CFAbsoluteTimeGetCurrent() - t0) * 1000).rounded()))
         return LatexRecognitionOutcome(rawLatex: latex, providerName: "Apple Vision 离线基础", elapsedMs: ms, usedOfflineFallback: true, notice: notice)
@@ -121,14 +118,14 @@ enum LatexRecognitionService {
 
     // MARK: - SimpleTex & Mathpix Dedicated Formula APIs
 
-    private static func callSimpleTex(pngData: Data, token: String) async throws -> String {
+    private static func callSimpleTex(payload: EncodedUploadImage, token: String) async throws -> String {
         guard let url = URL(string: "https://server.simpletex.cn/api/latex_ocr") else {
             throw LatexError.invalidEndpoint("SimpleTex")
         }
         let boundary = "MSnip-\(UUID().uuidString)"
         var body = Data()
-        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"formula.png\"\r\nContent-Type: image/png\r\n\r\n".utf8))
-        body.append(pngData)
+        body.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"formula.\(payload.fileExtension)\"\r\nContent-Type: \(payload.mimeType)\r\n\r\n".utf8))
+        body.append(payload.data)
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
 
         var req = URLRequest(url: url, timeoutInterval: 30)
@@ -149,7 +146,7 @@ enum LatexRecognitionService {
         throw LatexError.httpError(200, errMsg)
     }
 
-    private static func callMathpix(pngData: Data, appID: String, appKey: String) async throws -> String {
+    private static func callMathpix(payload: EncodedUploadImage, appID: String, appKey: String) async throws -> String {
         guard let url = URL(string: "https://api.mathpix.com/v3/text") else {
             throw LatexError.invalidEndpoint("Mathpix")
         }
@@ -159,7 +156,7 @@ enum LatexRecognitionService {
         req.setValue(appID, forHTTPHeaderField: "app_id")
         req.setValue(appKey, forHTTPHeaderField: "app_key")
         let body: [String: Any] = [
-            "src": "data:image/png;base64,\(pngData.base64EncodedString())",
+            "src": "data:\(payload.mimeType);base64,\(payload.data.base64EncodedString())",
             "formats": ["latex_styled", "text"]
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)

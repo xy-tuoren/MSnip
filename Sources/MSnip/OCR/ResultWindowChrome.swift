@@ -144,11 +144,8 @@ enum ResultWindowChrome {
         let initial = prefersDarkAppearance
         let btn = OCRPillButton(title: "", symbol: initial ? "sun.max" : "moon")
         syncThemeButton(btn, dark: initial)
-        btn.onClick = { [weak btn] in
-            let next = !prefersDarkAppearance
-            prefersDarkAppearance = next
-            if let btn { syncThemeButton(btn, dark: next) }
-            onToggle(next)
+        btn.onClick = {
+            AppAppearanceCoordinator.shared.toggleDarkLight()
         }
         return btn
     }

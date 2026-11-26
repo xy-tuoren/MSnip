@@ -284,3 +284,362 @@ public enum OCRTextFormatter {
         return prefixes.contains(where: { s.hasPrefix($0) })
     }
 }
+
+// MARK: - OCR 段落智能重组与合并
+
+/// 聚合后的原位翻译段落块（`box` 为 Vision 归一化左下角坐标系 `0..1`）
+public struct OCRParagraphBlock: Equatable, Sendable {
+    public let box: CGRect
+    public let text: String
+    public let lineCount: Int
+    public let avgLineHeight: CGFloat
+
+    public init(box: CGRect, text: String, lineCount: Int, avgLineHeight: CGFloat) {
+        self.box = box
+        self.text = text
+        self.lineCount = lineCount
+        self.avgLineHeight = avgLineHeight
+    }
+}
+
+/// 纯算法段落聚类器：将垂直紧邻、同栏左对齐且字号相近的视觉行合并为自然段落，
+/// 同时把同行大间距（按钮/表格多列）切分为独立单元，大幅提升原位翻译上下文连贯性与排版美观度。
+public enum OCRParagraphGrouper {
+    public static func group(_ observations: [OCRLineObservation]) -> [OCRParagraphBlock] {
+        let visualRows = OCRTextFormatter.groupIntoVisualRows(observations)
+        guard !visualRows.isEmpty else { return [] }
+
+        // 1) 同行大间距（如表格列、左右导航按钮）拆分为独立行段，同行普通词距正常合并
+        struct SegLine {
+            let box: CGRect
+            let text: String
+        }
+        var lines: [SegLine] = []
+        for row in visualRows {
+            var curBox: CGRect?
+            var curText = ""
+            for obs in row {
+                let t = OCRTextFormatter.sanitizeLine(obs.text)
+                guard !t.isEmpty else { continue }
+                if let prev = curBox {
+                    let gapX = obs.box.minX - prev.maxX
+                    let refH = max(0.008, min(prev.height, obs.box.height))
+                    if gapX > max(0.06, refH * 2.4) {
+                        lines.append(SegLine(box: prev, text: curText))
+                        curBox = obs.box
+                        curText = t
+                    } else {
+                        curBox = prev.union(obs.box)
+                        curText += OCRTextFormatter.smartInlineJoiner(left: curText, right: t) + t
+                    }
+                } else {
+                    curBox = obs.box
+                    curText = t
+                }
+            }
+            if let b = curBox, !curText.isEmpty {
+                lines.append(SegLine(box: b, text: curText))
+            }
+        }
+        guard !lines.isEmpty else { return [] }
+
+        // 2) 自顶向下合并属于同一自然段的连续行（支持多栏独立成段）
+        struct Builder {
+            var box: CGRect
+            var text: String
+            var lineCount: Int
+            var heightSum: CGFloat
+            var lastBox: CGRect
+            var avgH: CGFloat { heightSum / CGFloat(max(1, lineCount)) }
+        }
+        var blocks: [Builder] = []
+        for line in lines {
+            var matchIdx: Int?
+            for idx in stride(from: blocks.count - 1, through: max(0, blocks.count - 6), by: -1) {
+                let b = blocks[idx]
+                let avgH = (b.avgH + line.box.height) * 0.5
+                let vGap = b.lastBox.minY - line.box.maxY
+                guard vGap >= -avgH * 0.25 && vGap <= avgH * 0.85 else { continue }
+
+                let hRatio = max(b.avgH, line.box.height) / max(0.002, min(b.avgH, line.box.height))
+                guard hRatio <= 1.38 else { continue }
+
+                // 水平区间重叠且左边界基本对齐（防止跨栏合并或居中按钮误合）
+                let hOverlap = min(b.box.maxX, line.box.maxX) - max(b.box.minX, line.box.minX)
+                guard hOverlap > min(b.box.width, line.box.width) * 0.32 else { continue }
+                let leftDiff = abs(b.box.minX - line.box.minX)
+                guard leftDiff <= max(0.045, avgH * 2.2) else { continue }
+
+                // 列表/标题前缀或上行短尾句号换段
+                if isListPrefix(line.text) { continue }
+                if b.lastBox.width < b.box.width * 0.72 && endsWithStop(b.text) { continue }
+
+                matchIdx = idx
+                break
+            }
+
+            if let idx = matchIdx {
+                let prevText = blocks[idx].text
+                let joined: String
+                if prevText.hasSuffix("-") && !prevText.hasSuffix("--"),
+                   let first = line.text.unicodeScalars.first,
+                   CharacterSet.lowercaseLetters.contains(first) {
+                    joined = String(prevText.dropLast()) + line.text
+                } else {
+                    joined = prevText + OCRTextFormatter.smartInlineJoiner(left: prevText, right: line.text) + line.text
+                }
+                blocks[idx].text = joined
+                blocks[idx].box = blocks[idx].box.union(line.box)
+                blocks[idx].lastBox = line.box
+                blocks[idx].lineCount += 1
+                blocks[idx].heightSum += line.box.height
+            } else {
+                blocks.append(Builder(
+                    box: line.box, text: line.text, lineCount: 1,
+                    heightSum: line.box.height, lastBox: line.box
+                ))
+            }
+        }
+
+        return blocks.map {
+            OCRParagraphBlock(box: $0.box, text: $0.text, lineCount: $0.lineCount, avgLineHeight: $0.avgH)
+        }
+    }
+
+    private static func endsWithStop(_ s: String) -> Bool {
+        guard let last = s.last else { return false }
+        return "。！？.!?;；".contains(last)
+    }
+
+    private static func isListPrefix(_ s: String) -> Bool {
+        ["- ", "* ", "• ", "· ", "# ", "## ", "1.", "2.", "3.", "①", "②", "③"].contains(where: { s.hasPrefix($0) })
+    }
+}
+
+// MARK: - OCR 表格重建与 Markdown/TSV 导出
+
+/// OCR 表格结构还原结果（支持 Markdown 表格与 Excel/Numbers 通用 TSV）
+public struct OCRTableResult: Equatable, Sendable {
+    public let rows: [[String]]
+    public let columnCount: Int
+    public let markdown: String
+    public let tsv: String
+
+    public init(rows: [[String]], columnCount: Int, markdown: String, tsv: String) {
+        self.rows = rows
+        self.columnCount = columnCount
+        self.markdown = markdown
+        self.tsv = tsv
+    }
+}
+
+/// 纯算法 OCR 表格探测器：基于边界框列槽聚类将多列文本块还原为 Markdown / TSV 表格
+public enum OCRTableFormatter {
+    public static func extractTable(from observations: [OCRLineObservation]) -> OCRTableResult? {
+        let visualRows = OCRTextFormatter.groupIntoVisualRows(observations)
+        guard visualRows.count >= 2 else { return nil }
+
+        let allHeights = observations.map(\.box.height).filter { $0 > 0.002 }.sorted()
+        let medH = allHeights.isEmpty ? 0.025 : allHeights[allHeights.count / 2]
+        let cellSplitGap = max(0.025, medH * 1.15)
+
+        // 1) 将每视觉行按水平明显空隙切分为独立单元格
+        struct Cell { let minX: CGFloat; let maxX: CGFloat; let text: String }
+        var rowCells: [[Cell]] = []
+        for row in visualRows {
+            var cells: [Cell] = []
+            for obs in row {
+                let text = OCRTextFormatter.sanitizeLine(obs.text)
+                guard !text.isEmpty else { continue }
+                if let last = cells.last, (obs.box.minX - last.maxX) < cellSplitGap {
+                    let sep = OCRTextFormatter.smartInlineJoiner(left: last.text, right: text)
+                    cells[cells.count - 1] = Cell(
+                        minX: last.minX,
+                        maxX: max(last.maxX, obs.box.maxX),
+                        text: last.text + sep + text
+                    )
+                } else {
+                    cells.append(Cell(minX: obs.box.minX, maxX: obs.box.maxX, text: text))
+                }
+            }
+            if !cells.isEmpty { rowCells.append(cells) }
+        }
+
+        let multiCellRows = rowCells.filter { $0.count >= 2 }.count
+        guard rowCells.count >= 2, multiCellRows >= 2, multiCellRows * 100 >= rowCells.count * 50 else {
+            return nil
+        }
+
+        // 2) 对全部单元格的左边界进行一维聚类，构建列槽中心
+        let allStarts = rowCells.flatMap { $0.map(\.minX) }.sorted()
+        let colTol = max(0.045, medH * 1.55)
+        var colAnchors: [CGFloat] = []
+        var colCounts: [Int] = []
+        for x in allStarts {
+            if let last = colAnchors.last, abs(x - last) <= colTol {
+                let n = colCounts[colCounts.count - 1]
+                colAnchors[colAnchors.count - 1] = (last * CGFloat(n) + x) / CGFloat(n + 1)
+                colCounts[colCounts.count - 1] = n + 1
+            } else {
+                colAnchors.append(x)
+                colCounts.append(1)
+            }
+        }
+        guard colAnchors.count >= 2, colAnchors.count <= 12 else { return nil }
+
+        // 3) 将每行单元格分配至最近列槽
+        let colCount = colAnchors.count
+        var grid: [[String]] = []
+        var populatedMultiColRows = 0
+        for cells in rowCells {
+            var line = Array(repeating: "", count: colCount)
+            var usedCols = Set<Int>()
+            for cell in cells {
+                var bestCol = 0
+                var bestDist = CGFloat.greatestFiniteMagnitude
+                for (ci, anchor) in colAnchors.enumerated() {
+                    let d = abs(cell.minX - anchor)
+                    if d < bestDist { bestDist = d; bestCol = ci }
+                }
+                if line[bestCol].isEmpty {
+                    line[bestCol] = cell.text
+                } else {
+                    line[bestCol] += OCRTextFormatter.smartInlineJoiner(left: line[bestCol], right: cell.text) + cell.text
+                }
+                usedCols.insert(bestCol)
+            }
+            if usedCols.count >= 2 { populatedMultiColRows += 1 }
+            grid.append(line)
+        }
+        guard populatedMultiColRows >= 2 else { return nil }
+
+        // 4) 剔除完全空白列
+        let activeCols = (0..<colCount).filter { ci in grid.contains { !$0[ci].isEmpty } }
+        guard activeCols.count >= 2 else { return nil }
+        let normalizedGrid = grid.map { row in activeCols.map { row[$0] } }
+
+        let md = buildMarkdown(rows: normalizedGrid)
+        let tsv = buildTSV(rows: normalizedGrid)
+        return OCRTableResult(rows: normalizedGrid, columnCount: activeCols.count, markdown: md, tsv: tsv)
+    }
+
+    private static func buildMarkdown(rows: [[String]]) -> String {
+        guard let header = rows.first else { return "" }
+        func escapeCell(_ s: String) -> String {
+            s.replacingOccurrences(of: "|", with: "\\|")
+                .replacingOccurrences(of: "\n", with: " ")
+                .trimmingCharacters(in: .whitespaces)
+        }
+        var lines: [String] = []
+        lines.append("| " + header.map(escapeCell).joined(separator: " | ") + " |")
+        lines.append("| " + header.map { _ in "---" }.joined(separator: " | ") + " |")
+        for row in rows.dropFirst() {
+            lines.append("| " + row.map(escapeCell).joined(separator: " | ") + " |")
+        }
+        return lines.joined(separator: "\n")
+    }
+
+    private static func buildTSV(rows: [[String]]) -> String {
+        rows.map { row in
+            row.map {
+                $0.replacingOccurrences(of: "\t", with: " ")
+                    .replacingOccurrences(of: "\n", with: " ")
+                    .trimmingCharacters(in: .whitespaces)
+            }.joined(separator: "\t")
+        }.joined(separator: "\n")
+    }
+}
+
+// MARK: - 敏感隐私字段离线探测
+
+/// 离线敏感隐私文本类型（供一键智能打码精确识别子串范围）
+public enum SensitiveMatchKind: String, Equatable, Sendable {
+    case apiKey
+    case email
+    case phone
+    case idCard
+    case ipv4
+    case bankCard
+}
+
+public struct SensitiveTextMatch: Equatable, Sendable {
+    public let kind: SensitiveMatchKind
+    public let range: Range<String.Index>
+    public let matchedText: String
+
+    public init(kind: SensitiveMatchKind, range: Range<String.Index>, matchedText: String) {
+        self.kind = kind
+        self.range = range
+        self.matchedText = matchedText
+    }
+}
+
+/// 纯 Swift 离线隐私敏感字段规则探测器（零外部依赖，兼容 macOS 12+）：
+/// 识别 API Key / JWT / 邮箱 / 手机号 / 18 位身份证 / IPv4 / 银行卡号，并合并重叠子串范围供 Vision 精确定位局部选框。
+public enum SensitiveTextDetector {
+    private struct Rule {
+        let kind: SensitiveMatchKind
+        let regex: NSRegularExpression
+    }
+
+    private static let rules: [Rule] = {
+        let specs: [(SensitiveMatchKind, String)] = [
+            // API Key / Secret Token / JWT
+            (.apiKey, #"(?i)\b(?:sk-(?:proj-|ant-|live-|test-)?[A-Za-z0-9_-]{14,}|gh[pousr]_[A-Za-z0-9]{18,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{28,}|xox[baprs]-[0-9A-Za-z-]{10,}|Bearer\s+[A-Za-z0-9._-]{16,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})"#),
+            // 电子邮箱
+            (.email, #"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"#),
+            // 18 位中国大陆居民身份证号
+            (.idCard, #"(?<!\d)[1-9]\d{5}(?:19|20)\d{2}(?:0[1-9]|1[0-2])(?:0[1-9]|[12]\d|3[01])\d{3}[\dXx](?!\d)"#),
+            // 16~19 位银行卡号（支持 4 位空格/连字符分隔）
+            (.bankCard, #"(?<!\d)(?:\d{4}[\s-]?){3}\d{4,7}(?!\d)"#),
+            // 11 位中国大陆手机号（支持 3-4-4 空格或连字符分隔）
+            (.phone, #"(?<!\d)(?:\+?86[\s-]?)?1[3-9]\d[\s-]?\d{4}[\s-]?\d{4}(?!\d)"#),
+            // IPv4 地址（排除本地环回 127.0.0.1 与 0.0.0.0）
+            (.ipv4, #"(?<![\d.])(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?![\d.])"#)
+        ]
+        return specs.compactMap { kind, pattern in
+            (try? NSRegularExpression(pattern: pattern)).map { Rule(kind: kind, regex: $0) }
+        }
+    }()
+
+    /// 在单行文本中扫描全部敏感子串（自动去重与合并重叠区间，按从左到右排序）
+    public static func detect(in text: String) -> [SensitiveTextMatch] {
+        guard text.count >= 6 else { return [] }
+        let nsRange = NSRange(text.startIndex..<text.endIndex, in: text)
+        var rawMatches: [SensitiveTextMatch] = []
+
+        for rule in rules {
+            for hit in rule.regex.matches(in: text, options: [], range: nsRange) {
+                guard let swiftRange = Range(hit.range, in: text) else { continue }
+                let sub = String(text[swiftRange])
+                if rule.kind == .ipv4, (sub == "127.0.0.1" || sub == "0.0.0.0") { continue }
+                if rule.kind == .bankCard {
+                    let digits = sub.filter(\.isNumber)
+                    if digits.count < 16 || digits.count > 19 { continue }
+                }
+                rawMatches.append(SensitiveTextMatch(kind: rule.kind, range: swiftRange, matchedText: sub))
+            }
+        }
+        guard !rawMatches.isEmpty else { return [] }
+        rawMatches.sort { a, b in
+            if a.range.lowerBound != b.range.lowerBound { return a.range.lowerBound < b.range.lowerBound }
+            return a.range.upperBound > b.range.upperBound
+        }
+
+        // 合并重叠区间，优先保留先匹配到的高优先级类型（如 18 位身份证不被误拆成手机号）
+        var merged: [SensitiveTextMatch] = []
+        for m in rawMatches {
+            if let last = merged.last, m.range.lowerBound < last.range.upperBound {
+                if m.range.upperBound > last.range.upperBound {
+                    let combined = last.range.lowerBound..<m.range.upperBound
+                    merged[merged.count - 1] = SensitiveTextMatch(
+                        kind: last.kind, range: combined, matchedText: String(text[combined])
+                    )
+                }
+            } else {
+                merged.append(m)
+            }
+        }
+        return merged
+    }
+}

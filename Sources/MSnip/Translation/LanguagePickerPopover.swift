@@ -89,19 +89,18 @@ final class LanguagePickerPopover: NSObject, NSTableViewDataSource, NSTableViewD
         root.addSubview(tipLbl)
 
         let scroll = NSScrollView(frame: NSRect(x: 6, y: 72, width: W - 12, height: H - 80))
-        scroll.drawsBackground = false
-        scroll.borderType = .noBorder
-        scroll.hasVerticalScroller = true
-        scroll.autohidesScrollers = true
+        scroll.drawsBackground = false; scroll.borderType = .noBorder
+        scroll.hasVerticalScroller = true; scroll.hasHorizontalScroller = false
+        scroll.autohidesScrollers = true; scroll.scrollerStyle = .overlay; scroll.horizontalScrollElasticity = .none
 
-        let tv = ClickableLangTableView(frame: scroll.bounds)
+        let tv = ClickableLangTableView(frame: NSRect(origin: .zero, size: scroll.contentSize))
         if #available(macOS 11.0, *) { tv.style = .plain }
         tv.headerView = nil
         tv.backgroundColor = .clear
         tv.intercellSpacing = NSSize(width: 0, height: 1)
         tv.selectionHighlightStyle = .none
         let col = NSTableColumn(identifier: NSUserInterfaceItemIdentifier("LangCol"))
-        col.width = scroll.bounds.width
+        col.width = scroll.contentSize.width
         tv.addTableColumn(col)
         tv.dataSource = self
         tv.delegate = self

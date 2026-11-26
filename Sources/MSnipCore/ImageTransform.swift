@@ -1,5 +1,7 @@
+import AppKit
 import CoreGraphics
 import Foundation
+import ImageIO
 
 /// 无损像素几何变换与多贴图边缘磁吸对齐纯算法库（保留原生 Display P3 / RGB ICC 色彩空间）
 public enum ImageTransform {
@@ -288,5 +290,61 @@ public enum PinHoverGeometry {
         belowPinWindowNumber: Int
     ) -> Bool {
         topWindowNumber == pinWindowNumber || topWindowNumber == belowPinWindowNumber
+    }
+}
+
+// MARK: - EXIF 方向校正与安全解码
+
+/// 带 EXIF 方向自动扶正与零全局缓存的图像读取及微缩略图工具（彻底杜绝 iPhone 竖拍 HEIC/JPEG 导入倒置与大图主线程重采样）
+public enum ImageOrientationLoader {
+    /// 读取文件并自动应用 EXIF 旋转/镜像方向（不写入 ImageIO 全局缓存，零常驻内存）
+    public static func loadOrientedCGImage(from url: URL, maxPixelSize: Int? = nil) -> CGImage? {
+        let srcOpts: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, srcOpts as CFDictionary) else { return nil }
+
+        // 当指定最大边长或文件存在非默认 EXIF 方向时，统一通过 CoreGraphics Transform 缩略管线一步扶正
+        let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any]
+        let orient = (props?[kCGImagePropertyOrientation] as? UInt32) ?? 1
+        let pixelW = (props?[kCGImagePropertyPixelWidth] as? Int) ?? 0
+        let pixelH = (props?[kCGImagePropertyPixelHeight] as? Int) ?? 0
+        let naturalMax = max(1, max(pixelW, pixelH))
+
+        if maxPixelSize != nil || (orient != 1 && naturalMax > 1) {
+            let targetMax = maxPixelSize ?? naturalMax
+            let thumbOpts: [CFString: Any] = [
+                kCGImageSourceShouldCache: false,
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: max(16, targetMax)
+            ]
+            if let cg = CGImageSourceCreateThumbnailAtIndex(src, 0, thumbOpts as CFDictionary) {
+                return ImageTransform.detachedCopy(cg)
+            }
+        }
+        guard let raw = CGImageSourceCreateImageAtIndex(src, 0, srcOpts as CFDictionary) else { return nil }
+        return ImageTransform.detachedCopy(raw)
+    }
+
+    /// 将高分辨率 `CGImage` 一次性降采样为轻量预览缩略图（避免在胶片条/预览卡上反复重采样 5K 位图）
+    public static func makeThumbnailNSImage(from cgImage: CGImage, maxPixelSize: Int = 240) -> NSImage {
+        let w = cgImage.width, h = cgImage.height
+        let longest = max(1, max(w, h))
+        let displayCG: CGImage
+        if longest > maxPixelSize {
+            let ratio = CGFloat(maxPixelSize) / CGFloat(longest)
+            let nw = max(1, Int((CGFloat(w) * ratio).rounded()))
+            let nh = max(1, Int((CGFloat(h) * ratio).rounded()))
+            let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+            if let ctx = CGContext(data: nil, width: nw, height: nh, bitsPerComponent: 8, bytesPerRow: 0, space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) {
+                ctx.interpolationQuality = .medium
+                ctx.draw(cgImage, in: CGRect(x: 0, y: 0, width: nw, height: nh))
+                displayCG = ctx.makeImage() ?? cgImage
+            } else {
+                displayCG = cgImage
+            }
+        } else {
+            displayCG = cgImage
+        }
+        return NSImage(cgImage: displayCG, size: NSSize(width: CGFloat(displayCG.width) * 0.5, height: CGFloat(displayCG.height) * 0.5))
     }
 }

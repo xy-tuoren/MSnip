@@ -15,8 +15,9 @@ final class TranslationService {
         let elapsedMs: Int
     }
 
+    private var suppressAutoSave = false
     var settings: TranslationSettingsConfig {
-        didSet { settings.save() }
+        didSet { if !suppressAutoSave { settings.save() } }
     }
 
     var onSettingsChanged: (() -> Void)?
@@ -26,7 +27,9 @@ final class TranslationService {
     }
 
     func reloadFromDisk() {
+        suppressAutoSave = true
         self.settings = TranslationSettingsConfig.load()
+        suppressAutoSave = false
         onSettingsChanged?()
     }
 
@@ -68,24 +71,30 @@ final class TranslationService {
             )
             let ms = Int(((ProcessInfo.processInfo.systemUptime - t0) * 1000).rounded())
             return RunResult(translatedText: out, providerName: primary.name, usedFallback: false, elapsedMs: ms)
-        } catch {
-            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
-                throw error
+        } catch let primaryError {
+            if Task.isCancelled || primaryError is CancellationError || (primaryError as? URLError)?.code == .cancelled {
+                throw primaryError
             }
-            if let fbID = settings.fallbackProfileID,
-               fbID != primary.id,
-               let fb = settings.profiles.first(where: { $0.id == fbID && $0.isEnabled && $0.isConfiguredReady }) {
-                let out = try await runSingleDocument(
-                    text: trimmed,
-                    target: target,
-                    profile: fb,
-                    hostWindow: hostWindow,
-                    onStreamChunk: onStreamChunk
-                )
-                let ms = Int(((ProcessInfo.processInfo.systemUptime - t0) * 1000).rounded())
-                return RunResult(translatedText: out, providerName: fb.name, usedFallback: true, elapsedMs: ms)
+            if let fb = resolveReadyFallback(excluding: primary.id) {
+                do {
+                    let out = try await runSingleDocument(
+                        text: trimmed,
+                        target: target,
+                        profile: fb,
+                        hostWindow: hostWindow,
+                        onStreamChunk: onStreamChunk
+                    )
+                    let ms = Int(((ProcessInfo.processInfo.systemUptime - t0) * 1000).rounded())
+                    return RunResult(translatedText: out, providerName: fb.name, usedFallback: true, elapsedMs: ms)
+                } catch let fbError {
+                    if Task.isCancelled || fbError is CancellationError || (fbError as? URLError)?.code == .cancelled {
+                        throw fbError
+                    }
+                    // 备选引擎也失败时保留主引擎的真实错误（如 401 密钥失效），避免被系统版本/语言包提示掩盖
+                    throw primaryError
+                }
             }
-            throw error
+            throw primaryError
         }
     }
 
@@ -101,18 +110,30 @@ final class TranslationService {
         do {
             let res = try await runBatch(lines: lines, target: target, profile: primary, hostWindow: hostWindow)
             return (res, primary.name)
-        } catch {
-            if Task.isCancelled || error is CancellationError || (error as? URLError)?.code == .cancelled {
-                throw error
+        } catch let primaryError {
+            if Task.isCancelled || primaryError is CancellationError || (primaryError as? URLError)?.code == .cancelled {
+                throw primaryError
             }
-            if let fbID = settings.fallbackProfileID,
-               fbID != primary.id,
-               let fb = settings.profiles.first(where: { $0.id == fbID && $0.isEnabled && $0.isConfiguredReady }) {
-                let res = try await runBatch(lines: lines, target: target, profile: fb, hostWindow: hostWindow)
-                return (res, "\(fb.name) (自动回退)")
+            if let fb = resolveReadyFallback(excluding: primary.id) {
+                do {
+                    let res = try await runBatch(lines: lines, target: target, profile: fb, hostWindow: hostWindow)
+                    return (res, "\(fb.name) (自动回退)")
+                } catch let fbError {
+                    if Task.isCancelled || fbError is CancellationError || (fbError as? URLError)?.code == .cancelled {
+                        throw fbError
+                    }
+                    throw primaryError
+                }
             }
-            throw error
+            throw primaryError
         }
+    }
+
+    private func resolveReadyFallback(excluding primaryID: UUID) -> TranslationProviderProfile? {
+        guard let fbID = settings.fallbackProfileID, fbID != primaryID,
+              let fb = settings.profiles.first(where: { $0.id == fbID && $0.isEnabled && $0.isConfiguredReady }) else { return nil }
+        if fb.kind == .appleNative && !AppleNativeTranslator.isSupportedOnCurrentOS { return nil }
+        return fb
     }
 
     /// 设置面板一键连通性与延迟测试
@@ -174,9 +195,17 @@ final class TranslationService {
                 }
             )
         case .tencent, .baidu, .youdao, .deepl, .customWebhook:
-            let lines = text.components(separatedBy: "\n")
-            let out = try await CloudAPITranslator.translateLines(lines: lines, target: target, profile: profile)
-            let joined = out.joined(separator: "\n")
+            // 仅送出非空行并按原索引回填，彻底杜绝空行引发腾讯云报错或百度/有道/DeepLX 尾部残留未译原文
+            let paragraphs = text.components(separatedBy: "\n")
+            let nonEmptyIdx = paragraphs.indices.filter { !paragraphs[$0].trimmingCharacters(in: .whitespaces).isEmpty }
+            guard !nonEmptyIdx.isEmpty else { onStreamChunk?(""); return "" }
+            let inputs = nonEmptyIdx.map { paragraphs[$0] }
+            let translated = try await CloudAPITranslator.translateLines(lines: inputs, target: target, profile: profile)
+            var merged = paragraphs
+            for (k, origIdx) in nonEmptyIdx.enumerated() where translated.indices.contains(k) {
+                merged[origIdx] = translated[k]
+            }
+            let joined = merged.joined(separator: "\n")
             onStreamChunk?(joined)
             return joined
         }

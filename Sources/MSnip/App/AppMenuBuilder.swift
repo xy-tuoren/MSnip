@@ -31,34 +31,27 @@ extension AppController {
         menu.addItem(warnSep); permWarnSepItem = warnSep
 
         menu.addItem(makeHotKeyItem(title: "区域截图", symbol: "viewfinder", action: #selector(startCapture), slot: .capture))
+        menu.addItem(makeHotKeyItem(title: "重截上次选区", symbol: "arrow.counterclockwise", action: #selector(repeatLastCapture(_:)), slot: .repeatCapture))
         let defaultSecs = DelayedCaptureSettings.clampedSeconds(config.delayedCaptureSeconds)
         let delayRoot = NSMenuItem(title: "延时截图（\(defaultSecs) 秒）", action: nil, keyEquivalent: "")
         delayRoot.setVisibleImage(MSnipUITheme.menuSymbol("timer"))
         let delaySub = NSMenu()
-        delaySub.addItem(makeHotKeyItem(
-            title: "按默认延时截图（\(defaultSecs) 秒）",
-            symbol: "timer",
-            action: #selector(startDefaultDelayedCapture),
-            slot: .delayedCapture
-        ))
+        delaySub.addItem(makeHotKeyItem(title: "按默认延时截图（\(defaultSecs) 秒）", symbol: "timer", action: #selector(startDefaultDelayedCapture), slot: .delayedCapture))
         delaySub.addItem(.separator())
         for secs in DelayedCaptureSettings.quickPresets {
             let di = NSMenuItem(title: "\(secs) 秒后截图", action: #selector(startDelayedCapture(_:)), keyEquivalent: "")
-            di.tag = secs; di.target = self
-            delaySub.addItem(di)
+            di.tag = secs; di.target = self; delaySub.addItem(di)
         }
         delaySub.addItem(.separator())
         let customDelay = NSMenuItem(title: "自定义秒数与快捷键…", action: #selector(openGeneralPreferences), keyEquivalent: "")
-        customDelay.setVisibleImage(MSnipUITheme.menuSymbol("slider.horizontal.3"))
-        customDelay.target = self
-        delaySub.addItem(customDelay)
-        delayRoot.submenu = delaySub
-        menu.addItem(delayRoot)
+        customDelay.setVisibleImage(MSnipUITheme.menuSymbol("slider.horizontal.3")); customDelay.target = self
+        delaySub.addItem(customDelay); delayRoot.submenu = delaySub; menu.addItem(delayRoot)
         let fullItem = makeHotKeyItem(title: "截取当前全屏", symbol: "rectangle.dashed", action: #selector(captureCurrentFullScreen), slot: .fullScreenCapture)
         fullItem.toolTip = "截取鼠标所在屏幕（当前默认：\(config.fullScreenCaptureAction.title)；按住 ⌥ 点击直接保存到默认目录）"
         menu.addItem(fullItem)
         menu.addItem(makeHotKeyItem(title: "桌面贴图", symbol: "pin", action: #selector(handlePinHotKey), slot: .pin))
         menu.addItem(makeHotKeyItem(title: "快捷识字", symbol: "text.viewfinder", action: #selector(startQuickOCR), slot: .ocr))
+        menu.addItem(makeHotKeyItem(title: "公式识别 (LaTeX)", symbol: "function", action: #selector(startQuickLatex(_:)), slot: .latex))
         menu.addItem(makeHotKeyItem(title: "截图翻译", symbol: "character.bubble", action: #selector(startQuickTranslate), slot: .translate))
         menu.addItem(makeHotKeyItem(title: "滚动长截图", symbol: "scissors", action: #selector(startQuickLongShot), slot: .longShot))
         menu.addItem(makeHotKeyItem(title: "区域录屏", symbol: "video", action: #selector(startQuickRecord), slot: .record))
@@ -66,6 +59,9 @@ extension AppController {
         menu.addItem(.separator())
 
         menu.addItem(makeHotKeyItem(title: "顶部暂存架", symbol: "tray.and.arrow.down", action: #selector(toggleTopShelf), slot: .toggleShelf))
+        let studioItem = NSMenuItem(title: "拼图与合并 PDF…", action: #selector(openCollageStudioWindow), keyEquivalent: "")
+        studioItem.setVisibleImage(MSnipUITheme.menuSymbol("rectangle.split.2x2")); studioItem.target = self
+        menu.addItem(studioItem)
 
         // 最近截图（按需懒加载缩略图子菜单，避免每次配置变更/开关贴图都重复解码全部历史缩略图）
         let histTitle = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
@@ -278,6 +274,11 @@ extension AppController {
     }
 
     @objc func openPermissionGuide() {
+        showPermissionGuide(pane: nil)
+    }
+
+    func showPermissionGuide(pane preferredPane: PermissionPane?) {
+        if let target = preferredPane { permissionGuide.show(opening: target); return }
         let screenOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
         let pane: PermissionPane? = !screenOK
             ? .screenRecording

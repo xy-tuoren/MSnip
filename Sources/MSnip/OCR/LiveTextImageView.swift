@@ -112,7 +112,7 @@ final class LiveTextImageView: NSView {
         analysisTask = Task { @MainActor [weak self, weak ov] in
             var cfg = ImageAnalyzer.Configuration([.text, .machineReadableCode])
             cfg.locales = ["zh-Hans", "zh-Hant", "en-US", "ja-JP"]
-            guard let analysis = try? await SharedLiveAnalyzer.instance.analyze(cgImage, orientation: .up, configuration: cfg),
+            guard let analysis = try? await SharedLiveAnalyzer.analyze(cgImage, configuration: cfg),
                   !Task.isCancelled,
                   let self, let ov else { return }
             ov.analysis = analysis

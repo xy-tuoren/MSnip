@@ -150,15 +150,21 @@ enum AppleNativeTranslator {
     ) async throws -> [String] {
         var tempHelperPanel: NSPanel?
         let containerView: NSView
-        if let content = hostWindow?.contentView {
+        let isShieldingHost = (hostWindow?.level.rawValue ?? 0) >= NSWindow.Level.screenSaver.rawValue
+        if let content = hostWindow?.contentView, !(needsDownload && isShieldingHost) {
             containerView = content
         } else {
+            let vf = NSScreen.main?.visibleFrame ?? NSScreen.screens.first?.visibleFrame ?? NSRect(x: 200, y: 200, width: 800, height: 600)
+            let rect = needsDownload
+                ? NSRect(x: round(vf.midX - 1), y: round(vf.midY - 1), width: 2, height: 2)
+                : NSRect(x: -2000, y: -2000, width: 2, height: 2)
             let panel = NSPanel(
-                contentRect: NSRect(x: -2000, y: -2000, width: 2, height: 2),
+                contentRect: rect,
                 styleMask: [.borderless, .nonactivatingPanel],
                 backing: .buffered,
                 defer: false
             )
+            panel.level = needsDownload ? .floating : .normal
             panel.alphaValue = 0.01
             panel.orderFrontRegardless()
             tempHelperPanel = panel
@@ -166,6 +172,11 @@ enum AppleNativeTranslator {
         }
 
         let box = BridgeCompletionBox()
+        let timeoutSec: UInt64 = needsDownload ? 90 : 18
+        let timeoutTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: timeoutSec * 1_000_000_000)
+            if !Task.isCancelled { box.finish(.failure(NativeError.timedOutOrCancelled)) }
+        }
         let cfg = TranslationSession.Configuration(source: src, target: dst)
         let hosting = NSHostingView(rootView: SystemTranslationTaskView(config: cfg) { session in
             do {
@@ -185,6 +196,7 @@ enum AppleNativeTranslator {
         hosting.frame = NSRect(x: 0, y: 0, width: 1, height: 1)
         containerView.addSubview(hosting)
         defer {
+            timeoutTask.cancel()
             hosting.removeFromSuperview()
             tempHelperPanel?.orderOut(nil)
         }

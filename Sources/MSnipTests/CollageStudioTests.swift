@@ -1,6 +1,8 @@
 import CoreGraphics
 import Foundation
+import ImageIO
 import MSnipCore
+import UniformTypeIdentifiers
 
 func testCollageAlignmentAndAspectRatios() {
     let cs = CGColorSpace(name: CGColorSpace.sRGB)!
@@ -90,4 +92,44 @@ func testCollageAlignmentAndAspectRatios() {
             check(hasWholeWin, "在设置窗两卡片空白处应精准探测出整个设置窗口外框: \(gapRects)")
         }
     }
+
+    // 6) estimatedCanvasSize 应与实际 stitch 输出尺寸完全一致（供拼图顶栏显示真实导出尺寸）
+    if let actual = ImageCollageStitcher.stitch(images: [small, large], options: wide169Opts, maxRefSide: 2400),
+       let est = ImageCollageStitcher.estimatedCanvasSize(images: [small, large], options: wide169Opts, maxRefSide: 2400) {
+        check(est.width == actual.width && est.height == actual.height,
+              "estimatedCanvasSize 应与真实导出尺寸一致，期望 \(actual.width)x\(actual.height)，实际 \(est.width)x\(est.height)")
+    } else {
+        check(false, "estimatedCanvasSize 不应返回 nil")
+    }
+
+    // 7) EXIF 方向自动校正与缩略图降采样校验
+    let rawLandscape = boxImg(240, 120)
+    let tmpJPG = FileManager.default.temporaryDirectory.appendingPathComponent("msnip-exif-test-\(UUID().uuidString).jpg")
+    if let dest = CGImageDestinationCreateWithURL(tmpJPG as CFURL, UTType.jpeg.identifier as CFString, 1, nil) {
+        CGImageDestinationAddImage(dest, rawLandscape, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        CGImageDestinationFinalize(dest)
+        if let oriented = ImageOrientationLoader.loadOrientedCGImage(from: tmpJPG) {
+            check(oriented.width == 120 && oriented.height == 240,
+                  "EXIF Orientation=6 (顺时针90°) 横图应自动扶正为 120x240 竖图，实际: \(oriented.width)x\(oriented.height)")
+        } else {
+            check(false, "ImageOrientationLoader 应成功加载带 EXIF 旋转的图片")
+        }
+        try? FileManager.default.removeItem(at: tmpJPG)
+    }
+    let thumb = ImageOrientationLoader.makeThumbnailNSImage(from: boxImg(1200, 600), maxPixelSize: 240)
+    check(thumb.size.width <= 121 && thumb.size.height <= 61, "240px 降采样 @2x 缩略图逻辑尺寸应 ≤ 120×60pt，实际: \(thumb.size)")
+
+    // 8) 刘海屏 38pt 动态菜单栏关闭带校验
+    check(ShelfTriggerGeometry.hitsTopBarDismissBand(point: CGPoint(x: 300, y: 946), screenFrame: testScr, menuBarHeight: 38.0),
+          "刘海屏 38pt 菜单栏区域点击应命中顶栏关闭带")
+    check(!ShelfTriggerGeometry.hitsTopBarDismissBand(point: CGPoint(x: 300, y: 940), screenFrame: testScr, menuBarHeight: 38.0),
+          "刘海屏 38pt 菜单栏下方 42pt 处不应误判为顶栏点击")
+
+    // 9) 混合分辨率与细长横幅多页 PDF 导出验证（绝不纵向拉伸矮横幅）
+    let banner = boxImg(1600, 120)
+    let tmpPDF = FileManager.default.temporaryDirectory.appendingPathComponent("msnip-pdf-test-\(UUID().uuidString).pdf")
+    let pdfOK = ImageCollageStitcher.exportMultiPagePDF(images: [small, large, banner], padPx: 24, background: .white, pageNumber: .fraction, to: tmpPDF)
+    let pdfSize = (try? tmpPDF.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+    check(pdfOK && pdfSize > 500, "多页混合分辨率 PDF 应成功生成非空文档")
+    try? FileManager.default.removeItem(at: tmpPDF)
 }

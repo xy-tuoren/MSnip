@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 
 /// MSnip 统一「清爽浅色磨砂白底（Daylight Porcelain）」设计系统令牌与通用矢量控件
 enum MSnipUITheme {
@@ -287,5 +288,74 @@ final class LightDropdownPill: NSView {
 
         ToolbarView.drawSmallChevron(ctx: ctx, x: bounds.width - 10, centerY: bounds.midY + 0.5, active: hovered)
         ctx.restoreGState()
+    }
+}
+
+// MARK: - 全局亮暗外观协调器
+
+extension Notification.Name {
+    /// 全局外观（明亮 / 暗黑 / 跟随系统）变更通知，所有打开窗口实时同步
+    static let msnipAppearanceDidChange = Notification.Name("top.xy.msnip.appearanceDidChange")
+}
+
+/// 全局唯一外观协调器：
+/// - 统一托管 `GeekTheme.currentMode` 与 `ResultWindowChrome.prefersDarkAppearance`；
+/// - 自动监听 `NSApp.effectiveAppearance`，确保 `.system` 模式下随 macOS 日夜切换实时刷新全部窗口与通知卡片。
+@MainActor
+final class AppAppearanceCoordinator {
+    static let shared = AppAppearanceCoordinator()
+
+    private var onPersistMode: ((AppAppearanceMode) -> Void)?
+    private var appAppearanceObs: NSKeyValueObservation?
+    private var lastResolvedDark: Bool = false
+
+    private init() {}
+
+    func start(initialMode: AppAppearanceMode, onPersist: @escaping (AppAppearanceMode) -> Void) {
+        self.onPersistMode = onPersist
+        GeekTheme.currentMode = initialMode
+        let dark = GeekTheme.isDark
+        ResultWindowChrome.prefersDarkAppearance = dark
+        lastResolvedDark = dark
+
+        if appAppearanceObs == nil {
+            appAppearanceObs = NSApp.observe(\.effectiveAppearance, options: [.new]) { [weak self] _, _ in
+                Task { @MainActor [weak self] in self?.handleSystemAppearanceChanged() }
+            }
+        }
+    }
+
+    @discardableResult
+    func setMode(_ mode: AppAppearanceMode, persist: Bool) -> Bool {
+        let modeChanged = (GeekTheme.currentMode != mode)
+        GeekTheme.currentMode = mode
+        let dark = GeekTheme.isDark
+        let resolvedChanged = (dark != lastResolvedDark)
+        ResultWindowChrome.prefersDarkAppearance = dark
+        lastResolvedDark = dark
+        if persist { onPersistMode?(mode) }
+        if modeChanged || resolvedChanged {
+            broadcastChange()
+            return true
+        }
+        return false
+    }
+
+    func toggleDarkLight() {
+        setMode(GeekTheme.isDark ? .light : .dark, persist: true)
+    }
+
+    private func handleSystemAppearanceChanged() {
+        guard GeekTheme.currentMode == .system else { return }
+        let dark = GeekTheme.isDark
+        guard dark != lastResolvedDark else { return }
+        lastResolvedDark = dark
+        ResultWindowChrome.prefersDarkAppearance = dark
+        broadcastChange()
+    }
+
+    private func broadcastChange() {
+        ToastHUD.refreshAppearanceIfVisible()
+        NotificationCenter.default.post(name: .msnipAppearanceDidChange, object: nil)
     }
 }

@@ -42,8 +42,9 @@ final class ToastPanel: NSPanel {
 @MainActor
 enum ToastHUD {
     private static var activePanel: ToastPanel?
+    private static var activeTargetFrame: NSRect = .zero
+    private static var isHovering = false
     private static var dismissWorkItem: DispatchWorkItem?
-    private static var progressTimer: Timer?
 
     static func show(
         message: String,
@@ -88,6 +89,8 @@ enum ToastHUD {
         }
 
         let startFrame = (screenPoint == nil) ? targetFrame.offsetBy(dx: 0, dy: -18) : targetFrame
+        activeTargetFrame = targetFrame
+        isHovering = false
         let panel = ToastPanel(frame: startFrame, interactive: isInteractive)
         panel.contentView = contentView
         panel.alphaValue = (screenPoint == nil) ? 0.85 : 1.0
@@ -104,55 +107,333 @@ enum ToastHUD {
         startCountdown(duration: holdSeconds, for: panel, view: contentView)
     }
 
+    static func refreshAppearanceIfVisible() {
+        activePanel?.contentView?.needsDisplay = true
+    }
+
     static func dismissImmediate() {
         dismissWorkItem?.cancel(); dismissWorkItem = nil
-        progressTimer?.invalidate(); progressTimer = nil
+        isHovering = false
         activePanel?.orderOut(nil); activePanel = nil
     }
 
     private static func handleHoverChanged(_ hovering: Bool, holdSeconds: TimeInterval) {
+        isHovering = hovering
         guard let panel = activePanel, let view = panel.contentView as? ToastCardView else { return }
         if hovering {
             dismissWorkItem?.cancel(); dismissWorkItem = nil
-            progressTimer?.invalidate(); progressTimer = nil
+            panel.setFrame(activeTargetFrame, display: true)
             panel.alphaValue = 1.0
-            view.remainingProgress = 1.0
+            view.resetProgressBarFull()
         } else {
             startCountdown(duration: min(holdSeconds, 3.0), for: panel, view: view)
         }
     }
 
     private static func startCountdown(duration: TimeInterval, for panel: ToastPanel, view: ToastCardView) {
-        dismissWorkItem?.cancel()
-        progressTimer?.invalidate()
-        let startAt = CACurrentMediaTime()
-        if view.hasAction {
-            let t = Timer(timeInterval: 1.0 / 30.0, repeats: true) { _ in
-                MainActor.assumeIsolated {
-                    guard activePanel === panel else { return }
-                    let ratio = max(0.0, 1.0 - (CACurrentMediaTime() - startAt) / duration)
-                    view.remainingProgress = CGFloat(ratio)
-                }
-            }
-            RunLoop.main.add(t, forMode: .common)
-            progressTimer = t
-        }
+        dismissWorkItem?.cancel(); dismissWorkItem = nil
+        guard !isHovering else { view.resetProgressBarFull(); return }
+        if view.hasAction { view.startProgressAnimation(duration: duration) }
         let work = DispatchWorkItem {
             MainActor.assumeIsolated {
-                guard let current = activePanel, current === panel else { return }
-                progressTimer?.invalidate(); progressTimer = nil
+                guard let current = activePanel, current === panel, !isHovering else { return }
                 NSAnimationContext.runAnimationGroup { ctx in
                     ctx.duration = 0.20
                     current.animator().alphaValue = 0.0
-                    current.animator().setFrame(current.frame.offsetBy(dx: 0, dy: -10), display: true)
+                    current.animator().setFrame(activeTargetFrame.offsetBy(dx: 0, dy: -10), display: true)
                 } completionHandler: {
                     MainActor.assumeIsolated {
-                        if activePanel === panel { panel.orderOut(nil); activePanel = nil }
+                        if activePanel === panel, !isHovering { panel.orderOut(nil); activePanel = nil }
                     }
                 }
             }
         }
         dismissWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + duration, execute: work)
+    }
+}
+
+// MARK: - 轻提示卡片自绘视图
+
+/// 立体陶瓷白通知卡片视图（兼顾深色编辑器极亮反差与浅色网页多层环境深阴影，支持真实截图等比裁切缩略图）
+private final class ToastCardView: NSView {
+    static let shadowPadX: CGFloat = 24
+    static let shadowPadTop: CGFloat = 16
+    static let shadowPadBot: CGFloat = 28
+
+    private let cleanMessage: String
+    private let subtitle: String?
+    private let preview: CGImage?
+    private let swatch: RGBAColor?
+    private let statusSymbol: String
+    private let badgeColor: NSColor
+    private let actionTitle: String?
+    private let onTrigger: (() -> Void)?
+    private let onClose: (() -> Void)?
+    private let onHoverChanged: ((Bool) -> Void)?
+
+    var hasAction: Bool { actionTitle != nil }
+    private var cardRect: CGRect = .zero
+    private var actionBtnRect: CGRect = .zero
+    private var closeBtnRect: CGRect = .zero
+    private var hoveredAction = false { didSet { if oldValue != hoveredAction { needsDisplay = true } } }
+    private var hoveredClose = false { didSet { if oldValue != hoveredClose { needsDisplay = true } } }
+    private var progressClipLayer: CALayer?
+    private var progressBarLayer: CALayer?
+
+    let panelSize: NSSize
+    override var isFlipped: Bool { true }
+
+    init(
+        rawMessage: String,
+        subtitle: String?,
+        preview: CGImage?,
+        swatch: RGBAColor?,
+        actionTitle: String?,
+        onTrigger: (() -> Void)?,
+        onClose: (() -> Void)?,
+        onHoverChanged: ((Bool) -> Void)?
+    ) {
+        var trimmed = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
+        let warnPrefixes = ["⚠", "未识别", "未检测", "未能", "未找到", "暂无", "请先"]
+        let isWarn = warnPrefixes.contains(where: { trimmed.hasPrefix($0) }) || trimmed.contains("失败") || trimmed.contains("冲突")
+        let isOK = trimmed.hasPrefix("✓") || trimmed.contains("已")
+        if trimmed.hasPrefix("✓") || trimmed.hasPrefix("⚠") {
+            trimmed = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        self.cleanMessage = trimmed
+        self.subtitle = subtitle?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.preview = preview.flatMap { Self.makeCompactThumb($0) }
+        self.swatch = swatch
+        self.actionTitle = actionTitle
+        self.onTrigger = onTrigger
+        self.onClose = onClose
+        self.onHoverChanged = onHoverChanged
+        self.statusSymbol = isWarn ? "exclamationmark" : (isOK ? "checkmark" : "info")
+        self.badgeColor = isWarn
+            ? NSColor(srgbRed: 0.95, green: 0.55, blue: 0.08, alpha: 1.0)
+            : (isOK ? NSColor(srgbRed: 0.06, green: 0.68, blue: 0.44, alpha: 1.0) : MSnipUITheme.accent)
+
+        let interactive = (actionTitle != nil)
+        let hasSub = !(self.subtitle ?? "").isEmpty
+        let titleW = (trimmed as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: interactive ? 14.0 : 13.5, weight: .semibold)]).width
+        let subW: CGFloat = hasSub
+            ? ((self.subtitle! as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 11.5, weight: .regular)]).width)
+            : 0
+        let textW = min(380, ceil(max(titleW, subW)))
+        let leftW: CGFloat = (preview != nil) ? 78 : (interactive ? 58 : 48)
+        let rightW: CGFloat = actionTitle.map {
+            ceil(($0 as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)]).width + 32) + 46
+        } ?? 20
+        let cardW = max(interactive ? 440 : 216, leftW + textW + rightW)
+        let cardH: CGFloat = interactive ? 64 : 44
+        self.panelSize = NSSize(
+            width: cardW + Self.shadowPadX * 2,
+            height: cardH + Self.shadowPadTop + Self.shadowPadBot
+        )
+        super.init(frame: NSRect(origin: .zero, size: self.panelSize))
+        self.wantsLayer = true
+        recomputeRects()
+        setupProgressLayerIfNeeded()
+    }
+
+    private func setupProgressLayerIfNeeded() {
+        guard hasAction, let rootLayer = layer else { return }
+        let clip = CALayer()
+        clip.frame = cardRect; clip.cornerRadius = 15.5; clip.masksToBounds = true
+        let bar = CALayer()
+        bar.anchorPoint = CGPoint(x: 0, y: 0.5)
+        bar.position = CGPoint(x: 0, y: cardRect.height - 1.25)
+        bar.bounds = CGRect(x: 0, y: 0, width: cardRect.width, height: 2.5)
+        bar.backgroundColor = MSnipUITheme.accent.withAlphaComponent(0.32).cgColor
+        clip.addSublayer(bar); rootLayer.addSublayer(clip)
+        progressClipLayer = clip; progressBarLayer = bar
+    }
+
+    func startProgressAnimation(duration: TimeInterval) {
+        guard let bar = progressBarLayer else { return }
+        bar.removeAllAnimations()
+        let anim = CABasicAnimation(keyPath: "transform.scale.x")
+        anim.fromValue = 1.0; anim.toValue = 0.0; anim.duration = duration
+        anim.fillMode = .forwards; anim.isRemovedOnCompletion = false
+        bar.add(anim, forKey: "countdown")
+    }
+
+    func resetProgressBarFull() {
+        progressBarLayer?.removeAllAnimations()
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        progressBarLayer?.transform = CATransform3DIdentity
+        CATransaction.commit()
+    }
+
+    @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+    override func setFrameSize(_ newSize: NSSize) { super.setFrameSize(newSize); recomputeRects() }
+
+    private func recomputeRects() {
+        cardRect = CGRect(
+            x: Self.shadowPadX,
+            y: Self.shadowPadTop,
+            width: bounds.width - Self.shadowPadX * 2,
+            height: bounds.height - Self.shadowPadTop - Self.shadowPadBot
+        )
+        guard let act = actionTitle, cardRect.width > 0 else { return }
+        let actSz = (act as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)])
+        let btnW = ceil(actSz.width + 28), btnH: CGFloat = 34
+        closeBtnRect = CGRect(x: cardRect.maxX - 34, y: round(cardRect.midY - 12), width: 24, height: 24)
+        actionBtnRect = CGRect(x: closeBtnRect.minX - btnW - 8, y: round(cardRect.midY - btnH * 0.5), width: btnW, height: btnH)
+    }
+
+    override func updateTrackingAreas() {
+        super.updateTrackingAreas()
+        trackingAreas.forEach { removeTrackingArea($0) }
+        guard hasAction else { return }
+        addTrackingArea(NSTrackingArea(
+            rect: bounds,
+            options: [.mouseEnteredAndExited, .mouseMoved, .activeAlways, .inVisibleRect],
+            owner: self,
+            userInfo: nil
+        ))
+    }
+
+    override func mouseEntered(with event: NSEvent) { onHoverChanged?(true); updateHover(at: convert(event.locationInWindow, from: nil)) }
+    override func mouseMoved(with event: NSEvent) { updateHover(at: convert(event.locationInWindow, from: nil)) }
+    override func mouseExited(with event: NSEvent) {
+        hoveredAction = false; hoveredClose = false; NSCursor.arrow.set(); onHoverChanged?(false)
+    }
+
+    private func updateHover(at pt: CGPoint) {
+        guard cardRect.contains(pt) else {
+            hoveredAction = false; hoveredClose = false; NSCursor.arrow.set(); return
+        }
+        hoveredClose = closeBtnRect.contains(pt)
+        hoveredAction = !hoveredClose
+        NSCursor.pointingHand.set()
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        guard hasAction else { return }
+        let pt = convert(event.locationInWindow, from: nil)
+        guard cardRect.contains(pt) else { return }
+        if closeBtnRect.contains(pt) { onClose?() } else { onTrigger?() }
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        recomputeRects()
+        guard let ctx = NSGraphicsContext.current?.cgContext, cardRect.width > 10 else { return }
+        let isDark = GeekTheme.isDark
+        let radius: CGFloat = hasAction ? 15.5 : 12.0
+        let cardPath = CGPath(roundedRect: cardRect, cornerWidth: radius, cornerHeight: radius, transform: nil)
+        let cardFill = isDark ? NSColor(srgbRed: 0.118, green: 0.130, blue: 0.158, alpha: 0.97) : NSColor.white
+        let borderColor = isDark ? NSColor.white.withAlphaComponent(0.14) : NSColor(srgbRed: 0.06, green: 0.10, blue: 0.18, alpha: 0.16)
+        let titleColor = isDark ? NSColor(srgbRed: 0.94, green: 0.96, blue: 0.98, alpha: 1.0) : MSnipUITheme.inkPrimary
+        let subColor = isDark ? NSColor(srgbRed: 0.65, green: 0.70, blue: 0.77, alpha: 1.0) : MSnipUITheme.inkSecondary
+        progressClipLayer?.frame = cardRect
+
+        // 1) 自适应深浅色投影与立体卡片面
+        ctx.saveGState()
+        ctx.setShadow(
+            offset: CGSize(width: 0, height: -7),
+            blur: 22,
+            color: NSColor(srgbRed: 0.02, green: 0.04, blue: 0.10, alpha: isDark ? 0.52 : 0.28).cgColor
+        )
+        ctx.setFillColor(cardFill.cgColor)
+        ctx.addPath(cardPath); ctx.fillPath()
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        ctx.setStrokeColor(borderColor.cgColor); ctx.setLineWidth(1.0)
+        ctx.addPath(CGPath(roundedRect: cardRect.insetBy(dx: 0.5, dy: 0.5), cornerWidth: radius, cornerHeight: radius, transform: nil))
+        ctx.strokePath(); ctx.restoreGState()
+
+        // 2) 左侧：真实截图等比填充微缩略图（带状态小圆章）或实心圆角状态章
+        let textX = drawLeadingVisual(in: ctx, cardFill: cardFill, isDark: isDark)
+
+        // 3) 中间主副文案
+        let maxTextW = max(40, (hasAction ? actionBtnRect.minX - 14 : cardRect.maxX - 16) - textX)
+        let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingMiddle
+        let titleAttrs: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: hasAction ? 14.0 : 13.5, weight: .semibold),
+            .foregroundColor: titleColor, .paragraphStyle: para
+        ]
+        let titleNs = cleanMessage as NSString
+        let titleSz = titleNs.size(withAttributes: titleAttrs)
+        if let sub = subtitle, !sub.isEmpty {
+            let subAttrs: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 11.5, weight: .regular),
+                .foregroundColor: subColor, .paragraphStyle: para
+            ]
+            let subNs = sub as NSString
+            let subSz = subNs.size(withAttributes: subAttrs)
+            let topY = round(cardRect.midY - (titleSz.height + 2 + subSz.height) * 0.5)
+            titleNs.draw(in: CGRect(x: textX, y: topY, width: maxTextW, height: titleSz.height + 2), withAttributes: titleAttrs)
+            subNs.draw(in: CGRect(x: textX, y: topY + titleSz.height + 2, width: maxTextW, height: subSz.height + 2), withAttributes: subAttrs)
+        } else {
+            titleNs.draw(in: CGRect(x: textX, y: round(cardRect.midY - titleSz.height * 0.5), width: maxTextW, height: titleSz.height + 2), withAttributes: titleAttrs)
+        }
+
+        // 4) 右侧醒目圆角主按钮 + 轻量关闭钮
+        if let act = actionTitle {
+            MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: actionBtnRect, radius: 8.5, hovered: hoveredAction)
+            let actAttrs: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), .foregroundColor: NSColor.white]
+            let actNs = act as NSString
+            let actSz = actNs.size(withAttributes: actAttrs)
+            actNs.draw(at: CGPoint(x: round(actionBtnRect.midX - actSz.width * 0.5), y: round(actionBtnRect.midY - actSz.height * 0.5)), withAttributes: actAttrs)
+            if hoveredClose {
+                ctx.setFillColor((isDark ? NSColor.white.withAlphaComponent(0.12) : MSnipUITheme.hoverFill).cgColor)
+                ctx.fillEllipse(in: closeBtnRect)
+            }
+            ToolbarView.drawSymbol("xmark", in: closeBtnRect.insetBy(dx: 6.5, dy: 6.5), alpha: hoveredClose ? 0.92 : 0.52, tint: subColor)
+        }
+    }
+
+    private func drawLeadingVisual(in ctx: CGContext, cardFill: NSColor, isDark: Bool) -> CGFloat {
+        if let cg = preview, cg.width > 0, cg.height > 0 {
+            let thumbRect = CGRect(x: cardRect.minX + 13, y: round(cardRect.midY - 20), width: 50, height: 40)
+            let thumbPath = CGPath(roundedRect: thumbRect, cornerWidth: 7.0, cornerHeight: 7.0, transform: nil)
+            ctx.saveGState()
+            ctx.setFillColor((isDark ? NSColor.white.withAlphaComponent(0.06) : MSnipUITheme.subtleFill).cgColor)
+            ctx.addPath(thumbPath); ctx.fillPath()
+            ctx.addPath(thumbPath); ctx.clip()
+            let scale = max(thumbRect.width / CGFloat(cg.width), thumbRect.height / CGFloat(cg.height))
+            let dw = CGFloat(cg.width) * scale, dh = CGFloat(cg.height) * scale
+            let drawR = CGRect(x: thumbRect.midX - dw * 0.5, y: thumbRect.midY - dh * 0.5, width: dw, height: dh)
+            NSImage(cgImage: cg, size: drawR.size).draw(in: drawR, from: .zero, operation: .sourceOver, fraction: 1.0, respectFlipped: true, hints: nil)
+            ctx.restoreGState()
+            ctx.setStrokeColor((isDark ? NSColor.white.withAlphaComponent(0.16) : MSnipUITheme.borderStrong).cgColor)
+            ctx.setLineWidth(1.0); ctx.addPath(thumbPath); ctx.strokePath()
+
+            let dot = CGRect(x: thumbRect.maxX - 9, y: thumbRect.maxY - 9, width: 15, height: 15)
+            ctx.setFillColor(cardFill.cgColor); ctx.fillEllipse(in: dot.insetBy(dx: -1.5, dy: -1.5))
+            ctx.setFillColor(badgeColor.cgColor); ctx.fillEllipse(in: dot)
+            ToolbarView.drawSymbol("checkmark", in: dot.insetBy(dx: 3.2, dy: 3.2), alpha: 1.0, tint: .white)
+            return thumbRect.maxX + 14
+        }
+        if let sw = swatch {
+            let swRect = CGRect(x: cardRect.minX + 14, y: round(cardRect.midY - 11), width: 22, height: 22)
+            let swPath = CGPath(roundedRect: swRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
+            ctx.setFillColor(sw.cgColor); ctx.addPath(swPath); ctx.fillPath()
+            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor); ctx.setLineWidth(1.0); ctx.addPath(swPath); ctx.strokePath()
+            return swRect.maxX + 11
+        }
+        let sz: CGFloat = hasAction ? 32 : 24
+        let bRect = CGRect(x: cardRect.minX + 14, y: round(cardRect.midY - sz * 0.5), width: sz, height: sz)
+        let bPath = CGPath(roundedRect: bRect, cornerWidth: sz * 0.30, cornerHeight: sz * 0.30, transform: nil)
+        ctx.setFillColor(badgeColor.cgColor); ctx.addPath(bPath); ctx.fillPath()
+        ToolbarView.drawSymbol(statusSymbol, in: bRect.insetBy(dx: sz * 0.24, dy: sz * 0.24), alpha: 1.0, tint: .white)
+        return bRect.maxX + 12
+    }
+
+    /// 初始化时一次性降采样为 `100×80 px` 微缩略图，立即释放外部传入的 5K 全屏 `CGImage`（省去 ~60 MB 驻留与 30fps 重缩放开销）
+    private static func makeCompactThumb(_ src: CGImage) -> CGImage? {
+        guard src.width > 120 || src.height > 96 else { return src }
+        let w = 100, h = 80
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        guard let ctx = CGContext(data: nil, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4, space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return src }
+        let sc = max(CGFloat(w) / CGFloat(src.width), CGFloat(h) / CGFloat(src.height))
+        let dw = CGFloat(src.width) * sc, dh = CGFloat(src.height) * sc
+        ctx.interpolationQuality = .medium
+        ctx.draw(src, in: CGRect(x: (CGFloat(w) - dw) * 0.5, y: (CGFloat(h) - dh) * 0.5, width: dw, height: dh))
+        return ctx.makeImage() ?? src
     }
 }

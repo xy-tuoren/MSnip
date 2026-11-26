@@ -191,10 +191,19 @@ enum VisionTextExtractor {
         }
     }
 
-    // MARK: - Private Dual Pipelines
+    /// 仅跑纯 Vision 文字 + 二维码管线（不启动 80–120 MB 的 VisionKit Live Text 引擎，供静默识字 / 公式离线回退 / 测试连接使用）
+    static func recognizeTextOnlyOffMain(cgImage: CGImage, exactCodeMode: Bool = false) async -> OCRRecognitionOutput {
+        let (observations, qrList) = await performAccurateVisionOCR(cgImage: cgImage, exactCodeMode: exactCodeMode)
+        let preserved = OCRTextFormatter.format(observations, mode: .preserveLines)
+        let merged = OCRTextFormatter.format(observations, mode: .mergeParagraphs)
+        let table = OCRTableFormatter.extractTable(from: observations)
+        return OCRRecognitionOutput(qrPayloads: qrList, preservedText: preserved, mergedText: merged, tableResult: table, liveAnalysisObject: nil)
+    }
+
+    // MARK: - Live Text & Vision Pipelines
 
     @MainActor
-    private static func analyzeLiveTextOverlay(cgImage: CGImage) async -> AnyObject? {
+    static func analyzeLiveTextOverlay(cgImage: CGImage) async -> AnyObject? {
         guard #available(macOS 13.0, *), ImageAnalyzer.isSupported else { return nil }
         var cfg = ImageAnalyzer.Configuration([.text, .machineReadableCode])
         cfg.locales = ["zh-Hans", "zh-Hant", "en-US", "ja-JP"]

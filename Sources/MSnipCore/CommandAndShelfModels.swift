@@ -186,10 +186,10 @@ public enum ShelfTriggerGeometry {
         return topDist <= topThreshold && abs(point.x - screenFrame.midX) <= halfBand
     }
 
-    /// 展开后点击屏幕最顶栏窄带（≤ 30pt）可立即收起晾衣架并在离开顶边前抑制重弹
-    public static func hitsTopBarDismissBand(point: CGPoint, screenFrame: CGRect) -> Bool {
+    /// 展开后点击屏幕最顶栏（自动适配刘海屏菜单栏高度，最小 30pt）可立即收起晾衣架并在离开顶边前抑制重弹
+    public static func hitsTopBarDismissBand(point: CGPoint, screenFrame: CGRect, menuBarHeight: CGFloat = 30.0) -> Bool {
         guard containsInclusive(screenFrame, point: point) else { return false }
-        return (screenFrame.maxY - point.y) <= 30.0
+        return (screenFrame.maxY - point.y) <= max(30.0, menuBarHeight)
     }
 
     /// 计算悬链晾衣绳在水平坐标 `x` 处的下垂 Y 坐标（flipped 左上角原点二次贝塞尔弧线，供夹子精准卡在线上）

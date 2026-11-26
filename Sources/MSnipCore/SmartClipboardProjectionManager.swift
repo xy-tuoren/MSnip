@@ -19,17 +19,17 @@ public final class SmartClipboardProjectionManager {
                 cancelPendingTasks(); editorMonitor.stop()
                 activeEditorPID = 0; activeEditorFocus = .indeterminate
                 reprojectIfStillOwned(forApp: nil)
-            } else if trackedImage != nil {
+            } else if trackedBacking != nil {
                 reprojectIfStillOwned(forApp: NSWorkspace.shared.frontmostApplication)
             }
         }
     }
 
     private let editorMonitor = EditorPasteMonitor()
-    private var trackedImage: CGImage?
-    private var trackedScale: CGFloat = 2.0
+    private var trackedBacking: ClipboardImageBacking?
     private var trackedFileBox: ClipboardFileBox?
     private var trackedChangeCount: Int = -1
+    private var isInternalReproject = false
     private var lastMode: ClipboardProjectionMode = .imageOnly
     private var isForcedPathMode = false
     private var activeEditorPID: pid_t = 0
@@ -46,8 +46,8 @@ public final class SmartClipboardProjectionManager {
         registerObserversIfNeeded()
         cancelPendingTasks()
 
-        trackedImage = cgImage
-        trackedScale = max(1.0, scaleFactor)
+        trackedBacking?.releaseAll()
+        trackedBacking = ClipboardImageBacking(cgImage: cgImage, scaleFactor: max(1.0, scaleFactor))
         trackedFileBox = ClipboardFileBox()
         isForcedPathMode = forceIncludePath
 
@@ -67,7 +67,8 @@ public final class SmartClipboardProjectionManager {
     public func clearTrackedState() {
         cancelPendingTasks()
         editorMonitor.stop()
-        trackedImage = nil; trackedFileBox = nil; currentProbe = nil
+        trackedBacking?.releaseAll(); trackedBacking = nil
+        trackedFileBox = nil; currentProbe = nil
         trackedChangeCount = -1; lastMode = .imageOnly; isForcedPathMode = false
         activeEditorPID = 0; activeEditorFocus = .indeterminate
     }
@@ -201,15 +202,22 @@ public final class SmartClipboardProjectionManager {
     }
 
     private func writeProjection(mode: ClipboardProjectionMode, transient: Bool, attachProbe: Bool) {
-        guard let img = trackedImage, let box = trackedFileBox else { return }
+        guard let backing = trackedBacking, let box = trackedFileBox else { return }
         let probe: ClipboardConsumptionProbe? = attachProbe
             ? ClipboardConsumptionProbe { [weak self] in
                 Task { @MainActor [weak self] in self?.handleImageConsumedInEditor() }
             }
             : nil
+        isInternalReproject = true
         trackedChangeCount = ClipboardImagePromise.write(
-            cgImage: img, scaleFactor: trackedScale, mode: mode, transient: transient, fileBox: box, probe: probe
-        )
+            backing: backing, mode: mode, transient: transient, fileBox: box, probe: probe
+        ) { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, !self.isInternalReproject else { return }
+                _ = self.checkOwnershipOrClear()
+            }
+        }
+        isInternalReproject = false
         lastMode = mode
         currentProbe = probe
     }
@@ -221,7 +229,7 @@ public final class SmartClipboardProjectionManager {
 
     @discardableResult
     private func checkOwnershipOrClear() -> Bool {
-        guard trackedImage != nil, trackedFileBox != nil else { return false }
+        guard trackedBacking != nil, trackedFileBox != nil else { return false }
         if NSPasteboard.general.changeCount != trackedChangeCount { clearTrackedState(); return false }
         return true
     }

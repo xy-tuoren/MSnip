@@ -3,6 +3,8 @@ import CoreGraphics
 import CoreMedia
 import CoreVideo
 import Foundation
+import ImageIO
+import UniformTypeIdentifiers
 
 /// 动图与录屏输出封装格式（100% Apple 原生 ImageIO / AVAssetWriter，零 ffmpeg 依赖）
 public enum RecordingFormat: String, CaseIterable, Codable, Sendable {
@@ -107,24 +109,22 @@ public final class MediaClipEncoder: @unchecked Sendable {
         return true
     }
 
-    /// 追加实时系统音频采样缓冲（与视频共享虚拟活跃时钟，天然支持暂停/恢复无音画漂移）
+    /// 追加实时系统音频采样缓冲（保留每样本真实时长并用样本计数单调推进 PTS，杜绝 960× 时长膨胀与墙钟抖动爆音）
     public func appendAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, at timestamp: TimeInterval) {
-        lock.lock()
-        defer { lock.unlock() }
+        lock.lock(); defer { lock.unlock() }
         guard format == .mp4, options.captureSystemAudio, !isCancelled, !isFinished,
               let start = startTime, let aInput = audioInput, aInput.isReadyForMoreMediaData else { return }
-        let elapsed = max(0.0, timestamp - start)
-        let targetPTS = CMTime(seconds: elapsed, preferredTimescale: 48_000)
-        if lastAudioPTS.isValid, targetPTS <= lastAudioPTS { return }
-        let dur = CMSampleBufferGetDuration(sampleBuffer)
-        var timing = CMSampleTimingInfo(duration: dur, presentationTimeStamp: targetPTS, decodeTimeStamp: .invalid)
+        var origTiming = CMSampleTimingInfo()
+        guard CMSampleBufferGetSampleTimingInfo(sampleBuffer, at: 0, timingInfoOut: &origTiming) == noErr else { return }
+        let wallPTS = CMTime(seconds: max(0.0, timestamp - start), preferredTimescale: 48_000)
+        let targetPTS: CMTime = (lastAudioPTS.isValid && abs(CMTimeGetSeconds(wallPTS) - CMTimeGetSeconds(lastAudioPTS)) < 0.18)
+            ? lastAudioPTS : (lastAudioPTS.isValid ? max(wallPTS, lastAudioPTS) : wallPTS)
+        var timing = CMSampleTimingInfo(duration: origTiming.duration, presentationTimeStamp: targetPTS, decodeTimeStamp: .invalid)
         var retimed: CMSampleBuffer?
-        let status = CMSampleBufferCreateCopyWithNewTiming(
-            allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer,
-            sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &retimed
-        )
-        if status == noErr, let buf = retimed, aInput.append(buf) {
-            lastAudioPTS = targetPTS
+        let st = CMSampleBufferCreateCopyWithNewTiming(allocator: kCFAllocatorDefault, sampleBuffer: sampleBuffer, sampleTimingEntryCount: 1, sampleTimingArray: &timing, sampleBufferOut: &retimed)
+        if st == noErr, let buf = retimed, aInput.append(buf) {
+            let sr = (origTiming.duration.isValid && origTiming.duration.value > 0) ? origTiming.duration.timescale : 48_000
+            lastAudioPTS = CMTimeAdd(targetPTS, CMTime(value: CMTimeValue(max(1, CMSampleBufferGetNumSamples(sampleBuffer))), timescale: sr))
         }
     }
 
@@ -294,5 +294,325 @@ public final class MediaClipEncoder: @unchecked Sendable {
             return nil
         }
         return outputURL
+    }
+}
+
+// MARK: - GIF LZ4 磁盘流式暂存缓冲池
+
+/// 基于 LZ4 磁盘流式暂存的线程安全 GIF 帧缓冲池：
+/// 录制期间内存中仅保留单帧复用字节缓冲与 40B/帧偏移索引，彻底消除驻留数百张 `CGImage` 造成的内存峰值，支持安全并发取消。
+final class GIFDiskSpooler: @unchecked Sendable {
+    private struct FrameMeta {
+        let offset: UInt64
+        let byteCount: Int
+        let compressed: Bool
+        let width: Int
+        let height: Int
+        let time: TimeInterval
+    }
+
+    static let defaultMaxLongSide = 880
+
+    let spoolFileURL: URL
+    let maxLongSide: Int
+    private let lock = NSLock()
+    private var isCancelled = false
+    private var metaList: [FrameMeta] = []
+    private var scratchRGBA: [UInt8] = []
+    private var writeHandle: FileHandle?
+    private var writeOffset: UInt64 = 0
+
+    var frameCount: Int { lock.lock(); defer { lock.unlock() }; return metaList.count }
+    var lastFrameTime: TimeInterval? { lock.lock(); defer { lock.unlock() }; return metaList.last?.time }
+
+    init(spoolFileURL: URL, maxLongSide: Int = GIFDiskSpooler.defaultMaxLongSide) {
+        self.spoolFileURL = spoolFileURL
+        self.maxLongSide = max(320, maxLongSide)
+    }
+
+    deinit { cleanup() }
+
+    func append(_ src: CGImage, elapsed: TimeInterval) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !isCancelled, src.width >= 2, src.height >= 2 else { return false }
+
+        let longSide = max(src.width, src.height)
+        let outW: Int, outH: Int
+        if longSide <= maxLongSide {
+            outW = src.width; outH = src.height
+        } else {
+            let ratio = Double(maxLongSide) / Double(longSide)
+            outW = max(16, Int((Double(src.width) * ratio).rounded()) & ~1)
+            outH = max(16, Int((Double(src.height) * ratio).rounded()) & ~1)
+        }
+
+        let rawLen = outW * outH * 4
+        if scratchRGBA.count != rawLen { scratchRGBA = [UInt8](repeating: 0, count: rawLen) }
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let rendered: Bool = scratchRGBA.withUnsafeMutableBytes { buf in
+            guard let base = buf.baseAddress,
+                  let ctx = CGContext(
+                      data: base, width: outW, height: outH, bitsPerComponent: 8, bytesPerRow: outW * 4,
+                      space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ) else { return false }
+            ctx.interpolationQuality = .high
+            ctx.draw(src, in: CGRect(x: 0, y: 0, width: outW, height: outH))
+            return true
+        }
+        guard rendered else { return false }
+
+        if writeHandle == nil {
+            let dir = spoolFileURL.deletingLastPathComponent()
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            _ = FileManager.default.createFile(
+                atPath: spoolFileURL.path, contents: nil,
+                attributes: [.posixPermissions: NSNumber(value: Int16(0o600))]
+            )
+            writeHandle = try? FileHandle(forWritingTo: spoolFileURL)
+        }
+        guard let handle = writeHandle else { return false }
+
+        let (payload, isCompressed): (Data, Bool) = scratchRGBA.withUnsafeMutableBytes { buf in
+            guard let base = buf.baseAddress else { return (Data(), false) }
+            let rawNS = NSData(bytesNoCopy: base, length: rawLen, freeWhenDone: false)
+            if let lz4 = try? rawNS.compressed(using: .lz4) as Data, lz4.count < rawLen {
+                return (lz4, true)
+            }
+            return (Data(bytes: base, count: rawLen), false)
+        }
+        guard !payload.isEmpty, (try? handle.write(contentsOf: payload)) != nil else { return false }
+
+        metaList.append(FrameMeta(
+            offset: writeOffset, byteCount: payload.count, compressed: isCompressed,
+            width: outW, height: outH, time: elapsed
+        ))
+        writeOffset += UInt64(payload.count)
+        return true
+    }
+
+    func finalizeGIF(to outputURL: URL, totalElapsed: TimeInterval) -> URL? {
+        let frames: [FrameMeta] = {
+            lock.lock()
+            defer { lock.unlock() }
+            if isCancelled { return [] }
+            let copy = metaList
+            try? writeHandle?.close(); writeHandle = nil
+            metaList.removeAll()
+            scratchRGBA.removeAll(keepingCapacity: false)
+            return copy
+        }()
+        defer { cleanup(markCancelled: false) }
+
+        guard !frames.isEmpty,
+              let readHandle = try? FileHandle(forReadingFrom: spoolFileURL),
+              let dest = CGImageDestinationCreateWithURL(
+                  outputURL as CFURL, UTType.gif.identifier as CFString, frames.count, nil
+              ) else {
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+        defer { try? readHandle.close() }
+
+        let fileProps: [CFString: Any] = [kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFLoopCount: 0]]
+        CGImageDestinationSetProperties(dest, fileProps as CFDictionary)
+        let cs = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+
+        for i in frames.indices {
+            let cancelled: Bool = { lock.lock(); defer { lock.unlock() }; return isCancelled }()
+            if cancelled { try? FileManager.default.removeItem(at: outputURL); return nil }
+
+            let ok: Bool = autoreleasepool {
+                let m = frames[i]
+                guard (try? readHandle.seek(toOffset: m.offset)) != nil,
+                      let chunk = try? readHandle.read(upToCount: m.byteCount),
+                      chunk.count == m.byteCount else { return false }
+                let rawData: Data = m.compressed
+                    ? ((try? (chunk as NSData).decompressed(using: .lz4) as Data) ?? Data())
+                    : chunk
+                guard rawData.count == m.width * m.height * 4,
+                      let provider = CGDataProvider(data: rawData as CFData),
+                      let cg = CGImage(
+                          width: m.width, height: m.height, bitsPerComponent: 8, bitsPerPixel: 32,
+                          bytesPerRow: m.width * 4, space: cs,
+                          bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                          provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent
+                      ) else { return false }
+
+                let rawDelay = (i + 1 < frames.count) ? (frames[i + 1].time - m.time) : max(0.10, totalElapsed - m.time)
+                let clampedDelay = min(1.5, max(0.06, rawDelay))
+                let frameProps: [CFString: Any] = [
+                    kCGImagePropertyGIFDictionary: [
+                        kCGImagePropertyGIFDelayTime: clampedDelay,
+                        kCGImagePropertyGIFUnclampedDelayTime: clampedDelay
+                    ]
+                ]
+                CGImageDestinationAddImage(dest, cg, frameProps as CFDictionary)
+                return true
+            }
+            if !ok { try? FileManager.default.removeItem(at: outputURL); return nil }
+        }
+        let finalized = CGImageDestinationFinalize(dest)
+        let cancelledEnd: Bool = { lock.lock(); defer { lock.unlock() }; return isCancelled }()
+        if !finalized || cancelledEnd {
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
+        return outputURL
+    }
+
+    func cleanup(markCancelled: Bool = true) {
+        lock.lock()
+        if markCancelled { isCancelled = true }
+        try? writeHandle?.close()
+        writeHandle = nil
+        metaList.removeAll()
+        scratchRGBA.removeAll(keepingCapacity: false)
+        lock.unlock()
+        try? FileManager.default.removeItem(at: spoolFileURL)
+    }
+}
+
+// MARK: - 录屏格式、帧率与清晰度模型
+
+/// MP4 录屏清晰度预设（按最长边像素上限等比缩放，源图更小时不放大）
+public enum MP4ResolutionPreset: String, CaseIterable, Codable, Sendable {
+    case standard // 最长边 ≤ 1280px（适合聊天/文档快速发送）
+    case high     // 最长边 ≤ 1920px（默认推荐，清晰且体积均衡）
+    case native   // Retina 1:1 原生像素不缩放
+
+    public var maxLongSide: Int? {
+        switch self {
+        case .standard: return 1280
+        case .high:     return 1920
+        case .native:   return nil
+        }
+    }
+
+    public var title: String {
+        switch self {
+        case .standard: return "标准"
+        case .high:     return "高清"
+        case .native:   return "原画"
+        }
+    }
+
+    /// 计算符合 H.264 偶数像素对齐的目标输出尺寸（永不放大超过原尺寸）
+    public func scaledEvenSize(width: Int, height: Int) -> (width: Int, height: Int) {
+        let w = max(64, width), h = max(64, height)
+        let longSide = max(w, h)
+        guard let limit = maxLongSide, longSide > limit else {
+            return (max(64, w & ~1), max(64, h & ~1))
+        }
+        let ratio = Double(limit) / Double(longSide)
+        let outW = max(64, Int((Double(w) * ratio).rounded()) & ~1)
+        let outH = max(64, Int((Double(h) * ratio).rounded()) & ~1)
+        return (outW, outH)
+    }
+}
+
+/// MP4 录屏帧率模式（支持 30/60fps 及跟随显示器原生高刷，如 ProMotion 120Hz）
+public enum MP4FrameRateMode: String, CaseIterable, Codable, Sendable {
+    case fps30
+    case fps60
+    case displayNative
+
+    public var title: String {
+        switch self {
+        case .fps30:         return "30 fps"
+        case .fps60:         return "60 fps"
+        case .displayNative: return "原刷"
+        }
+    }
+
+    /// 结合当前显示器最高刷新率与输出像素尺寸解析安全稳定的实际录制帧率
+    public func resolveFPS(displayMaxFPS: Int, outputWidth: Int, outputHeight: Int) -> Int {
+        switch self {
+        case .fps30: return 30
+        case .fps60: return 60
+        case .displayNative:
+            let capped = max(30, min(120, displayMaxFPS))
+            // 超过 2560px 的超高分原画超出 H.264 硬件 120fps Level 上限时自动稳帧 60fps，防止编码拥塞掉帧
+            if max(outputWidth, outputHeight) > 2560 {
+                return min(60, capped)
+            }
+            return capped
+        }
+    }
+}
+
+/// 选区录屏可调参数模型（支持持久化、旧配置无损迁移与跨会话生效）
+public struct RecordingOptions: Equatable, Codable, Sendable {
+    public var gifFPS: Int = 12
+    public var gifMaxLongSide: Int = 960
+    public var mp4FPS: Int = 30
+    public var mp4FPSMode: MP4FrameRateMode = .fps30
+    public var mp4Resolution: MP4ResolutionPreset = .high
+    public var showsCursor: Bool = true
+    public var captureSystemAudio: Bool = false
+
+    public init(
+        gifFPS: Int = 12,
+        gifMaxLongSide: Int = 960,
+        mp4FPS: Int = 30,
+        mp4FPSMode: MP4FrameRateMode = .fps30,
+        mp4Resolution: MP4ResolutionPreset = .high,
+        showsCursor: Bool = true,
+        captureSystemAudio: Bool = false
+    ) {
+        self.gifFPS = gifFPS
+        self.gifMaxLongSide = gifMaxLongSide
+        self.mp4FPS = mp4FPS
+        self.mp4FPSMode = mp4FPSMode
+        self.mp4Resolution = mp4Resolution
+        self.showsCursor = showsCursor
+        self.captureSystemAudio = captureSystemAudio
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case gifFPS, gifMaxLongSide, mp4FPS, mp4FPSMode, mp4Resolution, showsCursor, captureSystemAudio
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        gifFPS = try c.decodeIfPresent(Int.self, forKey: .gifFPS) ?? 12
+        gifMaxLongSide = try c.decodeIfPresent(Int.self, forKey: .gifMaxLongSide) ?? 960
+        let legacyFPS = try c.decodeIfPresent(Int.self, forKey: .mp4FPS) ?? 30
+        mp4FPS = legacyFPS
+        mp4FPSMode = try c.decodeIfPresent(MP4FrameRateMode.self, forKey: .mp4FPSMode)
+            ?? (legacyFPS >= 50 ? .fps60 : .fps30)
+        mp4Resolution = try c.decodeIfPresent(MP4ResolutionPreset.self, forKey: .mp4Resolution) ?? .high
+        showsCursor = try c.decodeIfPresent(Bool.self, forKey: .showsCursor) ?? true
+        captureSystemAudio = try c.decodeIfPresent(Bool.self, forKey: .captureSystemAudio) ?? false
+    }
+
+    public var clampedGifFPS: Int { min(20, max(6, gifFPS)) }
+    public var clampedGifMaxLongSide: Int { min(1600, max(480, gifMaxLongSide)) }
+    public var clampedMp4FPS: Int { min(120, max(15, mp4FPS)) }
+
+    /// 按 GIF 帧率动态计算 30 秒完整时长对应的最大帧数（避免 15fps 在第 24 秒静默截断）
+    public var maxGIFFrames: Int {
+        max(180, clampedGifFPS * Int(RecordingFormat.gif.maxDurationSeconds))
+    }
+
+    /// 结合像素面积与目标帧率计算自适应 H.264 码率（30/60/120fps 逐级平滑拉升，兼顾锐利度与体积上限）
+    public static func recommendedMP4Bitrate(width: Int, height: Int, fps: Int) -> Int {
+        let areaBits = Double(max(64, width) * max(64, height)) * 4.0
+        let fpsFactor = pow(Double(max(24, min(120, fps))) / 30.0, 0.72)
+        let raw = Int((areaBits * fpsFactor).rounded())
+        return min(32_000_000, max(1_400_000, raw))
+    }
+}
+
+/// 录屏实时演示画笔笔迹（归一化选区坐标 `0..1`，支持 2.6s 自动渐隐激光模式与常驻标注模式）
+public struct RecordingLiveStroke: Sendable {
+    public var points: [CGPoint]
+    public let isLaser: Bool
+    public var updatedAt: TimeInterval
+
+    public init(points: [CGPoint], isLaser: Bool, updatedAt: TimeInterval) {
+        self.points = points
+        self.isLaser = isLaser
+        self.updatedAt = updatedAt
     }
 }

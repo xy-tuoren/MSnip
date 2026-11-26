@@ -27,7 +27,7 @@ final class CollageImageLightbox: NSObject, NSWindowDelegate {
         guard let panel, let contentView else { return }
 
         let mouse = NSEvent.mouseLocation
-        let scr = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main ?? NSScreen.screens[0]
+        guard let scr = NSScreen.screens.first(where: { $0.frame.contains(mouse) }) ?? NSScreen.main ?? NSScreen.screens.first else { return }
         let vf = scr.visibleFrame
         let w = round(min(1380, vf.width * 0.88))
         let h = round(min(900, vf.height * 0.86))
@@ -37,6 +37,8 @@ final class CollageImageLightbox: NSObject, NSWindowDelegate {
         loadCurrentEntry()
         panel.makeKeyAndOrderFront(nil)
     }
+
+    func refreshAppearance() { contentView?.needsDisplay = true }
 
     func dismiss() {
         panel?.orderOut(nil)
@@ -114,7 +116,7 @@ final class CollageImageLightbox: NSObject, NSWindowDelegate {
     }
 }
 
-final class CollageLightboxContentView: NSView {
+private final class CollageLightboxContentView: NSView {
     var showsCheckerboard = false { didSet { needsDisplay = true } }
     var onClose: (() -> Void)?
     var onPrev: (() -> Void)?
@@ -242,26 +244,29 @@ final class CollageLightboxContentView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
+        let isDark = GeekTheme.isDark
         let shell = CGPath(roundedRect: bounds, cornerWidth: 16, cornerHeight: 16, transform: nil)
+        let shellFill = isDark ? NSColor(srgbRed: 0.07, green: 0.08, blue: 0.10, alpha: 0.94) : NSColor(srgbRed: 0.96, green: 0.965, blue: 0.98, alpha: 0.96)
+        let shellStroke = isDark ? NSColor.white.withAlphaComponent(0.14) : NSColor.black.withAlphaComponent(0.12)
+        let fgColor = isDark ? NSColor.white.withAlphaComponent(0.88) : NSColor(srgbRed: 0.10, green: 0.13, blue: 0.18, alpha: 0.92)
         ctx.saveGState()
-        ctx.setFillColor(NSColor(srgbRed: 0.07, green: 0.08, blue: 0.10, alpha: 0.94).cgColor)
-        ctx.addPath(shell); ctx.fillPath()
-        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.14).cgColor)
-        ctx.setLineWidth(1.0); ctx.addPath(shell); ctx.strokePath()
+        ctx.setFillColor(shellFill.cgColor); ctx.addPath(shell); ctx.fillPath()
+        ctx.setStrokeColor(shellStroke.cgColor); ctx.setLineWidth(1.0); ctx.addPath(shell); ctx.strokePath()
         ctx.restoreGState()
 
         if let cg = cgImage {
             let dst = imageDrawRect()
             ctx.saveGState()
             let clip = CGPath(roundedRect: dst, cornerWidth: 6, cornerHeight: 6, transform: nil)
-            ctx.setShadow(offset: CGSize(width: 0, height: 6), blur: 24, color: NSColor.black.withAlphaComponent(0.55).cgColor)
+            ctx.setShadow(offset: CGSize(width: 0, height: 6), blur: 24, color: NSColor.black.withAlphaComponent(isDark ? 0.55 : 0.18).cgColor)
             ctx.setFillColor(NSColor.white.cgColor); ctx.addPath(clip); ctx.fillPath()
             ctx.restoreGState()
 
             ctx.saveGState()
             ctx.addPath(clip); ctx.clip()
             if showsCheckerboard {
-                let c1 = NSColor(white: 0.24, alpha: 1).cgColor, c2 = NSColor(white: 0.18, alpha: 1).cgColor
+                let c1 = (isDark ? NSColor(white: 0.24, alpha: 1) : NSColor(white: 0.96, alpha: 1)).cgColor
+                let c2 = (isDark ? NSColor(white: 0.18, alpha: 1) : NSColor(white: 0.87, alpha: 1)).cgColor
                 ctx.setFillColor(c1); ctx.fill(dst); ctx.setFillColor(c2)
                 var y = dst.minY, r = 0
                 while y < dst.maxY {
@@ -278,14 +283,14 @@ final class CollageLightboxContentView: NSView {
         let pct = Int(((isFitMode ? fitScale() : zoom) * max(1.0, window?.backingScaleFactor ?? 2.0) * 100.0).rounded())
         let header = "\(titleText)  ·  \(pct)%（滚轮缩放 · 拖拽平移 · 双击 1:1 · Esc 关闭）"
         GeekTheme.drawText(header, in: CGRect(x: 18, y: 14, width: max(120, bounds.width - 246), height: 26),
-                           font: .monospacedDigitSystemFont(ofSize: 12.0, weight: .medium), color: NSColor.white.withAlphaComponent(0.86))
+                           font: .monospacedDigitSystemFont(ofSize: 12.0, weight: .medium), color: fgColor)
 
         for b in actionButtons() {
             let hov = (hoveredTag == b.tag)
             let p = CGPath(roundedRect: b.rect, cornerWidth: 7, cornerHeight: 7, transform: nil)
-            ctx.setFillColor(NSColor.white.withAlphaComponent(hov ? 0.24 : 0.12).cgColor)
-            ctx.addPath(p); ctx.fillPath()
-            GeekTheme.drawText(b.title, in: b.rect, font: .systemFont(ofSize: b.tag >= 5 ? 18 : 11.5, weight: .semibold), color: .white, align: .center)
+            let btnFill = isDark ? NSColor.white.withAlphaComponent(hov ? 0.24 : 0.12) : NSColor.black.withAlphaComponent(hov ? 0.12 : 0.06)
+            ctx.setFillColor(btnFill.cgColor); ctx.addPath(p); ctx.fillPath()
+            GeekTheme.drawText(b.title, in: b.rect, font: .systemFont(ofSize: b.tag >= 5 ? 18 : 11.5, weight: .semibold), color: fgColor, align: .center)
         }
     }
 }

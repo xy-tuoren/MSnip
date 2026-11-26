@@ -1,5 +1,5 @@
-import AppKit
 import CoreGraphics
+import CoreText
 import Foundation
 
 /// 选区录屏交互回显合成器（零外部依赖）：
@@ -222,34 +222,29 @@ public final class RecordingOverlayCompositor: @unchecked Sendable {
 
     private func drawKeyBadge(_ text: String, alpha: CGFloat, width: CGFloat, height: CGFloat, scale: CGFloat, in ctx: CGContext) {
         let fontPt = round(15.0 * scale)
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: NSFont.monospacedSystemFont(ofSize: fontPt, weight: .bold),
-            .foregroundColor: NSColor.white.withAlphaComponent(alpha)
-        ]
-        let ns = text as NSString
-        let sz = ns.size(withAttributes: attrs)
-        let padX = 12.0 * scale
-        let padY = 6.0 * scale
-        let bw = ceil(sz.width + padX * 2)
-        let bh = ceil(sz.height + padY * 2)
-        let bx = (width - bw) * 0.5
-        let by = max(8.0, height - bh - 14.0 * scale)
-        let rect = CGRect(x: bx, y: by, width: bw, height: bh)
-        let path = CGPath(roundedRect: rect, cornerWidth: 8.0 * scale, cornerHeight: 8.0 * scale, transform: nil)
+        let ctFont = CTFontCreateWithName("Menlo-Bold" as CFString, fontPt, nil)
+        let fgColor = CGColor(srgbRed: 1, green: 1, blue: 1, alpha: alpha)
+        let attrs: [CFString: Any] = [kCTFontAttributeName: ctFont, kCTForegroundColorAttributeName: fgColor]
+        guard let attrStr = CFAttributedStringCreate(kCFAllocatorDefault, text as CFString, attrs as CFDictionary) else { return }
+        let line = CTLineCreateWithAttributedString(attrStr)
+        var ascent: CGFloat = 0, descent: CGFloat = 0, leading: CGFloat = 0
+        let textW = CGFloat(CTLineGetTypographicBounds(line, &ascent, &descent, &leading))
+        let textH = ascent + descent
+
+        let padX = 12.0 * scale, padY = 6.0 * scale
+        let bw = ceil(textW + padX * 2), bh = ceil(textH + padY * 2)
+        let bx = (width - bw) * 0.5, by = max(8.0, height - bh - 14.0 * scale)
+        let path = CGPath(roundedRect: CGRect(x: bx, y: by, width: bw, height: bh), cornerWidth: 8.0 * scale, cornerHeight: 8.0 * scale, transform: nil)
 
         ctx.saveGState()
         ctx.setFillColor(CGColor(srgbRed: 0.08, green: 0.09, blue: 0.12, alpha: 0.86 * alpha))
-        ctx.addPath(path)
-        ctx.fillPath()
+        ctx.addPath(path); ctx.fillPath()
         ctx.setStrokeColor(CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 0.24 * alpha))
         ctx.setLineWidth(max(1.0, 1.0 * scale))
-        ctx.addPath(path)
-        ctx.strokePath()
+        ctx.addPath(path); ctx.strokePath()
+        ctx.textMatrix = CGAffineTransform(scaleX: 1, y: -1)
+        ctx.textPosition = CGPoint(x: bx + (bw - textW) * 0.5, y: by + (bh + ascent - descent) * 0.5)
+        CTLineDraw(line, ctx)
         ctx.restoreGState()
-
-        let prev = NSGraphicsContext.current
-        NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
-        defer { NSGraphicsContext.current = prev }
-        ns.draw(at: CGPoint(x: bx + (bw - sz.width) * 0.5, y: by + (bh - sz.height) * 0.5), withAttributes: attrs)
     }
 }

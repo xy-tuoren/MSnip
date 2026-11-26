@@ -17,7 +17,7 @@ enum PermissionPane {
 }
 
 /// ChatGPT 风格的「系统设置」底部拖拽卡片主体视图（467 × 108）
-final class SettingsAccessoryCardView: NSView {
+private final class SettingsAccessoryCardView: NSView {
     var onBackClicked: (() -> Void)? { didSet { backButton.onClick = onBackClicked } }
     var onCloseClicked: (() -> Void)? { didSet { closeButton.onClick = onCloseClicked } }
     var onDragStateChanged: ((Bool) -> Void)? { didSet { appRow.onDragStateChanged = onDragStateChanged } }
@@ -245,6 +245,9 @@ final class SettingsDockOverlay {
         let primaryH = NSScreen.screens.first?.frame.height ?? 0
         guard primaryH > 0 else { return nil }
         let selfPID = ProcessInfo.processInfo.processIdentifier
+        let sysSettingsPIDs = Set(
+            NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.systempreferences").map(\.processIdentifier)
+        )
         let rawList = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID) as? [[String: Any]] ?? []
 
         var occludersAbove: [CGRect] = []
@@ -256,8 +259,9 @@ final class SettingsDockOverlay {
                   cgBounds.width >= 200, cgBounds.height >= 150 else { continue }
 
             let owner = entry[kCGWindowOwnerName as String] as? String ?? ""
-            if (owner == "系统设置" || owner == "System Settings" || owner == "System Preferences"),
-               cgBounds.width >= 480, cgBounds.height >= 360 {
+            let isSysSettings = sysSettingsPIDs.contains(pid)
+                || owner == "系统设置" || owner == "System Settings" || owner == "System Preferences"
+            if isSysSettings, cgBounds.width >= 480, cgBounds.height >= 360 {
                 let barX = cgBounds.width >= 660 ? (cgBounds.maxX - barSize.width - 20) : (cgBounds.midX - barSize.width * 0.5)
                 let topQuartzY: CGFloat
                 switch activePane {
