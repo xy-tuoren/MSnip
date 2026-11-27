@@ -158,7 +158,7 @@ Once launched, MSnip lives quietly in the menu bar — no Dock icon, no backgrou
 - **LaTeX Formula Recognition**: Vision LLMs, SimpleTex, Mathpix, and offline fallback with instant offline native WebKit MathML rendering and online KaTeX progressive enhancement.
 
 ### 6. CLI & `msnip://` URL Scheme Automation
-- Integrates seamlessly with Raycast, Alfred, Apple Shortcuts, and shell scripts via `open msnip://capture`, `msnip://translate`, `msnip://ocr`, `msnip://silent-ocr`, `msnip://shelf`, `msnip://long`, `msnip://record`, `msnip://pin`, `msnip://settings`, or `MSnip --enter=ocr|shelf|long|video|pin`.
+- Integrates seamlessly with Raycast, Alfred, Apple Shortcuts, and shell scripts via `open msnip://capture`, `msnip://translate`, `msnip://ocr`, `msnip://silent-ocr`, `msnip://shelf`, `msnip://long`, `msnip://record`, `msnip://pin`, `msnip://settings`, or `MSnip --enter=ocr|shelf|long|video|pin`. For security, an externally triggered `fullscreen` never captures silently; it opens the capture overlay for you to confirm, so other processes cannot borrow MSnip's Screen Recording permission.
 
 ---
 
@@ -226,7 +226,7 @@ Normal daily usage and reboots keep permissions intact. If you rebuild frequentl
 <details>
 <summary><strong>Does MSnip phone home, collect telemetry, or upload screenshots?</strong></summary>
 
-**Never.** MSnip is 100% source-available with zero third-party SDKs, zero accounts, and zero telemetry. Capture, annotations, privacy auto-redaction, Apple Vision OCR, QR scanning, scrolling stitch, recording/trimming, and macOS 15+ Apple native translation run completely offline. Network calls occur only when you explicitly configure and invoke a third-party cloud translation / OCR / LaTeX endpoint.
+**Never.** MSnip is 100% source-available with zero third-party SDKs, zero accounts, and zero telemetry. Capture, annotations, privacy auto-redaction, Apple Vision OCR, QR scanning, scrolling stitch, recording/trimming, and macOS 15+ Apple native translation run completely offline. Network calls occur only when you explicitly configure and invoke a third-party cloud translation / OCR / LaTeX endpoint, with one exception: the LaTeX result window's preview downloads a pinned, SRI-verified copy of KaTeX from the jsDelivr CDN (static files only, no formula content is sent; offline it falls back to built-in MathML).
 
 </details>
 
@@ -333,7 +333,7 @@ scripts/
 
 ## Privacy
 
-MSnip is strictly local-first: zero accounts, zero analytics, zero ads, and zero background network requests. Outbound requests happen only when you explicitly configure and trigger a cloud OCR, translation, or LaTeX provider.
+MSnip is strictly local-first: zero accounts, zero analytics, zero ads, and zero background network requests. Outbound requests happen only when you explicitly configure and trigger a cloud OCR, translation, or LaTeX provider, and when the LaTeX result window loads a pinned, SRI-verified copy of KaTeX from the jsDelivr CDN for typesetting (no formula content is sent).
 
 ## Acknowledgments
 

@@ -185,10 +185,10 @@ extension AppController {
         Task { @MainActor [weak self] in self?.executeLaunchCommand(cmd) }
     }
 
+    /// 执行来自 URL Scheme / 命令行 / IPC 的外部命令：调用方不可信，先经 `resolvedForExternalTrigger` 降级掉静默截屏
     func executeLaunchCommand(_ cmd: MSnipLaunchCommand) {
-        switch cmd {
-        case .capture:    startCapture()
-        case .fullscreen: performFullScreenCapture(fromMenu: false)
+        switch cmd.resolvedForExternalTrigger {
+        case .capture, .fullscreen: startCapture()
         case .delay:      startDefaultDelayedCapture()
         case .pin:        handlePinHotKey()
         case .ocr:        startQuickOCR()

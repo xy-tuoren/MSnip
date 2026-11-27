@@ -168,8 +168,11 @@ enum CloudAPITranslator {
 
         let salt = UUID().uuidString
         let curtime = "\(Int(Date().timeIntervalSince1970))"
-        let chars = Array(text)
-        let input = chars.count <= 20 ? text : (String(chars.prefix(10)) + "\(chars.count)" + String(chars.suffix(10)))
+        // 签名 input 按 Unicode 码点截取与计数（与有道官方示例 `len(q)` / `q[0:10]` 一致）；
+        // Swift `Character` 会把泰文/印地文组合音标、组合 emoji 合并为单个字素簇，导致长文本签名不一致
+        let scalars = Array(text.unicodeScalars)
+        func scalarText(_ part: ArraySlice<Unicode.Scalar>) -> String { String(String.UnicodeScalarView(part)) }
+        let input = scalars.count <= 20 ? text : (scalarText(scalars.prefix(10)) + "\(scalars.count)" + scalarText(scalars.suffix(10)))
         let sign = sha256Hex(Data((appKey + input + salt + curtime + appSecret).utf8))
 
         let ep = profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

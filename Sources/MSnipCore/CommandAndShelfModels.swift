@@ -99,6 +99,16 @@ public enum MSnipLaunchCommand: String, CaseIterable, Codable, Sendable {
         default:                                          return nil
         }
     }
+
+    /// 外部渠道（`msnip://` URL Scheme、命令行参数、分布式通知 IPC）无法校验调用方身份，任何本地进程都能借此驱动
+    /// MSnip 已获授权的「屏幕录制」权限。凡会在无用户交互下直接产出屏幕像素的命令，一律降级为需用户在覆盖层中亲手确认的
+    /// 交互式截图，杜绝无权限进程借道静默截屏、再从剪贴板或历史缓存中读走画面。
+    public var resolvedForExternalTrigger: MSnipLaunchCommand {
+        switch self {
+        case .fullscreen: return .capture
+        default:          return self
+        }
+    }
 }
 
 /// 顶部暂存架（MSnip Shelf）自定义挂架条目类型（图片截图直接共享 `CaptureHistoryRing`，零重复落盘）

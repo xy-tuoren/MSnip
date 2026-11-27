@@ -57,58 +57,59 @@ struct AppConfig: Codable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        hotKeyPreset = try c.decodeIfPresent(HotKeyPreset.self, forKey: .hotKeyPreset) ?? .optASD
-        hotKeysEnabled = try c.decodeIfPresent(Bool.self, forKey: .hotKeysEnabled) ?? true
-        forcePriorityHotKeys = try c.decodeIfPresent(Bool.self, forKey: .forcePriorityHotKeys) ?? false
-        var overrides = try c.decodeIfPresent([String: HotKeyBindingOverride].self, forKey: .globalHotKeyOverrides) ?? [:]
-        if overrides[GlobalHotKeyAction.capture.rawValue] == nil,
-           let cap = try c.decodeIfPresent(KeyCombo.self, forKey: .customCaptureCombo) {
+        // 逐字段宽松解码：单个字段类型异常或出现本版本未知的枚举值（如降级运行）时仅该项回退默认，不再整份偏好重置
+        func value<T: Decodable>(_ type: T.Type, _ key: CodingKeys) -> T? {
+            try? c.decodeIfPresent(type, forKey: key)
+        }
+        hotKeyPreset = value(HotKeyPreset.self, .hotKeyPreset) ?? .optASD
+        hotKeysEnabled = value(Bool.self, .hotKeysEnabled) ?? true
+        forcePriorityHotKeys = value(Bool.self, .forcePriorityHotKeys) ?? false
+        var overrides = value([String: HotKeyBindingOverride].self, .globalHotKeyOverrides) ?? [:]
+        if overrides[GlobalHotKeyAction.capture.rawValue] == nil, let cap = value(KeyCombo.self, .customCaptureCombo) {
             overrides[GlobalHotKeyAction.capture.rawValue] = .custom(cap)
         }
-        if overrides[GlobalHotKeyAction.pin.rawValue] == nil,
-           let pin = try c.decodeIfPresent(KeyCombo.self, forKey: .customPinCombo) {
+        if overrides[GlobalHotKeyAction.pin.rawValue] == nil, let pin = value(KeyCombo.self, .customPinCombo) {
             overrides[GlobalHotKeyAction.pin.rawValue] = .custom(pin)
         }
-        if overrides[GlobalHotKeyAction.ocr.rawValue] == nil,
-           let ocr = try c.decodeIfPresent(KeyCombo.self, forKey: .customOCRCombo) {
+        if overrides[GlobalHotKeyAction.ocr.rawValue] == nil, let ocr = value(KeyCombo.self, .customOCRCombo) {
             overrides[GlobalHotKeyAction.ocr.rawValue] = .custom(ocr)
         }
         globalHotKeyOverrides = overrides
-        customCanvasKeys = try c.decodeIfPresent([String: String].self, forKey: .customCanvasKeys) ?? [:]
-        defaultColorIndex = try c.decodeIfPresent(Int.self, forKey: .defaultColorIndex) ?? 0
-        defaultLineWidth = try c.decodeIfPresent(CGFloat.self, forKey: .defaultLineWidth) ?? 3.0
-        lastSaveDirectory = try c.decodeIfPresent(String.self, forKey: .lastSaveDirectory)
-        recentSaveDirectories = try c.decodeIfPresent([String].self, forKey: .recentSaveDirectories) ?? []
-        colorCopyFormat = try c.decodeIfPresent(ColorCopyFormat.self, forKey: .colorCopyFormat) ?? .hex
-        showShortcutTips = try c.decodeIfPresent(Bool.self, forKey: .showShortcutTips) ?? true
-        preferredRecordingFormat = try c.decodeIfPresent(RecordingFormat.self, forKey: .preferredRecordingFormat) ?? .gif
-        recordInteractionHUD = try c.decodeIfPresent(Bool.self, forKey: .recordInteractionHUD) ?? true
-        recordingOptions = try c.decodeIfPresent(RecordingOptions.self, forKey: .recordingOptions) ?? RecordingOptions()
-        defaultTextCapsule = try c.decodeIfPresent(Bool.self, forKey: .defaultTextCapsule) ?? false
-        let legacyDualOCR = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoOpenDualPane) ?? false
-        ocrPresentation = (try? c.decodeIfPresent(OCRDefaultPresentation.self, forKey: .ocrPresentation)) ?? (legacyDualOCR ? .dualPane : .inPlace)
+        customCanvasKeys = value([String: String].self, .customCanvasKeys) ?? [:]
+        defaultColorIndex = value(Int.self, .defaultColorIndex) ?? 0
+        defaultLineWidth = value(CGFloat.self, .defaultLineWidth) ?? 3.0
+        lastSaveDirectory = value(String.self, .lastSaveDirectory)
+        recentSaveDirectories = value([String].self, .recentSaveDirectories) ?? []
+        colorCopyFormat = value(ColorCopyFormat.self, .colorCopyFormat) ?? .hex
+        showShortcutTips = value(Bool.self, .showShortcutTips) ?? true
+        preferredRecordingFormat = value(RecordingFormat.self, .preferredRecordingFormat) ?? .gif
+        recordInteractionHUD = value(Bool.self, .recordInteractionHUD) ?? true
+        recordingOptions = value(RecordingOptions.self, .recordingOptions) ?? RecordingOptions()
+        defaultTextCapsule = value(Bool.self, .defaultTextCapsule) ?? false
+        let legacyDualOCR = value(Bool.self, .ocrAutoOpenDualPane) ?? false
+        ocrPresentation = value(OCRDefaultPresentation.self, .ocrPresentation) ?? (legacyDualOCR ? .dualPane : .inPlace)
         ocrAutoOpenDualPane = (ocrPresentation == .dualPane)
-        translateAutoOpenDualPane = try c.decodeIfPresent(Bool.self, forKey: .translateAutoOpenDualPane) ?? false
-        ocrAutoCopy = try c.decodeIfPresent(Bool.self, forKey: .ocrAutoCopy) ?? true
-        exportImageFormat = (try? c.decodeIfPresent(CaptureExportFormat.self, forKey: .exportImageFormat)) ?? .png
-        exportAt1xScale = try c.decodeIfPresent(Bool.self, forKey: .exportAt1xScale) ?? false
-        appearanceMode = try c.decodeIfPresent(AppAppearanceMode.self, forKey: .appearanceMode) ?? .dark
-        terminalPasteAdaptEnabled = try c.decodeIfPresent(Bool.self, forKey: .terminalPasteAdaptEnabled) ?? true
-        filenameTemplate = try c.decodeIfPresent(String.self, forKey: .filenameTemplate) ?? SaveFilenameTemplate.defaultTemplate
-        soundFeedbackEnabled = try c.decodeIfPresent(Bool.self, forKey: .soundFeedbackEnabled) ?? false
-        backdropAspectRatio = try c.decodeIfPresent(BackdropAspectRatio.self, forKey: .backdropAspectRatio) ?? .auto
-        backdropWatermark = try c.decodeIfPresent(String.self, forKey: .backdropWatermark) ?? ""
-        let rawDelay = try c.decodeIfPresent(Int.self, forKey: .delayedCaptureSeconds) ?? DelayedCaptureSettings.defaultSeconds
+        translateAutoOpenDualPane = value(Bool.self, .translateAutoOpenDualPane) ?? false
+        ocrAutoCopy = value(Bool.self, .ocrAutoCopy) ?? true
+        exportImageFormat = value(CaptureExportFormat.self, .exportImageFormat) ?? .png
+        exportAt1xScale = value(Bool.self, .exportAt1xScale) ?? false
+        appearanceMode = value(AppAppearanceMode.self, .appearanceMode) ?? .dark
+        terminalPasteAdaptEnabled = value(Bool.self, .terminalPasteAdaptEnabled) ?? true
+        filenameTemplate = value(String.self, .filenameTemplate) ?? SaveFilenameTemplate.defaultTemplate
+        soundFeedbackEnabled = value(Bool.self, .soundFeedbackEnabled) ?? false
+        backdropAspectRatio = value(BackdropAspectRatio.self, .backdropAspectRatio) ?? .auto
+        backdropWatermark = value(String.self, .backdropWatermark) ?? ""
+        let rawDelay = value(Int.self, .delayedCaptureSeconds) ?? DelayedCaptureSettings.defaultSeconds
         delayedCaptureSeconds = DelayedCaptureSettings.clampedSeconds(rawDelay)
-        fullScreenCaptureAction = try c.decodeIfPresent(FullScreenCaptureAction.self, forKey: .fullScreenCaptureAction) ?? .copy
-        let rawGlow = try c.decodeIfPresent(CGFloat.self, forKey: .pinGlowStrength) ?? 0.45
+        fullScreenCaptureAction = value(FullScreenCaptureAction.self, .fullScreenCaptureAction) ?? .copy
+        let rawGlow = value(CGFloat.self, .pinGlowStrength) ?? 0.45
         pinGlowStrength = min(1.0, max(0.0, rawGlow))
-        let legacyShelfHover = try c.decodeIfPresent(Bool.self, forKey: .topShelfHoverEnabled) ?? true
-        topShelfTriggerMode = (try? c.decodeIfPresent(TopShelfTriggerMode.self, forKey: .topShelfTriggerMode))
+        let legacyShelfHover = value(Bool.self, .topShelfHoverEnabled) ?? true
+        topShelfTriggerMode = value(TopShelfTriggerMode.self, .topShelfTriggerMode)
             ?? (legacyShelfHover ? .topEdgeHover : .manualOnly)
         topShelfHoverEnabled = (topShelfTriggerMode != .manualOnly)
-        showQuickAccessOverlay = try c.decodeIfPresent(Bool.self, forKey: .showQuickAccessOverlay) ?? true
-        collageOptions = (try? c.decodeIfPresent(CollageOptions.self, forKey: .collageOptions)) ?? CollageOptions()
+        showQuickAccessOverlay = value(Bool.self, .showQuickAccessOverlay) ?? true
+        collageOptions = value(CollageOptions.self, .collageOptions) ?? CollageOptions()
     }
 
     func encode(to encoder: Encoder) throws {

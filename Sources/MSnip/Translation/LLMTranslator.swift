@@ -249,7 +249,7 @@ enum LLMTranslator {
 
     static func validateHTTP(_ resp: URLResponse, data: Data) throws {
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            let snippet = String(data: data.prefix(360), encoding: .utf8) ?? ""
+            let snippet = LLMProtocolHelpers.utf8Snippet(data, maxBytes: 360)
             throw LLMError.httpError(http.statusCode, snippet)
         }
     }
@@ -409,7 +409,7 @@ enum LLMModelFetcher {
         case .anthropicCompatible:
             url = LLMProtocolHelpers.resolveAnthropicModelsURL(profile.endpoint)
         case .geminiNative:
-            url = LLMProtocolHelpers.resolveGeminiModelsURL(endpoint: profile.endpoint, apiKey: key)
+            url = LLMProtocolHelpers.resolveGeminiModelsURL(endpoint: profile.endpoint)
         default:
             url = nil
         }
@@ -436,7 +436,7 @@ enum LLMModelFetcher {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            let snippet = String(data: data.prefix(200), encoding: .utf8) ?? ""
+            let snippet = LLMProtocolHelpers.utf8Snippet(data, maxBytes: 200)
             throw FetchError.httpError(http.statusCode, snippet)
         }
         let models = LLMProtocolHelpers.parseModelIDs(from: data, kind: profile.kind)

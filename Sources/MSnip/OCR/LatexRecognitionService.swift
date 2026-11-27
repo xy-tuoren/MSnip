@@ -173,7 +173,7 @@ enum LatexRecognitionService {
 
     private static func validateHTTP(_ resp: URLResponse, data: Data) throws {
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            let txt = String(data: data.prefix(300), encoding: .utf8) ?? ""
+            let txt = LLMProtocolHelpers.utf8Snippet(data, maxBytes: 300)
             throw LatexError.httpError(http.statusCode, txt)
         }
     }

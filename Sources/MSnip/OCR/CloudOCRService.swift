@@ -233,7 +233,8 @@ enum CloudOCRService {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            let msg = LLMProtocolHelpers.extractErrorMessage(from: data) ?? (String(data: data.prefix(240), encoding: .utf8) ?? "HTTP \(http.statusCode)")
+            let snippet = LLMProtocolHelpers.utf8Snippet(data, maxBytes: 240)
+            let msg = LLMProtocolHelpers.extractErrorMessage(from: data) ?? (snippet.isEmpty ? "HTTP \(http.statusCode)" : snippet)
             throw OCRError.apiError("HTTP \(http.statusCode): \(msg)")
         }
         guard let text = OCRRecognitionConfig.extractCustomOCRText(from: data, path: config.customResponsePath) else {
@@ -501,7 +502,7 @@ enum VisionLLMOCRService {
 
     private static func validateHTTP(_ resp: URLResponse, data: Data) throws {
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
-            let txt = LLMProtocolHelpers.extractErrorMessage(from: data) ?? (String(data: data.prefix(300), encoding: .utf8) ?? "")
+            let txt = LLMProtocolHelpers.extractErrorMessage(from: data) ?? LLMProtocolHelpers.utf8Snippet(data, maxBytes: 300)
             throw VisionError.httpError(http.statusCode, txt)
         }
     }

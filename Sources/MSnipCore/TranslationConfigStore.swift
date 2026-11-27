@@ -44,6 +44,27 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
         self.customResponsePath = customResponsePath
     }
 
+    /// 逐字段宽松解码：新版本追加字段、旧版本缺字段或个别字段类型异常都不会让整份配置（含 API Key）解码失败；
+    /// 仅 `kind` 无法识别（如降级运行时遇到新协议）才抛错，由上层按条跳过该档案。
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try c.decode(TranslationProviderKind.self, forKey: .kind)
+        let text: (CodingKeys) -> String = { key in (try? c.decodeIfPresent(String.self, forKey: key)) ?? "" }
+        let rawName = text(.name).trimmingCharacters(in: .whitespacesAndNewlines)
+        self.id = (try? c.decodeIfPresent(UUID.self, forKey: .id)) ?? UUID()
+        self.name = rawName.isEmpty ? Self.makePreset(kind).name : rawName
+        self.kind = kind
+        self.isEnabled = (try? c.decodeIfPresent(Bool.self, forKey: .isEnabled)) ?? true
+        self.endpoint = text(.endpoint)
+        self.apiKey = text(.apiKey)
+        self.appIdOrSecretId = text(.appIdOrSecretId)
+        self.model = text(.model)
+        self.systemPrompt = text(.systemPrompt)
+        self.customHeadersJSON = text(.customHeadersJSON)
+        self.customBodyTemplate = text(.customBodyTemplate)
+        self.customResponsePath = text(.customResponsePath)
+    }
+
     /// 检查必填鉴权参数是否完备（原生离线、本地 Ollama 及自建 DeepLX 免 Key 即可就绪）
     public var isConfiguredReady: Bool {
         let ep = endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -170,14 +191,16 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        let list = try c.decodeIfPresent([TranslationProviderProfile].self, forKey: .profiles) ?? Self.defaultStarterProfiles()
+        // 档案逐条容错：单条无法识别（未知协议 / 字段损坏）只跳过该条，绝不连坐清空其余服务配置与密钥
+        let list = (try? c.decodeIfPresent([SkippableDecodable<TranslationProviderProfile>].self, forKey: .profiles))
+            .map { $0.compactMap(\.value) } ?? Self.defaultStarterProfiles()
         self.profiles = list
-        self.activeProfileID = try c.decodeIfPresent(UUID.self, forKey: .activeProfileID) ?? list.first?.id
-        self.fallbackProfileID = try c.decodeIfPresent(UUID.self, forKey: .fallbackProfileID)
+        self.activeProfileID = (try? c.decodeIfPresent(UUID.self, forKey: .activeProfileID)) ?? list.first?.id
+        self.fallbackProfileID = (try? c.decodeIfPresent(UUID.self, forKey: .fallbackProfileID))
             ?? list.first(where: { $0.kind == .appleNative })?.id
-        self.targetLang = try c.decodeIfPresent(TranslationTargetLang.self, forKey: .targetLang) ?? .autoZhEn
-        self.autoCopyTranslation = try c.decodeIfPresent(Bool.self, forKey: .autoCopyTranslation) ?? true
-        self.preferKeychainStorage = try c.decodeIfPresent(Bool.self, forKey: .preferKeychainStorage) ?? false
+        self.targetLang = (try? c.decodeIfPresent(TranslationTargetLang.self, forKey: .targetLang)) ?? .autoZhEn
+        self.autoCopyTranslation = (try? c.decodeIfPresent(Bool.self, forKey: .autoCopyTranslation)) ?? true
+        self.preferKeychainStorage = (try? c.decodeIfPresent(Bool.self, forKey: .preferKeychainStorage)) ?? false
     }
 
     public static func defaultStarterProfiles() -> [TranslationProviderProfile] {
@@ -221,9 +244,12 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
     public static func load(from customURL: URL? = nil, secretStore: CredentialStoring? = nil) -> TranslationSettingsConfig {
         let url = customURL ?? storageURL
         let vault = secretStore ?? (customURL == nil ? CredentialVault.shared : nil)
-        guard let data = try? Data(contentsOf: url),
+        let rawData = try? Data(contentsOf: url)
+        guard let data = rawData,
               var decoded = try? JSONDecoder().decode(TranslationSettingsConfig.self, from: data),
               !decoded.profiles.isEmpty else {
+            // 文件存在却无法解析（损坏、截断或来自不兼容版本）：先 0600 备份原件再重建默认配置，绝不静默覆盖用户密钥
+            if rawData != nil { backupUnreadableFile(at: url) }
             let initial = TranslationSettingsConfig()
             if customURL == nil { initial.save(secretStore: secretStore) }
             return initial
@@ -258,6 +284,15 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
         try? FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: url.path)
     }
 
+    /// 将无法解析的配置原件另存为同目录 `<名称>.unreadable-<时间戳>.json`（保持 `0600`），供用户手动找回密钥
+    private static func backupUnreadableFile(at url: URL) {
+        let fm = FileManager.default
+        let stamp = Int(Date().timeIntervalSince1970)
+        let backup = url.deletingPathExtension().appendingPathExtension("unreadable-\(stamp).json")
+        guard !fm.fileExists(atPath: backup.path), (try? fm.copyItem(at: url, to: backup)) != nil else { return }
+        try? fm.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: backup.path)
+    }
+
     private static func keychainAccount(for id: UUID) -> String { "translation.profile.\(id.uuidString)" }
 
     /// 删除指定服务配置对应的系统钥匙串孤儿条目
@@ -290,6 +325,15 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
         if let s = current as? String { return s }
         if let arr = current as? [String] { return arr.joined(separator: "\n") }
         return nil
+    }
+}
+
+/// 数组元素级容错解码包装：元素解码失败时记为 `nil` 而非让整个数组抛错
+struct SkippableDecodable<Wrapped: Decodable>: Decodable {
+    let value: Wrapped?
+
+    init(from decoder: Decoder) throws {
+        value = try? Wrapped(from: decoder)
     }
 }
 

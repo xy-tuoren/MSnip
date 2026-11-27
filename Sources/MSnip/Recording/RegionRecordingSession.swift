@@ -469,9 +469,22 @@ extension RegionRecordingSession {
         }
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let dst = panel.url else { return nil }
-        try? FileManager.default.removeItem(at: dst)
-        guard (try? FileManager.default.copyItem(at: tempURL, to: dst)) != nil else { return nil }
-        try? FileManager.default.removeItem(at: tempURL)
+        // 先复制为目标同目录隐藏副本再原子替换：复制失败时用户原有同名文件不受影响，临时录屏也仍保留给剪贴板兜底
+        let fm = FileManager.default
+        let staging = dst.deletingLastPathComponent()
+            .appendingPathComponent(".msnip-saving-\(UUID().uuidString).\(format.rawValue)")
+        do {
+            try fm.copyItem(at: tempURL, to: staging)
+            if fm.fileExists(atPath: dst.path) {
+                _ = try fm.replaceItemAt(dst, withItemAt: staging)
+            } else {
+                try fm.moveItem(at: staging, to: dst)
+            }
+        } catch {
+            try? fm.removeItem(at: staging)
+            return nil
+        }
+        try? fm.removeItem(at: tempURL)
         return (dst, dst.deletingLastPathComponent().path)
     }
 

@@ -61,13 +61,10 @@ public enum LLMProtocolHelpers {
         return URL(string: base + "/v1/models")
     }
 
-    /// 推导 Gemini 原生协议的 `/models` 列表地址（裸域名自动补全 `/v1beta`，已有 `/v1`/`/v1beta`/`/v1alpha` 不重复拼接）
-    public static func resolveGeminiModelsURL(endpoint: String, apiKey: String) -> URL? {
-        let base = normalizedGeminiBase(endpoint)
-        let key = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        if key.isEmpty { return URL(string: "\(base)/models") }
-        let encoded = key.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? key
-        return URL(string: "\(base)/models?key=\(encoded)")
+    /// 推导 Gemini 原生协议的 `/models` 列表地址（裸域名自动补全 `/v1beta`，已有 `/v1`/`/v1beta`/`/v1alpha` 不重复拼接）。
+    /// 密钥仅经 `x-goog-api-key` 请求头传递，绝不拼进 URL，避免落入中转代理与服务端访问日志。
+    public static func resolveGeminiModelsURL(endpoint: String) -> URL? {
+        URL(string: "\(normalizedGeminiBase(endpoint))/models")
     }
 
     /// 推导 Gemini 原生协议的 `:generateContent` / `:streamGenerateContent` 端点（兼容官方与裸域名中转站）
@@ -336,6 +333,17 @@ public extension LLMProtocolHelpers {
             for i in 0..<min(result.count, fallback.count) { result[i] = fallback[i] }
         }
         return result
+    }
+
+    /// 按字节上限截取响应体为可读文本片段：截断点落在多字节 UTF-8 字符中间时丢弃残缺尾字节，
+    /// 避免 `String(data:encoding:)` 整体返回 nil 而吞掉中文服务商的错误信息（及依赖错误文案的自动降级重试）
+    static func utf8Snippet(_ data: Data, maxBytes: Int) -> String {
+        let slice = data.prefix(max(0, maxBytes))
+        var text = String(decoding: slice, as: UTF8.self)
+        if slice.count < data.count {
+            while text.unicodeScalars.last == "\u{FFFD}" { text.unicodeScalars.removeLast() }
+        }
+        return text
     }
 
     /// 提取四协议 JSON 响应中的服务端错误文案（兼容顶层 `error` 及 Responses API `response.error`）

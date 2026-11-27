@@ -249,8 +249,8 @@ func testTranslationConfigAndModels() {
             == "https://proxy.example.com/v1beta/models/gemini-2.5-flash:generateContent"
             && LLMProtocolHelpers.resolveGeminiGenerateURL(endpoint: "https://proxy.example.com/v1beta", model: "models/gemini-2.5-pro", stream: true)?.absoluteString
                 == "https://proxy.example.com/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse"
-            && LLMProtocolHelpers.resolveGeminiModelsURL(endpoint: "https://proxy.example.com", apiKey: "k")?.absoluteString
-                == "https://proxy.example.com/v1beta/models?key=k",
+            && LLMProtocolHelpers.resolveGeminiModelsURL(endpoint: "https://proxy.example.com")?.absoluteString
+                == "https://proxy.example.com/v1beta/models",
         "Gemini 裸域名中转站应自动补全 /v1beta 且不重复拼接已有版本段与 models/ 前缀"
     )
     check(

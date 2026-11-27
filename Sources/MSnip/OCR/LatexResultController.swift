@@ -454,7 +454,7 @@ extension LatexResultController {
 
 /// 基于 Apple 原生 `WKWebView` 的实时 LaTeX 数学公式预览视图：
 /// - 离线零等待直出 macOS WebKit 原生 C++ MathML 排版（支持分式、根号、上下标、积分求和、矩阵/方程组、希腊字母）；
-/// - 在线环境下自动渐进增强为 KaTeX 出版级精排。
+/// - 在线环境下自动渐进增强为 KaTeX 出版级精排（固定版本 + SRI 完整性校验，CDN 文件被篡改时拒绝执行并保留 MathML）。
 final class LatexPreviewWebView: NSView, WKNavigationDelegate {
     private var webView: WKWebView?
     private var isPageLoaded = false
@@ -536,8 +536,11 @@ final class LatexPreviewWebView: NSView, WKNavigationDelegate {
       (function(){
         // 离线本地壳 0ms 直出原生 MathML，再后台异步按需注入 KaTeX，杜绝 CDN 超时阻塞 didFinish
         setTimeout(function(){
-          var css=document.createElement('link');css.rel='stylesheet';css.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';document.head.appendChild(css);
+          // SRI 哈希取自 npm 官方 katex-0.16.11.tgz（已与 registry sha512 及 CDN 实际内容交叉核对），升级版本时必须同步重算
+          var css=document.createElement('link');css.rel='stylesheet';css.href='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css';
+          css.integrity='sha384-nB0miv6/jRmo5UMMR1wu3Gz6NLsoTkbqJghGIsx//Rlm+ZU03BU6SQNC66uf4l5+';css.crossOrigin='anonymous';document.head.appendChild(css);
           var js=document.createElement('script');js.src='https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js';js.async=true;
+          js.integrity='sha384-7zkQWkzuo3B5mTepMUcHkMB5jZaolc2xDwL6VFqjFALcbeS9Ggm/Yr2r3Dy4lfFg';js.crossOrigin='anonymous';
           js.onload=function(){if(window._last!==undefined)window.renderMSnipLatex(window._last);};document.head.appendChild(js);
         }, 0);
         const SYM={alpha:'α',beta:'β',gamma:'γ',delta:'δ',epsilon:'ϵ',varepsilon:'ε',zeta:'ζ',eta:'η',theta:'θ',vartheta:'ϑ',iota:'ι',kappa:'κ',lambda:'λ',mu:'μ',nu:'ν',xi:'ξ',pi:'π',rho:'ρ',sigma:'σ',tau:'τ',upsilon:'υ',phi:'ϕ',varphi:'φ',chi:'χ',psi:'ψ',omega:'ω',Gamma:'Γ',Delta:'Δ',Theta:'Θ',Lambda:'Λ',Xi:'Ξ',Pi:'Π',Sigma:'Σ',Upsilon:'Υ',Phi:'Φ',Psi:'Ψ',Omega:'Ω',infty:'∞',partial:'∂',nabla:'∇',pm:'±',mp:'∓',times:'×',div:'÷',cdot:'⋅',cdots:'⋯',ldots:'…',dots:'…',vdots:'⋮',ddots:'⋱',leq:'≤',le:'≤',geq:'≥',ge:'≥',neq:'≠',ne:'≠',approx:'≈',equiv:'≡',sim:'∼',simeq:'≃',propto:'∝',in:'∈',notin:'∉',subset:'⊂',subseteq:'⊆',supset:'⊃',supseteq:'⊇',cup:'∪',cap:'∩',emptyset:'∅',forall:'∀',exists:'∃',neg:'¬',land:'∧',lor:'∨',to:'→',rightarrow:'→',leftarrow:'←',leftrightarrow:'↔',Rightarrow:'⇒',Leftarrow:'⇐',Leftrightarrow:'⇔',mapsto:'↦',sum:'∑',prod:'∏',coprod:'∐',int:'∫',iint:'∬',iiint:'∭',oint:'∮',prime:'′',angle:'∠',perp:'⊥',parallel:'∥',triangle:'△',star:'⋆',circ:'∘',bullet:'∙',oplus:'⊕',otimes:'⊗'};

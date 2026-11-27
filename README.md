@@ -158,7 +158,7 @@ macOS 用户为了凑齐日常视觉效率，常常要在菜单栏同时常驻 3
 - **LaTeX 公式识别**：支持视觉大模型 / SimpleTex / Mathpix / 离线基础识别，内置离线原生 WebKit MathML 即时渲染与在线 KaTeX 精排预览。
 
 ### 6. 命令行与 `msnip://` URL Scheme 联动
-- 原生适配 Raycast / Alfred / Apple 快捷指令 / Shell 脚本：支持 `open msnip://capture`、`msnip://translate`、`msnip://ocr`、`msnip://silent-ocr`、`msnip://shelf`、`msnip://long`、`msnip://record`、`msnip://pin`、`msnip://settings`，以及 `MSnip --enter=ocr|shelf|long|video|pin` 单实例快传。
+- 原生适配 Raycast / Alfred / Apple 快捷指令 / Shell 脚本：支持 `open msnip://capture`、`msnip://translate`、`msnip://ocr`、`msnip://silent-ocr`、`msnip://shelf`、`msnip://long`、`msnip://record`、`msnip://pin`、`msnip://settings`，以及 `MSnip --enter=ocr|shelf|long|video|pin` 单实例快传。出于安全考虑，外部触发的 `fullscreen` 不会静默截屏，而是打开截图覆盖层由你确认，防止其他进程借道 MSnip 的屏幕录制权限。
 
 ---
 
@@ -226,7 +226,7 @@ MSnip 为独立开发者免费项目，目前使用 ad-hoc 签名而未购置 Ap
 <details>
 <summary><strong>会偷偷联网、上传我的截图或采集遥测吗？</strong></summary>
 
-**绝不。** MSnip 100% 源码公开且零第三方 SDK，无账号系统、无埋点遥测、无后台心跳上报。截图、标注、离线隐私打码、Apple Vision OCR、二维码扫描、长图拼接、录屏裁剪及 macOS 15+ Apple 原生翻译全部本机离线运行。仅当你主动在「设置 → 模型与服务」中配置了第三方云翻译 / 云 OCR / LaTeX 接口并触发对应功能时，请求才会直接发往你填写的接口地址，且 API 密钥仅存于 `0600` 本地文件或 macOS 系统钥匙串。
+**绝不。** MSnip 100% 源码公开且零第三方 SDK，无账号系统、无埋点遥测、无后台心跳上报。截图、标注、离线隐私打码、Apple Vision OCR、二维码扫描、长图拼接、录屏裁剪及 macOS 15+ Apple 原生翻译全部本机离线运行。仅当你主动在「设置 → 模型与服务」中配置了第三方云翻译 / 云 OCR / LaTeX 接口并触发对应功能时，请求才会直接发往你填写的接口地址，且 API 密钥仅存于 `0600` 本地文件或 macOS 系统钥匙串。唯一的例外是公式识别结果窗口：打开时预览区会从 jsDelivr CDN 下载固定版本、带 SRI 完整性校验的 KaTeX 排版脚本，只下载静态文件、不上传任何公式内容；无网络时自动退回内置的离线 MathML 渲染。
 
 </details>
 
@@ -340,7 +340,7 @@ scripts/
 
 ## 隐私声明
 
-MSnip 是本地优先的桌面效率工具：无账号、无遥测、无广告，默认不产生任何后台联网请求；仅在你主动配置并调用云端 OCR / 翻译 / LaTeX 服务时，直连你指定的服务接口。
+MSnip 是本地优先的桌面效率工具：无账号、无遥测、无广告，不产生任何后台联网请求。对外请求只有两种：你主动配置并调用云端 OCR / 翻译 / LaTeX 服务时，直连你指定的服务接口；打开公式识别结果窗口时，从 jsDelivr CDN 下载固定版本、带 SRI 完整性校验的 KaTeX 排版脚本（不上传任何公式内容）。
 
 ## 鸣谢
 
