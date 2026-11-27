@@ -343,14 +343,28 @@ final class LongShotControlBarView: NSView {
         if idx != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         if idx != hoveredIdx {
             hoveredIdx = idx
-            toolTip = idx.map { slots[$0].tip }
+            if let i = idx, slots.indices.contains(i) {
+                FloatingTooltipHUD.show(slots[i].tip, anchorRectInView: slots[i].rect, of: self)
+            } else {
+                FloatingTooltipHUD.hide(for: self)
+            }
             needsDisplay = true
         }
     }
 
-    override func mouseExited(with event: NSEvent) { hoveredIdx = nil; needsDisplay = true }
+    override func mouseExited(with event: NSEvent) {
+        hoveredIdx = nil
+        FloatingTooltipHUD.hide(for: self)
+        needsDisplay = true
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { FloatingTooltipHUD.hide(for: self) }
+    }
 
     override func mouseDown(with event: NSEvent) {
+        FloatingTooltipHUD.hide(for: self)
         let p = convert(event.locationInWindow, from: nil)
         if let slot = slots.first(where: { $0.rect.contains(p) }) {
             if slot.action == .save && event.modifierFlags.contains(.option) {

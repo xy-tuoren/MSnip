@@ -34,7 +34,11 @@ final class QuickAccessOverlayController {
         appearanceObserver = NotificationCenter.default.addObserver(
             forName: .msnipAppearanceDidChange, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.activeCard?.needsDisplay = true }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.activePanel?.appearance = GeekTheme.windowAppearance
+                self.activeCard?.needsDisplay = true
+            }
         }
     }
 
@@ -103,15 +107,19 @@ final class QuickAccessOverlayController {
         panel.alphaValue = 0.0
         panel.orderFrontRegardless()
         NSAnimationContext.runAnimationGroup { ctx in
-            ctx.duration = 0.22
+            ctx.duration = 0.20
             ctx.timingFunction = CAMediaTimingFunction(controlPoints: 0.16, 1.0, 0.30, 1.0)
             panel.animator().setFrame(target, display: true)
-            panel.animator().alphaValue = 1.0
+            panel.animator().alphaValue = Self.restingAlpha
         }
         activePanel = panel
         activeCard = card
-        scheduleAutoDismiss(seconds: 6.0, for: panel, card: card)
+        scheduleAutoDismiss(seconds: Self.initialDwellSeconds, for: panel, card: card)
     }
+
+    private static let restingAlpha: CGFloat = 0.84
+    private static let initialDwellSeconds: TimeInterval = 3.5
+    private static let postHoverDwellSeconds: TimeInterval = 1.6
 
     private func handleHoverChanged(_ hovering: Bool) {
         isHovering = hovering
@@ -128,10 +136,17 @@ final class QuickAccessOverlayController {
         if isHovering || isDragging {
             dismissWork?.cancel(); dismissWork = nil
             panel.setFrame(activeTargetFrame, display: true)
-            panel.alphaValue = 1.0
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.14
+                panel.animator().alphaValue = 1.0
+            }
             card.resetProgressFull()
         } else {
-            scheduleAutoDismiss(seconds: 3.2, for: panel, card: card)
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.18
+                panel.animator().alphaValue = Self.restingAlpha
+            }
+            scheduleAutoDismiss(seconds: Self.postHoverDwellSeconds, for: panel, card: card)
         }
     }
 
@@ -333,8 +348,11 @@ private final class QuickAccessCardView: NSView, NSDraggingSource {
 
     func syncProgressColors() {
         let isDark = GeekTheme.isDark
+        let accent = isDark
+            ? NSColor(srgbRed: 0.310, green: 0.565, blue: 1.000, alpha: 0.85)
+            : NSColor(srgbRed: 0.047, green: 0.431, blue: 0.953, alpha: 0.85)
         progressTrack.backgroundColor = (isDark ? NSColor.white.withAlphaComponent(0.10) : NSColor.black.withAlphaComponent(0.08)).cgColor
-        progressFill.backgroundColor = GeekTheme.accent.withAlphaComponent(0.85).cgColor
+        progressFill.backgroundColor = accent.cgColor
     }
 
     func startProgressAnimation(duration: TimeInterval) {
@@ -432,8 +450,8 @@ private final class QuickAccessCardView: NSView, NSDraggingSource {
         let c = cardRect(), path = CGPath(roundedRect: c, cornerWidth: 12.5, cornerHeight: 12.5, transform: nil)
 
         ctx.saveGState()
-        ctx.setShadow(offset: CGSize(width: 0, height: -5), blur: 14, color: NSColor.black.withAlphaComponent(isDark ? 0.45 : 0.18).cgColor)
-        ctx.setFillColor((isDark ? NSColor(srgbRed: 0.115, green: 0.125, blue: 0.155, alpha: 0.96) : NSColor(srgbRed: 0.985, green: 0.988, blue: 0.996, alpha: 0.97)).cgColor)
+        ctx.setShadow(offset: CGSize(width: 0, height: -5), blur: 14, color: NSColor.black.withAlphaComponent(isDark ? 0.42 : 0.16).cgColor)
+        ctx.setFillColor((isDark ? NSColor(srgbRed: 0.115, green: 0.125, blue: 0.155, alpha: 0.90) : NSColor(srgbRed: 0.985, green: 0.988, blue: 0.996, alpha: 0.92)).cgColor)
         ctx.addPath(path); ctx.fillPath()
         ctx.restoreGState()
 
@@ -462,7 +480,10 @@ private final class QuickAccessCardView: NSView, NSDraggingSource {
             ctx.interpolationQuality = .high; ctx.draw(cg, in: dst)
             ctx.restoreGState()
         } else {
-            GeekTheme.drawSymbol(isMediaFile ? "film" : "photo", pointSize: 22, weight: .light, in: tr, alpha: 0.65, tint: GeekTheme.inkMuted)
+            let mutedTint = isDark
+                ? NSColor(srgbRed: 0.52, green: 0.57, blue: 0.65, alpha: 1.0)
+                : NSColor(srgbRed: 0.42, green: 0.47, blue: 0.55, alpha: 1.0)
+            GeekTheme.drawSymbol(isMediaFile ? "film" : "photo", pointSize: 22, weight: .light, in: tr, alpha: 0.65, tint: mutedTint)
         }
         if hoveredThumb {
             ctx.setFillColor(NSColor.black.withAlphaComponent(0.24).cgColor); ctx.fill(tr)
@@ -493,15 +514,30 @@ private final class QuickAccessCardView: NSView, NSDraggingSource {
 
     private func drawActionButtons(in ctx: CGContext, isDark: Bool) {
         let rects = actionRects()
+        let accent = isDark
+            ? NSColor(srgbRed: 0.310, green: 0.565, blue: 1.000, alpha: 1.0)
+            : NSColor(srgbRed: 0.047, green: 0.431, blue: 0.953, alpha: 1.0)
+        let normalFg = isDark
+            ? NSColor(srgbRed: 0.949, green: 0.961, blue: 0.980, alpha: 1.0)
+            : NSColor(srgbRed: 0.102, green: 0.125, blue: 0.173, alpha: 1.0)
+        let normalBg = isDark
+            ? NSColor.white.withAlphaComponent(0.10)
+            : NSColor(srgbRed: 0.06, green: 0.10, blue: 0.18, alpha: 0.065)
+        let normalBorder = isDark
+            ? NSColor.white.withAlphaComponent(0.08)
+            : NSColor(srgbRed: 0.06, green: 0.10, blue: 0.18, alpha: 0.075)
         for (idx, def) in actionButtons.enumerated() {
             let r = rects[idx], hov = (hoveredActionIdx == idx)
             let p = CGPath(roundedRect: r, cornerWidth: 7, cornerHeight: 7, transform: nil)
             ctx.saveGState()
-            let bg: NSColor = hov
-                ? GeekTheme.accent
-                : (isDark ? NSColor.white.withAlphaComponent(0.09) : NSColor.black.withAlphaComponent(0.055))
+            let bg: NSColor = hov ? accent : normalBg
             ctx.setFillColor(bg.cgColor); ctx.addPath(p); ctx.fillPath()
-            let fg: NSColor = hov ? .white : GeekTheme.inkPrimary
+            if !hov {
+                ctx.setStrokeColor(normalBorder.cgColor); ctx.setLineWidth(0.6)
+                ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 0.3, dy: 0.3), cornerWidth: 7, cornerHeight: 7, transform: nil))
+                ctx.strokePath()
+            }
+            let fg: NSColor = hov ? .white : normalFg
             let font = NSFont.systemFont(ofSize: 10.6, weight: .medium)
             let tw = GeekTheme.measureTextWidth(def.title, font: font), symW: CGFloat = 12, gap: CGFloat = 3
             let startX = r.midX - (symW + gap + tw) * 0.5

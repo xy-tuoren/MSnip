@@ -10,7 +10,13 @@ extension AppController {
     }()
 
     func rebuildMenu() {
+        if isStatusMenuOpen {
+            needsMenuRebuild = true
+            return
+        }
+        needsMenuRebuild = false
         let menu = NSMenu()
+        menu.autoenablesItems = false
         func makeHotKeyItem(title: String, symbol: String, action: Selector, slot: GlobalHotKeyAction) -> NSMenuItem {
             let combo = config.hotKeysEnabled ? config.activeCombo(for: slot) : nil
             let item = NSMenuItem(title: title, action: action, keyEquivalent: combo?.menuKeyEquivalent ?? "")
@@ -18,6 +24,23 @@ extension AppController {
             item.setVisibleImage(MSnipUITheme.menuSymbol(symbol))
             item.target = self
             return item
+        }
+
+        // 若存在进行中的录屏或 MP4 裁剪窗口，在顶部提供直达操作，绝不卡死在红点态
+        if let rec = activeRecording {
+            if rec.isShowingTrimWindow {
+                let focusTrim = NSMenuItem(title: "回到 MP4 裁剪窗口", action: #selector(finishActiveRecordingFromMenu), keyEquivalent: "")
+                focusTrim.setVisibleImage(MSnipUITheme.menuSymbol("scissors")); focusTrim.target = self
+                menu.addItem(focusTrim)
+            } else {
+                let stopRec = NSMenuItem(title: "完成并复制当前录屏", action: #selector(finishActiveRecordingFromMenu), keyEquivalent: "")
+                stopRec.setVisibleImage(MSnipUITheme.menuSymbol("stop.circle")); stopRec.target = self
+                menu.addItem(stopRec)
+                let cancelRec = NSMenuItem(title: "放弃当前录屏", action: #selector(cancelActiveRecordingFromMenu), keyEquivalent: "")
+                cancelRec.setVisibleImage(MSnipUITheme.menuSymbol("xmark.circle")); cancelRec.target = self
+                menu.addItem(cancelRec)
+            }
+            menu.addItem(.separator())
         }
 
         // 仅在缺失屏幕录制权限时于最顶部显示单行提醒，授权后自动隐藏
@@ -36,6 +59,7 @@ extension AppController {
         let delayRoot = NSMenuItem(title: "延时截图（\(defaultSecs) 秒）", action: nil, keyEquivalent: "")
         delayRoot.setVisibleImage(MSnipUITheme.menuSymbol("timer"))
         let delaySub = NSMenu()
+        delaySub.autoenablesItems = false
         delaySub.addItem(makeHotKeyItem(title: "按默认延时截图（\(defaultSecs) 秒）", symbol: "timer", action: #selector(startDefaultDelayedCapture), slot: .delayedCapture))
         delaySub.addItem(.separator())
         for secs in DelayedCaptureSettings.quickPresets {
@@ -68,6 +92,7 @@ extension AppController {
         let histRoot = NSMenuItem(title: histTitle, action: nil, keyEquivalent: "")
         histRoot.setVisibleImage(MSnipUITheme.menuSymbol("clock"))
         let lazyHistoryMenu = NSMenu()
+        lazyHistoryMenu.autoenablesItems = false
         lazyHistoryMenu.delegate = self
         histRoot.submenu = lazyHistoryMenu
         historyRootItem = histRoot
@@ -115,7 +140,7 @@ extension AppController {
 
         menu.delegate = self
         statusMenu = menu
-        if isStatusMenuOpen { statusItem.menu = menu }
+        statusItem.menu = menu
     }
 
     private func populateHistorySubmenu(_ sub: NSMenu) {
@@ -181,7 +206,6 @@ extension AppController {
         permWarnSepItem?.isHidden = screenOK
         loginMenuItem?.state = LaunchAtLoginManager.isEnabled ? .on : .off
         historyRootItem?.title = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
-        if let sub = historySubmenu { populateHistorySubmenu(sub) }
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -194,24 +218,45 @@ extension AppController {
 
     func menuWillOpen(_ menu: NSMenu) {
         if menu === statusMenu {
+            trackingRootMenu = menu
             isStatusMenuOpen = true
+            if hasShelfInitialized { shelfController.setMenuTrackingPaused(true) }
             beginMenuInteractiveActivity()
         }
     }
 
     func menuDidClose(_ menu: NSMenu) {
-        if menu === statusMenu {
-            isStatusMenuOpen = false
-            statusItem.menu = nil
-            endMenuInteractiveActivity()
+        if menu === trackingRootMenu || menu === statusMenu {
+            finishStatusMenuTrackingIfNeeded()
         }
+    }
+
+    /// 统一收尾状态栏菜单追踪态：恢复顶边暂存架监听、释放高优先级功耗锁并补跑被延迟的菜单重建
+    func finishStatusMenuTrackingIfNeeded() {
+        let wasOpen = isStatusMenuOpen
+        isStatusMenuOpen = false
+        trackingRootMenu = nil
+        if wasOpen, hasShelfInitialized { shelfController.setMenuTrackingPaused(false) }
+        endMenuInteractiveActivity()
+        if needsMenuRebuild {
+            needsMenuRebuild = false
+            rebuildMenu()
+        }
+    }
+
+    @objc func finishActiveRecordingFromMenu() {
+        activeRecording?.finishActiveRecordingFromMenu()
+    }
+
+    @objc func cancelActiveRecordingFromMenu() {
+        activeRecording?.cancel()
     }
 
     /// 退出自身状态栏菜单模态追踪循环（`NSEventTrackingRunLoopMode`）并待菜单淡出后再执行抓屏，彻底避免自锁与截进自身菜单
     func runAfterStatusMenuDismissed(fromMenuClick: Bool = false, _ work: @escaping @MainActor () -> Void) {
         if isStatusMenuOpen {
-            statusMenu?.cancelTrackingWithoutAnimation()
-            isStatusMenuOpen = false
+            (trackingRootMenu ?? statusMenu)?.cancelTrackingWithoutAnimation()
+            finishStatusMenuTrackingIfNeeded()
         }
         let delay: TimeInterval = fromMenuClick ? 0.065 : 0.08
         RunLoop.main.perform(inModes: [.default]) {

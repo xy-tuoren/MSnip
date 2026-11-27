@@ -396,17 +396,39 @@ final class OverlaySaveMenuView: NSView {
         needsDisplay = true
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        let idx = rows.firstIndex(where: { $0.rect.contains(p) })
-        if idx != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
-        hoveredIdx = idx
-        toolTip = idx.flatMap { rows[$0].subtitle }
+    override var isHidden: Bool {
+        didSet { if isHidden { clearHover() } }
     }
 
-    override func mouseExited(with event: NSEvent) { hoveredIdx = nil }
+    override func mouseMoved(with event: NSEvent) {
+        updateHover(atLocalPoint: convert(event.locationInWindow, from: nil))
+    }
+
+    func updateHover(atLocalPoint p: CGPoint) {
+        let idx = rows.firstIndex(where: { $0.rect.contains(p) })
+        if idx != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
+        if hoveredIdx != idx { hoveredIdx = idx }
+        if let i = idx, rows.indices.contains(i), let sub = rows[i].subtitle {
+            FloatingTooltipHUD.show(sub, anchorRectInView: rows[i].rect, of: self)
+        } else {
+            FloatingTooltipHUD.hide(for: self)
+        }
+    }
+
+    func clearHover() {
+        FloatingTooltipHUD.hide(for: self)
+        if hoveredIdx != nil { hoveredIdx = nil }
+    }
+
+    override func mouseExited(with event: NSEvent) { clearHover() }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { clearHover() }
+    }
 
     override func mouseDown(with event: NSEvent) {
+        FloatingTooltipHUD.hide(for: self)
         let p = convert(event.locationInWindow, from: nil)
         guard let hit = rows.first(where: { $0.rect.contains(p) }) else { return }
         onChoice?(hit.choice)

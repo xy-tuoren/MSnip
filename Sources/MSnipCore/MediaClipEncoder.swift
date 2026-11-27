@@ -282,6 +282,11 @@ public final class MediaClipEncoder: @unchecked Sendable {
             return (writer, input, aIn, endSessionTime)
         }()
         guard let (writer, input, aInput, endTime) = pack else { return nil }
+        guard writer.status == .writing else {
+            writer.cancelWriting()
+            try? FileManager.default.removeItem(at: outputURL)
+            return nil
+        }
         input.markAsFinished()
         aInput?.markAsFinished()
         if let endTime { writer.endSession(atSourceTime: endTime) }

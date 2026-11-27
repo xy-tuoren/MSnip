@@ -36,6 +36,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     var activeRecording: RegionRecordingSession?
     var isCapturing = false
     var isStatusMenuOpen = false
+    var needsMenuRebuild = false
+    weak var trackingRootMenu: NSMenu?
     var menuActivityToken: NSObjectProtocol?
     var statusBarMouseMonitor: Any?
     private var configSaveWork: DispatchWorkItem?
@@ -91,9 +93,6 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             button.imagePosition = .imageOnly
             button.toolTip = "MSnip（麦截）· 点击展开菜单 · ⌥+左键切换暂存架"
             button.setAccessibilityLabel("MSnip（麦截）")
-            button.target = self
-            button.action = #selector(handleStatusBarClick(_:))
-            button.sendAction(on: [.leftMouseUp])
         }
         installStatusBarMenuPreHook()
         rebuildMenu()
@@ -135,7 +134,15 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return
         }
         if hasDelayedCapture { delayedCapture.cancel() }
-        guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
+        if let rec = activeRecording {
+            if rec.focusTrimWindowIfNeeded() {
+                ToastHUD.show(message: "请先完成或关闭当前 MP4 裁剪窗口")
+            } else {
+                ToastHUD.show(message: "正在录屏中 · 可在菜单栏结束或按 Esc 取消")
+            }
+            return
+        }
+        guard activeSession == nil, activeLongShot == nil, !isCapturing else { return }
         ToastHUD.dismissImmediate()
         if hasQuickAccessInitialized { quickAccessOverlay.dismissImmediate() }
 
@@ -222,10 +229,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .copied(let img, let scale):
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
             ClipboardAndSave.playFeedbackSound(enabled: config.soundFeedbackEnabled)
-            let entry = recordHistoryAndRefresh(img: img, scale: scale)
-            if config.showQuickAccessOverlay, let entry {
-                quickAccessOverlay.presentScreenshot(entryID: entry.id, sourceImage: img, scale: scale, statusPrefix: "已复制")
-            }
+            _ = recordHistoryAndRefresh(img: img, scale: scale)
         case .copiedWithPath(let img, let scale):
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale, forceIncludePath: true)
             ClipboardAndSave.playFeedbackSound(enabled: config.soundFeedbackEnabled)
@@ -304,7 +308,15 @@ extension AppController {
             return
         }
         if hasDelayedCapture { delayedCapture.cancel() }
-        guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
+        if let rec = activeRecording {
+            if rec.focusTrimWindowIfNeeded() {
+                ToastHUD.show(message: "请先完成或关闭当前 MP4 裁剪窗口")
+            } else {
+                ToastHUD.show(message: "正在录屏中 · 可在菜单栏结束或按 Esc 取消")
+            }
+            return
+        }
+        guard activeSession == nil, activeLongShot == nil, !isCapturing else { return }
         let effectiveAction: FullScreenCaptureAction = effectiveForceSave
             ? .save
             : config.fullScreenCaptureAction
@@ -413,7 +425,8 @@ extension AppController {
         fallbackActionTitle: String? = nil,
         fallbackOnAction: (() -> Void)? = nil
     ) {
-        if config.showQuickAccessOverlay, let entry {
+        // 仅在保存落地文件时展示左下角速览卡（方便直接拖文件或定位访达），纯复制场景走轻量提示零打扰
+        if config.showQuickAccessOverlay, savedURL != nil, let entry {
             quickAccessOverlay.presentScreenshot(entryID: entry.id, sourceImage: img, scale: scale, savedURL: savedURL, statusPrefix: statusPrefix)
         } else {
             ToastHUD.show(

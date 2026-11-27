@@ -417,7 +417,13 @@ final class ShelfActionRailView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        FloatingTooltipHUD.hide(for: self)
         pressedSlot = hitSlot(at: convert(event.locationInWindow, from: nil))
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { FloatingTooltipHUD.hide(for: self) }
     }
 
     override func mouseUp(with event: NSEvent) {
@@ -434,13 +440,15 @@ final class ShelfActionRailView: NSView {
     }
 
     private func syncToolTip() {
-        switch hoveredSlot {
-        case .pin:       toolTip = isPinned ? "取消钉住（离开后自动收起）" : "钉住暂存架保持展开"
-        case .close:     toolTip = "收起暂存架 (Esc)"
-        case .clipboard: toolTip = "将当前剪贴板图片、文件或文本加入暂存架"
-        case .collage:   toolTip = "打开多图拼接与合并 PDF 窗口（⌘+点击卡片可先自选顺序）"
-        case nil:        toolTip = nil
+        guard let slot = hoveredSlot else { FloatingTooltipHUD.hide(for: self); return }
+        let tip: String
+        switch slot {
+        case .pin:       tip = isPinned ? "取消钉住（离开后自动收起）" : "钉住暂存架保持展开"
+        case .close:     tip = "收起暂存架 (Esc)"
+        case .clipboard: tip = "将当前剪贴板图片、文件或文本加入暂存架"
+        case .collage:   tip = "打开多图拼接与合并 PDF 窗口（⌘+点击卡片可先自选顺序）"
         }
+        FloatingTooltipHUD.show(tip, anchorRectInView: rect(for: slot), of: self)
     }
 
     override func draw(_ dirtyRect: NSRect) {

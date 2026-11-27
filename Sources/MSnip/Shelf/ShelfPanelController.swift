@@ -422,11 +422,19 @@ extension ShelfPanelController {
         rightNavBtn?.isNavEnabled = curX < maxX - 2
     }
 
+    func setMenuTrackingPaused(_ paused: Bool) {
+        edgeWatcher.isPausedForMenuTracking = paused
+    }
+
     func applyTheme() {
         let isDark = GeekTheme.isDark
-        effectView?.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+        let app = NSAppearance(named: isDark ? .darkAqua : .aqua)
+        panel?.appearance = app
+        effectView?.appearance = app
         effectView?.layer?.borderColor = (isDark ? NSColor.white.withAlphaComponent(0.16) : NSColor.black.withAlphaComponent(0.12)).cgColor
-        emptyLabel?.textColor = GeekTheme.inkMuted
+        emptyLabel?.textColor = isDark
+            ? NSColor(srgbRed: 0.52, green: 0.57, blue: 0.65, alpha: 1.0)
+            : NSColor(srgbRed: 0.44, green: 0.49, blue: 0.56, alpha: 1.0)
         if let rootView { ResultWindowChrome.invalidateSubtree(rootView) }
     }
 

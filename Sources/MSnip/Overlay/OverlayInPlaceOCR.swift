@@ -53,23 +53,46 @@ final class OverlaySidePillsView: NSView {
         CGRect(x: 1, y: CGFloat(idx) * (Self.pillSize + Self.gap), width: Self.pillSize, height: Self.pillSize)
     }
 
+    override var isHidden: Bool {
+        didSet { if isHidden { clearHover() } }
+    }
+
     override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
+        updateHover(atLocalPoint: convert(event.locationInWindow, from: nil))
+    }
+
+    func updateHover(atLocalPoint p: CGPoint) {
         let hit = (0..<3).first(where: { rectForSlot($0).contains(p) })
         if hit != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         if hit != hoveredIdx {
             hoveredIdx = hit
-            switch hit {
-            case 0: toolTip = "调节圆角比例（B · 滚轮微调 · ⌥+点击归零）"
-            case 1: toolTip = "调节发光边强度（G · 滚轮调节 · ⌥+点击关闭）"
-            case 2: toolTip = "对齐底层应用窗口（⌥+点击导出独立透明阴影窗口）"
-            default: toolTip = nil
-            }
             needsDisplay = true
+        }
+        let tip: String?
+        switch hit {
+        case 0: tip = "调节圆角比例（B · 滚轮微调 · ⌥+点击归零）"
+        case 1: tip = "调节发光边强度（G · 滚轮调节 · ⌥+点击关闭）"
+        case 2: tip = "对齐底层应用窗口（⌥+点击导出独立透明阴影窗口）"
+        default: tip = nil
+        }
+        if let h = hit, let tip {
+            FloatingTooltipHUD.show(tip, anchorRectInView: rectForSlot(h), of: self)
+        } else {
+            FloatingTooltipHUD.hide(for: self)
         }
     }
 
-    override func mouseExited(with event: NSEvent) { hoveredIdx = nil; needsDisplay = true }
+    func clearHover() {
+        FloatingTooltipHUD.hide(for: self)
+        if hoveredIdx != nil { hoveredIdx = nil; needsDisplay = true }
+    }
+
+    override func mouseExited(with event: NSEvent) { clearHover() }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { clearHover() }
+    }
 
     override func scrollWheel(with event: NSEvent) {
         let p = convert(event.locationInWindow, from: nil)

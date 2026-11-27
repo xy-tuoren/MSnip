@@ -196,6 +196,7 @@ extension TranslationSettingsWindow {
         guard loginSwitch != nil else { return }
         let cfg = appConfigProvider?() ?? AppConfig()
         applyAppearanceMode(cfg.appearanceMode, persist: false)
+        LaunchAtLoginManager.refreshCache()
         loginSwitch.isOn = LaunchAtLoginManager.isEnabled
         tipsSwitch.isOn = cfg.showShortcutTips
         keychainSwitch?.isOn = draft.preferKeychainStorage
@@ -550,8 +551,8 @@ extension TranslationSettingsWindow {
         extCard.addSubview(shelfSeg)
 
         extCard.addHairline(atY: rowH * 3)
-        let qaTip = "截图复制/保存或录屏完成后，在屏幕左下角弹出 6 秒悬浮速览卡，支持直接拖拽文件发送及一键标注、贴图或识字"
-        addRowLabel("截后 / 录后悬浮速览卡", y: rowH * 3, height: rowH, in: extCard, toolTip: qaTip)
+        let qaTip = "保存截图文件或录屏完成后，在屏幕左下角半透明显示 3.5 秒悬浮速览卡（悬停清晰并暂停倒计时，支持直接拖拽文件发送或访达定位）；普通截图复制默认静默无打扰"
+        addRowLabel("保存 / 录屏后悬浮速览卡", y: rowH * 3, height: rowH, in: extCard, toolTip: qaTip)
         let qaSw = GeekToggleSwitch(isOn: true)
         qaSw.toolTip = qaTip
         qaSw.frame = NSRect(x: switchX, y: rowH * 3 + switchY, width: 38, height: switchH)

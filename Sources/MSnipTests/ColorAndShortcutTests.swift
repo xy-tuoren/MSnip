@@ -250,4 +250,59 @@ func testVisualDetectorRoundedLowContrastAndBoundaryFilter() {
         !VisualDetector.hasVisualBoundary(invisibleDiv, within: winBounds, sampler: sampler, scale: scale),
         "无视觉边界的透明 AXGroup 容器应被过滤"
     )
+
+    // 3) 贴靠 3 条窗口外框的隐形 AXScrollArea（仅顶边在窗口内且无任何真实分割线）绝不能靠 3 条窗口边白嫖通过
+    let invisibleScrollArea = CGRect(x: 0, y: 24, width: CGFloat(lw), height: CGFloat(lh - 24))
+    check(
+        !VisualDetector.hasVisualBoundary(invisibleScrollArea, within: winBounds, sampler: sampler, scale: scale),
+        "贴靠左/右/底三边但顶边完全隐形的 AXScrollArea 必须被过滤"
+    )
+
+    // 4) AX 坐标比真实绘制边框外扩 1pt 时仍应通过视觉边界校验
+    let slightlyLooseAXCard = card.insetBy(dx: -1, dy: -1)
+    check(
+        VisualDetector.hasVisualBoundary(slightlyLooseAXCard, within: winBounds, sampler: sampler, scale: scale),
+        "带 1pt 取整外扩误差的真实卡片 AX 框仍应通过视觉边界校验"
+    )
+
+    // 5) 终端/编辑器多行文本噪声场景：无边框代码行 + 真实左侧边栏，应识别真实边栏且绝不把文本行拼成幽灵横框
+    let termW = 480, termH = 300
+    let tCtx = CGContext(
+        data: nil, width: termW, height: termH, bitsPerComponent: 8, bytesPerRow: termW * 4,
+        space: cs, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    )!
+    tCtx.translateBy(x: 0, y: CGFloat(termH))
+    tCtx.scaleBy(x: 1, y: -1)
+    tCtx.setFillColor(CGColor(srgbRed: 0.11, green: 0.12, blue: 0.15, alpha: 1))
+    tCtx.fill(CGRect(x: 0, y: 0, width: termW, height: termH))
+    // 真实左侧边栏 (0..130) + 1pt 竖向分割线
+    tCtx.setFillColor(CGColor(srgbRed: 0.16, green: 0.18, blue: 0.22, alpha: 1))
+    tCtx.fill(CGRect(x: 0, y: 0, width: 130, height: termH))
+    tCtx.setFillColor(CGColor(srgbRed: 0.30, green: 0.33, blue: 0.40, alpha: 1))
+    tCtx.fill(CGRect(x: 130, y: 0, width: 1, height: termH))
+    // 右侧代码区绘制多行模拟带空格的终端代码文字（断续字形块）
+    tCtx.setFillColor(CGColor(srgbRed: 0.80, green: 0.84, blue: 0.90, alpha: 1))
+    for row in 0..<8 {
+        let y = 36 + row * 28
+        for col in 0..<9 {
+            tCtx.fill(CGRect(x: 152 + col * 34, y: y, width: 22, height: 8))
+        }
+    }
+    let termSampler = PixelSampler(cgImage: tCtx.makeImage()!)
+    let termWin = CGRect(x: 0, y: 0, width: termW, height: termH)
+    let sidebarRect = CGRect(x: 0, y: 0, width: 130, height: termH)
+    check(
+        VisualDetector.hasVisualBoundary(sidebarRect, within: termWin, sampler: termSampler, scale: 1.0),
+        "带真实竖向分割线的左侧边栏应通过视觉边界校验"
+    )
+    let fakeCornerRect = CGRect(x: 0, y: 0, width: 130, height: 150)
+    check(
+        !VisualDetector.hasVisualBoundary(fakeCornerRect, within: termWin, sampler: termSampler, scale: 1.0),
+        "仅 1 条内边可见而底边隐形的贴角容器必须被过滤"
+    )
+    let textAreaHits = VisualDetector.detectVisualRects(at: CGPoint(x: 280, y: 124), within: termWin, sampler: termSampler, scale: 1.0)
+    let hasPhantomTextSlice = textAreaHits.contains { $0.height < 90 && $0.width > 120 }
+    check(!hasPhantomTextSlice, "终端/编辑器多行代码文字绝不应误拼出幽灵横框，实际得到: \(textAreaHits)")
+    let hasEditorPane = textAreaHits.contains { abs($0.minX - 130) <= 3 && abs($0.width - 350) <= 6 && abs($0.height - 300) <= 6 }
+    check(hasEditorPane, "在带边栏的编辑器主区域内应精准识别出右侧主内容分栏，实际得到: \(textAreaHits)")
 }

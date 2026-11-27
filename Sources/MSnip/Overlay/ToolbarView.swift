@@ -151,13 +151,23 @@ final class ToolbarView: NSView {
         if itemsDirty { rebuildItems(); itemsDirty = false }
     }
 
+    override var isHidden: Bool {
+        didSet { if isHidden { clearHover() } }
+    }
+
     override func mouseMoved(with event: NSEvent) {
+        updateHover(atLocalPoint: convert(event.locationInWindow, from: nil))
+    }
+
+    /// 统一悬停驱动入口（兼容 120Hz VSync 零延迟直推与 AppKit mouseMoved，彻底消除非激活面板 hover 掉帧与迟钝）
+    func updateHover(atLocalPoint p: CGPoint) {
+        guard !isDraggingBar else { return }
         ensureItemsUpToDate()
-        let p = convert(event.locationInWindow, from: nil)
         let idx = items.firstIndex(where: { $0.rect.contains(p) && $0.enabled })
+        let onGrip = (idx == nil && !isPinEditorMode && p.x <= Self.gripWidth + 2)
         if idx != nil {
             NSCursor.pointingHand.set()
-        } else if !isPinEditorMode && p.x <= Self.gripWidth + 2 {
+        } else if onGrip {
             NSCursor.openHand.set()
         } else {
             NSCursor.arrow.set()
@@ -165,13 +175,20 @@ final class ToolbarView: NSView {
         if idx != hoveredIndex {
             let oldIdx = hoveredIndex
             hoveredIndex = idx
-            toolTip = idx.map { items[$0].tooltip } ?? (p.x <= Self.gripWidth ? "按住拖拽移动工具栏位置" : nil)
             if let o = oldIdx, items.indices.contains(o) { setNeedsDisplay(items[o].rect.insetBy(dx: -3, dy: -3)) }
             if let n = idx, items.indices.contains(n) { setNeedsDisplay(items[n].rect.insetBy(dx: -3, dy: -3)) }
         }
+        if let n = idx, items.indices.contains(n) {
+            FloatingTooltipHUD.show(items[n].tooltip, anchorRectInView: items[n].rect, of: self)
+        } else if onGrip {
+            FloatingTooltipHUD.show("按住拖拽移动工具栏位置", anchorRectInView: CGRect(x: 0, y: 0, width: Self.gripWidth, height: bounds.height), of: self)
+        } else {
+            FloatingTooltipHUD.hide(for: self)
+        }
     }
 
-    override func mouseExited(with event: NSEvent) {
+    func clearHover() {
+        FloatingTooltipHUD.hide(for: self)
         if let old = hoveredIndex {
             hoveredIndex = nil
             if items.indices.contains(old) { setNeedsDisplay(items[old].rect.insetBy(dx: -3, dy: -3)) }
@@ -179,7 +196,15 @@ final class ToolbarView: NSView {
         }
     }
 
+    override func mouseExited(with event: NSEvent) { clearHover() }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { clearHover() }
+    }
+
     override func mouseDown(with event: NSEvent) {
+        FloatingTooltipHUD.hide(for: self)
         ensureItemsUpToDate()
         let p = convert(event.locationInWindow, from: nil)
         if !isPinEditorMode && p.x <= Self.gripWidth + 2 {

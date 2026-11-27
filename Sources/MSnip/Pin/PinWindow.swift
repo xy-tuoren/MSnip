@@ -442,6 +442,8 @@ extension PinWindow {
             ToastHUD.show(message: "已更新贴图标注")
         }
         editorCanvas?.removeFromSuperview(); editorCanvas = nil
+        toolbarPanel?.barView.clearHover()
+        toolbarPanel?.subbarView.clearHover()
         toolbarPanel?.orderOut(nil); toolbarPanel = nil
         activeBaseSampler = nil
         pinContentView.isAnnotating = false

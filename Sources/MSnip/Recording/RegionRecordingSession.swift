@@ -19,6 +19,7 @@ final class RegionRecordingSession {
 
     var onFormatChanged: ((RecordingFormat) -> Void)?
     var onHUDPrefChanged: ((Bool) -> Void)?
+    var onCaptureStopped: (() -> Void)?
     var onComplete: ((Outcome) -> Void)?
 
     var borderWindow: NSPanel?
@@ -203,6 +204,7 @@ final class RegionRecordingSession {
             }
         )
 
+        guard !closed else { return }
         tickTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.onTick() }
         }
@@ -295,6 +297,24 @@ final class RegionRecordingSession {
         encoder = nil
         finishSession(.cancelled)
     }
+
+    var isShowingTrimWindow: Bool { trimController != nil }
+
+    @discardableResult
+    func focusTrimWindowIfNeeded() -> Bool {
+        guard let trimmer = trimController else { return false }
+        trimmer.bringToFront()
+        return true
+    }
+
+    func finishActiveRecordingFromMenu() {
+        if focusTrimWindowIfNeeded() { return }
+        if controlBar.isRecording {
+            finalizeRecording(saveMode: .copy)
+        } else {
+            cancel()
+        }
+    }
 }
 
 // MARK: - 录屏事件监听、帧同步与状态封装
@@ -353,10 +373,12 @@ extension RegionRecordingSession {
         if let m = localKeyMonitor { NSEvent.removeMonitor(m); localKeyMonitor = nil }
         if let g = globalKeyMonitor { NSEvent.removeMonitor(g); globalKeyMonitor = nil }
         if let gm = globalMouseMonitor { NSEvent.removeMonitor(gm); globalMouseMonitor = nil }
+        FloatingTooltipHUD.hideAll()
         borderWindow?.orderOut(nil); borderWindow = nil
         drawWindow?.orderOut(nil); drawWindow = nil
         controlWindow?.orderOut(nil); controlWindow = nil
         drawOverlayView.clearAll(notify: false)
+        trimController?.cancelAndClose()
         trimController = nil
         initialFrame = nil
         onComplete?(outcome)
@@ -389,12 +411,14 @@ extension RegionRecordingSession {
     }
 
     func presentTrimSheet(videoURL: URL, format: RecordingFormat) {
+        FloatingTooltipHUD.hideAll()
         borderWindow?.orderOut(nil); drawWindow?.orderOut(nil); controlWindow?.orderOut(nil)
         if let m = localKeyMonitor { NSEvent.removeMonitor(m); localKeyMonitor = nil }
         if let g = globalKeyMonitor { NSEvent.removeMonitor(g); globalKeyMonitor = nil }
         if let gm = globalMouseMonitor { NSEvent.removeMonitor(gm); globalMouseMonitor = nil }
         let trimmer = RecordingTrimWindowController()
         self.trimController = trimmer
+        onCaptureStopped?()
         trimmer.present(videoURL: videoURL, on: targetScreen) { [weak self] res in
             guard let self else { return }
             self.trimController = nil

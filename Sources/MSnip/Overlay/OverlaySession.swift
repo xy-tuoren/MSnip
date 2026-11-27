@@ -272,6 +272,7 @@ final class OverlaySession {
     private func finish(_ outcome: Outcome) {
         guard !finished else { return }
         finished = true
+        FloatingTooltipHUD.hideAll()
         if let tok = interactiveActivityToken { ProcessInfo.processInfo.endActivity(tok); interactiveActivityToken = nil }
         NSCursor.pop()
 
@@ -347,6 +348,8 @@ struct OverlayAutoSnapState {
     var appliedSeq: UInt64 = 0
     var cancelToken: UInt64 = 0
     var lastQueryDispatchUptime: TimeInterval = 0
+    var lastMoveUptime: TimeInterval = 0
+    var smoothedSpeed: CGFloat = 0
     var settleTimer: Timer?
     var isGliding: Bool = false
     var vsyncTimer: Timer?
@@ -366,6 +369,8 @@ struct OverlayAutoSnapState {
         manualTierOffset = 0
         displayedRect = nil
         activeWindowRect = nil
+        lastMoveUptime = 0
+        smoothedSpeed = 0
         cancelToken &+= 1
     }
 }

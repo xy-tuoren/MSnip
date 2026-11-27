@@ -27,7 +27,21 @@ extension OverlayView {
             autoSnap.manualTierOffset = 0
         }
 
-        let fast = regionDetector.fastMemoryHierarchy(at: localPoint, in: snapshot)
+        let now = ProcessInfo.processInfo.systemUptime
+        let dist = previousPoint.map { hypot(localPoint.x - $0.x, localPoint.y - $0.y) } ?? 0
+        if previousPoint != nil && !immediate {
+            let dtMove = max(0.004, min(0.12, now - autoSnap.lastMoveUptime))
+            let instSpeed = dist / CGFloat(dtMove)
+            autoSnap.smoothedSpeed = (dtMove > 0.08) ? instSpeed : (autoSnap.smoothedSpeed * 0.65 + instSpeed * 0.35)
+        } else {
+            autoSnap.smoothedSpeed = 0
+        }
+        autoSnap.lastMoveUptime = now
+
+        // 高速扫屏移动时保持整窗级稳定，不频繁乱跳路过的小控件；减速/停稳后 55ms 精准细化到目标卡片或按钮
+        let isFastSweep = !immediate && (fastWindowOnly != true) && (autoSnap.smoothedSpeed > 950.0)
+        let effectiveWindowOnly = (fastWindowOnly == true) || isFastSweep
+        let fast = regionDetector.fastMemoryHierarchy(at: localPoint, in: snapshot, windowOnly: effectiveWindowOnly)
         let crossedWindow: Bool = {
             switch (autoSnap.activeWindowRect, fast.winRect) {
             case (nil, nil): return false
@@ -35,21 +49,31 @@ extension OverlayView {
             default: return true
             }
         }()
+        let leftCurrentTarget: Bool = {
+            guard let cur = hoveredAutoRect else { return true }
+            return !cur.contains(localPoint)
+        }()
 
-        // 命中预索引系统栏（Dock/菜单栏）、命中空间缓存细粒度控件、首次上屏或跨入新窗口 -> 0ms 立即更新！
-        let hasFineCacheHit = fast.stack.count > 2
-        if fast.isComplete || hasFineCacheHit || fastWindowOnly == true || autoSnap.displayedRect == nil || crossedWindow {
+        // 命中预索引系统栏、命中已校验空间缓存（含全屏/最大化窗口内单卡片命中）、首次上屏、跨入新窗口、高速扫屏或光标离开当前旧框 -> 0ms 立即更新，杜绝旧框粘滞不跟手！
+        let hasFineCacheHit = !effectiveWindowOnly && fast.hasFineHit
+        if fast.isComplete || hasFineCacheHit || effectiveWindowOnly || autoSnap.displayedRect == nil || crossedWindow || leftCurrentTarget {
             autoSnap.activeWindowRect = fast.winRect
+            if isFastSweep || crossedWindow {
+                autoSnap.appliedSeq = autoSnap.querySeq
+            }
             applyDetectedSnapStack(fast.stack, immediate: immediate || autoSnap.displayedRect == nil)
         }
         if fast.isComplete || fastWindowOnly == true {
             autoSnap.settleTimer?.invalidate(); autoSnap.settleTimer = nil
             return
         }
+        if isFastSweep {
+            autoSnap.settleTimer?.invalidate(); autoSnap.settleTimer = nil
+            scheduleTrailingSnapSettle(after: 0.055)
+            return
+        }
 
-        let now = ProcessInfo.processInfo.systemUptime
-        let dist = previousPoint.map { hypot(localPoint.x - $0.x, localPoint.y - $0.y) } ?? 0
-        let minInterval: TimeInterval = (dist > 14.0) ? 0.042 : 0.022
+        let minInterval: TimeInterval = (dist > 14.0) ? 0.038 : 0.020
         let elapsed = now - autoSnap.lastQueryDispatchUptime
         if immediate || elapsed >= minInterval {
             dispatchRefinedSnapQuery(at: localPoint, immediate: immediate)
@@ -68,6 +92,11 @@ extension OverlayView {
             guard let self, self.selection == nil,
                   self.autoSnap.cancelToken == token,
                   seq > self.autoSnap.appliedSeq else { return }
+            // 若异步查询期间光标已大幅移走且返回的首选目标不再包含当前光标，直接丢弃过期结果，绝不把高亮框拉回旧位置
+            if let livePt = self.lastMousePoint {
+                let movedFar = hypot(livePt.x - localPoint.x, livePt.y - localPoint.y) > 18.0
+                if movedFar && !(refined.first?.contains(livePt) ?? false) { return }
+            }
             self.autoSnap.appliedSeq = seq
             self.autoSnap.activeWindowRect = winRect
             self.applyDetectedSnapStack(refined, immediate: immediate && self.autoSnap.displayedRect == nil)
@@ -80,6 +109,7 @@ extension OverlayView {
             MainActor.assumeIsolated {
                 guard let self else { return }
                 self.autoSnap.settleTimer = nil
+                self.autoSnap.smoothedSpeed = 0
                 guard self.selection == nil, let pt = self.lastMousePoint, self.bounds.contains(pt) else { return }
                 self.dispatchRefinedSnapQuery(at: pt, immediate: false)
             }
@@ -180,6 +210,7 @@ extension OverlayView {
     private func semanticTierLabel(for rect: CGRect) -> String {
         if Self.isSameRegion(rect, bounds, tol: 4) { return "全屏" }
         if let winRect = autoSnap.activeWindowRect, Self.isSameRegion(rect, winRect, tol: 6) { return "窗口" }
+        if rect.width <= 160 && rect.height <= 72 { return "控件" }
         return "区域"
     }
 
@@ -207,13 +238,16 @@ extension OverlayView {
             let localPt = CGPoint(x: screenPt.x - sf.minX, y: sf.maxY - screenPt.y)
             if autoSnap.lastPolledScreenPoint != screenPt {
                 autoSnap.lastPolledScreenPoint = screenPt
-                if dragOp == nil {
+                if dragOp == nil && NSEvent.pressedMouseButtons == 0 {
                     processLiveHoverPoint(localPt)
                 } else {
                     lastMousePoint = localPt
                     syncMagnifierView()
                 }
             }
+        } else if autoSnap.lastPolledScreenPoint != nil {
+            autoSnap.lastPolledScreenPoint = nil
+            clearAllChromeHover()
         }
         if autoSnap.isGliding {
             advanceSnapGlide(dt: dt)

@@ -17,16 +17,54 @@ extension OverlayView {
         processLiveHoverPoint(p)
     }
 
-    /// 统一 VSync / 悬停入口：优先零延迟同步 GPU 放大镜位置与切片，再做光标去重与自动吸附
+    /// 120Hz VSync 直推全部悬浮控件的悬停高亮、手型光标与提示气泡（彻底绕开非激活面板 NSTrackingArea 节流迟钝）
+    private func dispatchChromeHover(at p: CGPoint) -> Bool {
+        if !saveMenu.isHidden, saveMenu.frame.contains(p) {
+            saveMenu.updateHover(atLocalPoint: convert(p, to: saveMenu))
+            cornerSlider.clearHover(); subbar.clearHover(); toolbar.clearHover(); sidePills.clearHover()
+            return true
+        }
+        if !cornerSlider.isHidden, cornerSlider.frame.contains(p) {
+            cornerSlider.updateHover(atLocalPoint: convert(p, to: cornerSlider))
+            saveMenu.clearHover(); subbar.clearHover(); toolbar.clearHover(); sidePills.clearHover()
+            return true
+        }
+        if !subbar.isHidden, subbar.frame.contains(p) {
+            subbar.updateHover(atLocalPoint: convert(p, to: subbar))
+            saveMenu.clearHover(); cornerSlider.clearHover(); toolbar.clearHover(); sidePills.clearHover()
+            return true
+        }
+        if !toolbar.isHidden, toolbar.frame.contains(p) {
+            toolbar.updateHover(atLocalPoint: convert(p, to: toolbar))
+            saveMenu.clearHover(); cornerSlider.clearHover(); subbar.clearHover(); sidePills.clearHover()
+            return true
+        }
+        if !sidePills.isHidden, sidePills.frame.contains(p) {
+            sidePills.updateHover(atLocalPoint: convert(p, to: sidePills))
+            saveMenu.clearHover(); cornerSlider.clearHover(); subbar.clearHover(); toolbar.clearHover()
+            return true
+        }
+        clearAllChromeHover()
+        return false
+    }
+
+    func clearAllChromeHover() {
+        saveMenu.clearHover()
+        cornerSlider.clearHover()
+        subbar.clearHover()
+        toolbar.clearHover()
+        sidePills.clearHover()
+    }
+
+    /// 统一 VSync / 悬停入口：优先零延迟同步悬浮工具栏悬停与 GPU 放大镜位置，再做光标去重与自动吸附
     func processLiveHoverPoint(_ p: CGPoint) {
         let prevPt = lastMousePoint
         lastMousePoint = p
-        let onChrome = (!toolbar.isHidden && toolbar.frame.contains(p))
-            || (!subbar.isHidden && subbar.frame.contains(p))
-            || (!sidePills.isHidden && sidePills.frame.contains(p))
-            || (!cornerSlider.isHidden && cornerSlider.frame.contains(p))
-            || (!saveMenu.isHidden && saveMenu.frame.contains(p))
-        if onChrome { applyCursor(.arrow); invalidateMagnifierMove(from: prevPt, to: p); return }
+        if dispatchChromeHover(at: p) {
+            appliedCursorKind = nil
+            invalidateMagnifierMove(from: prevPt, to: p)
+            return
+        }
         if toolbar.inPlaceOCRActive, let sel = selection, sel.contains(p) { invalidateMagnifierMove(from: prevPt, to: p); return }
         if eyedropperActive { applyCursor(.crosshair); invalidateMagnifierMove(from: prevPt, to: p); return }
         if let sel = selection {

@@ -25,11 +25,18 @@ final class RegionDetector: @unchecked Sendable {
     private let axTrusted: Bool
     let hasOpenPopupMenu: Bool
 
+    private struct CachedRegion: Sendable {
+        let globalRect: CGRect
+        let isLeaf: Bool
+    }
+
     private let detectQueue = DispatchQueue(label: "top.xy.msnip.region.detect", qos: .userInteractive)
     private let stateLock = NSLock()
     private var appElementCache: [pid_t: AXUIElement] = [:]
     private var timeoutStrikes: [pid_t: Int] = [:]
-    private var spatialRectsByPID: [pid_t: [CGRect]] = [:]
+    /// 按独立窗口 ID 隔离的已校验区域缓存（只存已通过角色/视觉闭合校验的真实矩形，杜绝跨窗口污染与隐形 div 回跳）
+    private var spatialRectsByWindow: [CGWindowID: [CachedRegion]] = [:]
+    private var selfSubviewCandidatesByWindow: [CGWindowID: [AXCandidate]] = [:]
 
     private struct PendingQuery {
         let localPoint: CGPoint
@@ -44,14 +51,14 @@ final class RegionDetector: @unchecked Sendable {
         chrome: SystemChromeSnapshot,
         primaryScreenHeight: CGFloat,
         hasOpenPopupMenu: Bool = false,
-        initialSelfRects: [CGRect] = []
+        initialSelfCandidatesByWindow: [CGWindowID: [AXCandidate]] = [:]
     ) {
         self.windows = windows; self.chrome = chrome
         self.primaryScreenHeight = primaryScreenHeight
         self.selfPID = ProcessInfo.processInfo.processIdentifier
         self.axTrusted = AXIsProcessTrusted()
         self.hasOpenPopupMenu = hasOpenPopupMenu
-        if !initialSelfRects.isEmpty { self.spatialRectsByPID[self.selfPID] = initialSelfRects }
+        self.selfSubviewCandidatesByWindow = initialSelfCandidatesByWindow
     }
 
     static func captureBeforeOverlay(
@@ -103,7 +110,13 @@ final class RegionDetector: @unchecked Sendable {
             items.append(WindowSnapshotItem(windowID: winID, ownerPID: pid, ownerName: ownerName, globalBounds: rect, layer: layer))
         }
         let chrome = RegionAXPreindexer.captureSystemChrome(menuBarRects: menuBarRects, frontmostPID: frontPID, skipMenuBarScan: hasOpenPopupMenu)
-        return RegionDetector(windows: items, chrome: chrome, primaryScreenHeight: primaryH, hasOpenPopupMenu: hasOpenPopupMenu, initialSelfRects: selfWindows.subviewRects)
+        return RegionDetector(
+            windows: items,
+            chrome: chrome,
+            primaryScreenHeight: primaryH,
+            hasOpenPopupMenu: hasOpenPopupMenu,
+            initialSelfCandidatesByWindow: selfWindows.subviewCandidatesByWindowID
+        )
     }
 
     static func checkAccessibilityPermission(prompt: Bool) -> Bool {
@@ -125,29 +138,34 @@ final class RegionDetector: @unchecked Sendable {
         return (hit.windowID, hit.ownerName, lr)
     }
 
-    func fastMemoryHierarchy(at localPoint: CGPoint, in snapshot: ScreenSnapshot) -> (stack: [CGRect], isComplete: Bool, winRect: CGRect?) {
+    func fastMemoryHierarchy(at localPoint: CGPoint, in snapshot: ScreenSnapshot, windowOnly: Bool = false) -> (stack: [CGRect], isComplete: Bool, hasFineHit: Bool, winRect: CGRect?) {
         let sbFallback = CGRect(origin: .zero, size: snapshot.screen.frame.size)
-        guard let map = resolveScreenMapping(at: localPoint, in: snapshot) else { return ([sbFallback], true, nil) }
+        guard let map = resolveScreenMapping(at: localPoint, in: snapshot) else { return ([sbFallback], true, false, nil) }
         if let chromeStack = chrome.matchLocalStack(at: map.global, screenQuartzOrigin: map.origin, screenBoundsLocal: map.bounds) {
-            return (chromeStack, true, chromeStack.count >= 2 ? chromeStack[chromeStack.count - 2] : nil)
+            return (chromeStack, true, true, chromeStack.count >= 2 ? chromeStack[chromeStack.count - 2] : nil)
         }
         guard let topWin = windows.first(where: { $0.globalBounds.contains(map.global) }) else {
-            return ([map.bounds], false, nil)
+            return ([map.bounds], false, false, nil)
         }
         let winLocal = toLocalRect(topWin.globalBounds, screenQuartzOrigin: map.origin).intersection(map.bounds)
-        guard !winLocal.isNull, winLocal.width >= 24, winLocal.height >= 24 else { return ([map.bounds], false, nil) }
+        guard !winLocal.isNull, winLocal.width >= 24, winLocal.height >= 24 else { return ([map.bounds], false, false, nil) }
 
-        let nearRim = Self.isNearWindowRim(localPoint, in: winLocal)
         var cands: [CGRect] = [winLocal, map.bounds]
-        stateLock.lock(); let pool = spatialRectsByPID[topWin.ownerPID] ?? []; stateLock.unlock()
-        for gr in pool where gr.contains(map.global) {
-            let lr = toLocalRect(gr, screenQuartzOrigin: map.origin).intersection(winLocal)
-            guard !lr.isNull, lr.width >= 16, lr.height >= 16,
-                  !Self.isWindowChromeStrip(lr, in: winLocal),
-                  !nearRim || (lr.width <= 120 && lr.height <= 50) else { continue }
-            cands.append(lr)
+        if windowOnly {
+            return (VisualDetector.normalizeHierarchy(cands), false, false, winLocal)
         }
-        return (VisualDetector.normalizeHierarchy(cands), topWin.ownerPID == selfPID && snapshot.isSamplerReady, winLocal)
+        let nearRim = Self.isNearWindowRim(localPoint, in: winLocal)
+        var hasFineHit = false
+        stateLock.lock(); let pool = spatialRectsByWindow[topWin.windowID] ?? []; stateLock.unlock()
+        for item in pool where item.globalRect.contains(map.global) {
+            let lr = toLocalRect(item.globalRect, screenQuartzOrigin: map.origin).intersection(winLocal)
+            guard !lr.isNull, lr.contains(localPoint), lr.width >= 16, lr.height >= 16,
+                  item.isLeaf || !Self.isWindowChromeStrip(lr, in: winLocal),
+                  !nearRim || (item.isLeaf && lr.width <= 120 && lr.height <= 48) else { continue }
+            cands.append(lr)
+            hasFineHit = true
+        }
+        return (VisualDetector.normalizeHierarchy(cands), false, hasFineHit, winLocal)
     }
 
     func requestLatestHierarchy(at localPoint: CGPoint, in snapshot: ScreenSnapshot, completion: @escaping @MainActor ([CGRect], CGRect?) -> Void) {
@@ -192,7 +210,7 @@ final class RegionDetector: @unchecked Sendable {
 
         var cands: [CGRect] = [map.bounds]
         var winLocalOut: CGRect?
-        let samplerReady = snapshot.isSamplerReady
+        let sampler = snapshot.sampler
 
         if let topWin = windows.first(where: { $0.globalBounds.contains(map.global) }) {
             let winLocal = toLocalRect(topWin.globalBounds, screenQuartzOrigin: map.origin).intersection(map.bounds)
@@ -201,39 +219,66 @@ final class RegionDetector: @unchecked Sendable {
                 let winArea = winLocal.width * winLocal.height
                 let nearRim = Self.isNearWindowRim(localPoint, in: winLocal)
                 var smallestInner: CGRect?
+                var hasCompactLeafHit = false
+                var verifiedCacheEntries: [CachedRegion] = []
 
-                let sourceGlobalRects: [CGRect]
+                let sourceCandidates: [AXCandidate]
                 if topWin.ownerPID == selfPID {
-                    stateLock.lock(); sourceGlobalRects = (spatialRectsByPID[selfPID] ?? []).filter { $0.contains(map.global) }; stateLock.unlock()
+                    sourceCandidates = (selfSubviewCandidatesByWindow[topWin.windowID] ?? []).filter { $0.rect.contains(map.global) }
                 } else if axTrusted {
-                    sourceGlobalRects = queryAXCached(pid: topWin.ownerPID, at: map.global, clampTo: topWin.globalBounds)
+                    sourceCandidates = queryAXRaw(pid: topWin.ownerPID, at: map.global, clampTo: topWin.globalBounds)
                 } else {
-                    sourceGlobalRects = []
+                    sourceCandidates = []
                 }
 
-                for gr in sourceGlobalRects {
-                    let lr = toLocalRect(gr, screenQuartzOrigin: map.origin).intersection(winLocal)
-                    guard !lr.isNull, !Self.isWindowChromeStrip(lr, in: winLocal),
-                          !nearRim || (lr.width <= 120 && lr.height <= 50) else { continue }
+                for cand in sourceCandidates {
+                    let lr = toLocalRect(cand.rect, screenQuartzOrigin: map.origin).intersection(winLocal)
+                    guard !lr.isNull, lr.contains(localPoint) else { continue }
+                    if !cand.isLeafControl && Self.isWindowChromeStrip(lr, in: winLocal) { continue }
+                    if nearRim && !(cand.isLeafControl && lr.width <= 120 && lr.height <= 48) { continue }
+
                     let area = lr.width * lr.height
-                    if samplerReady && area > winArea * 0.40 && area < winArea * 0.96
-                        && !VisualDetector.hasVisualBoundary(lr, within: winLocal, sampler: snapshot.sampler, scale: snapshot.scaleFactor) {
-                        continue
+                    let areaRatio = area / max(1, winArea)
+                    if areaRatio >= 0.96 { continue }
+
+                    // 真实紧凑交互控件（图标按钮/标签/输入框）与中小图片直接信任；所有结构容器（AXGroup/AXScrollArea/AXWebArea/AXRow 等）无论大小一律校验可见像素边界
+                    let isCompactControl = cand.isLeafControl
+                        && ((lr.width <= 240 && lr.height <= 64) || (lr.width <= 480 && lr.height <= 44))
+                    let isCompactMedia = cand.isMediaLeaf && lr.width >= 18 && lr.height >= 18 && areaRatio < 0.35
+                    if !isCompactControl && !isCompactMedia {
+                        guard lr.width >= 32, lr.height >= 24,
+                              VisualDetector.hasVisualBoundary(lr, within: winLocal, sampler: sampler, scale: snapshot.scaleFactor) else {
+                            continue
+                        }
+                    } else {
+                        hasCompactLeafHit = true
                     }
+
                     cands.append(lr)
+                    let verifiedGlobal = CGRect(x: lr.minX + map.origin.x, y: lr.minY + map.origin.y, width: lr.width, height: lr.height)
+                    verifiedCacheEntries.append(CachedRegion(globalRect: verifiedGlobal, isLeaf: isCompactControl || isCompactMedia))
                     if smallestInner == nil || area < (smallestInner!.width * smallestInner!.height) { smallestInner = lr }
                 }
 
-                let needVisual = !nearRim && ((smallestInner == nil) || ((smallestInner!.width * smallestInner!.height) > winArea * 0.40))
-                if needVisual, samplerReady {
+                let smallestArea = smallestInner.map { $0.width * $0.height } ?? winArea
+                let needVisual = !nearRim && !hasCompactLeafHit && (smallestInner == nil || smallestArea > winArea * 0.15)
+                if needVisual {
                     let scope = smallestInner ?? winLocal
-                    let vRects = VisualDetector.detectVisualRects(at: localPoint, within: scope, sampler: snapshot.sampler, scale: snapshot.scaleFactor)
+                    let vRects = VisualDetector.detectVisualRects(at: localPoint, within: scope, sampler: sampler, scale: snapshot.scaleFactor)
                         .filter { !Self.isWindowChromeStrip($0, in: winLocal) }
                     cands.append(contentsOf: vRects)
+                    for vr in vRects {
+                        let vg = CGRect(x: vr.minX + map.origin.x, y: vr.minY + map.origin.y, width: vr.width, height: vr.height)
+                        verifiedCacheEntries.append(CachedRegion(globalRect: vg, isLeaf: false))
+                    }
+                }
+
+                if !verifiedCacheEntries.isEmpty {
+                    storeVerifiedCache(verifiedCacheEntries, for: topWin.windowID)
                 }
             }
-        } else if samplerReady {
-            cands.append(contentsOf: VisualDetector.detectVisualRects(at: localPoint, within: map.bounds, sampler: snapshot.sampler, scale: snapshot.scaleFactor))
+        } else {
+            cands.append(contentsOf: VisualDetector.detectVisualRects(at: localPoint, within: map.bounds, sampler: sampler, scale: snapshot.scaleFactor))
         }
 
         let normalized = VisualDetector.normalizeHierarchy(cands)
@@ -249,34 +294,46 @@ final class RegionDetector: @unchecked Sendable {
         guard win.width >= 180, win.height >= 140 else { return false }
         let fullW = r.width >= win.width * 0.90
         let touchesBarEdge = (r.minY - win.minY <= 4.0) || (win.maxY - r.maxY <= 4.0)
-        return fullW && touchesBarEdge && r.height <= 64.0
+        return fullW && touchesBarEdge && r.height <= 72.0
     }
 
-    private func queryAXCached(pid: pid_t, at globalPoint: CGPoint, clampTo windowBounds: CGRect) -> [CGRect] {
+    private func queryAXRaw(pid: pid_t, at globalPoint: CGPoint, clampTo windowBounds: CGRect) -> [AXCandidate] {
         stateLock.lock()
         if (timeoutStrikes[pid] ?? 0) >= 3 { stateLock.unlock(); return [] }
         let appElem: AXUIElement = appElementCache[pid] ?? {
-            let el = AXUIElementCreateApplication(pid); AXUIElementSetMessagingTimeout(el, 0.018); appElementCache[pid] = el; return el
+            let el = AXUIElementCreateApplication(pid); AXUIElementSetMessagingTimeout(el, 0.024); appElementCache[pid] = el; return el
         }()
         stateLock.unlock()
 
         var timedOut = false
-        let rects = RegionAXPreindexer.queryHierarchy(appElem: appElem, at: globalPoint, clampTo: windowBounds, timedOut: &timedOut)
+        let cands = RegionAXPreindexer.queryHierarchy(appElem: appElem, at: globalPoint, clampTo: windowBounds, timedOut: &timedOut)
         stateLock.lock()
         if timedOut {
             timeoutStrikes[pid] = (timeoutStrikes[pid] ?? 0) + 1
-        } else if !rects.isEmpty {
+        } else {
             timeoutStrikes[pid] = 0
-            var pool = spatialRectsByPID[pid] ?? []
-            if pool.count < 160 {
-                for r in rects where !pool.contains(where: { abs($0.minX - r.minX) <= 2 && abs($0.minY - r.minY) <= 2 && abs($0.width - r.width) <= 2 && abs($0.height - r.height) <= 2 }) {
-                    pool.append(r)
-                }
-                spatialRectsByPID[pid] = pool
-            }
         }
         stateLock.unlock()
-        return rects
+        return cands
+    }
+
+    private func storeVerifiedCache(_ entries: [CachedRegion], for windowID: CGWindowID) {
+        stateLock.lock()
+        var pool = spatialRectsByWindow[windowID] ?? []
+        if pool.count < 120 {
+            for item in entries {
+                let r = item.globalRect
+                if !pool.contains(where: {
+                    abs($0.globalRect.minX - r.minX) <= 2 && abs($0.globalRect.minY - r.minY) <= 2
+                        && abs($0.globalRect.width - r.width) <= 2 && abs($0.globalRect.height - r.height) <= 2
+                }) {
+                    pool.append(item)
+                    if pool.count >= 120 { break }
+                }
+            }
+            spatialRectsByWindow[windowID] = pool
+        }
+        stateLock.unlock()
     }
 
     private func toLocalRect(_ globalRect: CGRect, screenQuartzOrigin: CGPoint) -> CGRect {
@@ -286,11 +343,18 @@ final class RegionDetector: @unchecked Sendable {
 
 // MARK: - 窗口与辅助功能元素异步预索引
 
+/// 辅助功能层级候选（携带控件语义角色，供视觉边界校验精准区分真实交互控件与隐形布局容器）
+struct AXCandidate: Sendable {
+    let rect: CGRect
+    let isLeafControl: Bool
+    let isMediaLeaf: Bool
+}
+
 /// MSnip 自身可见窗口与内部卡片/控件的零 IPC 预快照（Quartz 全局坐标）
 struct SelfWindowsSnapshot: Sendable {
     let windowBoundsByID: [CGWindowID: CGRect]
-    let subviewRects: [CGRect]
-    static let empty = SelfWindowsSnapshot(windowBoundsByID: [:], subviewRects: [])
+    let subviewCandidatesByWindowID: [CGWindowID: [AXCandidate]]
+    static let empty = SelfWindowsSnapshot(windowBoundsByID: [:], subviewCandidatesByWindowID: [:])
 }
 
 /// 系统程序坞（Dock）与顶部菜单栏的预索引几何快照（Quartz 全局坐标）
@@ -332,15 +396,21 @@ struct SystemChromeSnapshot {
 /// 2. 完整信任 macOS 原生控件边界（含 16×16 小图标、按钮、卡片、分栏与滚动区），像 PixPin 一样精准吸附。
 enum RegionAXPreindexer {
     private static let ignoredAXRoles: Set<String> = [
-        "AXStaticText", "AXInlineText", "AXLink", "AXHeading",
-        "AXScrollBar", "AXValueIndicator", "AXSplitter", "AXMenuItemMarkChar", "AXMenuBar"
+        "AXStaticText", "AXInlineText", "AXLink", "AXHeading", "AXParagraph",
+        "AXScrollBar", "AXValueIndicator", "AXSplitter", "AXMenuItemMarkChar",
+        "AXMenuBar", "AXListMarker", "AXTextMarkerRange", "AXRuler", "AXRulerMarker",
+        "AXGrowArea", "AXBusyIndicator", "AXProgressIndicator",
+        "AXWindow", "AXApplication"
     ]
 
     private static let fineLeafRoles: Set<String> = [
-        "AXButton", "AXDockItem", "AXMenuBarItem", "AXImage", "AXCheckBox",
+        "AXButton", "AXDockItem", "AXMenuBarItem", "AXCheckBox",
         "AXRadioButton", "AXPopUpButton", "AXTextField", "AXSearchField",
-        "AXTabButton", "AXDisclosureTriangle", "AXColorWell", "AXSlider", "AXMenuButton"
+        "AXTabButton", "AXDisclosureTriangle", "AXColorWell", "AXSlider",
+        "AXMenuButton", "AXSegmentedControl", "AXIncrementor", "AXComboBox"
     ]
+
+    private static let mediaLeafRoles: Set<String> = ["AXImage"]
 
     private static let batchedAttrs: CFArray = [
         kAXRoleAttribute as CFString,
@@ -374,40 +444,45 @@ enum RegionAXPreindexer {
         )
     }
 
-    /// 按单点位置查询目标应用窗口内的完整 AX 控件层级链（返回全局坐标矩形数组）
+    /// 按单点位置查询目标应用窗口内的带语义 AX 控件层级链（返回全局坐标候选数组）
     static func queryHierarchy(
         appElem: AXUIElement,
         at globalPoint: CGPoint,
         clampTo windowBounds: CGRect,
         timedOut: inout Bool
-    ) -> [CGRect] {
+    ) -> [AXCandidate] {
         let t0 = CFAbsoluteTimeGetCurrent()
         var hitRef: AXUIElement?
         let status = AXUIElementCopyElementAtPosition(appElem, Float(globalPoint.x), Float(globalPoint.y), &hitRef)
-        if status == .cannotComplete, (CFAbsoluteTimeGetCurrent() - t0) >= 0.014 {
+        if status == .cannotComplete, (CFAbsoluteTimeGetCurrent() - t0) >= 0.018 {
             timedOut = true
             return []
         }
         guard status == .success, var current = hitRef else { return [] }
 
-        var rects: [CGRect] = []
-        let deadline = t0 + 0.035
-        for _ in 0..<12 {
-            if CFAbsoluteTimeGetCurrent() >= deadline { timedOut = true; break }
+        var candidates: [AXCandidate] = []
+        let deadline = t0 + 0.045
+        for _ in 0..<10 {
+            // 已经成功命中真实节点后的父链遍历超时仅提前收敛，不误判为整进程卡死封禁（避免 Chrome/Electron 误触发 timeoutStrikes）
+            if CFAbsoluteTimeGetCurrent() >= deadline { break }
             setFastTimeout(current, 0.015)
             var valuesRef: CFArray?
             let err = AXUIElementCopyMultipleAttributeValues(current, batchedAttrs, AXCopyMultipleAttributeOptions(rawValue: 0), &valuesRef)
-            if err == .cannotComplete, CFAbsoluteTimeGetCurrent() >= deadline { timedOut = true; break }
             guard err == .success, let arr = valuesRef as? [AnyObject], arr.count == 4 else { break }
 
             let role = (arr[0] as? String) ?? ""
+            if role == "AXWindow" || role == "AXApplication" { break }
             if !ignoredAXRoles.contains(role), let rawRect = unpackBounds(posObj: arr[1], sizeObj: arr[2]) {
                 let clamped = rawRect.intersection(windowBounds)
-                let minW: CGFloat = fineLeafRoles.contains(role) ? 16 : 28
-                let minH: CGFloat = fineLeafRoles.contains(role) ? 16 : 20
-                let aspectOK = clamped.width <= clamped.height * 32 && clamped.height <= clamped.width * 24
+                let isLeaf = fineLeafRoles.contains(role)
+                let isMedia = mediaLeafRoles.contains(role)
+                let minW: CGFloat = (isLeaf || isMedia) ? 16 : 36
+                let minH: CGFloat = (isLeaf || isMedia) ? 16 : 26
+                let maxAspectH: CGFloat = (isLeaf || isMedia) ? 20 : 18
+                let maxAspectV: CGFloat = (isLeaf || isMedia) ? 14 : 12
+                let aspectOK = clamped.width <= clamped.height * maxAspectH && clamped.height <= clamped.width * maxAspectV
                 if !clamped.isNull, clamped.contains(globalPoint), clamped.width >= minW, clamped.height >= minH, aspectOK {
-                    rects.append(clamped)
+                    candidates.append(AXCandidate(rect: clamped, isLeafControl: isLeaf, isMediaLeaf: isMedia))
                 }
             }
 
@@ -415,7 +490,7 @@ enum RegionAXPreindexer {
             guard CFGetTypeID(parentObj) == AXUIElementGetTypeID() else { break }
             current = (parentObj as! AXUIElement)
         }
-        return rects
+        return candidates
     }
 
     // MARK: - Dock & Menu Bar Pre-Scan
@@ -533,7 +608,7 @@ enum RegionAXPreindexer {
     @MainActor
     static func captureSelfWindows(primaryScreenHeight: CGFloat) -> SelfWindowsSnapshot {
         var winMap: [CGWindowID: CGRect] = [:]
-        var rects: [CGRect] = []
+        var candsByWin: [CGWindowID: [AXCandidate]] = [:]
         func toQuartz(_ sr: NSRect) -> CGRect {
             CGRect(x: sr.minX, y: primaryScreenHeight - sr.maxY, width: sr.width, height: sr.height)
         }
@@ -545,15 +620,17 @@ enum RegionAXPreindexer {
             let qWin = toQuartz(screenWinFrame)
             winMap[winID] = qWin
             guard !(win is PinWindow), let root = win.contentView else { continue }
-            collectVisualSubviewRects(in: root, window: win, windowQuartz: qWin, toQuartz: toQuartz, into: &rects)
+            var cands: [AXCandidate] = []
+            collectVisualSubviewRects(in: root, window: win, windowQuartz: qWin, toQuartz: toQuartz, into: &cands)
+            if !cands.isEmpty { candsByWin[winID] = cands }
         }
-        return SelfWindowsSnapshot(windowBoundsByID: winMap, subviewRects: rects)
+        return SelfWindowsSnapshot(windowBoundsByID: winMap, subviewCandidatesByWindowID: candsByWin)
     }
 
     @MainActor
     private static func collectVisualSubviewRects(
         in view: NSView, window: NSWindow, windowQuartz: CGRect,
-        toQuartz: (NSRect) -> CGRect, into out: inout [CGRect]
+        toQuartz: (NSRect) -> CGRect, into out: inout [AXCandidate]
     ) {
         guard !view.isHidden, view.alphaValue > 0.05, out.count < 200 else { return }
         let isPureLayoutWrapper = (view is NSScrollView) || (view is NSClipView) || (view is NSTextField)
@@ -563,7 +640,10 @@ enum RegionAXPreindexer {
             if !inWin.isNull && inWin.width >= 18 && inWin.height >= 16 {
                 let q = toQuartz(window.convertToScreen(inWin)).intersection(windowQuartz)
                 let areaRatio = (q.width * q.height) / max(1, windowQuartz.width * windowQuartz.height)
-                if !q.isNull && areaRatio < 0.94 { out.append(q) }
+                if !q.isNull && areaRatio < 0.94 {
+                    let isLeaf = (view is NSControl)
+                    out.append(AXCandidate(rect: q, isLeafControl: isLeaf, isMediaLeaf: view is NSImageView))
+                }
             }
         }
         for sub in view.subviews {

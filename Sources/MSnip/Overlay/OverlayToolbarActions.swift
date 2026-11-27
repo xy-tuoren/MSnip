@@ -342,24 +342,42 @@ final class OverlayCornerSliderView: NSView {
         CGRect(x: bounds.width - 25, y: 5, width: 21, height: 22)
     }
 
-    override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
-        NSCursor.pointingHand.set()
-        hoveredReset = resetRect.contains(p)
-        hoveredTrack = !hoveredReset && bounds.contains(p)
-        if mode == .glow {
-            toolTip = hoveredReset ? "关闭发光边 (0%)" : "左右拖拽或滚轮调节发光边强度（0%–100%）"
-        } else {
-            toolTip = hoveredReset ? "归零圆角 (0%)" : "左右拖拽或滚轮调节圆角比例（100% 为胶囊/正圆）"
-        }
+    override var isHidden: Bool {
+        didSet { if isHidden { clearHover() } }
     }
 
-    override func mouseExited(with event: NSEvent) {
-        hoveredReset = false
-        hoveredTrack = false
+    override func mouseMoved(with event: NSEvent) {
+        updateHover(atLocalPoint: convert(event.locationInWindow, from: nil))
+    }
+
+    func updateHover(atLocalPoint p: CGPoint) {
+        guard !isDraggingThumb else { return }
+        NSCursor.pointingHand.set()
+        let onReset = resetRect.contains(p)
+        let onTrack = !onReset && bounds.contains(p)
+        if hoveredReset != onReset { hoveredReset = onReset }
+        if hoveredTrack != onTrack { hoveredTrack = onTrack }
+        let tip: String = (mode == .glow)
+            ? (onReset ? "关闭发光边 (0%)" : "左右拖拽或滚轮调节发光边强度（0%–100%）")
+            : (onReset ? "归零圆角 (0%)" : "左右拖拽或滚轮调节圆角比例（100% 为胶囊/正圆）")
+        FloatingTooltipHUD.show(tip, anchorRectInView: onReset ? resetRect : bounds, of: self)
+    }
+
+    func clearHover() {
+        FloatingTooltipHUD.hide(for: self)
+        if hoveredReset { hoveredReset = false }
+        if hoveredTrack { hoveredTrack = false }
+    }
+
+    override func mouseExited(with event: NSEvent) { clearHover() }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { clearHover() }
     }
 
     override func mouseDown(with event: NSEvent) {
+        FloatingTooltipHUD.hide(for: self)
         let p = convert(event.locationInWindow, from: nil)
         if resetRect.contains(p) {
             applyNewRatio(0)

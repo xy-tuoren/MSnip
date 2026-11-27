@@ -76,14 +76,28 @@ final class RecordingControlBarView: NSView {
         if next != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
         if next != hoveredIdx {
             hoveredIdx = next
-            toolTip = next.map { slots[$0].tip }
+            if let i = next, slots.indices.contains(i) {
+                FloatingTooltipHUD.show(slots[i].tip, anchorRectInView: slots[i].rect, of: self)
+            } else {
+                FloatingTooltipHUD.hide(for: self)
+            }
             needsDisplay = true
         }
     }
 
-    override func mouseExited(with event: NSEvent) { hoveredIdx = nil; needsDisplay = true }
+    override func mouseExited(with event: NSEvent) {
+        hoveredIdx = nil
+        FloatingTooltipHUD.hide(for: self)
+        needsDisplay = true
+    }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { FloatingTooltipHUD.hide(for: self) }
+    }
 
     override func mouseDown(with event: NSEvent) {
+        FloatingTooltipHUD.hide(for: self)
         guard !isEncoding else { return }
         let p = convert(event.locationInWindow, from: nil)
         guard let s = slots.first(where: { $0.rect.contains(p) }) else { return }
@@ -100,6 +114,8 @@ final class RecordingControlBarView: NSView {
         dividerX = nil
 
         if isEncoding {
+            hoveredIdx = nil
+            FloatingTooltipHUD.hide(for: self)
             setFrameSize(NSSize(width: 224 + pad * 2, height: Self.barHeight + pad * 2))
             slots = []
             needsDisplay = true
@@ -169,6 +185,10 @@ final class RecordingControlBarView: NSView {
         }
 
         slots = list
+        if let idx = hoveredIdx, !list.indices.contains(idx) {
+            hoveredIdx = nil
+            FloatingTooltipHUD.hide(for: self)
+        }
         let rightEdge = list.last?.rect.maxX ?? x
         setFrameSize(NSSize(width: round(rightEdge + Self.outerPad + pad), height: Self.barHeight + pad * 2))
         needsDisplay = true

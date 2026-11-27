@@ -18,10 +18,12 @@ final class ToastPanel: NSPanel {
         )
         self.animationBehavior = .none
         self.isFloatingPanel = true
-        self.level = NSWindow.Level(rawValue: max(
-            NSWindow.Level.screenSaver.rawValue + 10,
-            Int(CGShieldingWindowLevel()) + 10
-        ))
+        // 严格位于全屏覆盖层（CGShieldingWindowLevel）之上且低于光标层（kCGCursorWindowLevel）与系统最大保留层
+        let safeToastMax = Int(CGWindowLevelForKey(.maximumWindow)) - 2
+        self.level = NSWindow.Level(rawValue: min(safeToastMax, max(
+            NSWindow.Level.screenSaver.rawValue + 1,
+            Int(CGShieldingWindowLevel()) + 1
+        )))
         self.becomesKeyOnlyIfNeeded = true
         self.hidesOnDeactivate = false
         self.acceptsMouseMovedEvents = interactive
@@ -29,6 +31,7 @@ final class ToastPanel: NSPanel {
         self.isOpaque = false
         self.backgroundColor = .clear
         self.hasShadow = false
+        self.appearance = GeekTheme.windowAppearance
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
     }
 
@@ -108,6 +111,7 @@ enum ToastHUD {
     }
 
     static func refreshAppearanceIfVisible() {
+        activePanel?.appearance = GeekTheme.windowAppearance
         activePanel?.contentView?.needsDisplay = true
     }
 
@@ -413,7 +417,8 @@ private final class ToastCardView: NSView {
             let swRect = CGRect(x: cardRect.minX + 14, y: round(cardRect.midY - 11), width: 22, height: 22)
             let swPath = CGPath(roundedRect: swRect, cornerWidth: 6, cornerHeight: 6, transform: nil)
             ctx.setFillColor(sw.cgColor); ctx.addPath(swPath); ctx.fillPath()
-            ctx.setStrokeColor(MSnipUITheme.borderStrong.cgColor); ctx.setLineWidth(1.0); ctx.addPath(swPath); ctx.strokePath()
+            ctx.setStrokeColor((isDark ? NSColor.white.withAlphaComponent(0.22) : MSnipUITheme.borderStrong).cgColor)
+            ctx.setLineWidth(1.0); ctx.addPath(swPath); ctx.strokePath()
             return swRect.maxX + 11
         }
         let sz: CGFloat = hasAction ? 32 : 24
@@ -435,5 +440,180 @@ private final class ToastCardView: NSView {
         ctx.interpolationQuality = .medium
         ctx.draw(src, in: CGRect(x: (CGFloat(w) - dw) * 0.5, y: (CGFloat(h) - dh) * 0.5, width: dw, height: dh))
         return ctx.makeImage() ?? src
+    }
+}
+
+// MARK: - 全局高优先级悬浮图标提示气泡
+
+/// 专用于全屏覆盖层 / 录屏控制条 / 长截图条 / 贴图悬浮条等高层级非激活面板的轻量提示气泡：
+/// 解决 macOS 原生 `NSView.toolTip` 在高层级窗口（`.screenSaver` / `CGShieldingWindowLevel`）被遮挡及非激活态被系统抑制的问题。
+@MainActor
+enum FloatingTooltipHUD {
+    private static var panel: NSPanel?
+    private static var bubbleView: TooltipBubbleView?
+    private static weak var ownerView: NSView?
+    private static var pendingWork: DispatchWorkItem?
+    private static var lastVisibleAt: TimeInterval = 0
+    private static var currentText: String = ""
+    private static var currentAnchor: NSRect = .zero
+
+    static func show(_ text: String?, anchorRectInView: CGRect, of view: NSView) {
+        guard let raw = text?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty,
+              let win = view.window, win.isVisible else {
+            hide(for: view)
+            return
+        }
+        let screenAnchor = win.convertToScreen(view.convert(anchorRectInView, to: nil))
+        if ownerView === view, currentText == raw,
+           (panel?.isVisible == true || pendingWork != nil),
+           abs(currentAnchor.midX - screenAnchor.midX) < 1, abs(currentAnchor.midY - screenAnchor.midY) < 1 {
+            return
+        }
+        ownerView = view
+        currentText = raw
+        currentAnchor = screenAnchor
+        pendingWork?.cancel()
+        pendingWork = nil
+
+        let now = CACurrentMediaTime()
+        let isWarm = (panel?.isVisible == true) || (now - lastVisibleAt < 0.28)
+        if isWarm {
+            present(text: raw, anchorScreenRect: screenAnchor, animated: panel?.isVisible != true)
+        } else {
+            let work = DispatchWorkItem { [weak view] in
+                MainActor.assumeIsolated {
+                    pendingWork = nil
+                    guard let view, ownerView === view, view.window?.isVisible == true, !view.isHiddenOrHasHiddenAncestor else { return }
+                    present(text: raw, anchorScreenRect: screenAnchor, animated: true)
+                }
+            }
+            pendingWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22, execute: work)
+        }
+    }
+
+    static func hide(for view: NSView) {
+        guard ownerView == nil || ownerView === view else { return }
+        hideAll()
+    }
+
+    static func hideAll() {
+        pendingWork?.cancel()
+        pendingWork = nil
+        if panel?.isVisible == true { lastVisibleAt = CACurrentMediaTime() }
+        panel?.orderOut(nil)
+        ownerView = nil
+        currentText = ""
+    }
+
+    private static func present(text: String, anchorScreenRect: NSRect, animated: Bool) {
+        let bv = bubbleView ?? TooltipBubbleView()
+        bubbleView = bv
+        bv.text = text
+        let sz = bv.fittingPanelSize
+        bv.frame = NSRect(origin: .zero, size: sz)
+
+        let screen = NSScreen.screens.first(where: { $0.frame.contains(NSPoint(x: anchorScreenRect.midX, y: anchorScreenRect.midY)) })
+            ?? NSScreen.main ?? NSScreen.screens.first
+        let vf = screen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let pad = TooltipBubbleView.shadowPad
+        let gap: CGFloat = 6
+
+        let cardW = sz.width - pad * 2
+        let cardH = sz.height - pad * 2
+        let idealCardX = round(anchorScreenRect.midX - cardW * 0.5)
+        let clampedCardX = min(max(vf.minX + 8, idealCardX), vf.maxX - cardW - 8)
+        let aboveCardY = round(anchorScreenRect.maxY + gap)
+        let belowCardY = round(anchorScreenRect.minY - gap - cardH)
+        let cardY = (aboveCardY + cardH <= vf.maxY - 6) ? aboveCardY : max(vf.minY + 6, belowCardY)
+        let frame = NSRect(x: clampedCardX - pad, y: cardY - pad, width: sz.width, height: sz.height)
+
+        let p: NSPanel
+        if let existing = panel {
+            p = existing
+        } else {
+            let np = NSPanel(
+                contentRect: frame,
+                styleMask: [.borderless, .nonactivatingPanel],
+                backing: .buffered, defer: false
+            )
+            np.animationBehavior = .none
+            np.isFloatingPanel = true
+            // CGShieldingWindowLevel (2147483628) 上方 +2 为光标层、+3 为最大合法层；固定在 +1 确保严格高于全屏覆盖层且不遮挡软件光标
+            let safeTipMax = Int(CGWindowLevelForKey(.maximumWindow)) - 2
+            np.level = NSWindow.Level(rawValue: min(safeTipMax, max(
+                NSWindow.Level.screenSaver.rawValue + 1,
+                Int(CGShieldingWindowLevel()) + 1
+            )))
+            np.hidesOnDeactivate = false
+            np.ignoresMouseEvents = true
+            np.isOpaque = false
+            np.backgroundColor = .clear
+            np.hasShadow = false
+            np.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
+            np.contentView = bv
+            panel = np
+            p = np
+        }
+        p.setFrame(frame, display: true)
+        bv.needsDisplay = true
+        if animated && !p.isVisible {
+            p.alphaValue = 0.0
+            p.orderFrontRegardless()
+            NSAnimationContext.runAnimationGroup { ctx in
+                ctx.duration = 0.09
+                p.animator().alphaValue = 1.0
+            }
+        } else {
+            p.alphaValue = 1.0
+            p.orderFrontRegardless()
+        }
+        lastVisibleAt = CACurrentMediaTime()
+    }
+}
+
+private final class TooltipBubbleView: NSView {
+    static let shadowPad: CGFloat = 8
+    private static let padX: CGFloat = 9
+    private static let padY: CGFloat = 5
+    private static let font = NSFont.systemFont(ofSize: 11.5, weight: .medium)
+
+    var text: String = ""
+    override var isFlipped: Bool { true }
+
+    var fittingPanelSize: NSSize {
+        let sz = (text as NSString).size(withAttributes: [.font: Self.font])
+        let w = min(380, ceil(sz.width) + Self.padX * 2)
+        let h = ceil(sz.height) + Self.padY * 2
+        return NSSize(width: w + Self.shadowPad * 2, height: h + Self.shadowPad * 2)
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        guard let ctx = NSGraphicsContext.current?.cgContext, !text.isEmpty else { return }
+        let r = bounds.insetBy(dx: Self.shadowPad, dy: Self.shadowPad)
+        let path = CGPath(roundedRect: r, cornerWidth: 7.5, cornerHeight: 7.5, transform: nil)
+        ctx.saveGState()
+        ctx.setShadow(offset: CGSize(width: 0, height: -3), blur: 8, color: NSColor.black.withAlphaComponent(0.28).cgColor)
+        ctx.setFillColor(NSColor(srgbRed: 0.10, green: 0.12, blue: 0.16, alpha: 0.94).cgColor)
+        ctx.addPath(path); ctx.fillPath()
+        ctx.restoreGState()
+
+        ctx.saveGState()
+        ctx.setStrokeColor(NSColor.white.withAlphaComponent(0.16).cgColor)
+        ctx.setLineWidth(0.75)
+        ctx.addPath(CGPath(roundedRect: r.insetBy(dx: 0.4, dy: 0.4), cornerWidth: 7.5, cornerHeight: 7.5, transform: nil))
+        ctx.strokePath()
+        ctx.restoreGState()
+
+        let para = NSMutableParagraphStyle(); para.lineBreakMode = .byTruncatingTail
+        let attrs: [NSAttributedString.Key: Any] = [
+            .font: Self.font,
+            .foregroundColor: NSColor(srgbRed: 0.96, green: 0.97, blue: 0.99, alpha: 1.0),
+            .paragraphStyle: para
+        ]
+        let ns = text as NSString
+        let sz = ns.size(withAttributes: attrs)
+        let tr = CGRect(x: r.minX + Self.padX, y: round(r.midY - sz.height * 0.5), width: max(10, r.width - Self.padX * 2), height: sz.height + 2)
+        ns.draw(in: tr, withAttributes: attrs)
     }
 }

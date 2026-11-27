@@ -27,7 +27,7 @@ public enum VisualDetector {
               px > minX, px < maxX, py > minY, py < maxY else { return [] }
 
         let sharp = max(1, Int(scale.rounded()))
-        let wide = max(2, Int((2.0 * scale).rounded()))
+        let wide = max(2, Int((1.5 * scale).rounded()))
         let gap = max(6, Int((7.0 * scale).rounded()))
 
         var lefts = scanVerticalCandidates(fromX: px, toX: minX, dir: -1, atY: py, minY: minY, maxY: maxY, gap: gap, sharp: sharp, wide: wide, scale: scale, sampler: sampler)
@@ -42,26 +42,47 @@ public enum VisualDetector {
 
         var verified: [CGRect] = []
         for lx in lefts {
+            let leftIsLimit = (lx <= minX + 2)
             for rx in rights where rx - lx >= minW {
+                let rightIsLimit = (rx >= maxX - 2)
                 let w = rx - lx
+                // 横跨整窗的纯水平分割线要求更高对比度且禁止圆角内缩，杜绝文本行或内缩卡片边误拼成全宽横条
+                let hMinStrength = (leftIsLimit && rightIsLimit) ? 24 : 18
                 let validTops = tops.filter { ty in
-                    (ty <= minY + 2) || checkHorizontalEdgeAdaptive(y: ty, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler)
+                    (ty <= minY + 2) || checkHorizontalEdgeAdaptive(
+                        y: ty, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler,
+                        leftIsLimit: leftIsLimit, rightIsLimit: rightIsLimit, minStrength: hMinStrength
+                    )
                 }
                 if validTops.isEmpty { continue }
 
                 let validBottoms = bottoms.filter { by in
-                    (by >= maxY - 2) || checkHorizontalEdgeAdaptive(y: by, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler)
+                    (by >= maxY - 2) || checkHorizontalEdgeAdaptive(
+                        y: by, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler,
+                        leftIsLimit: leftIsLimit, rightIsLimit: rightIsLimit, minStrength: hMinStrength
+                    )
                 }
                 if validBottoms.isEmpty { continue }
 
                 for ty in validTops {
+                    let topIsLimit = (ty <= minY + 2)
                     for by in validBottoms where by - ty >= minH {
+                        let bottomIsLimit = (by >= maxY - 2)
                         let h = by - ty
-                        if w > h * 26 || h > w * 18 { continue }
-                        if lx == minX && rx == maxX && ty == minY && by == maxY { continue }
+                        let thinWideBar = (w > h * 18) && (CGFloat(h) / scale < 28)
+                        let thinTallStrip = (h > w * 14) && (CGFloat(w) / scale < 44)
+                        if w > h * 24 || h > w * 16 || thinWideBar || thinTallStrip { continue }
+                        if leftIsLimit && rightIsLimit && topIsLimit && bottomIsLimit { continue }
 
-                        guard (lx <= minX + 2) || checkVerticalEdgeAdaptive(x: lx, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler),
-                              (rx >= maxX - 2) || checkVerticalEdgeAdaptive(x: rx, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler) else {
+                        let vMinStrength = (topIsLimit && bottomIsLimit) ? 24 : 18
+                        guard leftIsLimit || checkVerticalEdgeAdaptive(
+                                  x: lx, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler,
+                                  topIsLimit: topIsLimit, bottomIsLimit: bottomIsLimit, minStrength: vMinStrength
+                              ),
+                              rightIsLimit || checkVerticalEdgeAdaptive(
+                                  x: rx, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler,
+                                  topIsLimit: topIsLimit, bottomIsLimit: bottomIsLimit, minStrength: vMinStrength
+                              ) else {
                             continue
                         }
                         let rect = CGRect(
@@ -78,7 +99,9 @@ public enum VisualDetector {
         return normalizeHierarchy(verified)
     }
 
-    /// 校验指定矩形在冻结像素中是否至少有 3 条真实可见边
+    /// 校验指定矩形在冻结像素中是否具备真实可见边界：
+    /// 1. 贴靠窗口外框的边不计免费放行分，位于窗口内部的每一条分割边（1~3 条内边时）都必须真实可见，根除隐形 AXScrollArea/AXGroup 漏网；
+    /// 2. 完全位于窗口内部的独立卡片/面板（4 条内边）至少需要 3 条连续且极性一致的可见边，并兼容 AX 坐标 1pt 向内取整偏差。
     public static func hasVisualBoundary(
         _ rect: CGRect,
         within limitRect: CGRect,
@@ -93,23 +116,47 @@ public enum VisualDetector {
         guard rx - lx >= 14, by - ty >= 12 else { return false }
 
         let sharp = max(1, Int(scale.rounded()))
-        let wide = max(2, Int((2.0 * scale).rounded()))
+        let wide = max(2, Int((1.5 * scale).rounded()))
         let tol: CGFloat = 3.5
 
-        var validSides = 0
-        if abs(rect.minY - limitRect.minY) <= tol || checkHorizontalEdgeAdaptive(y: ty, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler) {
-            validSides += 1
+        let touchesTop = abs(rect.minY - limitRect.minY) <= tol
+        let touchesBottom = abs(rect.maxY - limitRect.maxY) <= tol
+        let touchesLeft = abs(rect.minX - limitRect.minX) <= tol
+        let touchesRight = abs(rect.maxX - limitRect.maxX) <= tol
+
+        var interiorCount = 0
+        var visibleInterior = 0
+
+        if !touchesTop {
+            interiorCount += 1
+            let ok = checkHorizontalEdgeAdaptive(y: ty, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler, leftIsLimit: touchesLeft, rightIsLimit: touchesRight)
+                || (by - ty > sharp * 4 && checkHorizontalEdgeAdaptive(y: ty + sharp, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler, leftIsLimit: touchesLeft, rightIsLimit: touchesRight))
+            if ok { visibleInterior += 1 }
         }
-        if abs(rect.maxY - limitRect.maxY) <= tol || checkHorizontalEdgeAdaptive(y: by, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler) {
-            validSides += 1
+        if !touchesBottom {
+            interiorCount += 1
+            let ok = checkHorizontalEdgeAdaptive(y: by, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler, leftIsLimit: touchesLeft, rightIsLimit: touchesRight)
+                || (by - ty > sharp * 4 && checkHorizontalEdgeAdaptive(y: by - sharp, lx: lx, rx: rx, sharp: sharp, wide: wide, scale: scale, sampler: sampler, leftIsLimit: touchesLeft, rightIsLimit: touchesRight))
+            if ok { visibleInterior += 1 }
         }
-        if abs(rect.minX - limitRect.minX) <= tol || checkVerticalEdgeAdaptive(x: lx, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler) {
-            validSides += 1
+        if !touchesLeft {
+            interiorCount += 1
+            let ok = checkVerticalEdgeAdaptive(x: lx, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler, topIsLimit: touchesTop, bottomIsLimit: touchesBottom)
+                || (rx - lx > sharp * 4 && checkVerticalEdgeAdaptive(x: lx + sharp, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler, topIsLimit: touchesTop, bottomIsLimit: touchesBottom))
+            if ok { visibleInterior += 1 }
         }
-        if validSides < 3 && (abs(rect.maxX - limitRect.maxX) <= tol || checkVerticalEdgeAdaptive(x: rx, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler)) {
-            validSides += 1
+        if !touchesRight {
+            interiorCount += 1
+            let ok = checkVerticalEdgeAdaptive(x: rx, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler, topIsLimit: touchesTop, bottomIsLimit: touchesBottom)
+                || (rx - lx > sharp * 4 && checkVerticalEdgeAdaptive(x: rx - sharp, ty: ty, by: by, sharp: sharp, wide: wide, scale: scale, sampler: sampler, topIsLimit: touchesTop, bottomIsLimit: touchesBottom))
+            if ok { visibleInterior += 1 }
         }
-        return validSides >= 3
+
+        guard interiorCount > 0 else { return false }
+        if interiorCount <= 3 {
+            return visibleInterior == interiorCount
+        }
+        return visibleInterior >= 3
     }
 
     /// 将多源候选矩形从小到大排序，通过紧凑边距（5pt）与 IoU（0.86）去重合并重复包裹层
@@ -218,7 +265,7 @@ extension VisualDetector {
             let py = atY + dy
             guard py > minY && py < maxY else { continue }
             tested += 1
-            if edgeStrengthV(sampler, x: x, y: py, sharp: sharp, wide: wide) >= 16 { hits += 1 }
+            if edgeStrengthV(sampler, x: x, y: py, sharp: sharp, wide: wide) >= 18 { hits += 1 }
         }
         return tested >= 2 && hits * 4 >= tested * 3
     }
@@ -231,102 +278,196 @@ extension VisualDetector {
             let px = atX + dx
             guard px > minX && px < maxX else { continue }
             tested += 1
-            if edgeStrengthH(sampler, x: px, y: y, sharp: sharp, wide: wide) >= 16 { hits += 1 }
+            if edgeStrengthH(sampler, x: px, y: y, sharp: sharp, wide: wide) >= 18 { hits += 1 }
         }
         return tested >= 2 && hits * 4 >= tested * 3
     }
 
-    // MARK: - 4-Side Closed Perimeter Verification (Adaptive Rounded Corners)
+    // MARK: - 4-Side Closed Perimeter Verification (Adaptive Rounded Corners + Coherence)
 
     static func checkHorizontalEdgeAdaptive(
-        y: Int, lx: Int, rx: Int, sharp: Int, wide: Int, scale: CGFloat, sampler: PixelSampler
+        y: Int, lx: Int, rx: Int, sharp: Int, wide: Int, scale: CGFloat, sampler: PixelSampler,
+        leftIsLimit: Bool = false, rightIsLimit: Bool = false, minStrength: Int = 18
     ) -> Bool {
         let w = rx - lx
         let c1 = min(Int((5.0 * scale).rounded()), w / 8)
-        if checkHorizontalEdgeSpan(y: y, x0: lx + c1, x1: rx - c1, sharp: sharp, wide: wide, sampler: sampler) {
+        if checkHorizontalEdgeSpan(y: y, x0: lx + c1, x1: rx - c1, sharp: sharp, wide: wide, scale: scale, sampler: sampler, minStrength: minStrength) {
             return true
         }
         let c2 = min(Int((22.0 * scale).rounded()), w / 4)
         guard w >= Int((56.0 * scale).rounded()), c2 > c1 else { return false }
-        // 真圆角卡片/窗口的左右竖边不会在水平边外侧继续笔直延伸；防止把上下两张内缩卡片之间的空白缝隙误判成独立闭合框
+        // 独立判定左右两角是否允许圆角内缩：贴靠窗口外框或竖边笔直穿过当前水平线的角绝不做 22pt 内缩，杜绝卡片边与窗口外框误拼出歪斜幽灵盒
         let probeOut = max(4, Int((8.0 * scale).rounded()))
         let outY1 = y - probeOut, outY2 = y + probeOut
-        let leftContinuesThrough = outY1 > 1 && outY2 < sampler.height - 2
-            && strongVerticalAt(x: lx, y: outY1, sharp: sharp, wide: wide, sampler: sampler)
-            && strongVerticalAt(x: lx, y: outY2, sharp: sharp, wide: wide, sampler: sampler)
-        let rightContinuesThrough = outY1 > 1 && outY2 < sampler.height - 2
-            && strongVerticalAt(x: rx, y: outY1, sharp: sharp, wide: wide, sampler: sampler)
-            && strongVerticalAt(x: rx, y: outY2, sharp: sharp, wide: wide, sampler: sampler)
-        if leftContinuesThrough && rightContinuesThrough { return false }
-        return checkHorizontalEdgeSpan(y: y, x0: lx + c2, x1: rx - c2, sharp: sharp, wide: wide, sampler: sampler)
+        let leftBlocked = leftIsLimit || (outY1 > 1 && outY2 < sampler.height - 2
+            && bestVerticalHitX(x: lx, y: outY1, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil
+            && bestVerticalHitX(x: lx, y: outY2, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil)
+        let rightBlocked = rightIsLimit || (outY1 > 1 && outY2 < sampler.height - 2
+            && bestVerticalHitX(x: rx, y: outY1, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil
+            && bestVerticalHitX(x: rx, y: outY2, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil)
+        if leftBlocked && rightBlocked { return false }
+        let x0 = lx + (leftBlocked ? c1 : c2)
+        let x1 = rx - (rightBlocked ? c1 : c2)
+        guard x1 - x0 >= Int((20.0 * scale).rounded()) else { return false }
+        return checkHorizontalEdgeSpan(y: y, x0: x0, x1: x1, sharp: sharp, wide: wide, scale: scale, sampler: sampler, minStrength: minStrength)
     }
 
     static func checkVerticalEdgeAdaptive(
-        x: Int, ty: Int, by: Int, sharp: Int, wide: Int, scale: CGFloat, sampler: PixelSampler
+        x: Int, ty: Int, by: Int, sharp: Int, wide: Int, scale: CGFloat, sampler: PixelSampler,
+        topIsLimit: Bool = false, bottomIsLimit: Bool = false, minStrength: Int = 18
     ) -> Bool {
         let h = by - ty
         let c1 = min(Int((5.0 * scale).rounded()), h / 8)
-        if checkVerticalEdgeSpan(x: x, y0: ty + c1, y1: by - c1, sharp: sharp, wide: wide, sampler: sampler) {
+        if checkVerticalEdgeSpan(x: x, y0: ty + c1, y1: by - c1, sharp: sharp, wide: wide, scale: scale, sampler: sampler, minStrength: minStrength) {
             return true
         }
         let c2 = min(Int((22.0 * scale).rounded()), h / 4)
         guard h >= Int((56.0 * scale).rounded()), c2 > c1 else { return false }
         let probeOut = max(4, Int((8.0 * scale).rounded()))
         let outX1 = x - probeOut, outX2 = x + probeOut
-        let topContinuesThrough = outX1 > 1 && outX2 < sampler.width - 2
-            && strongHorizontalAt(x: outX1, y: ty, sharp: sharp, wide: wide, sampler: sampler)
-            && strongHorizontalAt(x: outX2, y: ty, sharp: sharp, wide: wide, sampler: sampler)
-        let botContinuesThrough = outX1 > 1 && outX2 < sampler.width - 2
-            && strongHorizontalAt(x: outX1, y: by, sharp: sharp, wide: wide, sampler: sampler)
-            && strongHorizontalAt(x: outX2, y: by, sharp: sharp, wide: wide, sampler: sampler)
-        if topContinuesThrough && botContinuesThrough { return false }
-        return checkVerticalEdgeSpan(x: x, y0: ty + c2, y1: by - c2, sharp: sharp, wide: wide, sampler: sampler)
+        let topBlocked = topIsLimit || (outX1 > 1 && outX2 < sampler.width - 2
+            && bestHorizontalHitY(x: outX1, y: ty, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil
+            && bestHorizontalHitY(x: outX2, y: ty, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil)
+        let bottomBlocked = bottomIsLimit || (outX1 > 1 && outX2 < sampler.width - 2
+            && bestHorizontalHitY(x: outX1, y: by, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil
+            && bestHorizontalHitY(x: outX2, y: by, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil)
+        if topBlocked && bottomBlocked { return false }
+        let y0 = ty + (topBlocked ? c1 : c2)
+        let y1 = by - (bottomBlocked ? c1 : c2)
+        guard y1 - y0 >= Int((16.0 * scale).rounded()) else { return false }
+        return checkVerticalEdgeSpan(x: x, y0: y0, y1: y1, sharp: sharp, wide: wide, scale: scale, sampler: sampler, minStrength: minStrength)
     }
 
     @inline(__always)
-    private static func strongHorizontalAt(x: Int, y: Int, sharp: Int, wide: Int, sampler: PixelSampler) -> Bool {
-        if edgeStrengthH(sampler, x: x, y: y, sharp: sharp, wide: wide) >= 16 { return true }
-        if edgeStrengthH(sampler, x: x, y: y - 1, sharp: sharp, wide: wide) >= 16 { return true }
-        return edgeStrengthH(sampler, x: x, y: y + 1, sharp: sharp, wide: wide) >= 16
+    private static func bestHorizontalHitY(x: Int, y: Int, sharp: Int, wide: Int, sampler: PixelSampler, minStrength: Int) -> Int? {
+        let s0 = edgeStrengthH(sampler, x: x, y: y, sharp: sharp, wide: wide)
+        let sm = edgeStrengthH(sampler, x: x, y: y - 1, sharp: sharp, wide: wide)
+        let sp = edgeStrengthH(sampler, x: x, y: y + 1, sharp: sharp, wide: wide)
+        var bestY = y, bestS = s0
+        if sm > bestS { bestS = sm; bestY = y - 1 }
+        if sp > bestS { bestS = sp; bestY = y + 1 }
+        return bestS >= minStrength ? bestY : nil
     }
 
     @inline(__always)
-    private static func strongVerticalAt(x: Int, y: Int, sharp: Int, wide: Int, sampler: PixelSampler) -> Bool {
-        if edgeStrengthV(sampler, x: x, y: y, sharp: sharp, wide: wide) >= 16 { return true }
-        if edgeStrengthV(sampler, x: x - 1, y: y, sharp: sharp, wide: wide) >= 16 { return true }
-        return edgeStrengthV(sampler, x: x + 1, y: y, sharp: sharp, wide: wide) >= 16
+    private static func bestVerticalHitX(x: Int, y: Int, sharp: Int, wide: Int, sampler: PixelSampler, minStrength: Int) -> Int? {
+        let s0 = edgeStrengthV(sampler, x: x, y: y, sharp: sharp, wide: wide)
+        let sm = edgeStrengthV(sampler, x: x - 1, y: y, sharp: sharp, wide: wide)
+        let sp = edgeStrengthV(sampler, x: x + 1, y: y, sharp: sharp, wide: wide)
+        var bestX = x, bestS = s0
+        if sm > bestS { bestS = sm; bestX = x - 1 }
+        if sp > bestS { bestS = sp; bestX = x + 1 }
+        return bestS >= minStrength ? bestX : nil
     }
 
-    private static func checkHorizontalEdgeSpan(y: Int, x0: Int, x1: Int, sharp: Int, wide: Int, sampler: PixelSampler) -> Bool {
-        guard x1 > x0,
-              strongHorizontalAt(x: x0, y: y, sharp: sharp, wide: wide, sampler: sampler),
-              strongHorizontalAt(x: x1, y: y, sharp: sharp, wide: wide, sampler: sampler) else { return false }
-        let samples = 12
-        var misses = 0
-        for i in 1..<(samples - 1) {
-            let x = x0 + ((x1 - x0) * i) / (samples - 1)
-            if !strongHorizontalAt(x: x, y: y, sharp: sharp, wide: wide, sampler: sampler) {
+    private static func checkHorizontalEdgeSpan(
+        y: Int, x0: Int, x1: Int, sharp: Int, wide: Int, scale: CGFloat, sampler: PixelSampler, minStrength: Int
+    ) -> Bool {
+        let span = x1 - x0
+        guard span > 0,
+              bestHorizontalHitY(x: x0, y: y, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil,
+              bestHorizontalHitY(x: x1, y: y, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil else { return false }
+
+        let stepPx = max(4, Int((6.0 * scale).rounded()))
+        let samples = max(14, min(28, span / stepPx + 1))
+        let maxMisses = max(1, samples / 14)
+
+        var misses = 0, consecMisses = 0, hits = 0
+        var posStep = 0, negStep = 0, posStroke = 0, negStroke = 0
+        var upSmooth = 0, downSmooth = 0
+        var prevUp: (Int, Int, Int)?, prevDown: (Int, Int, Int)?
+
+        for i in 0..<samples {
+            let x = x0 + (span * i) / (samples - 1)
+            guard let yy = bestHorizontalHitY(x: x, y: y, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) else {
                 misses += 1
-                if misses > 2 { return false }
+                consecMisses += 1
+                if consecMisses >= 2 || misses > maxMisses { return false }
+                continue
             }
+            consecMisses = 0
+            hits += 1
+
+            let up = sampler.sampleRGB(px: x, py: yy - wide)
+            let mid = sampler.sampleRGB(px: x, py: yy)
+            let down = sampler.sampleRGB(px: x, py: yy + wide)
+            let a = sampler.sampleRGB(px: x, py: yy - sharp)
+            let b = sampler.sampleRGB(px: x, py: yy + sharp)
+
+            let stepDelta = (down.0 + down.1 + down.2) - (up.0 + up.1 + up.2)
+            if stepDelta >= 12 { posStep += 1 }
+            else if stepDelta <= -12 { negStep += 1 }
+
+            let strokeDelta = 2 * (mid.0 + mid.1 + mid.2) - (a.0 + a.1 + a.2) - (b.0 + b.1 + b.2)
+            if strokeDelta >= 20 { posStroke += 1 }
+            else if strokeDelta <= -20 { negStroke += 1 }
+
+            if let pu = prevUp, rgbDiff(up, pu) <= 32 { upSmooth += 1 }
+            if let pd = prevDown, rgbDiff(down, pd) <= 32 { downSmooth += 1 }
+            prevUp = up; prevDown = down
         }
-        return true
+
+        guard hits >= 4 else { return false }
+        let pairs = max(1, hits - 1)
+        let consistentStep = max(posStep, negStep) * 100 >= hits * 70
+        let consistentStroke = max(posStroke, negStroke) * 100 >= hits * 70
+        let smoothSide = max(upSmooth, downSmooth) * 100 >= pairs * 72
+        return consistentStep || consistentStroke || smoothSide
     }
 
-    private static func checkVerticalEdgeSpan(x: Int, y0: Int, y1: Int, sharp: Int, wide: Int, sampler: PixelSampler) -> Bool {
-        guard y1 > y0,
-              strongVerticalAt(x: x, y: y0, sharp: sharp, wide: wide, sampler: sampler),
-              strongVerticalAt(x: x, y: y1, sharp: sharp, wide: wide, sampler: sampler) else { return false }
-        let samples = 12
-        var misses = 0
-        for i in 1..<(samples - 1) {
-            let y = y0 + ((y1 - y0) * i) / (samples - 1)
-            if !strongVerticalAt(x: x, y: y, sharp: sharp, wide: wide, sampler: sampler) {
+    private static func checkVerticalEdgeSpan(
+        x: Int, y0: Int, y1: Int, sharp: Int, wide: Int, scale: CGFloat, sampler: PixelSampler, minStrength: Int
+    ) -> Bool {
+        let span = y1 - y0
+        guard span > 0,
+              bestVerticalHitX(x: x, y: y0, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil,
+              bestVerticalHitX(x: x, y: y1, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) != nil else { return false }
+
+        let stepPx = max(4, Int((6.0 * scale).rounded()))
+        let samples = max(14, min(28, span / stepPx + 1))
+        let maxMisses = max(1, samples / 14)
+
+        var misses = 0, consecMisses = 0, hits = 0
+        var posStep = 0, negStep = 0, posStroke = 0, negStroke = 0
+        var leftSmooth = 0, rightSmooth = 0
+        var prevLeft: (Int, Int, Int)?, prevRight: (Int, Int, Int)?
+
+        for i in 0..<samples {
+            let y = y0 + (span * i) / (samples - 1)
+            guard let xx = bestVerticalHitX(x: x, y: y, sharp: sharp, wide: wide, sampler: sampler, minStrength: minStrength) else {
                 misses += 1
-                if misses > 2 { return false }
+                consecMisses += 1
+                if consecMisses >= 2 || misses > maxMisses { return false }
+                continue
             }
+            consecMisses = 0
+            hits += 1
+
+            let left = sampler.sampleRGB(px: xx - wide, py: y)
+            let mid = sampler.sampleRGB(px: xx, py: y)
+            let right = sampler.sampleRGB(px: xx + wide, py: y)
+            let a = sampler.sampleRGB(px: xx - sharp, py: y)
+            let b = sampler.sampleRGB(px: xx + sharp, py: y)
+
+            let stepDelta = (right.0 + right.1 + right.2) - (left.0 + left.1 + left.2)
+            if stepDelta >= 12 { posStep += 1 }
+            else if stepDelta <= -12 { negStep += 1 }
+
+            let strokeDelta = 2 * (mid.0 + mid.1 + mid.2) - (a.0 + a.1 + a.2) - (b.0 + b.1 + b.2)
+            if strokeDelta >= 20 { posStroke += 1 }
+            else if strokeDelta <= -20 { negStroke += 1 }
+
+            if let pl = prevLeft, rgbDiff(left, pl) <= 32 { leftSmooth += 1 }
+            if let pr = prevRight, rgbDiff(right, pr) <= 32 { rightSmooth += 1 }
+            prevLeft = left; prevRight = right
         }
-        return true
+
+        guard hits >= 4 else { return false }
+        let pairs = max(1, hits - 1)
+        let consistentStep = max(posStep, negStep) * 100 >= hits * 70
+        let consistentStroke = max(posStroke, negStroke) * 100 >= hits * 70
+        let smoothSide = max(leftSmooth, rightSmooth) * 100 >= pairs * 72
+        return consistentStep || consistentStroke || smoothSide
     }
 
     private static func refineVerticalPeak(around cx: Int, atY y: Int, minY: Int, maxY: Int, radius: Int, sampler: PixelSampler) -> Int {

@@ -244,6 +244,7 @@ struct AppConfig: Codable {
 /// 开机自启兼容管理（macOS 13+ 走 SMAppService，macOS 12 自动回退 LaunchAgents plist）
 enum LaunchAtLoginManager {
     private static let agentLabel = "top.xy.msnip.launch"
+    private static var cachedEnabled: Bool?
 
     private static var plistURL: URL {
         URL(fileURLWithPath: NSHomeDirectory())
@@ -251,11 +252,21 @@ enum LaunchAtLoginManager {
     }
 
     static var isEnabled: Bool {
+        if let cached = cachedEnabled { return cached }
+        return refreshCache()
+    }
+
+    @discardableResult
+    static func refreshCache() -> Bool {
         let hasPlist = FileManager.default.fileExists(atPath: plistURL.path)
+        let enabled: Bool
         if #available(macOS 13.0, *), Bundle.main.bundlePath.hasSuffix(".app") {
-            return SMAppService.mainApp.status == .enabled || hasPlist
+            enabled = (SMAppService.mainApp.status == .enabled || hasPlist)
+        } else {
+            enabled = hasPlist
         }
-        return hasPlist
+        cachedEnabled = enabled
+        return enabled
     }
 
     @discardableResult
@@ -269,6 +280,7 @@ enum LaunchAtLoginManager {
                     try SMAppService.mainApp.unregister()
                     try? FileManager.default.removeItem(at: plistURL)
                 }
+                cachedEnabled = enabled
                 return true
             } catch {}
         }
@@ -280,9 +292,12 @@ enum LaunchAtLoginManager {
             guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else {
                 return false
             }
-            return (try? data.write(to: plistURL, options: .atomic)) != nil
+            let ok = (try? data.write(to: plistURL, options: .atomic)) != nil
+            if ok { cachedEnabled = true }
+            return ok
         } else {
             try? FileManager.default.removeItem(at: plistURL)
+            cachedEnabled = false
             return true
         }
     }

@@ -284,6 +284,7 @@ final class LongShotSession {
     private func finish(_ outcome: Outcome) {
         guard !finished else { return }
         finished = true
+        FloatingTooltipHUD.hideAll()
         autoScroller.stop()
         sampler.stop()
         bottomWatchdog?.invalidate()

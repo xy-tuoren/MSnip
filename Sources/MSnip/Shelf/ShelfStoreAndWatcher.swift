@@ -323,6 +323,9 @@ final class ShelfEdgeWatcher {
     var triggerMode: TopShelfTriggerMode = .topEdgeHover {
         didSet { syncMonitors() }
     }
+    var isPausedForMenuTracking: Bool = false {
+        didSet { if oldValue != isPausedForMenuTracking { syncMonitors() } }
+    }
 
     func startAutoHideWatch(peekDuration: TimeInterval = 0, fromHotkey: Bool = false) {
         autoHideTimer?.invalidate(); autoHideTimer = nil
@@ -417,7 +420,7 @@ final class ShelfEdgeWatcher {
         if let obs = screenObserver { NotificationCenter.default.removeObserver(obs); screenObserver = nil }
         hoverShowTimer?.invalidate(); hoverShowTimer = nil
         topBarSuppressed = false
-        guard triggerMode == .topEdgeHover else { cachedScreenFrames = []; return }
+        guard triggerMode == .topEdgeHover, !isPausedForMenuTracking else { cachedScreenFrames = []; return }
 
         baselineDragChangeCount = NSPasteboard(name: .drag).changeCount
         sawDragSinceLastMove = false

@@ -223,22 +223,15 @@ extension AppController {
         editItem.submenu = editMenu; mainMenu.addItem(editItem); NSApp.mainMenu = mainMenu
     }
 
-    /// 在 `NSStatusBarWindow` 分发鼠标按下事件前动态挂载 `statusItem.menu`：
-    /// 彻底摒弃 `performClick(nil)` 合成点击与 `NSDragEventTracker` 嵌套模态循环，100% 走系统原生状态栏菜单通道
+    /// 保持 `statusItem.menu` 原生常驻挂载（100% 走系统原生零损耗展开与追踪通道），仅在 `⌥ + 左键` 点击状态栏图标时拦截切换顶部暂存架
     func installStatusBarMenuPreHook() {
         guard statusBarMouseMonitor == nil else { return }
-        statusBarMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { [weak self] ev in
-            guard let self, NSApp.modalWindow == nil, let btn = self.statusItem?.button, ev.window === btn.window else { return ev }
-            let isOptionLeft = (ev.type == .leftMouseDown) && ev.modifierFlags.contains(.option)
-            self.statusItem.menu = isOptionLeft ? nil : self.statusMenu
-            return ev
-        }
-    }
-
-    @objc func handleStatusBarClick(_ sender: Any?) {
-        if NSApp.currentEvent?.modifierFlags.contains(.option) == true { toggleTopShelf(); return }
-        if NSApp.currentEvent?.type != .leftMouseUp, let menu = statusMenu {
-            statusItem.menu = menu; statusItem.button?.performClick(nil); statusItem.menu = nil
+        statusBarMouseMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown]) { [weak self] ev in
+            guard let self, NSApp.modalWindow == nil,
+                  let btn = self.statusItem?.button, ev.window === btn.window,
+                  ev.modifierFlags.intersection(.deviceIndependentFlagsMask) == .option else { return ev }
+            self.toggleTopShelf()
+            return nil
         }
     }
 
@@ -312,8 +305,8 @@ extension AppController {
 
     @objc func startDefaultDelayedCapture() {
         if isStatusMenuOpen {
-            statusItem.menu?.cancelTrackingWithoutAnimation()
-            isStatusMenuOpen = false
+            (trackingRootMenu ?? statusItem.menu)?.cancelTrackingWithoutAnimation()
+            finishStatusMenuTrackingIfNeeded()
         }
         if delayedCapture.isRunning {
             delayedCapture.cancel(showToast: true)
@@ -335,7 +328,15 @@ extension AppController {
             runAfterStatusMenuDismissed(fromMenuClick: fromMenu) { [weak self] in self?.repeatLastCapture(nil) }
             return
         }
-        guard activeSession == nil, activeLongShot == nil, activeRecording == nil, !isCapturing else { return }
+        if let rec = activeRecording {
+            if rec.focusTrimWindowIfNeeded() {
+                ToastHUD.show(message: "请先完成或关闭当前 MP4 裁剪窗口")
+            } else {
+                ToastHUD.show(message: "正在录屏中 · 可在菜单栏结束或按 Esc 取消")
+            }
+            return
+        }
+        guard activeSession == nil, activeLongShot == nil, !isCapturing else { return }
         guard let target = OverlaySession.lastCaptureTarget else {
             startCapture()
             return
@@ -449,6 +450,12 @@ extension AppController {
         let rec = RegionRecordingSession()
         self.activeRecording = rec
         updateMenuBarRecordingState(true)
+        rebuildMenu()
+        rec.onCaptureStopped = { [weak self] in
+            guard let self else { return }
+            self.updateMenuBarRecordingState(false)
+            self.rebuildMenu()
+        }
         rec.onFormatChanged = { [weak self] fmt in
             guard let self else { return }
             self.config.preferredRecordingFormat = fmt
@@ -463,6 +470,7 @@ extension AppController {
             guard let self else { return }
             self.activeRecording = nil
             self.updateMenuBarRecordingState(false)
+            self.rebuildMenu()
             switch outcome {
             case .copiedFile(let url, let fmt):
                 self.shelfController.recordMediaFile(url)

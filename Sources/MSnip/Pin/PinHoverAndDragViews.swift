@@ -507,7 +507,7 @@ final class PinHoverBarView: NSView {
         let wasHovered = isMouseInsideBar || hoveredIdx != nil
         isMouseInsideBar = false
         hoveredIdx = nil
-        toolTip = nil
+        FloatingTooltipHUD.hide(for: self)
         if wasHovered && !isDraggingPin { NSCursor.arrow.set() }
     }
 
@@ -522,7 +522,11 @@ final class PinHoverBarView: NSView {
     private func syncHover(at pt: CGPoint) {
         let idx = slots.firstIndex(where: { $0.rect.contains(pt) })
         hoveredIdx = idx
-        toolTip = idx.map { slots[$0].tip }
+        if let i = idx, slots.indices.contains(i) {
+            FloatingTooltipHUD.show(slots[i].tip, anchorRectInView: slots[i].rect, of: self)
+        } else {
+            FloatingTooltipHUD.hide(for: self)
+        }
         if idx == 0 {
             NSCursor.openHand.set()
         } else if idx != nil {
@@ -533,6 +537,7 @@ final class PinHoverBarView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
+        FloatingTooltipHUD.hide(for: self)
         let pt = convert(event.locationInWindow, from: nil)
         if let hit = slots.first(where: { $0.rect.contains(pt) }), let action = hit.action {
             onAction?(action)

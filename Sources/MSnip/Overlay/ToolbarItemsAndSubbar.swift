@@ -369,26 +369,49 @@ final class ToolbarSubbarView: NSView {
 
     override func resetCursorRects() { addCursorRect(bounds, cursor: .arrow) }
 
+    override var isHidden: Bool {
+        didSet { if isHidden { clearHover() } }
+    }
+
     override func mouseMoved(with event: NSEvent) {
-        let p = convert(event.locationInWindow, from: nil)
+        updateHover(atLocalPoint: convert(event.locationInWindow, from: nil))
+    }
+
+    func updateHover(atLocalPoint p: CGPoint) {
+        guard !isDraggingSlider else { return }
         let onSlider = sliderHitRect.contains(p)
         let idx = onSlider ? nil : slots.firstIndex(where: { $0.rect.contains(p) })
         if onSlider || idx != nil { NSCursor.pointingHand.set() } else { NSCursor.arrow.set() }
-        hoveredSlider = onSlider
-        if idx != hoveredIndex {
+        if hoveredSlider != onSlider || idx != hoveredIndex {
+            hoveredSlider = onSlider
             hoveredIndex = idx
             needsDisplay = true
         }
         if onSlider {
-            toolTip = "拖动进度条调节大小（方向键 ↑↓←→ 或滚轮也可快速调大缩小）"
+            FloatingTooltipHUD.show("拖动进度条调节大小（方向键 ↑↓←→ 或滚轮也可快速调大缩小）", anchorRectInView: sliderHitRect, of: self)
+        } else if let i = idx, slots.indices.contains(i) {
+            FloatingTooltipHUD.show(slots[i].tip, anchorRectInView: slots[i].rect, of: self)
         } else {
-            toolTip = idx.map { slots[$0].tip }
+            FloatingTooltipHUD.hide(for: self)
         }
     }
 
-    override func mouseExited(with event: NSEvent) { hoveredIndex = nil; hoveredSlider = false; needsDisplay = true }
+    func clearHover() {
+        FloatingTooltipHUD.hide(for: self)
+        if hoveredIndex != nil || hoveredSlider {
+            hoveredIndex = nil; hoveredSlider = false; needsDisplay = true
+        }
+    }
+
+    override func mouseExited(with event: NSEvent) { clearHover() }
+
+    override func viewWillMove(toWindow newWindow: NSWindow?) {
+        super.viewWillMove(toWindow: newWindow)
+        if newWindow == nil { clearHover() }
+    }
 
     override func mouseDown(with event: NSEvent) {
+        FloatingTooltipHUD.hide(for: self)
         let p = convert(event.locationInWindow, from: nil)
         if sliderHitRect.contains(p) {
             isDraggingSlider = true
