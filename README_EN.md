@@ -15,11 +15,12 @@
   <img alt="Swift" src="https://img.shields.io/badge/Pure_Native-Swift_5.9%2B-F05138?style=flat-square&logo=swift&logoColor=white">
   <img alt="Zero Dependencies" src="https://img.shields.io/badge/3rd--Party_Deps-0-10B981?style=flat-square">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0-D97706?style=flat-square"></a>
+  <a href="https://linux.do/"><img alt="LINUX DO" src="https://img.shields.io/badge/LINUX_DO-Community-1677FF?style=flat-square"></a>
 </p>
 
 [简体中文](README.md) · **English**
 
-**[Why MSnip](#-why-msnip-five-core-advantages) · [Deep Comparison](#-in-depth-comparison) · [Performance Budget](#-performance--footprint-budget-measured) · [Screenshots](#-screenshots) · [Core Features](#-core-capabilities) · [Installation](#-installation) · [Shortcuts](#-keyboard-shortcuts) · [Architecture](#-architecture--testing) · [License](#-license-noncommercial-source-available)**
+**[Why MSnip](#-why-msnip-five-core-advantages) · [Deep Comparison](#-in-depth-comparison) · [30s Quick Start](#-30-second-quick-start) · [Performance Budget](#-performance--footprint-budget-measured) · [Screenshots](#-screenshots) · [Installation](#-installation) · [FAQ](#-faq) · [License](#-license-noncommercial-source-available)**
 
 </div>
 
@@ -77,6 +78,17 @@ Most macOS power users end up running 3–4 menu bar utilities just to cover eve
 | **OCR / Tables / Translate / LaTeX** | Preview only | Offline OCR | None | Offline OCR | OCR + Pin Translate | **6 OCR Engines + Markdown Tables + In-Place Translate + LaTeX** |
 | **Terminal / AI IDE Paste** | None | None | None | None | None | **Context-Aware (Path in Terminals / Raw Image in Chat)** |
 | **Idle Energy & Memory** | System | Light | Medium | Heavy | Heavy | **`0%` Idle CPU · Immediate Bitmap Release** |
+
+---
+
+## 30-Second Quick Start
+
+Once launched, MSnip lives quietly in the menu bar — no Dock icon, no background polling:
+
+1. **Smart Capture + Terminal / AI IDE Path Paste**: Press **`⌥A`** to freeze the screen → move over any real card or window (scroll or press `[` `]` to step tiers) → click or drag → double-click to copy. Press `⌘V` in **Terminal / Ghostty / Cursor / Claude Code / Codex** to paste a space-free `.png` path automatically, or `⌘V` in chat/docs for the raw image.
+2. **1-Click Offline Privacy Auto-Redact**: Click the privacy redact icon in the toolbar to automatically mask API keys, JWTs, phone numbers, emails, ID numbers, and IPv4 addresses on-device (`⌘Z` undoes the entire batch).
+3. **Desktop Pins & Top Drop Shelf**: Press **`P`** to pin any capture on screen (Live Text, click-through `P`, `⌘+Drag` out as a `.png`); push your pointer against the top screen edge to reveal the **98pt Top Shelf** and `⌘+Click` multiple items into the Collage / PDF Studio.
+4. **High-FPS Recording + Filmstrip Lossless Trim**: Press **`⌥R`** to record with optional live pen/laser markup; finish an MP4 via the scissors icon to scrub live frames on a 10-tile filmstrip and trim losslessly in milliseconds.
 
 ---
 
@@ -174,7 +186,15 @@ bash scripts/install.sh --rebuild
 
 ### Option 2: Direct Download from GitHub Releases (Universal / Native `arm64`)
 
-Download `MSnip-v*-macOS.zip` (Universal Binary) or `MSnip-v*-macOS-arm64.zip` (ultra-light Apple Silicon native) from **[GitHub Releases](https://github.com/xy-tuoren/MSnip/releases)**, unzip, and move `MSnip.app` to `/Applications`.
+Download from **[GitHub Releases (Latest)](https://github.com/xy-tuoren/MSnip/releases/latest)**:
+- **Universal Binary (Apple Silicon + Intel)**: `MSnip-v*-macOS.zip` (`~2.9 MB`)
+- **Apple Silicon Native (`arm64`)**: `MSnip-v*-macOS-arm64.zip` (`~1.3 MB`)
+
+Unzip and move `MSnip.app` to `/Applications`. If macOS Gatekeeper flags the unsigned download on first launch, run:
+
+```bash
+xattr -cr /Applications/MSnip.app
+```
 
 ### Option 3: Homebrew Cask
 
@@ -182,6 +202,40 @@ Download `MSnip-v*-macOS.zip` (Universal Binary) or `MSnip-v*-macOS-arm64.zip` (
 brew tap xy-tuoren/msnip https://github.com/xy-tuoren/MSnip
 brew install --cask msnip
 ```
+
+> The Cask postflight clears quarantine attributes automatically.
+
+---
+
+## FAQ
+
+<details>
+<summary><strong>macOS says "MSnip is damaged and can't be opened" or "unverified developer"?</strong></summary>
+
+MSnip is an independent free utility signed ad-hoc rather than notarized with a paid Apple Developer subscription, so macOS tags browser downloads with `com.apple.quarantine`. Run `xattr -cr /Applications/MSnip.app` once, or install via Homebrew Cask / `bash scripts/install.sh --rebuild`.
+
+</details>
+
+<details>
+<summary><strong>Do I need to re-grant Screen Recording / Accessibility permissions after upgrading?</strong></summary>
+
+Normal daily usage and reboots keep permissions intact. If you rebuild frequently from source, run `bash scripts/setup-cert.sh` once to create a persistent local signing certificate in your Keychain — future rebuilds keep the exact same code signature and preserve TCC permissions automatically.
+
+</details>
+
+<details>
+<summary><strong>Does MSnip phone home, collect telemetry, or upload screenshots?</strong></summary>
+
+**Never.** MSnip is 100% source-available with zero third-party SDKs, zero accounts, and zero telemetry. Capture, annotations, privacy auto-redaction, Apple Vision OCR, QR scanning, scrolling stitch, recording/trimming, and macOS 15+ Apple native translation run completely offline. Network calls occur only when you explicitly configure and invoke a third-party cloud translation / OCR / LaTeX endpoint.
+
+</details>
+
+<details>
+<summary><strong>Why PolyForm Noncommercial 1.0.0 instead of MIT?</strong></summary>
+
+To keep 100% of the source code public, auditable, and free for personal/noncommercial use and self-compilation while prohibiting unauthorized commercial resale, closed-source repackaging, or bundling into paid products.
+
+</details>
 
 ---
 
@@ -276,6 +330,16 @@ scripts/
 </div>
 
 ---
+
+## Privacy
+
+MSnip is strictly local-first: zero accounts, zero analytics, zero ads, and zero background network requests. Outbound requests happen only when you explicitly configure and trigger a cloud OCR, translation, or LaTeX provider.
+
+## Acknowledgments
+
+Thanks to the **[LINUX DO](https://linux.do/)** community for feedback, ideas, and support.
+
+[![LINUX DO](https://img.shields.io/badge/LINUX%20DO-Community-1677FF?style=flat-square)](https://linux.do/)
 
 ## License (Noncommercial Source-Available)
 

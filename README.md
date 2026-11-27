@@ -15,11 +15,12 @@
   <img alt="Swift" src="https://img.shields.io/badge/Pure_Native-Swift_5.9%2B-F05138?style=flat-square&logo=swift&logoColor=white">
   <img alt="Zero Dependencies" src="https://img.shields.io/badge/3rd--Party_Deps-0-10B981?style=flat-square">
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/License-PolyForm_Noncommercial_1.0-D97706?style=flat-square"></a>
+  <a href="https://linux.do/"><img alt="LINUX DO" src="https://img.shields.io/badge/LINUX_DO-Community-1677FF?style=flat-square"></a>
 </p>
 
 **简体中文** · [English](README_EN.md)
 
-**[核心优势](#-为什么选-msnip五大硬核优势) · [横向深度对比](#-与主流-macos-截图工具深度对比) · [性能红线](#-性能与体积红线实测口径) · [界面预览](#-界面与实景预览) · [核心功能](#-核心功能一览) · [快速安装](#-快速安装) · [快捷键](#-快捷键速查) · [工程架构](#-工程架构与测试) · [许可协议](#-许可协议非商用公开源码)**
+**[核心优势](#-为什么选-msnip五大硬核优势) · [深度对比](#-与主流-macos-截图工具深度对比) · [30 秒上手](#-30-秒快速上手) · [性能红线](#-性能与体积红线实测口径) · [界面预览](#-界面与实景预览) · [快速安装](#-快速安装) · [常见问题](#-常见问题) · [许可协议](#-许可协议非商用公开源码)**
 
 </div>
 
@@ -77,6 +78,17 @@ macOS 用户为了凑齐日常视觉效率，常常要在菜单栏同时常驻 3
 | **OCR / 表格 / 翻译 / LaTeX** | 预览选字 | 离线 OCR | 不支持 | 离线 OCR | OCR + 贴图翻译 | **6 类 OCR + Markdown 表格 + 段落级原位/流式翻译 + LaTeX** |
 | **终端 / AI IDE 智能贴路径** | 不支持 | 不支持 | 不支持 | 不支持 | 不支持 | **按前台应用自动切换（终端贴路径 / 聊天贴原图）** |
 | **待机能耗与内存红线** | 系统进程 | 较轻 | 中等 | 较重 | 较重 | **待机 `0%` CPU · 退出会话秒清全屏位图** |
+
+---
+
+## 30 秒快速上手
+
+安装打开后 MSnip 仅静默常驻在顶部菜单栏，不占 Dock 栏、无后台轮询：
+
+1. **截图标注 + 终端/AI 编程秒贴路径**：按 **`⌥A`** 冻结屏幕 → 鼠标移动自动吸附真实窗口/卡片（滚轮或 `[` `]` 切层）→ 框选或单击锁定 → 双击选区完成复制。切回 **Terminal / Ghostty / Cursor / Claude Code / Codex** 按 `⌘V` 自动贴出无空格 `.png` 路径；切回 **微信 / 飞书 / 文档** 按 `⌘V` 直接贴原图。
+2. **发报错截图前一键离线打码**：框选后点工具栏的**隐私打码图标**，本机 Vision 自动定位并遮盖 API Key、JWT、手机号、邮箱、身份证与 IPv4，误遮按 `⌘Z` 一步撤回。
+3. **贴图对照 & 顶边暂存架**：截图后按 **`P`** 钉在桌面随时对照（支持 Live Text 划词、`P` 鼠标穿透、`⌘+拖拽` 当文件发出去）；鼠标抵住屏幕正顶边即可滑出 **98pt 顶部暂存架**，`⌘+单击` 多选多图直接进入拼图 / 合并 PDF 工作室。
+4. **高帧率录屏 + 胶片帧无损裁剪**：按 **`⌥R`** 框选录屏区域，支持边录边用红笔/激光笔标注；MP4 录制结束点工具栏剪刀图标，拖动胶片缩略图首尾手柄即可实时追帧并毫秒级无损裁切。
 
 ---
 
@@ -174,7 +186,15 @@ bash scripts/install.sh --rebuild
 
 ### 方式二：GitHub Releases 直接下载（Universal 双架构 / 原生 arm64）
 
-前往 **[GitHub Releases](https://github.com/xy-tuoren/MSnip/releases)** 下载 `MSnip-v*-macOS.zip`（通用双架构）或 `MSnip-v*-macOS-arm64.zip`（Apple Silicon 极致轻量版），解压后拖入 `/Applications` 即可。
+前往 **[GitHub Releases（最新版）](https://github.com/xy-tuoren/MSnip/releases/latest)** 下载：
+- **通用双架构（Apple Silicon + Intel）**：`MSnip-v*-macOS.zip`（约 `2.9 MB`）
+- **Apple Silicon (M1–M4) 原生极致轻量版**：`MSnip-v*-macOS-arm64.zip`（约 `1.3 MB`）
+
+解压后拖入 `/Applications` 即可运行。首次打开如遇 macOS Gatekeeper 提示，执行一次清除隔离属性：
+
+```bash
+xattr -cr /Applications/MSnip.app
+```
 
 ### 方式三：Homebrew Cask
 
@@ -182,6 +202,47 @@ bash scripts/install.sh --rebuild
 brew tap xy-tuoren/msnip https://github.com/xy-tuoren/MSnip
 brew install --cask msnip
 ```
+
+> Homebrew Cask 安装脚本已内置 `xattr -cr` 自动清除隔离属性，开箱即用。
+
+---
+
+## 常见问题
+
+<details>
+<summary><strong>首次打开提示「已损坏，无法打开」或「无法验证开发者」？</strong></summary>
+
+MSnip 为独立开发者免费项目，目前使用 ad-hoc 签名而未购置 Apple 年费公证证书，macOS 会给浏览器下载的 Zip 打上 `com.apple.quarantine` 隔离标记。终端执行一次 `xattr -cr /Applications/MSnip.app` 即可正常打开；如果你使用 Homebrew Cask 安装或本地源码编译（`bash scripts/install.sh --rebuild`），则全程不会遇到该提示。
+
+</details>
+
+<details>
+<summary><strong>以后升级版本，需要重新勾选「屏幕录制 / 辅助功能」权限吗？</strong></summary>
+
+日常使用或重启电脑不会掉权限。如果你经常拉取最新源码自行重编，建议先运行一次 `bash scripts/setup-cert.sh` 在本机钥匙串生成固定自签名证书——此后每次 `bash scripts/install.sh --rebuild` 升级都将保持同一证书指纹，**永久免重授 TCC 系统权限**。
+
+</details>
+
+<details>
+<summary><strong>会偷偷联网、上传我的截图或采集遥测吗？</strong></summary>
+
+**绝不。** MSnip 100% 源码公开且零第三方 SDK，无账号系统、无埋点遥测、无后台心跳上报。截图、标注、离线隐私打码、Apple Vision OCR、二维码扫描、长图拼接、录屏裁剪及 macOS 15+ Apple 原生翻译全部本机离线运行。仅当你主动在「设置 → 模型与服务」中配置了第三方云翻译 / 云 OCR / LaTeX 接口并触发对应功能时，请求才会直接发往你填写的接口地址，且 API 密钥仅存于 `0600` 本地文件或 macOS 系统钥匙串。
+
+</details>
+
+<details>
+<summary><strong>为什么原生体积能压到 2.7 MB，和其他几十上百 MB 的工具差在哪？</strong></summary>
+
+主流跨平台截图工具往往捆绑 Electron / Qt 运行时、Chromium 渲染壳或完整 `ffmpeg` 二进制。MSnip 放弃跨平台包袱，纯原生 Swift 直调 macOS 内置 `AppKit`、`ScreenCaptureKit`、`Accelerate/vImage`、`Vision`、`VideoToolbox` 与 `Translation`，再结合单 LLVM 单元 `-Osize` 裁剪与 `68 KB` 纯矢量图标，在不牺牲任何核心能力的前提下将原生包压到 `2.7 MB`。
+
+</details>
+
+<details>
+<summary><strong>为什么从 MIT 切换为 PolyForm Noncommercial 1.0.0 协议？</strong></summary>
+
+为了让每一位个人用户与开发者都能放心审阅全部源码、免费自用与自行编译，同时防止项目代码被直接闭源换皮、打包售卖或未经授权集成到付费商业产品中。个人学习、研究与非商业使用永久免费；如需商业授权请通过 Issue 联系作者。
+
+</details>
 
 ---
 
@@ -276,6 +337,16 @@ scripts/
 </div>
 
 ---
+
+## 隐私声明
+
+MSnip 是本地优先的桌面效率工具：无账号、无遥测、无广告，默认不产生任何后台联网请求；仅在你主动配置并调用云端 OCR / 翻译 / LaTeX 服务时，直连你指定的服务接口。
+
+## 鸣谢
+
+感谢 **[LINUX DO](https://linux.do/)** 社区与各位佬友的反馈、建议与支持，也感谢 macOS 原生效率工具生态中众多优秀作品带来的启发。
+
+[![LINUX DO](https://img.shields.io/badge/LINUX%20DO-Community-1677FF?style=flat-square)](https://linux.do/)
 
 ## 许可协议（非商用公开源码）
 
