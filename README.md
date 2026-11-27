@@ -203,7 +203,7 @@ brew tap xy-tuoren/msnip https://github.com/xy-tuoren/MSnip
 brew install --cask msnip
 ```
 
-> Homebrew Cask 安装脚本已内置 `xattr -cr` 自动清除隔离属性，开箱即用。
+> Homebrew Cask 会先校验 Release 包的 SHA256，再用 `xattr -cr` 自动清除隔离属性，开箱即用。
 
 ---
 

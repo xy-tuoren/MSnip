@@ -28,7 +28,7 @@
   - `Translation/`：Apple 原生离线翻译桥接、LLM SSE 流式与主流云翻译客户端、4 标签极客设置中心。
   - `System/`：Carbon/CGEventTap 全局热键、剪贴板/保存面板、双管线 Vision 提取器、全局外观协调、权限引导、Toast HUD 与悬浮速览卡。
 - `Sources/MSnipTests/`：零外部测试框架依赖的自动化单测套件（兼容仅安装 CommandLineTools 的环境）。
-- `scripts/`：`bundle.sh`（单文件行数守门、本机单架构/发版 `--universal` 双架构构建、纯矢量图标 `.icns` 生成与签名）、`install.sh`、`setup-cert.sh`。
+- `scripts/`：`bundle.sh`（单文件行数守门、本机单架构/发版 `--universal` 双架构构建、纯矢量图标 `.icns` 生成与签名）、`install.sh`、`setup-cert.sh`、`update-cask.sh`（发版后按线上 Release 包回写 Cask 的版本号与 SHA256）。
 
 ## 3. 代码铁律
 1. **按模块内聚组织（硬护栏 ≤ 800 行）**：同一类或同一完整职责模块优先放在同一文件（推荐 200–600 行），避免为机械凑行数将单模块过度切碎；同时任何 `.swift` 源文件不得超过 800 行，超出时按清晰边界拆分。
@@ -45,4 +45,5 @@ swift run MSnipTests                    # 运行全部核心几何/撤销栈/渲
 bash scripts/bundle.sh                  # 本机单架构极致瘦身打包（< 3 MB）
 bash scripts/bundle.sh --universal      # 构建 Release 双架构通用二进制（发版用）
 bash scripts/install.sh                 # 停止旧实例并安装启动至 /Applications/MSnip.app
+bash scripts/update-cask.sh             # 上传 Release 后，把线上 Universal Zip 的 SHA256 写入 Casks/msnip.rb
 ```

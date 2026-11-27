@@ -203,7 +203,7 @@ brew tap xy-tuoren/msnip https://github.com/xy-tuoren/MSnip
 brew install --cask msnip
 ```
 
-> The Cask postflight clears quarantine attributes automatically.
+> The Cask verifies the release zip's SHA256, then its postflight clears quarantine attributes automatically.
 
 ---
 

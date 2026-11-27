@@ -238,3 +238,6 @@ echo "  App 总大小: $(du -sh "$APP_BUNDLE" | awk '{print $1}') (${APP_KB} KB 
 echo "  Zip 包大小: $(du -sh "$ZIP_PATH" | awk '{print $1}') ($(basename "$ZIP_PATH"))"
 echo "  Zip SHA256: $(shasum -a 256 "$ZIP_PATH" | awk '{print $1}')"
 echo "=========================================="
+if [ "$UNIVERSAL" = "1" ]; then
+    echo "  发版提醒：把 Zip 上传到 GitHub Release 后，运行 bash scripts/update-cask.sh 将线上包的 SHA256 写入 Casks/msnip.rb"
+fi
