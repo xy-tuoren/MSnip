@@ -333,7 +333,7 @@ scripts/
 
 ## Privacy
 
-MSnip is strictly local-first: zero accounts, zero analytics, zero ads, and zero background network requests. Outbound requests happen only when you explicitly configure and trigger a cloud OCR, translation, or LaTeX provider, and when the LaTeX result window loads a pinned, SRI-verified copy of KaTeX from the jsDelivr CDN for typesetting (no formula content is sent).
+MSnip is strictly local-first: zero accounts, zero analytics, zero ads, and zero background network requests. Outbound requests happen only when you explicitly configure and trigger a cloud OCR, translation, or LaTeX provider, and when the LaTeX result window loads a pinned, SRI-verified copy of KaTeX from the jsDelivr CDN for typesetting (no formula content is sent). For troubleshooting, MSnip keeps a local log of app events and error codes in `~/Library/Logs/MSnip` (no screenshots, recognized or translated text, keys, or endpoints; capped at about 1 MB). It leaves your Mac only when you click "Copy Diagnostics" in Settings.
 
 ## Acknowledgments
 

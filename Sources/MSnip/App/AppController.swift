@@ -53,6 +53,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         if configSaveWork != nil { configSaveWork?.cancel(); configSaveWork = nil; config.save() }
         historyRing.flushPendingWrites()
+        MSnipLog.info(.app, "Terminate")
+        MSnipLog.flush()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -69,6 +71,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         setupShelfAndRemoteIPC()
         hotKeyManager.apply(config: config)
         if config.hotKeysEnabled && !hotKeyManager.failedActions.isEmpty {
+            let names = hotKeyManager.failedActions.map(\.rawValue).sorted().joined(separator: ", ")
+            MSnipLog.warning(.hotkey, "\(hotKeyManager.failedActions.count) global hotkey(s) failed to register: \(names)")
             ToastHUD.show(message: "⚠ \(hotKeyManager.failedActions.count) 项全局快捷键注册冲突", actionTitle: "查看冲突 ›") { [weak self] in
                 self?.openShortcutsSettings()
             }
@@ -76,6 +80,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // 启动期仅做轻量权限探测，不在空载时提前拉起 ScreenCaptureKit / Metal 图形池以压低常驻内存
         Task { @MainActor [weak self] in
             let ok = await ScreenCapturer.hasScreenCapturePermission()
+            let axOK = RegionDetector.checkAccessibilityPermission(prompt: false)
+            MSnipLog.info(.permission, "Launch permissions: screenRecording=\(ok ? "granted" : "missing") accessibility=\(axOK ? "granted" : "missing")")
             guard let self else { return }
             self.rebuildMenu()
             if !ok {

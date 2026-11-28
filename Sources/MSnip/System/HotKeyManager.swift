@@ -46,6 +46,7 @@ final class HotKeyManager {
                 isPriorityTapActive = true
                 return
             }
+            MSnipLog.warning(.hotkey, "Priority event tap unavailable (accessibility not granted?); falling back to Carbon hotkeys")
         }
 
         for (index, action) in GlobalHotKeyAction.allCases.enumerated() {
@@ -65,6 +66,7 @@ final class HotKeyManager {
                 hotKeyRefs[hotKeyID] = ref
             } else {
                 failedActions.insert(action)
+                MSnipLog.warning(.hotkey, "RegisterEventHotKey failed action=\(action.rawValue) combo=\(combo.displayString) status=\(status)")
             }
         }
     }

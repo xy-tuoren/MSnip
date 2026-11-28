@@ -20,6 +20,9 @@ if alreadyRunning {
     exit(0)
 }
 
+// 仅主实例挂载本地诊断日志（转发命令的第二实例 0.01s 即退出，不写日志）
+DiagnosticLogging.bootstrap()
+
 // 入口：菜单栏无主窗口常驻模式（不占用 Dock 栏，无轮询待机 0% CPU）
 let app = NSApplication.shared
 app.setActivationPolicy(.accessory)

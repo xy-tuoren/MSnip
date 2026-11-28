@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import MSnipCore
 
 /// ChatGPT 风格权限引导主控制器：
 /// 1. 独立权限总览面板：双圆角卡片（屏幕录制 / 辅助功能），主次按钮随授权进度自动切换；
@@ -173,6 +174,8 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         updateUI(screenOK: screenOK, axOK: axOK)
 
         if changed {
+            // 引导窗每秒轮询一次，只在状态变化时记录，避免刷屏
+            MSnipLog.info(.permission, "Permission state: screenRecording=\(screenOK ? "granted" : "missing") accessibility=\(axOK ? "granted" : "missing")")
             onPermissionChanged?()
             if screenOK && axOK {
                 closeAll()

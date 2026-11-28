@@ -53,6 +53,22 @@ enum LatexRecognitionService {
         activeProfileID: UUID? = nil,
         visionProfiles: [TranslationProviderProfile]
     ) async throws -> LatexRecognitionOutcome {
+        do {
+            return try await performRecognize(image: image, config: config, activeProfileID: activeProfileID, visionProfiles: visionProfiles)
+        } catch {
+            if !(error is CancellationError), (error as? URLError)?.code != .cancelled {
+                MSnipLog.warning(.latex, "LaTeX engine=\(config.engineKind.rawValue) failed", error: error)
+            }
+            throw error
+        }
+    }
+
+    private static func performRecognize(
+        image: CGImage,
+        config: LatexRecognitionConfig,
+        activeProfileID: UUID?,
+        visionProfiles: [TranslationProviderProfile]
+    ) async throws -> LatexRecognitionOutcome {
         let t0 = CFAbsoluteTimeGetCurrent()
 
         switch config.engineKind {

@@ -92,6 +92,7 @@ enum ClipboardAndSave {
             try pngData.write(to: outURL, options: .atomic)
             return outURL
         } catch {
+            MSnipLog.error(.export, "Writing temporary PNG failed", error: error)
             return nil
         }
     }
@@ -197,7 +198,10 @@ enum ClipboardAndSave {
     ) -> URL? {
         guard let result = CaptureImageExporter.encodeWithFallback(
             cgImage: cgImage, scaleFactor: scaleFactor, format: format, exportAt1x: exportAt1x
-        ) else { return nil }
+        ) else {
+            MSnipLog.error(.export, "Image encoding failed format=\(format.rawValue) \(cgImage.width)×\(cgImage.height)")
+            return nil
+        }
         try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
 
         let fileName = SaveFilenameTemplate.render(
@@ -212,6 +216,7 @@ enum ClipboardAndSave {
             try result.data.write(to: outURL, options: .atomic)
             return outURL
         } catch {
+            MSnipLog.error(.export, "Quick save (\(result.actualFormat.fileExtension)) failed", error: error)
             return nil
         }
     }
@@ -251,7 +256,10 @@ enum ClipboardAndSave {
         let requestedFmt = CaptureExportFormat.from(fileExtension: url.pathExtension) ?? effectiveDefault
         guard let result = CaptureImageExporter.encodeWithFallback(
             cgImage: cgImage, scaleFactor: scaleFactor, format: requestedFmt, exportAt1x: exportAt1x
-        ) else { return nil }
+        ) else {
+            MSnipLog.error(.export, "Image encoding failed format=\(requestedFmt.rawValue) \(cgImage.width)×\(cgImage.height)")
+            return nil
+        }
         let finalURL: URL = (result.actualFormat != requestedFmt)
             ? url.deletingPathExtension().appendingPathExtension(result.actualFormat.fileExtension)
             : url
@@ -259,6 +267,7 @@ enum ClipboardAndSave {
             try result.data.write(to: finalURL, options: .atomic)
             return (finalURL, finalURL.deletingLastPathComponent().standardizedFileURL.path)
         } catch {
+            MSnipLog.error(.export, "Save panel write (\(result.actualFormat.fileExtension)) failed", error: error)
             let alert = NSAlert()
             alert.messageText = "保存图片失败"
             alert.informativeText = error.localizedDescription

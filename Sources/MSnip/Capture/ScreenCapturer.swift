@@ -110,7 +110,9 @@ enum ScreenCapturer {
             return true
         }
         _ = CGRequestScreenCaptureAccess()
-        return CGPreflightScreenCaptureAccess()
+        let granted = CGPreflightScreenCaptureAccess()
+        MSnipLog.info(.permission, "Requested screen recording permission → \(granted ? "granted" : "still missing")")
+        return granted
     }
 
     @MainActor
@@ -139,9 +141,14 @@ enum ScreenCapturer {
                 runtimeVerifiedAccess = true
                 return sck
             }
+            MSnipLog.warning(.capture, "ScreenCaptureKit capture failed for \(screens.count) display(s); falling back to CoreGraphics")
         }
         let legacy = captureViaLegacyCoreGraphics(screens: screens)
-        if !legacy.isEmpty { runtimeVerifiedAccess = true }
+        if !legacy.isEmpty {
+            runtimeVerifiedAccess = true
+        } else {
+            MSnipLog.error(.capture, "All capture paths returned no image (displays=\(screens.count), preflight=\(CGPreflightScreenCaptureAccess()))")
+        }
         return legacy
     }
 
@@ -155,7 +162,11 @@ enum ScreenCapturer {
         }
         if out.count == neededIDs.count && !out.isEmpty { return out }
 
-        guard let content = try? await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true) else {
+        let content: SCShareableContent
+        do {
+            content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+        } catch {
+            MSnipLog.warning(.capture, "SCShareableContent unavailable", error: error)
             return nil
         }
         cachedDisplayFilters.removeAll()
@@ -196,16 +207,22 @@ enum ScreenCapturer {
 
         if specs.count == 1 {
             let s = specs[0]
-            if let img = try? await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.cfg) {
+            do {
+                let img = try await SCScreenshotManager.captureImage(contentFilter: s.filter, configuration: s.cfg)
                 return [ScreenSnapshot(screen: screens[s.index], displayID: s.displayID, cgImage: img)]
+            } catch {
+                MSnipLog.warning(.capture, "SCScreenshotManager capture failed; retrying with fresh filters", error: error)
             }
             // 若旧缓存 filter 因显示器状态变更失效，清理重试一次
             cachedDisplayFilters.removeAll()
-            guard let fresh = await ensureDisplayFilters(for: screens), let f2 = fresh[s.displayID],
-                  let img2 = try? await SCScreenshotManager.captureImage(contentFilter: f2, configuration: s.cfg) else {
+            guard let fresh = await ensureDisplayFilters(for: screens), let f2 = fresh[s.displayID] else { return nil }
+            do {
+                let img2 = try await SCScreenshotManager.captureImage(contentFilter: f2, configuration: s.cfg)
+                return [ScreenSnapshot(screen: screens[s.index], displayID: s.displayID, cgImage: img2)]
+            } catch {
+                MSnipLog.error(.capture, "SCScreenshotManager retry failed", error: error)
                 return nil
             }
-            return [ScreenSnapshot(screen: screens[s.index], displayID: s.displayID, cgImage: img2)]
         }
 
         let captureBatch: ([CaptureSpec]) async -> [(Int, CGDirectDisplayID, CGImage)] = { batch in
@@ -225,6 +242,7 @@ enum ScreenCapturer {
         }
         var capturedPairs = await captureBatch(specs)
         if capturedPairs.count < specs.count {
+            MSnipLog.warning(.capture, "Multi-display capture got \(capturedPairs.count)/\(specs.count) displays; retrying with fresh filters")
             cachedDisplayFilters.removeAll()
             if let fresh = await ensureDisplayFilters(for: screens) {
                 let refreshedSpecs = specs.compactMap { s -> CaptureSpec? in
@@ -325,10 +343,12 @@ final class RegionStreamSampler {
         sessionGen &+= 1
         let myGen = sessionGen
         guard #available(macOS 13.0, *) else {
+            MSnipLog.warning(.capture, "Region stream requires macOS 13+")
             onError("长截图实时流需要 macOS 13.0 及以上系统")
             return
         }
         guard let displayID = ScreenCapturer.screenDisplayID(screen) else {
+            MSnipLog.error(.capture, "Region stream: display ID unavailable")
             onError("无法识别目标显示器")
             return
         }
@@ -346,6 +366,7 @@ final class RegionStreamSampler {
                 let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
                 guard !self.stopped, self.sessionGen == myGen else { return }
                 guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else {
+                    MSnipLog.error(.capture, "Region stream: display \(displayID) not in shareable content (\(content.displays.count) displays)")
                     onError("未找到目标屏幕采集源")
                     return
                 }
@@ -417,11 +438,16 @@ final class RegionStreamSampler {
                     onPixelBuffer: onPixelBufferBackground,
                     onAudioSample: wantAudio ? onAudioSampleBackground : nil
                 )
-                let stream = SCStream(filter: filter, configuration: cfg, delegate: nil)
+                let stream = SCStream(filter: filter, configuration: cfg, delegate: proxy)
                 try stream.addStreamOutput(proxy, type: .screen, sampleHandlerQueue: self.captureQueue)
                 if wantAudio {
-                    try? stream.addStreamOutput(proxy, type: .audio, sampleHandlerQueue: self.audioQueue)
+                    do {
+                        try stream.addStreamOutput(proxy, type: .audio, sampleHandlerQueue: self.audioQueue)
+                    } catch {
+                        MSnipLog.warning(.recording, "System audio output unavailable; recording video only", error: error)
+                    }
                 }
+                MSnipLog.info(.capture, "Region stream start \(cfg.width)×\(cfg.height) fps=\(fps) audio=\(wantAudio) lossless=\(losslessBGRA)")
                 try await stream.startCapture()
 
                 if self.stopped || self.sessionGen != myGen {
@@ -432,6 +458,7 @@ final class RegionStreamSampler {
                 self.activeStream = stream
             } catch {
                 if !self.stopped {
+                    MSnipLog.error(.capture, "Region stream failed to start", error: error)
                     onError("启动实时画面采集流失败：\(error.localizedDescription)")
                 }
             }
@@ -452,7 +479,7 @@ final class RegionStreamSampler {
 }
 
 @available(macOS 13.0, *)
-private final class StreamOutputProxy: NSObject, SCStreamOutput, @unchecked Sendable {
+private final class StreamOutputProxy: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     private let onFrame: @Sendable (CGImage) -> Void
     private let onPixelBuffer: (@Sendable (CVPixelBuffer) -> Void)?
     private let onAudioSample: (@Sendable (CMSampleBuffer) -> Void)?
@@ -465,6 +492,11 @@ private final class StreamOutputProxy: NSObject, SCStreamOutput, @unchecked Send
         self.onFrame = onFrame
         self.onPixelBuffer = onPixelBuffer
         self.onAudioSample = onAudioSample
+    }
+
+    /// 系统中途终止采集流（权限被撤销、显示器断开等）时只记录日志，不改变既有会话行为
+    func stream(_ stream: SCStream, didStopWithError error: Error) {
+        MSnipLog.error(.capture, "Region stream stopped by system", error: error)
     }
 
     func stream(_ stream: SCStream, didOutputSampleBuffer sampleBuffer: CMSampleBuffer, of outputType: SCStreamOutputType) {

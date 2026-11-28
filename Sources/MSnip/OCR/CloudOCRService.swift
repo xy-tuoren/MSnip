@@ -52,6 +52,25 @@ enum CloudOCRService {
         activeProfileID: UUID?,
         profiles: [TranslationProviderProfile]
     ) async throws -> VisionLLMOCROutcome {
+        do {
+            return try await performRecognizeText(
+                image: image, engine: engine, config: config, activeProfileID: activeProfileID, profiles: profiles
+            )
+        } catch {
+            if !(error is CancellationError), (error as? URLError)?.code != .cancelled {
+                MSnipLog.warning(.ocr, "Cloud OCR engine=\(engine.rawValue) failed", error: error)
+            }
+            throw error
+        }
+    }
+
+    private static func performRecognizeText(
+        image: CGImage,
+        engine: OCREngineKind,
+        config: OCRRecognitionConfig,
+        activeProfileID: UUID?,
+        profiles: [TranslationProviderProfile]
+    ) async throws -> VisionLLMOCROutcome {
         let t0 = CFAbsoluteTimeGetCurrent()
         switch engine {
         case .visionLLM:

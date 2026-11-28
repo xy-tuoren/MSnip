@@ -596,15 +596,21 @@ extension TranslationSettingsWindow {
         bakCard.addSubview(exportBtn)
 
         bakCard.addHairline(atY: rowH)
-        let diagTip = "复制系统版本、芯片架构、屏幕拓扑与权限状态摘要到剪贴板，便于排查系统授权问题（不含任何密钥）"
-        addRowLabel("系统环境诊断", y: rowH, height: rowH, in: bakCard, toolTip: diagTip)
+        let diagTip = "复制系统版本、芯片架构、屏幕拓扑、权限状态、近期崩溃报告与最近运行日志到剪贴板，便于反馈问题（不含密钥、截图或识别内容；日志只存于本机 ~/Library/Logs/MSnip）"
+        addRowLabel("诊断信息与日志", y: rowH, height: rowH, in: bakCard, toolTip: diagTip)
         let diagBtn = GeekButton(title: "复制诊断信息", style: .subtle)
         diagBtn.frame = NSRect(x: cardW - insetX - 102, y: rowH + segY, width: 102, height: segH)
         diagBtn.onClick = { [weak self] in
             ClipboardAndSave.copyText(AppConfigPortability.buildDiagnosticReport(config: self?.appConfigProvider?() ?? AppConfig()))
-            ToastHUD.show(message: "✓ 已复制系统环境诊断信息到剪贴板")
+            ToastHUD.show(message: "✓ 已复制诊断信息（含最近日志）到剪贴板")
         }
         bakCard.addSubview(diagBtn)
+
+        let logBtn = GeekButton(title: "打开日志", style: .subtle)
+        logBtn.frame = NSRect(x: diagBtn.frame.minX - 8 - 78, y: rowH + segY, width: 78, height: segH)
+        logBtn.toolTip = "在访达中显示本地运行日志 msnip.log"
+        logBtn.onClick = { DiagnosticLogging.revealLogFile() }
+        bakCard.addSubview(logBtn)
 
         return bakCard.frame.maxY
     }

@@ -279,8 +279,12 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
             }
         }
         let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        guard let data = try? encoder.encode(diskCopy) else { return }
-        try? data.write(to: url, options: .atomic)
+        do {
+            try encoder.encode(diskCopy).write(to: url, options: .atomic)
+        } catch {
+            MSnipLog.error(.config, "Saving translation providers failed", error: error)
+            return
+        }
         try? FileManager.default.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: url.path)
     }
 
@@ -289,8 +293,15 @@ public struct TranslationSettingsConfig: Codable, Equatable, Sendable {
         let fm = FileManager.default
         let stamp = Int(Date().timeIntervalSince1970)
         let backup = url.deletingPathExtension().appendingPathExtension("unreadable-\(stamp).json")
-        guard !fm.fileExists(atPath: backup.path), (try? fm.copyItem(at: url, to: backup)) != nil else { return }
+        guard !fm.fileExists(atPath: backup.path) else { return }
+        do {
+            try fm.copyItem(at: url, to: backup)
+        } catch {
+            MSnipLog.error(.config, "\(url.lastPathComponent) unreadable and backup failed; resetting to defaults", error: error)
+            return
+        }
         try? fm.setAttributes([.posixPermissions: NSNumber(value: Int16(0o600))], ofItemAtPath: backup.path)
+        MSnipLog.warning(.config, "\(url.lastPathComponent) unreadable; backed up as \(backup.lastPathComponent) and reset to defaults")
     }
 
     private static func keychainAccount(for id: UUID) -> String { "translation.profile.\(id.uuidString)" }

@@ -58,6 +58,10 @@ enum ToastHUD {
         actionTitle: String? = nil,
         onAction: (() -> Void)? = nil
     ) {
+        // 只记录失败类提示：普通提示可能携带二维码、取色等用户内容
+        if DiagnosticLogText.looksLikeFailure(message) {
+            MSnipLog.warning(.ui, "Toast: \(message)\(subtitle.map { " — \($0)" } ?? "")")
+        }
         dismissImmediate()
         let isInteractive = (actionTitle != nil && onAction != nil)
         let holdSeconds: TimeInterval = isInteractive ? 6.0 : 2.3

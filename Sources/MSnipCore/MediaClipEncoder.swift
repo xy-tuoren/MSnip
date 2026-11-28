@@ -202,7 +202,13 @@ public final class MediaClipEncoder: @unchecked Sendable {
 
     private func setupMP4Writer(width: Int, height: Int) -> Bool {
         let (outW, outH) = options.mp4Resolution.scaledEvenSize(width: width, height: height)
-        guard let writer = try? AVAssetWriter(outputURL: outputURL, fileType: .mp4) else { return false }
+        let writer: AVAssetWriter
+        do {
+            writer = try AVAssetWriter(outputURL: outputURL, fileType: .mp4)
+        } catch {
+            MSnipLog.error(.recording, "AVAssetWriter init failed", error: error)
+            return false
+        }
         let bitrate = RecordingOptions.recommendedMP4Bitrate(width: outW, height: outH, fps: targetMP4FPS)
         let settings: [String: Any] = [
             AVVideoCodecKey: AVVideoCodecType.h264,
@@ -222,7 +228,10 @@ public final class MediaClipEncoder: @unchecked Sendable {
             kCVPixelBufferHeightKey as String: outH
         ]
         let adp = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: pbAttrs)
-        guard writer.canAdd(input) else { return false }
+        guard writer.canAdd(input) else {
+            MSnipLog.error(.recording, "AVAssetWriter rejected H.264 input \(outW)×\(outH)@\(targetMP4FPS)fps")
+            return false
+        }
         writer.add(input)
 
         var aInput: AVAssetWriterInput?
@@ -235,10 +244,18 @@ public final class MediaClipEncoder: @unchecked Sendable {
             ]
             let ai = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
             ai.expectsMediaDataInRealTime = true
-            if writer.canAdd(ai) { writer.add(ai); aInput = ai }
+            if writer.canAdd(ai) {
+                writer.add(ai); aInput = ai
+            } else {
+                MSnipLog.warning(.recording, "AVAssetWriter rejected AAC input; recording video only")
+            }
         }
 
-        guard writer.startWriting() else { return false }
+        guard writer.startWriting() else {
+            MSnipLog.error(.recording, "AVAssetWriter startWriting failed \(outW)×\(outH)", error: writer.error)
+            return false
+        }
+        MSnipLog.info(.recording, "MP4 writer ready \(outW)×\(outH)@\(targetMP4FPS)fps bitrate=\(bitrate) audio=\(aInput != nil)")
         writer.startSession(atSourceTime: .zero)
         self.mp4Size = (outW, outH); self.assetWriter = writer
         self.videoInput = input; self.audioInput = aInput; self.adaptor = adp
@@ -283,6 +300,7 @@ public final class MediaClipEncoder: @unchecked Sendable {
         }()
         guard let (writer, input, aInput, endTime) = pack else { return nil }
         guard writer.status == .writing else {
+            MSnipLog.error(.recording, "MP4 writer not writing at finish (status=\(writer.status.rawValue))", error: writer.error)
             writer.cancelWriting()
             try? FileManager.default.removeItem(at: outputURL)
             return nil
@@ -295,6 +313,9 @@ public final class MediaClipEncoder: @unchecked Sendable {
         }
         let cancelled: Bool = { lock.lock(); defer { lock.unlock() }; return isCancelled }()
         if writer.status != .completed || cancelled {
+            if !cancelled {
+                MSnipLog.error(.recording, "MP4 finishWriting failed (status=\(writer.status.rawValue))", error: writer.error)
+            }
             try? FileManager.default.removeItem(at: outputURL)
             return nil
         }
@@ -414,6 +435,7 @@ final class GIFDiskSpooler: @unchecked Sendable {
               let dest = CGImageDestinationCreateWithURL(
                   outputURL as CFURL, UTType.gif.identifier as CFString, frames.count, nil
               ) else {
+            if !frames.isEmpty { MSnipLog.error(.recording, "GIF finalize: cannot open spool or create destination (frames=\(frames.count))") }
             try? FileManager.default.removeItem(at: outputURL)
             return nil
         }
@@ -455,11 +477,16 @@ final class GIFDiskSpooler: @unchecked Sendable {
                 CGImageDestinationAddImage(dest, cg, frameProps as CFDictionary)
                 return true
             }
-            if !ok { try? FileManager.default.removeItem(at: outputURL); return nil }
+            if !ok {
+                MSnipLog.error(.recording, "GIF finalize: frame \(i)/\(frames.count) unreadable from spool")
+                try? FileManager.default.removeItem(at: outputURL)
+                return nil
+            }
         }
         let finalized = CGImageDestinationFinalize(dest)
         let cancelledEnd: Bool = { lock.lock(); defer { lock.unlock() }; return isCancelled }()
         if !finalized || cancelledEnd {
+            if !finalized && !cancelledEnd { MSnipLog.error(.recording, "GIF CGImageDestinationFinalize failed (frames=\(frames.count))") }
             try? FileManager.default.removeItem(at: outputURL)
             return nil
         }

@@ -15,6 +15,7 @@
   - `OCRImagePreprocessor.swift` / `OCRTextFormatter.swift` / `OCRLatexModels.swift`：OCR 图像预处理、排版/表格重组与多引擎 OCR/LaTeX 模型配置。
   - `TranslationModels.swift` / `TranslationConfigStore.swift` / `LLMProtocolHelpers.swift`：多协议翻译配置、`0600` 本地隔离与可选系统钥匙串（`Security`）加密凭据仓。
   - `ClipboardImagePromise.swift` / `CaptureHistoryRing.swift` / `ColorSampling.swift` / `ShortcutModels.swift`：延迟剪贴板提供器、异步微缩略图环形历史与取色/快捷键模型。
+  - `DiagnosticLog.swift`：`MSnipLog` 本地诊断日志（系统统一日志 + `~/Library/Logs/MSnip` 双文件滚动、写盘前统一脱敏）。
 - `Sources/MSnip/`：macOS AppKit 平台接入层：
   - `App/`：菜单栏 `NSStatusItem`、应用主控制器生命周期、快存与各子会话路由。
   - `Config/`：本地 JSON 偏好配置、导出导入/诊断报告与开机自启封装（`SMAppService` / `LaunchAgents`）。
@@ -26,7 +27,7 @@
   - `Shelf/`：顶部高密度暂存架（最近截图、录屏、拖拽文件与文本便签）。
   - `OCR/`：双栏 OCR 识字对照窗、多引擎云 OCR 与 LaTeX 公式识别服务及 `WKWebView` KaTeX 预览。
   - `Translation/`：Apple 原生离线翻译桥接、LLM SSE 流式与主流云翻译客户端、4 标签极客设置中心。
-  - `System/`：Carbon/CGEventTap 全局热键、剪贴板/保存面板、双管线 Vision 提取器、全局外观协调、权限引导、Toast HUD 与悬浮速览卡。
+  - `System/`：Carbon/CGEventTap 全局热键、剪贴板/保存面板、双管线 Vision 提取器、全局外观协调、权限引导、Toast HUD、悬浮速览卡与诊断日志接入（`DiagnosticLogging`）。
 - `Sources/MSnipTests/`：零外部测试框架依赖的自动化单测套件（兼容仅安装 CommandLineTools 的环境）。
 - `scripts/`：`bundle.sh`（单文件行数守门、本机单架构/发版 `--universal` 双架构构建、纯矢量图标 `.icns` 生成与签名）、`install.sh`、`setup-cert.sh`、`update-cask.sh`（发版后按线上 Release 包回写 Cask 的版本号与 SHA256）。
 
@@ -37,6 +38,7 @@
    - 视图与鼠标交互使用窗口逻辑点（`CGPoint` / `CGRect`，在 `isFlipped = true` 的覆盖层视图中统一为**左上角原点**）；
    - 最终导出与马赛克/毛玻璃采样按屏幕 `backingScaleFactor` 换算为物理像素，严禁 Retina 模糊失真。
 4. **内存零驻留**：截图/录屏/预览会话结束后必须释放所有全屏 `CGImage`、临时暂存文件、渲染切片缓存与子进程窗口引用。
+5. **日志只记事件不记内容**：失败路径用 `MSnipLog` 记录事件、计数、状态码与 `error:`；绝不传入截图内容、识别/翻译/剪贴板文本、API Key、接口地址或完整路径，也不在鼠标移动、逐帧编码等高频路径打日志。
 
 ## 4. 常用命令
 ```bash

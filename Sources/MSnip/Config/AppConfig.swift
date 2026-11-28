@@ -220,18 +220,22 @@ struct AppConfig: Codable {
     }
 
     static func load() -> AppConfig {
-        guard let data = try? Data(contentsOf: configURL),
-              let decoded = try? JSONDecoder().decode(AppConfig.self, from: data) else {
+        guard let data = try? Data(contentsOf: configURL) else { return AppConfig() }
+        do {
+            return try JSONDecoder().decode(AppConfig.self, from: data)
+        } catch {
+            MSnipLog.warning(.config, "config.json unreadable (\(data.count) bytes); using defaults", error: error)
             return AppConfig()
         }
-        return decoded
     }
 
     func save() {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let data = try? encoder.encode(self) {
-            try? data.write(to: Self.configURL, options: .atomic)
+        do {
+            try encoder.encode(self).write(to: Self.configURL, options: .atomic)
+        } catch {
+            MSnipLog.error(.config, "Saving config.json failed", error: error)
         }
     }
 
@@ -283,7 +287,9 @@ enum LaunchAtLoginManager {
                 }
                 cachedEnabled = enabled
                 return true
-            } catch {}
+            } catch {
+                MSnipLog.warning(.config, "SMAppService \(enabled ? "register" : "unregister") failed; falling back to LaunchAgent", error: error)
+            }
         }
         if enabled {
             guard let execPath = Bundle.main.executablePath else { return false }
@@ -293,9 +299,14 @@ enum LaunchAtLoginManager {
             guard let data = try? PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0) else {
                 return false
             }
-            let ok = (try? data.write(to: plistURL, options: .atomic)) != nil
-            if ok { cachedEnabled = true }
-            return ok
+            do {
+                try data.write(to: plistURL, options: .atomic)
+            } catch {
+                MSnipLog.error(.config, "Writing LaunchAgent plist failed", error: error)
+                return false
+            }
+            cachedEnabled = true
+            return true
         } else {
             try? FileManager.default.removeItem(at: plistURL)
             cachedEnabled = false
@@ -406,6 +417,7 @@ enum AppConfigPortability {
           - Translation Active Kind: \(transKind)
           - Appearance: \(config.appearanceMode.rawValue)
           - Terminal Paste Adapt: \(config.terminalPasteAdaptEnabled)
+        \(DiagnosticLogging.reportSection())
         """
     }
 }

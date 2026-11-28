@@ -75,6 +75,7 @@ final class TranslationService {
             if Task.isCancelled || primaryError is CancellationError || (primaryError as? URLError)?.code == .cancelled {
                 throw primaryError
             }
+            MSnipLog.warning(.translation, "Translation provider kind=\(primary.kind.rawValue) failed", error: primaryError)
             if let fb = resolveReadyFallback(excluding: primary.id) {
                 do {
                     let out = try await runSingleDocument(
@@ -85,11 +86,13 @@ final class TranslationService {
                         onStreamChunk: onStreamChunk
                     )
                     let ms = Int(((ProcessInfo.processInfo.systemUptime - t0) * 1000).rounded())
+                    MSnipLog.info(.translation, "Fallback provider kind=\(fb.kind.rawValue) succeeded in \(ms) ms")
                     return RunResult(translatedText: out, providerName: fb.name, usedFallback: true, elapsedMs: ms)
                 } catch let fbError {
                     if Task.isCancelled || fbError is CancellationError || (fbError as? URLError)?.code == .cancelled {
                         throw fbError
                     }
+                    MSnipLog.error(.translation, "Fallback provider kind=\(fb.kind.rawValue) also failed", error: fbError)
                     // 备选引擎也失败时保留主引擎的真实错误（如 401 密钥失效），避免被系统版本/语言包提示掩盖
                     throw primaryError
                 }
@@ -114,6 +117,7 @@ final class TranslationService {
             if Task.isCancelled || primaryError is CancellationError || (primaryError as? URLError)?.code == .cancelled {
                 throw primaryError
             }
+            MSnipLog.warning(.translation, "Batch translation provider kind=\(primary.kind.rawValue) failed", error: primaryError)
             if let fb = resolveReadyFallback(excluding: primary.id) {
                 do {
                     let res = try await runBatch(lines: lines, target: target, profile: fb, hostWindow: hostWindow)
@@ -122,6 +126,7 @@ final class TranslationService {
                     if Task.isCancelled || fbError is CancellationError || (fbError as? URLError)?.code == .cancelled {
                         throw fbError
                     }
+                    MSnipLog.error(.translation, "Batch fallback provider kind=\(fb.kind.rawValue) also failed", error: fbError)
                     throw primaryError
                 }
             }

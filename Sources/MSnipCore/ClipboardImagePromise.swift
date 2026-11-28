@@ -289,6 +289,7 @@ public final class ClipboardFileBox: @unchecked Sendable {
         do {
             try pngData.write(to: outURL, options: .atomic)
         } catch {
+            MSnipLog.error(.export, "Clipboard promise PNG write failed", error: error)
             return nil
         }
 

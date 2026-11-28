@@ -143,6 +143,7 @@ final class RegionRecordingSession {
             displayMaxFPS: screen.maximumFramesPerSecond, outputWidth: mp4Size.width, outputHeight: mp4Size.height
         )
         let enc = MediaClipEncoder(format: fmt, outputURL: outURL, options: recordingOptions, targetMP4FPS: resolvedMP4FPS)
+        MSnipLog.info(.recording, "Recording start \(fmt.rawValue) \(Int(localCaptureRect.width))×\(Int(localCaptureRect.height))pt @\(Int(scale))x fps=\(fmt == .mp4 ? resolvedMP4FPS : recordingOptions.clampedGifFPS) audio=\(fmt == .mp4 && recordingOptions.captureSystemAudio)")
         self.encoder = enc; self.accumulatedActiveTime = 0; self.paused = false
         let now = CACurrentMediaTime(); self.segmentStartMediaTime = now
 
@@ -199,6 +200,7 @@ final class RegionRecordingSession {
             onPixelBufferBackground: mp4ZeroCopyCallback,
             onAudioSampleBackground: audioCB,
             onError: { [weak self] msg in
+                MSnipLog.error(.recording, "Recording aborted by capture error")
                 ToastHUD.show(message: msg)
                 self?.cancel()
             }
@@ -262,10 +264,13 @@ final class RegionRecordingSession {
             enc.appendFrame(fallback, at: 0.0)
         }
         let fmt = controlBar.format
+        let frames = enc.capturedFrameCount
+        MSnipLog.info(.recording, "Recording finish \(fmt.rawValue) duration=\(String(format: "%.1f", finalDur))s frames=\(frames) mode=\(saveMode)")
         Task { @MainActor [weak self] in
             let url = await enc.finish(finalTimestamp: finalDur)
             guard let self, !self.closed else { return }
             guard let url else {
+                MSnipLog.error(.recording, "Recording produced no output file (\(fmt.rawValue), frames=\(frames))")
                 ToastHUD.show(message: "录制时间过短或未采集到有效画面")
                 self.finishSession(.cancelled)
                 return
@@ -452,7 +457,12 @@ extension RegionRecordingSession {
         try? FileManager.default.createDirectory(at: dirURL, withIntermediateDirectories: true)
         let df = DateFormatter(); df.dateFormat = "yyyyMMdd-HHmmss-SSS"
         let dst = dirURL.appendingPathComponent("MSnip-\(df.string(from: Date())).\(format.rawValue)")
-        guard (try? FileManager.default.copyItem(at: tempURL, to: dst)) != nil else { return nil }
+        do {
+            try FileManager.default.copyItem(at: tempURL, to: dst)
+        } catch {
+            MSnipLog.error(.recording, "Quick save \(format.rawValue) failed", error: error)
+            return nil
+        }
         try? FileManager.default.removeItem(at: tempURL)
         return (dst, dirURL.standardizedFileURL.path)
     }
@@ -481,6 +491,7 @@ extension RegionRecordingSession {
                 try fm.moveItem(at: staging, to: dst)
             }
         } catch {
+            MSnipLog.error(.recording, "Save-as \(format.rawValue) failed; temp clip kept for clipboard", error: error)
             try? fm.removeItem(at: staging)
             return nil
         }
