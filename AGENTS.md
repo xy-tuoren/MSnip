@@ -41,7 +41,7 @@
    - 最终导出与马赛克/毛玻璃采样按屏幕 `backingScaleFactor` 换算为物理像素，严禁 Retina 模糊失真。
 4. **内存零驻留**：截图/录屏/预览会话结束后必须释放所有全屏 `CGImage`、临时暂存文件、渲染切片缓存与子进程窗口引用。
 5. **日志只记事件不记内容**：失败路径用 `MSnipLog` 记录事件、计数、状态码与 `error:`；绝不传入截图内容、识别/翻译/剪贴板文本、API Key、接口地址或完整路径，也不在鼠标移动、逐帧编码等高频路径打日志。
-6. **界面文案走 `L()`**：用户可见文案写成 `L("中文原文")`，带参数的写成 `L("已复制 %@ 项", count)`（只用 `%@`，不要插值进键），并在 `Resources/en.lproj/Localizable.strings` 补英文；`swift run MSnipTests` 会拦下缺译、多余键、占位符不一致与仍含中文的译文。日志、发给模型的提示词、用于匹配或持久化的字符串不包 `L()`。固定宽度的按钮与分段控件用 `widthFitting(atLeast:)` / `fittingWidth` 给较长译文留位，改完用 `swift run MSnip --debug-render-settings <目录> --lang en` 离屏渲染检查。
+6. **界面文案走 `L()`**：用户可见文案写成 `L("中文原文")`，带参数的写成 `L("已复制 %@ 项", count)`（只用 `%@`，不要插值进键），并在 `Resources/en.lproj/Localizable.strings` 补英文；`swift run MSnipTests` 会拦下缺译、多余键、占位符不一致与仍含中文的译文。日志、发给模型的提示词、用于匹配或持久化的字符串不包 `L()`。固定宽度的按钮与分段控件用 `widthFitting(atLeast:)` / `fittingWidth` 给较长译文留位（`GeekTheme.drawText` 放不下时会先缩字到 82% 再截断，`GeekButton` 截断时自动补完整提示，分段控件放不下自动按文字宽度分配，这些只是兜底）。改完界面必须运行 `swift run MSnip --debug-render-settings <目录> --lang en`（中文去掉 `--lang en` 再跑一次）：它会离屏渲染各窗口并输出 `truncation-report-*.txt`，有任何截断时以退出码 2 结束，报告清零才算完成；新增窗口或弹窗时把它加进渲染清单。显示服务名用 `TranslationProviderProfile.displayName`（内置默认名随界面语言翻译），不要直接显示 `name`。
 
 ## 4. 常用命令
 ```bash
@@ -51,5 +51,5 @@ bash scripts/bundle.sh                  # 本机单架构极致瘦身打包（< 
 bash scripts/bundle.sh --universal      # 构建 Release 双架构通用二进制（发版用）
 bash scripts/install.sh                 # 停止旧实例并安装启动至 /Applications/MSnip.app
 bash scripts/update-cask.sh             # 上传 Release 后，把线上 Universal Zip 的 SHA256 写入 Casks/msnip.rb
-swift run MSnip --debug-render-settings /tmp/shots --lang en  # 仅 Debug：离屏渲染设置窗口、权限引导、截图/录屏/长截图工具栏、速览卡、暂存架侧栏与拼图窗口为 PNG（只读，不碰用户配置）
+swift run MSnip --debug-render-settings /tmp/shots --lang en  # 仅 Debug：离屏渲染设置窗口（含各服务/引擎表单与三个弹窗）、权限引导、各工具栏、速览卡、暂存架与拼图窗口，并做截断审计（只读，不碰用户配置；有截断退出码 2）
 ```

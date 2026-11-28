@@ -13,6 +13,11 @@ final class LanguagePickerPopover: NSObject, NSTableViewDataSource, NSTableViewD
     }
 
     private let popover = NSPopover()
+
+    #if DEBUG
+    /// 仅 Debug 离屏渲染：已构建好的弹窗内容视图
+    var debugContentView: NSView? { popover.contentViewController?.view }
+    #endif
     private var searchField: NSTextField!
     private var tableView: NSTableView!
     private var rows: [RowItem] = []
@@ -110,6 +115,9 @@ final class LanguagePickerPopover: NSObject, NSTableViewDataSource, NSTableViewD
         self.tableView = tv
 
         rebuildRows(query: "")
+        #if DEBUG
+        if DebugSettingsSnapshot.suppressPopoverPresentation { return }
+        #endif
         popover.show(relativeTo: anchorView.bounds, of: anchorView, preferredEdge: .maxY)
         sf.window?.makeFirstResponder(sf)
     }

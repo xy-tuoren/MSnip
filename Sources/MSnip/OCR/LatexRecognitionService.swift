@@ -110,7 +110,7 @@ enum LatexRecognitionService {
                 maxTokens: 2048
             )
             let modelTag = config.visionModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
-            let label = modelTag.isEmpty ? profile.name : "\(profile.name) · \(modelTag)"
+            let label = modelTag.isEmpty ? profile.displayName : "\(profile.displayName) · \(modelTag)"
             return try makeOutcome(raw: raw, provider: label, t0: t0)
 
         case .offlineBasic:

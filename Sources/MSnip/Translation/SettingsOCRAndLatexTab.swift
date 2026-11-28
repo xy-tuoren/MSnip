@@ -406,8 +406,8 @@ extension TranslationSettingsWindow {
         if list.isEmpty { return [L("暂无可用 AI 接口（点右侧添加）")] }
         if list.count == 1 { return [list[0].name] }
         let activeLLM = OCRRecognitionConfig.resolveVisionProfile(preferredID: nil, activeID: draft.activeProfileID, profiles: list)
-        let autoTitle = activeLLM.map { L("自动跟随当前接口（%@）", $0.name) } ?? L("自动跟随当前接口")
-        return [autoTitle] + list.map(\.name)
+        let autoTitle = activeLLM.map { L("自动跟随当前接口（%@）", $0.displayName) } ?? L("自动跟随当前接口")
+        return [autoTitle] + list.map(\.displayName)
     }
 
     func visionProfileDropdownIndex(for savedID: UUID?) -> Int {
@@ -426,7 +426,7 @@ extension TranslationSettingsWindow {
     func refreshTranslationEnginePill() {
         let enabled = draft.profiles.filter(\.isEnabled)
         ocrLatex.translationProfiles = enabled
-        ocrLatex.transEnginePill?.items = enabled.isEmpty ? [L("暂无可用服务")] : enabled.map(\.name)
+        ocrLatex.transEnginePill?.items = enabled.isEmpty ? [L("暂无可用服务")] : enabled.map(\.displayName)
         if let aid = draft.activeProfileID, let idx = enabled.firstIndex(where: { $0.id == aid }) {
             ocrLatex.transEnginePill?.selectedIndex = idx
         } else {

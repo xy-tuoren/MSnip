@@ -204,8 +204,6 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
             symbols: ["slider.horizontal.3", "command", "text.viewfinder", "cpu"],
             selectedIndex: 0
         )
-        // 英文等较长标签放不下等宽分段时改为按文字宽度分配，中文保持原等宽布局
-        tabSegment.proportional = tabSegment.fittingWidth > 432
         tabSegment.frame = NSRect(x: round((W - 432) * 0.5), y: 12, width: 432, height: 34)
         tabSegment.onSelect = { [weak self] idx in
             guard let tab = SettingsTab(rawValue: idx) else { return }
@@ -238,7 +236,8 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         tip.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
         tip.textColor = GeekTheme.inkMuted
         tip.alignment = .right
-        GeekTheme.placeCentered(tip, x: W - 28 - 176, width: 176, centerY: 21.0)
+        let tipW = max(176, ceil(tip.intrinsicContentSize.width) + 2)
+        GeekTheme.placeCentered(tip, x: W - 28 - tipW, width: tipW, centerY: 21.0)
         foot.addSubview(tip)
     }
 
@@ -269,8 +268,8 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
             ? GeekTheme.inkMuted
             : (isPrimary ? GeekTheme.emerald : (p.isConfiguredReady ? GeekTheme.accent : GeekTheme.amber))
         let stateDesc = isPrimary ? L("当前使用中") : (p.isConfiguredReady ? L("已就绪") : L("待填写密钥"))
-        let tip = p.endpoint.isEmpty ? L("%@（%@）", p.name, stateDesc) : L("%@（%@）\n%@", p.name, stateDesc, p.endpoint)
-        return ProviderRowCellView(title: p.name, isPrimary: isPrimary, isReady: p.isConfiguredReady, isSelected: row == selectedIndex, dotColor: dotColor, fullTooltip: tip)
+        let tip = p.endpoint.isEmpty ? L("%@（%@）", p.displayName, stateDesc) : L("%@（%@）\n%@", p.displayName, stateDesc, p.endpoint)
+        return ProviderRowCellView(title: p.displayName, isPrimary: isPrimary, isReady: p.isConfiguredReady, isSelected: row == selectedIndex, dotColor: dotColor, fullTooltip: tip)
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) {
@@ -397,7 +396,7 @@ extension TranslationSettingsWindow {
         nativeCardBox.addSubview(nativeInfoLabel)
 
         let sysLangBtn = GeekButton(title: L("打开系统翻译语言设置…"), symbol: "globe", style: .subtle)
-        sysLangBtn.frame = NSRect(x: 16, y: 130, width: 208, height: 30)
+        sysLangBtn.frame = NSRect(x: 16, y: 130, width: sysLangBtn.widthFitting(atLeast: 208), height: 30)
         sysLangBtn.onClick = {
             if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") { NSWorkspace.shared.open(url) }
         }
@@ -515,6 +514,7 @@ extension TranslationSettingsWindow {
     private func addRowCaption(_ text: String, rowHeight: CGFloat, in parent: NSView) -> NSTextField {
         let lbl = NSTextField(labelWithString: text)
         lbl.font = .systemFont(ofSize: 13.0, weight: .medium); lbl.textColor = GeekTheme.inkSecondary; lbl.alignment = .right
+        lbl.allowsDefaultTighteningForTruncation = true
         GeekTheme.placeCentered(lbl, x: 12, width: 72, centerY: rowHeight * 0.5)
         parent.addSubview(lbl)
         return lbl

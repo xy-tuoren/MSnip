@@ -87,7 +87,7 @@ final class TranslationService {
                     )
                     let ms = Int(((ProcessInfo.processInfo.systemUptime - t0) * 1000).rounded())
                     MSnipLog.info(.translation, "Fallback provider kind=\(fb.kind.rawValue) succeeded in \(ms) ms")
-                    return RunResult(translatedText: out, providerName: fb.name, usedFallback: true, elapsedMs: ms)
+                    return RunResult(translatedText: out, providerName: fb.displayName, usedFallback: true, elapsedMs: ms)
                 } catch let fbError {
                     if Task.isCancelled || fbError is CancellationError || (fbError as? URLError)?.code == .cancelled {
                         throw fbError
@@ -112,7 +112,7 @@ final class TranslationService {
         let primary = resolveProfile(preferredID: nil)
         do {
             let res = try await runBatch(lines: lines, target: target, profile: primary, hostWindow: hostWindow)
-            return (res, primary.name)
+            return (res, primary.displayName)
         } catch let primaryError {
             if Task.isCancelled || primaryError is CancellationError || (primaryError as? URLError)?.code == .cancelled {
                 throw primaryError
@@ -121,7 +121,7 @@ final class TranslationService {
             if let fb = resolveReadyFallback(excluding: primary.id) {
                 do {
                     let res = try await runBatch(lines: lines, target: target, profile: fb, hostWindow: hostWindow)
-                    return (res, L("%@ (自动回退)", fb.name))
+                    return (res, L("%@ (自动回退)", fb.displayName))
                 } catch let fbError {
                     if Task.isCancelled || fbError is CancellationError || (fbError as? URLError)?.code == .cancelled {
                         throw fbError

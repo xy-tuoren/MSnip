@@ -312,6 +312,14 @@ extension GeekTheme {
     }
 
     /// 在 `isFlipped = true` 视图中以字体 `capHeight / 2` 为光学中轴绘制单行文本（中英文/数字/符号零下沉）
+    /// 自绘文字放不下时允许的最小缩放比例
+    static let minShrinkScale: CGFloat = 0.82
+
+    /// 按 drawText 的规则（含缩字）判断文字能否完整放进给定宽度
+    static func fitsWithShrink(_ text: String, font: NSFont, width: CGFloat) -> Bool {
+        measureTextWidth(text, font: font) * minShrinkScale <= width
+    }
+
     static func drawText(
         _ text: String,
         in rect: CGRect,
@@ -320,10 +328,22 @@ extension GeekTheme {
         align: NSTextAlignment = .left
     ) {
         guard !text.isEmpty, rect.width > 1, let ctx = NSGraphicsContext.current?.cgContext else { return }
-        let attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
+        var font = font
+        var attrs: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color]
         var line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
         var width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
-        if width > rect.width {
+        // 放不下时先等比缩小字号（最多到 82%），仍放不下才截断：较长译文优先完整显示
+        if width > rect.width, width * minShrinkScale <= rect.width,
+           let shrunk = NSFont(descriptor: font.fontDescriptor, size: floor(font.pointSize * rect.width / width * 4) / 4) {
+            font = shrunk
+            attrs[.font] = shrunk
+            line = CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attrs))
+            width = CGFloat(CTLineGetTypographicBounds(line, nil, nil, nil))
+        }
+        if width > rect.width + 0.5 {
+            #if DEBUG
+            TruncationAudit.record(text, needed: width, available: rect.width)
+            #endif
             let token = CTLineCreateWithAttributedString(NSAttributedString(string: "…", attributes: attrs))
             if let trunc = CTLineCreateTruncatedLine(line, Double(rect.width), .end, token) {
                 line = trunc

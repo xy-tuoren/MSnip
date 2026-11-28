@@ -134,7 +134,7 @@ extension OverlayView {
         overlay.baseImage = baked
         overlay.translatedImage = nil
         let cfg = TranslationService.shared.settings
-        let activeName = cfg.resolvedActiveProfile?.name ?? L("离线翻译")
+        let activeName = cfg.resolvedActiveProfile?.displayName ?? L("离线翻译")
         let targetLang = targetLangOverride ?? cfg.targetLang
         overlay.statusBanner = L("正在用「%@」译为%@…", activeName, targetLang.displayName)
         overlay.isHidden = false

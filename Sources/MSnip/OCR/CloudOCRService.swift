@@ -353,7 +353,7 @@ enum VisionLLMOCRService {
         guard !cleaned.isEmpty else { throw VisionError.emptyResult }
         let ms = max(1, Int(((CFAbsoluteTimeGetCurrent() - t0) * 1000).rounded()))
         let modelTag = config.visionModelOverride.trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = modelTag.isEmpty ? profile.name : "\(profile.name) · \(modelTag)"
+        let label = modelTag.isEmpty ? profile.displayName : "\(profile.displayName) · \(modelTag)"
         return VisionLLMOCROutcome(text: cleaned, providerName: label, elapsedMs: ms)
     }
 

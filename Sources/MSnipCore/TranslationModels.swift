@@ -172,6 +172,31 @@ public enum TranslationProviderKind: String, CaseIterable, Codable, Sendable {
 }
 
 public extension TranslationProviderProfile {
+    /// 界面显示名：内置默认服务（含旧版本按中文保存的默认名）在英文界面下显示译名；用户自己起的名字原样显示，存储值不变
+    var displayName: String {
+        guard MSnipL10n.usesEnglish else { return name }
+        switch name {
+        case "Apple 离线翻译", "macOS 原生离线翻译（免费）": return L("Apple 离线翻译")
+        case "腾讯云翻译", "腾讯云机器翻译 TMT":          return L("腾讯云翻译")
+        case "百度翻译", "百度翻译开放平台":              return L("百度翻译")
+        case "有道智云":                                return L("有道智云")
+        case "自定义接口", "自定义 HTTP JSON 翻译":        return L("自定义接口")
+        case "Claude (Anthropic 协议)":                 return "Claude"
+        case "自定义中转":                              return L("自定义中转")
+        case "智谱 GLM":                                return L("智谱 GLM")
+        case "通义千问":                                return L("通义千问")
+        case "豆包 · 火山方舟":                          return L("豆包 · 火山方舟")
+        case "腾讯混元":                                return L("腾讯混元")
+        case "百度千帆":                                return L("百度千帆")
+        case "讯飞星火":                                return L("讯飞星火")
+        case "阶跃星辰":                                return L("阶跃星辰")
+        case "硅基流动":                                return L("硅基流动")
+        case "本地 Ollama":                             return L("本地 Ollama")
+        case "本地 LM Studio":                          return L("本地 LM Studio")
+        default:                                       return name
+        }
+    }
+
     var isLocalNoKeyEndpoint: Bool {
         let lower = endpoint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if kind == .openAICompatible || kind == .openAIResponses || kind == .anthropicCompatible {

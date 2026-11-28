@@ -25,7 +25,7 @@ extension TranslationSettingsWindow {
     func loadSelectedProfileIntoForm() {
         guard draft.profiles.indices.contains(selectedIndex) else { return }
         let p = draft.profiles[selectedIndex]
-        detailHeaderTitle.setTextWithTooltip(p.name)
+        detailHeaderTitle.setTextWithTooltip(p.displayName)
         detailHeaderSubtitle.setTextWithTooltip(makeSubtitle(for: p))
         nameField.stringValue = p.name
 
@@ -256,7 +256,7 @@ extension TranslationSettingsWindow {
             p.isEnabled = true
         }
         draft.profiles[selectedIndex] = p
-        detailHeaderTitle.setTextWithTooltip(p.name); detailHeaderSubtitle.setTextWithTooltip(makeSubtitle(for: p))
+        detailHeaderTitle.setTextWithTooltip(p.displayName); detailHeaderSubtitle.setTextWithTooltip(makeSubtitle(for: p))
     }
 
     func onSetAsPrimaryClicked() {

@@ -517,8 +517,6 @@ extension CollageStudioController {
             pdfHintLabel?.frame = NSRect(x: ix, y: cy + 2, width: inW, height: 38)
         }
 
-        [layoutSeg, colsSeg, alignSeg, aspectSeg, badgeSeg, pdfPageNumSeg, watermarkSeg].compactMap { $0 }
-            .forEach { $0.proportional = $0.fittingWidth > $0.frame.width }
         [copyBtn, annotateBtn, pinBtn, saveBtn].forEach { $0?.isHidden = isPDF }
         pdfBtn?.isHidden = !isPDF
         if isPDF {

@@ -9,6 +9,12 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
     static let shared = HotKeyConflictPopover()
 
     private let popover = NSPopover()
+
+    #if DEBUG
+    /// 仅 Debug 离屏渲染：已构建好的弹窗内容视图
+    var debugContentView: NSView? { popover.contentViewController?.view }
+    func debugSelectTab(_ idx: Int) { activeTab = idx; tabSegment.selectedIndex = idx; rebuildList() }
+    #endif
     private var tabSegment: GeekSegmentControl!
     private var summaryLabel: NSTextField!
     private var rescanBtn: GeekButton!
@@ -119,6 +125,9 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         self.scrollView = sv
 
         rebuildList()
+        #if DEBUG
+        if DebugSettingsSnapshot.suppressPopoverPresentation { return }
+        #endif
         popover.show(relativeTo: anchor.bounds, of: anchor, preferredEdge: .maxY)
     }
 

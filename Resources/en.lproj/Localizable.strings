@@ -162,8 +162,8 @@
 "清空" = "Clear";
 
 /* Translation/LanguagePickerPopover.swift */
-"搜索全语种，或输入自定义语言回车…" = "Search languages, or type a custom target and press Return…";
-"支持中英文与代码搜索 · 可直接输入粤语口语、文言文等" = "Search by English or Chinese name or code · Custom targets like “casual American English” work too";
+"搜索全语种，或输入自定义语言回车…" = "Search languages or type your own, then ↩";
+"支持中英文与代码搜索 · 可直接输入粤语口语、文言文等" = "Search names or codes, or type a custom target";
 "自动互译（外→中 / 中→英）" = "Auto (other → Chinese / Chinese → English)";
 "智能识别原文语种" = "Detects the source language";
 "自定义：%@" = "Custom: %@";
@@ -174,12 +174,12 @@
 "按 ↩ 回车或点击直接生效" = "Press ↩ or click to apply";
 
 /* Translation/ProviderAddAndPresetPopover.swift */
-"搜索厂商或服务（如 DeepSeek、豆包、腾讯、Ollama）…" = "Search providers (e.g. DeepSeek, Doubao, Tencent, Ollama)…";
+"搜索厂商或服务（如 DeepSeek、豆包、腾讯、Ollama）…" = "Search providers (DeepSeek, Doubao, Ollama…)";
 "搜索主流大模型官网预设（支持中英文 / 域名）…" = "Search LLM provider presets (name or domain)…";
 "全部服务" = "All";
 "LLM 大模型 (21)" = "LLMs (21)";
 "云翻译 & 离线" = "Cloud & Offline";
-"支持 OpenAI Chat / Responses / Anthropic / Gemini 四种格式" = "Supports OpenAI Chat, OpenAI Responses, Anthropic and Gemini formats";
+"支持 OpenAI Chat / Responses / Anthropic / Gemini 四种格式" = "OpenAI Chat / Responses, Anthropic, Gemini";
 "Apple 离线翻译（免费）" = "Apple Offline Translation (Free)";
 "macOS 系统内置神经网络 · 无需 Key · 断网可用" = "Built into macOS · No key needed · Works offline";
 "免费离线" = "Free · Offline";
@@ -289,12 +289,12 @@
 "可单独指定视觉专用模型（如 gpt-4o-mini / gemini-2.5-flash / qwen-vl-plus）" = "Optionally set a vision model (e.g. gpt-4o-mini / gemini-2.5-flash / qwen-vl-plus)";
 "粘贴百度智能云 OCR API Key" = "Paste your Baidu AI Cloud OCR API Key";
 "百度智能云通用文字识别（高精度版），每月含免费调用额度" = "Baidu AI Cloud general OCR (high accuracy), with a free monthly quota";
-"粘贴百度智能云 Secret Key" = "Paste your Baidu AI Cloud Secret Key";
+"粘贴百度智能云 Secret Key" = "Paste Baidu Secret Key";
 "粘贴腾讯云 API 密钥 SecretId" = "Paste your Tencent Cloud SecretId";
 "使用腾讯云 GeneralAccurateOCR（TC3-HMAC-SHA256 签名直连）" = "Tencent Cloud GeneralAccurateOCR (TC3-HMAC-SHA256 signed requests)";
-"粘贴腾讯云 SecretKey" = "Paste your Tencent Cloud SecretKey";
+"粘贴腾讯云 SecretKey" = "Paste Tencent SecretKey";
 "服务地域" = "Region";
-"默认 ap-guangzhou（如 ap-shanghai / ap-beijing）" = "Default ap-guangzhou (e.g. ap-shanghai / ap-beijing)";
+"默认 ap-guangzhou（如 ap-shanghai / ap-beijing）" = "Default: ap-guangzhou (e.g. ap-beijing)";
 "应用 ID" = "App ID";
 "粘贴有道智云应用 ID (appKey)" = "Paste your Youdao app ID (appKey)";
 "有道智云通用文字识别（V3 SHA256 签名）" = "Youdao general OCR (v3 SHA256 signature)";
@@ -411,7 +411,7 @@
 "DeepL 官方 · 仅需填入 Auth Key" = "DeepL · Just add an Auth Key";
 "剪贴板中暂无文本" = "The clipboard has no text";
 "✓ 已粘贴密钥 · 点左侧「%@」验证" = "✓ Key pasted · Click “%@” on the left to verify";
-"可选（本机/局域网免鉴权可留空）" = "Optional (leave empty for local services without auth)";
+"可选（本机/局域网免鉴权可留空）" = "Optional for local services";
 "粘贴 API Key 即可使用" = "Paste an API key to get started";
 "收起高级设置" = "Hide Advanced";
 "高级设置（显示名称 / 提示词 / 请求头）" = "Advanced (name / prompt / headers)";
@@ -437,7 +437,7 @@
 "填入有道应用 ID" = "Enter your Youdao app ID";
 "默认有道智云文本翻译 API" = "Default Youdao text translation API";
 "默认 DeepL 官方或自建 DeepLX 地址" = "Default DeepL API, or your DeepLX address";
-"请求 URL" = "Request URL";
+"请求 URL" = "URL";
 "JSON 模板，支持 {{text}} {{target}}" = "JSON template with {{text}} and {{target}}";
 "如 data.translatedText" = "e.g. data.translatedText";
 "✓ 已设为当前翻译引擎" = "✓ Now the active translation service";

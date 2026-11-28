@@ -18,8 +18,21 @@ func testLocalization() {
     check(L("复制") == "Copy", "命中译文表时应返回英文")
     check(L("粘贴") == "粘贴", "缺少译文时应回落中文原文")
     check(L("共 %@ 项", 5) == "5 items" && L("%@ 秒后截图", 3) == "Capture in 3 s", "插值文案应先查表再填参数")
+    MSnipL10n.setOverrideTable(["Apple 离线翻译": "Apple Translation", "有道智云": "Youdao"])
+    var legacy = TranslationProviderProfile.makePreset(.appleNative)
+    legacy.name = "macOS 原生离线翻译（免费）"
+    var custom = TranslationProviderProfile.makePreset(.youdao)
+    custom.name = "我的有道"
+    check(legacy.displayName == "Apple Translation", "旧版本保存的中文默认服务名在英文界面应显示译名")
+    check(custom.displayName == "我的有道", "用户自定义的服务名应原样显示")
     MSnipL10n.setOverrideTable(nil)
+    check(legacy.displayName == "macOS 原生离线翻译（免费）", "中文界面应原样显示服务名")
     check(L("复制") == "复制", "单测进程主 Bundle 不含译文，恢复后应回落原文")
+    // 选简体中文时不能借用英文表（系统 Bundle 查表会回落到开发语言 en，曾导致切回中文仍显示英文）
+    check(!MSnipL10n.shouldUseEnglish(preferredLocalizations: ["zh-Hans"]), "首选简体中文时应显示中文原文")
+    check(MSnipL10n.shouldUseEnglish(preferredLocalizations: ["en"]) && MSnipL10n.shouldUseEnglish(preferredLocalizations: ["en-GB", "zh-Hans"]),
+          "首选英文时应使用英文译文表")
+    check(!MSnipL10n.shouldUseEnglish(preferredLocalizations: []), "无首选本地化时回落中文原文")
 
     // 3) 界面语言偏好写入/清除本应用域的 AppleLanguages
     let suite = "top.xy.msnip.l10n-test-\(UUID().uuidString)"

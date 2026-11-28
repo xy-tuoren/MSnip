@@ -7,6 +7,9 @@ import MSnipCore
 /// 离屏构建设置窗口并把各标签页（含滚动区完整内容）渲染为 PNG，用于检查不同界面语言下的截断与重叠。
 /// 全程只读：使用默认配置与内置示例服务，断开窗口代理、不调用 `switchTab` / `close` 等会落盘的方法，也不注册热键或显示窗口。
 enum DebugSettingsSnapshot {
+    /// 为 true 时三个设置弹窗只构建内容、不真正弹出（供离屏渲染）
+    nonisolated(unsafe) static var suppressPopoverPresentation = false
+
     @MainActor
     static func runIfRequested() -> Bool {
         let args = CommandLine.arguments
@@ -24,12 +27,15 @@ enum DebugSettingsSnapshot {
             suffix = "en"
         }
         try? FileManager.default.createDirectory(at: outDir, withIntermediateDirectories: true)
+        TruncationAudit.isRecording = true
         _ = NSApplication.shared
         NSApp.setActivationPolicy(.prohibited)
         TranslationSettingsWindow().debugRender(to: outDir, suffix: suffix)
         PermissionGuideController().debugRender(to: outDir, suffix: suffix)
         renderCustomBars(to: outDir, suffix: suffix)
         renderCollageStudio(to: outDir, suffix: suffix)
+        renderPopovers(to: outDir, suffix: suffix)
+        if TruncationAudit.writeReport(to: outDir, suffix: suffix) > 0 { exit(2) }
         return true
     }
 
@@ -106,6 +112,50 @@ enum DebugSettingsSnapshot {
         }
     }
 
+    /// 设置里的三个弹窗：目标语种、添加服务 / 大模型预设、热键冲突体检（不探测注册热键，只读系统与运行中应用）
+    @MainActor
+    private static func renderPopovers(to dir: URL, suffix: String) {
+        suppressPopoverPresentation = true
+        defer { suppressPopoverPresentation = false }
+        let anchor = NSView(frame: NSRect(x: 0, y: 0, width: 10, height: 10))
+        func render(_ view: NSView?, _ name: String) {
+            guard let view else { return }
+            view.appearance = GeekTheme.windowAppearance
+            for case let table as NSTableView in allSubviews(of: view) { table.reloadData(); table.layoutSubtreeIfNeeded() }
+            writePNG(view, named: "\(suffix)-pop-\(name)", to: dir, background: GeekTheme.cardBg)
+        }
+
+        LanguagePickerPopover.shared.show(anchoredTo: anchor, current: .autoZhEn, dark: true, onPick: { _ in })
+        render(LanguagePickerPopover.shared.debugContentView, "language")
+
+        ProviderAddAndPresetPopover.shared.showAddService(anchoredTo: anchor, onCreate: { _ in })
+        render(ProviderAddAndPresetPopover.shared.debugContentView, "add-service")
+        ProviderAddAndPresetPopover.shared.showLLMPresetPicker(anchoredTo: anchor, currentEndpoint: "", onPick: { _ in })
+        render(ProviderAddAndPresetPopover.shared.debugContentView, "llm-presets")
+
+        let snapshot = HotKeyConflictScanner.scan(probing: [])
+        let conflicts = HotKeyConflictPopover.shared
+        conflicts.show(
+            anchoredTo: anchor,
+            configProvider: { AppConfig() },
+            snapshotProvider: { snapshot },
+            isPriorityActiveProvider: { false },
+            onRescan: { snapshot },
+            onApplyRecommended: { _, _ in },
+            onApplyBatchRecommended: { _ in },
+            onToggleLiveProbe: {},
+            onPopoverClosed: {}
+        )
+        for tab in 0..<4 {
+            conflicts.debugSelectTab(tab)
+            render(conflicts.debugContentView, "hotkeys\(tab)")
+        }
+    }
+
+    private static func allSubviews(of view: NSView) -> [NSView] {
+        view.subviews + view.subviews.flatMap { allSubviews(of: $0) }
+    }
+
     private static func sampleImage(width: Int, height: Int) -> CGImage? {
         guard let ctx = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
                                   space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
@@ -117,7 +167,9 @@ enum DebugSettingsSnapshot {
     /// 先铺底色再 cacheDisplay：文字、控件与图层背景都会进入位图
     @MainActor
     static func writePNG(_ view: NSView, named name: String, to dir: URL, background: NSColor) {
+        TruncationAudit.context = name
         view.layoutSubtreeIfNeeded()
+        TruncationAudit.scan(view)
         let bounds = view.bounds
         guard let rep = view.bitmapImageRepForCachingDisplay(in: bounds) else { return }
         NSGraphicsContext.saveGraphicsState()
@@ -157,6 +209,34 @@ extension TranslationSettingsWindow {
             for (t, page) in pages { page.isHidden = (t != tab) }
             tabSegment.selectedIndex = tab.rawValue
         }
+        // 「模型与服务」页：逐个服务类型渲染基础与高级表单
+        let extraKinds: [TranslationProviderKind] = [.youdao, .deepl, .customWebhook, .openAIResponses, .anthropicCompatible, .geminiNative]
+        draft.profiles += extraKinds.map { TranslationProviderProfile.makePreset($0) }
+        tableView.reloadData()
+        show(.translation)
+        for i in draft.profiles.indices {
+            for advanced in [false, true] {
+                selectedIndex = i; isAdvancedExpanded = advanced
+                tableView.selectRowIndexes(IndexSet(integer: i), byExtendingSelection: false)
+                loadSelectedProfileIntoForm()
+                write(root, named: "\(suffix)-3-service\(i)\(advanced ? "-adv" : "")", to: dir)
+            }
+        }
+        isAdvancedExpanded = false; selectedIndex = 1
+        tableView.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+        loadSelectedProfileIntoForm()
+
+        // 「识字与翻译」页：逐个 OCR / 公式引擎渲染动态行
+        show(.ocrAndLatex)
+        for i in 0..<max(OCREngineKind.allCases.count, LatexEngineKind.allCases.count) {
+            ocrLatex.ocrConfig.engineKind = OCREngineKind.allCases[i % OCREngineKind.allCases.count]
+            ocrLatex.latexConfig.engineKind = LatexEngineKind.allCases[i % LatexEngineKind.allCases.count]
+            relayoutOCRLatexCards()
+            for scroll in scrollViews(in: ocrAndLatexPage) {
+                if let doc = scroll.documentView { write(doc, named: "\(suffix)-2-engines\(i)", to: dir) }
+            }
+        }
+
         for (tab, page) in pages {
             show(tab)
             if tab == .ocrAndLatex {
@@ -194,6 +274,53 @@ extension TranslationSettingsWindow {
 
     private func write(_ view: NSView, named name: String, to dir: URL) {
         DebugSettingsSnapshot.writePNG(view, named: name, to: dir, background: window?.backgroundColor ?? .windowBackgroundColor)
+    }
+}
+/// 仅 Debug：截断审计。离屏渲染期间收集「放不下」的文字（自绘 drawText 截断 + 标签/系统按钮宽度不足），
+/// 渲染结束写出 truncation-report.txt；有截断时进程以 2 退出，便于脚本或 CI 判定。
+enum TruncationAudit {
+    nonisolated(unsafe) static var isRecording = false
+    nonisolated(unsafe) static var context = ""
+    nonisolated(unsafe) private(set) static var hits: [String] = []
+    nonisolated(unsafe) private static var seen = Set<String>()
+
+    static func record(_ text: String, needed: CGFloat, available: CGFloat) {
+        guard isRecording else { return }
+        let flat = text.replacingOccurrences(of: "\n", with: " ⏎ ")
+        let line = "[\(context)] “\(flat)” needs \(Int(needed.rounded(.up)))pt, has \(Int(available.rounded(.down)))pt"
+        if seen.insert(line).inserted { hits.append(line) }
+    }
+
+    /// 遍历可见视图：单行只读标签与系统按钮的文字宽度超过自身宽度即记一条（截断且带完整提示的标签视为有意为之）
+    @MainActor
+    static func scan(_ view: NSView) {
+        for sub in view.subviews where !sub.isHidden {
+            if let tf = sub as? NSTextField, tf.isEditable, tf.stringValue.isEmpty,
+               let ph = tf.placeholderAttributedString?.string ?? tf.placeholderString, !ph.isEmpty {
+                // 输入框占位提示：按字段字体测量，留出左右内边距
+                let font = (tf.placeholderAttributedString?.attribute(.font, at: 0, effectiveRange: nil) as? NSFont)
+                    ?? tf.font ?? .systemFont(ofSize: NSFont.systemFontSize)
+                let need = GeekTheme.measureTextWidth(ph, font: font) + 6
+                if need > tf.bounds.width + 1 { record("(placeholder) " + ph, needed: need, available: tf.bounds.width) }
+            } else if let tf = sub as? NSTextField, !tf.isEditable, tf.cell?.wraps != true, !tf.stringValue.isEmpty {
+                let truncatingByDesign = tf.toolTip != nil
+                    && [.byTruncatingTail, .byTruncatingMiddle, .byTruncatingHead].contains(tf.lineBreakMode)
+                let need = ceil(tf.intrinsicContentSize.width)
+                if !truncatingByDesign, need > tf.bounds.width + 1 {
+                    record(tf.stringValue, needed: need, available: tf.bounds.width)
+                }
+            } else if let btn = sub as? NSButton, !btn.title.isEmpty, btn.fittingSize.width > btn.bounds.width + 1 {
+                record(btn.title, needed: btn.fittingSize.width, available: btn.bounds.width)
+            }
+            scan(sub)
+        }
+    }
+
+    static func writeReport(to dir: URL, suffix: String) -> Int {
+        let body = hits.isEmpty ? "No truncated text.\n" : hits.joined(separator: "\n") + "\n"
+        try? body.write(to: dir.appendingPathComponent("truncation-report-\(suffix).txt"), atomically: true, encoding: .utf8)
+        print("Truncation audit (\(suffix)): \(hits.count) issue(s) → \(dir.appendingPathComponent("truncation-report-\(suffix).txt").path)")
+        return hits.count
     }
 }
 #endif

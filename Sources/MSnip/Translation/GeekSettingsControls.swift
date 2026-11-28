@@ -9,7 +9,7 @@ final class GeekSegmentControl: NSView {
     var symbols: [String]? { didSet { needsDisplay = true } }
     var selectedIndex: Int = 0 { didSet { needsDisplay = true } }
     var monoFont: Bool = false
-    /// 各段按文字宽度分配（多出的空间均分）；默认等宽，仅在等宽放不下较长译文时启用
+    /// 强制各段按文字宽度分配；为 false 时等宽，但等宽放不下（如较长译文）会自动改为按文字宽度分配
     var proportional: Bool = false { didSet { needsDisplay = true } }
     var onSelect: ((Int) -> Void)?
     private var hoveredIdx: Int? { didSet { if oldValue != hoveredIdx { needsDisplay = true } } }
@@ -67,7 +67,7 @@ final class GeekSegmentControl: NSView {
         let inner = bounds.width - Self.pad * 2
         let h = bounds.height - Self.pad * 2
         var widths = Array(repeating: inner / CGFloat(max(1, items.count)), count: items.count)
-        if proportional {
+        if proportional || fittingWidth > bounds.width + 0.5 {
             let content = contentWidths()
             let extra = max(0, inner - content.reduce(0, +)) / CGFloat(max(1, items.count))
             widths = content.map { $0 + extra }
@@ -180,6 +180,18 @@ final class GeekButton: NSView {
     /// 在设计宽度基础上按需放宽，返回最终宽度
     func widthFitting(atLeast designWidth: CGFloat) -> CGFloat { max(designWidth, fittingWidth) }
 
+    private var autoToolTip: String?
+    /// 标题显示不全时自动用完整标题作提示（不覆盖调用方自己设置的提示）
+    private func syncTruncationToolTip(fits: Bool) {
+        if fits {
+            if toolTip != nil, toolTip == autoToolTip { toolTip = nil }
+            autoToolTip = nil
+        } else if toolTip == nil || toolTip == autoToolTip, !title.isEmpty {
+            autoToolTip = title
+            toolTip = title
+        }
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
@@ -236,7 +248,9 @@ final class GeekButton: NSView {
         let textW = GeekTheme.measureTextWidth(title, font: font)
         let gap: CGFloat = (symEntry != nil && !title.isEmpty) ? 5.5 : 0
         let totalW = iconW + gap + textW
-        var sx: CGFloat = (contentAlignment == .left) ? 8.0 : GeekTheme.snap((bounds.width - totalW) * 0.5)
+        // 放不下时图标仍留在按钮内（文字随后缩字或截断），并把完整标题放进提示
+        var sx: CGFloat = (contentAlignment == .left) ? 8.0 : max(6, GeekTheme.snap((bounds.width - totalW) * 0.5))
+        syncTruncationToolTip(fits: fittingWidth <= bounds.width + 0.5 || GeekTheme.fitsWithShrink(title, font: font, width: bounds.width - (totalW - textW) - 14))
         if let sym = symbolName, symEntry != nil {
             GeekTheme.drawSymbol(sym, pointSize: symPt, weight: .semibold, in: CGRect(x: sx, y: 0, width: iconW, height: bounds.height), alpha: alpha * 0.96, tint: fg)
             sx += iconW + gap

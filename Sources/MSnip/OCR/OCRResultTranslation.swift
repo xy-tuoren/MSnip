@@ -226,7 +226,7 @@ extension OCRResultController {
         guard enginePill != nil, targetLangPill != nil else { return }
         let cfg = TranslationService.shared.settings
         let enabled = TranslationService.shared.selectableProfiles
-        enginePill.items = enabled.map(\.name)
+        enginePill.items = enabled.map(\.displayName)
         let activeID = selectedEngineID ?? cfg.activeProfileID
         if let idx = enabled.firstIndex(where: { $0.id == activeID }) {
             enginePill.selectedIndex = idx

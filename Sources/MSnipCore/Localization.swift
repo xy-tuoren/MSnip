@@ -22,19 +22,30 @@ public enum MSnipL10n {
         return bundleUsesEnglish
     }
 
-    private static let bundleUsesEnglish: Bool = {
-        guard Bundle.main.path(forResource: "Localizable", ofType: "strings", inDirectory: nil, forLocalization: "en") != nil else {
-            return false
+    /// 是否该用英文：由系统按 Bundle 内的 lproj 与用户语言偏好选出的首选本地化决定
+    public static func shouldUseEnglish(preferredLocalizations: [String]) -> Bool {
+        preferredLocalizations.first?.hasPrefix("en") ?? false
+    }
+
+    /// 英文界面时一次性载入的英文译文表；其余语言为 nil，直接显示中文原文。
+    /// 不走 `Bundle.localizedString`：zh-Hans.lproj 没有 Localizable.strings 时，系统会回落到开发语言（en）的表，
+    /// 导致选了简体中文仍显示英文。
+    private static let englishTable: [String: String]? = {
+        guard shouldUseEnglish(preferredLocalizations: Bundle.main.preferredLocalizations),
+              let path = Bundle.main.path(forResource: "Localizable", ofType: "strings", inDirectory: nil, forLocalization: "en") else {
+            return nil
         }
-        return Bundle.main.preferredLocalizations.first?.hasPrefix("en") ?? false
+        return NSDictionary(contentsOfFile: path) as? [String: String]
     }()
+
+    private static var bundleUsesEnglish: Bool { englishTable != nil }
 
     public static func lookup(_ key: String) -> String {
         lock.lock()
         let table = overrideTable
         lock.unlock()
         if let table { return table[key] ?? key }
-        return Bundle.main.localizedString(forKey: key, value: key, table: nil)
+        return englishTable?[key] ?? key
     }
 
     /// 只识别 `%@`、`%1$@`…`%9$@` 与 `%%`：参数一律先转成字符串，个数不足时留空，
