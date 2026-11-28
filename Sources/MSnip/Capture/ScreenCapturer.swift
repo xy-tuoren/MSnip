@@ -344,18 +344,18 @@ final class RegionStreamSampler {
         let myGen = sessionGen
         guard #available(macOS 13.0, *) else {
             MSnipLog.warning(.capture, "Region stream requires macOS 13+")
-            onError("长截图实时流需要 macOS 13.0 及以上系统")
+            onError(L("长截图实时流需要 macOS 13.0 及以上系统"))
             return
         }
         guard let displayID = ScreenCapturer.screenDisplayID(screen) else {
             MSnipLog.error(.capture, "Region stream: display ID unavailable")
-            onError("无法识别目标显示器")
+            onError(L("无法识别目标显示器"))
             return
         }
 
         let clampedRect = localTopLeftRect.intersection(CGRect(origin: .zero, size: screen.frame.size))
         guard clampedRect.width >= 24, clampedRect.height >= 32 else {
-            onError("长截图选区过小")
+            onError(L("长截图选区过小"))
             return
         }
         let scale = max(1.0, screen.backingScaleFactor)
@@ -367,7 +367,7 @@ final class RegionStreamSampler {
                 guard !self.stopped, self.sessionGen == myGen else { return }
                 guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else {
                     MSnipLog.error(.capture, "Region stream: display \(displayID) not in shareable content (\(content.displays.count) displays)")
-                    onError("未找到目标屏幕采集源")
+                    onError(L("未找到目标屏幕采集源"))
                     return
                 }
 
@@ -459,7 +459,7 @@ final class RegionStreamSampler {
             } catch {
                 if !self.stopped {
                     MSnipLog.error(.capture, "Region stream failed to start", error: error)
-                    onError("启动实时画面采集流失败：\(error.localizedDescription)")
+                    onError(L("启动实时画面采集流失败：%@", error.localizedDescription))
                 }
             }
         }

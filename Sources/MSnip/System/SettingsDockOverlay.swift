@@ -1,6 +1,7 @@
 import AppKit
 import CoreGraphics
 import Foundation
+import MSnipCore
 
 enum PermissionPane {
     case screenRecording
@@ -24,8 +25,8 @@ private final class SettingsAccessoryCardView: NSView {
 
     private let effectView = NSVisualEffectView()
     private let borderOverlay = CardHairlineView()
-    private let backButton = CircleIconButton(symbolName: "chevron.left", showRestingFill: true, toolTip: "返回权限列表")
-    private let closeButton = CircleIconButton(symbolName: "xmark", showRestingFill: false, toolTip: "关闭提示")
+    private let backButton = CircleIconButton(symbolName: "chevron.left", showRestingFill: true, toolTip: L("返回权限列表"))
+    private let closeButton = CircleIconButton(symbolName: "xmark", showRestingFill: false, toolTip: L("关闭提示"))
     private let promptLabel = NSTextField(labelWithAttributedString: NSAttributedString())
     private let appRow = DraggableAppRowView(frame: .zero)
 
@@ -92,9 +93,9 @@ private final class SettingsAccessoryCardView: NSView {
             .font: NSFont.systemFont(ofSize: 12.0, weight: .semibold),
             .foregroundColor: NSColor.labelColor
         ]
-        let str = NSMutableAttributedString(string: "拖入上方列表开启", attributes: reg)
-        str.append(NSAttributedString(string: (pane == .screenRecording) ? "屏幕录制" : "辅助功能", attributes: bold))
-        str.append(NSAttributedString(string: "（若列表中已有 MSnip，请先关再开开关）", attributes: reg))
+        let str = NSMutableAttributedString(string: L("拖入上方列表开启"), attributes: reg)
+        str.append(NSAttributedString(string: (pane == .screenRecording) ? L("屏幕录制") : L("辅助功能"), attributes: bold))
+        str.append(NSAttributedString(string: L("（若列表中已有 MSnip，请先关再开开关）"), attributes: reg))
         promptLabel.attributedStringValue = str
     }
 }

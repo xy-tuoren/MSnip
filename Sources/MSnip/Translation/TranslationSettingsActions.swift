@@ -30,16 +30,16 @@ extension TranslationSettingsWindow {
         nameField.stringValue = p.name
 
         let isMain = (p.id == draft.activeProfileID)
-        setDefaultBtn.title = isMain ? "使用中" : "设为当前"
+        setDefaultBtn.title = isMain ? L("使用中") : L("设为当前")
         setDefaultBtn.symbolName = isMain ? "checkmark" : nil
         setDefaultBtn.style = isMain ? .emeraldSoft : .subtle
         setDefaultBtn.isEnabled = !isMain
 
-        testBtn.title = isMain ? "测试连接" : "测试并启用"
+        testBtn.title = isMain ? L("测试连接") : L("测试并启用")
 
         if let kIdx = TranslationProviderKind.allCases.firstIndex(of: p.kind) { kindPill.selectedIndex = kIdx }
         if let pIdx = TranslationProviderKind.llmProtocolCases.firstIndex(of: p.kind) { llmProtocolPill.selectedIndex = pIdx }
-        llmPresetPill.customDisplayTitle = LLMQuickPreset.match(endpoint: p.endpoint)?.shortName ?? "自定义 / 中转站"
+        llmPresetPill.customDisplayTitle = LLMQuickPreset.match(endpoint: p.endpoint)?.shortName ?? L("自定义 / 中转站")
         appIdField.stringValue = p.appIdOrSecretId
         endpointField.stringValue = p.endpoint
         apiKeySecureField.stringValue = p.apiKey
@@ -51,16 +51,16 @@ extension TranslationSettingsWindow {
 
     private func makeSubtitle(for p: TranslationProviderProfile) -> String {
         switch p.kind {
-        case .appleNative: return "macOS 内置神经网络 · 免费离线"
+        case .appleNative: return L("macOS 内置神经网络 · 免费离线")
         case .openAICompatible, .openAIResponses, .anthropicCompatible, .geminiNative:
             let m = p.model.trimmingCharacters(in: .whitespacesAndNewlines)
-            let tag = m.isEmpty ? "默认模型" : "模型 \(m)"
-            return p.isLocalNoKeyEndpoint ? "\(tag) · 本机离线免密钥" : "\(tag) · 仅需填入 API 密钥"
-        case .tencent: return "腾讯云机器翻译 · 填入 SecretId / SecretKey"
-        case .baidu: return "百度翻译开放平台 · 填入 AppID / 密钥"
-        case .youdao: return "有道智云 · 填入应用 ID / 应用密钥"
-        case .deepl: return p.isLocalNoKeyEndpoint ? "自建 DeepLX · 无需 Auth Key" : "DeepL 官方 · 仅需填入 Auth Key"
-        case .customWebhook: return "自定义 HTTP JSON 接口"
+            let tag = m.isEmpty ? L("默认模型") : L("模型 %@", m)
+            return p.isLocalNoKeyEndpoint ? L("%@ · 本机离线免密钥", tag) : L("%@ · 仅需填入 API 密钥", tag)
+        case .tencent: return L("腾讯云机器翻译 · 填入 SecretId / SecretKey")
+        case .baidu: return L("百度翻译开放平台 · 填入 AppID / 密钥")
+        case .youdao: return L("有道智云 · 填入应用 ID / 应用密钥")
+        case .deepl: return p.isLocalNoKeyEndpoint ? L("自建 DeepLX · 无需 Auth Key") : L("DeepL 官方 · 仅需填入 Auth Key")
+        case .customWebhook: return L("自定义 HTTP JSON 接口")
         }
     }
 
@@ -85,7 +85,7 @@ extension TranslationSettingsWindow {
     func onPasteAPIKeyClicked() {
         guard let raw = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !raw.isEmpty else {
-            testStatusLabel.setTextWithTooltip("剪贴板中暂无文本", color: GeekTheme.amber)
+            testStatusLabel.setTextWithTooltip(L("剪贴板中暂无文本"), color: GeekTheme.amber)
             return
         }
         apiKeySecureField.stringValue = raw
@@ -94,7 +94,7 @@ extension TranslationSettingsWindow {
         persistDraft()
         tableView.reloadData()
         tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
-        testStatusLabel.setTextWithTooltip("✓ 已粘贴密钥 · 点左侧「\(testBtn.title)」验证", color: GeekTheme.emerald)
+        testStatusLabel.setTextWithTooltip(L("✓ 已粘贴密钥 · 点左侧「%@」验证", testBtn.title), color: GeekTheme.emerald)
     }
 
     func onOpenConsoleURLClicked() {
@@ -144,15 +144,15 @@ extension TranslationSettingsWindow {
         modelInputBox.frame.size.width = nextModelW
         modelField.frame.size.width = max(40, nextModelW - 20)
 
-        let keyPlaceholder = (isLLMKind && p.isLocalNoKeyEndpoint) ? "可选（本机/局域网免鉴权可留空）" : "粘贴 API Key 即可使用"
+        let keyPlaceholder = (isLLMKind && p.isLocalNoKeyEndpoint) ? L("可选（本机/局域网免鉴权可留空）") : L("粘贴 API Key 即可使用")
         apiKeySecureField.setGeekPlaceholder(keyPlaceholder)
         apiKeyPlainField.setGeekPlaceholder(keyPlaceholder)
 
         advancedToggleBtn.isHidden = isNative
         advancedToggleBtn.symbolName = isAdvancedExpanded ? "chevron.down" : "chevron.right"
         advancedToggleBtn.title = isAdvancedExpanded
-            ? "收起高级设置"
-            : (isLLMKind ? "高级设置（显示名称 / 提示词 / 请求头）" : "更多设置（显示名称 / 类型 / 地址 / 参数）")
+            ? L("收起高级设置")
+            : (isLLMKind ? L("高级设置（显示名称 / 提示词 / 请求头）") : L("更多设置（显示名称 / 类型 / 地址 / 参数）"))
 
         nameRow.isHidden = isNative || !isAdvancedExpanded
         kindRow.isHidden = isNative || isLLMKind || !isAdvancedExpanded
@@ -202,35 +202,35 @@ extension TranslationSettingsWindow {
     private func configureFieldLabels(for p: TranslationProviderProfile) {
         switch p.kind {
         case .appleNative:
-            nativeInfoLabel.stringValue = "macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n正在检测本机离线语言包状态…"
+            nativeInfoLabel.stringValue = L("macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n正在检测本机离线语言包状态…")
             Task { @MainActor [weak self] in
                 let status = await AppleNativeTranslator.queryAvailabilitySummary()
-                self?.nativeInfoLabel.stringValue = "macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n\(status)"
+                self?.nativeInfoLabel.stringValue = L("macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n%@", status)
             }
         case .openAICompatible, .openAIResponses, .anthropicCompatible, .geminiNative:
-            endpointLabel.stringValue = "接口地址"; apiKeyLabel.stringValue = "API 密钥"; modelLabel.stringValue = "模型名称"
+            endpointLabel.stringValue = L("接口地址"); apiKeyLabel.stringValue = L("API 密钥"); modelLabel.stringValue = L("模型名称")
             let epSuffix = p.kind == .openAIResponses ? "/v1/responses" : (p.kind == .anthropicCompatible ? "/v1/messages" : (p.kind == .geminiNative ? "/v1beta" : "/v1/chat/completions"))
-            endpointField.setGeekPlaceholder("https://your-relay.com（自动补全 \(epSuffix)）")
-            extraLabel1.stringValue = "提示词"; extraField1.setGeekPlaceholder("留空使用内置精准截图翻译提示词")
+            endpointField.setGeekPlaceholder(L("https://your-relay.com（自动补全 %@）", epSuffix))
+            extraLabel1.stringValue = L("提示词"); extraField1.setGeekPlaceholder(L("留空使用内置精准截图翻译提示词"))
             extraField1.stringValue = p.systemPrompt
-            extraLabel2.stringValue = "请求头"; extraField2.setGeekPlaceholder("可选 JSON，如 {\"X-Key\":\"val\"}")
+            extraLabel2.stringValue = L("请求头"); extraField2.setGeekPlaceholder(L("可选 JSON，如 {\"X-Key\":\"val\"}"))
             extraField2.stringValue = p.customHeadersJSON
         case .tencent:
-            appIdLabel.stringValue = "SecretId"; appIdField.setGeekPlaceholder("填入腾讯云 SecretId")
-            apiKeyLabel.stringValue = "SecretKey"; endpointLabel.stringValue = "请求域名"; endpointField.setGeekPlaceholder("默认 tmt.tencentcloudapi.com")
-            modelLabel.stringValue = "地域"; modelField.setGeekPlaceholder("默认 ap-guangzhou")
+            appIdLabel.stringValue = "SecretId"; appIdField.setGeekPlaceholder(L("填入腾讯云 SecretId"))
+            apiKeyLabel.stringValue = "SecretKey"; endpointLabel.stringValue = L("请求域名"); endpointField.setGeekPlaceholder(L("默认 tmt.tencentcloudapi.com"))
+            modelLabel.stringValue = L("地域"); modelField.setGeekPlaceholder(L("默认 ap-guangzhou"))
         case .baidu:
-            appIdLabel.stringValue = "AppID"; appIdField.setGeekPlaceholder("填入百度翻译 AppID")
-            apiKeyLabel.stringValue = "密钥"; endpointLabel.stringValue = "接口地址"; endpointField.setGeekPlaceholder("默认百度通用翻译 API")
+            appIdLabel.stringValue = "AppID"; appIdField.setGeekPlaceholder(L("填入百度翻译 AppID"))
+            apiKeyLabel.stringValue = L("密钥"); endpointLabel.stringValue = L("接口地址"); endpointField.setGeekPlaceholder(L("默认百度通用翻译 API"))
         case .youdao:
-            appIdLabel.stringValue = "应用 ID"; appIdField.setGeekPlaceholder("填入有道应用 ID")
-            apiKeyLabel.stringValue = "应用密钥"; endpointLabel.stringValue = "接口地址"; endpointField.setGeekPlaceholder("默认有道智云文本翻译 API")
+            appIdLabel.stringValue = L("应用 ID"); appIdField.setGeekPlaceholder(L("填入有道应用 ID"))
+            apiKeyLabel.stringValue = L("应用密钥"); endpointLabel.stringValue = L("接口地址"); endpointField.setGeekPlaceholder(L("默认有道智云文本翻译 API"))
         case .deepl:
-            endpointLabel.stringValue = "接口地址"; endpointField.setGeekPlaceholder("默认 DeepL 官方或自建 DeepLX 地址"); apiKeyLabel.stringValue = "Auth Key"
+            endpointLabel.stringValue = L("接口地址"); endpointField.setGeekPlaceholder(L("默认 DeepL 官方或自建 DeepLX 地址")); apiKeyLabel.stringValue = "Auth Key"
         case .customWebhook:
-            endpointLabel.stringValue = "请求 URL"; endpointField.setGeekPlaceholder("https://your-service/translate")
-            apiKeyLabel.stringValue = "Bearer"; extraLabel1.stringValue = "Body"; extraField1.setGeekPlaceholder("JSON 模板，支持 {{text}} {{target}}")
-            extraField1.stringValue = p.customBodyTemplate; extraLabel2.stringValue = "JSON 路径"; extraField2.setGeekPlaceholder("如 data.translatedText"); extraField2.stringValue = p.customResponsePath
+            endpointLabel.stringValue = L("请求 URL"); endpointField.setGeekPlaceholder("https://your-service/translate")
+            apiKeyLabel.stringValue = "Bearer"; extraLabel1.stringValue = "Body"; extraField1.setGeekPlaceholder(L("JSON 模板，支持 {{text}} {{target}}"))
+            extraField1.stringValue = p.customBodyTemplate; extraLabel2.stringValue = L("JSON 路径"); extraField2.setGeekPlaceholder(L("如 data.translatedText")); extraField2.stringValue = p.customResponsePath
         }
     }
 
@@ -266,7 +266,7 @@ extension TranslationSettingsWindow {
         persistDraft(); refreshTopBarPopups()
         tableView.reloadData(); tableView.selectRowIndexes(IndexSet(integer: selectedIndex), byExtendingSelection: false)
         loadSelectedProfileIntoForm()
-        testStatusLabel.setTextWithTooltip("✓ 已设为当前翻译引擎", color: GeekTheme.emerald)
+        testStatusLabel.setTextWithTooltip(L("✓ 已设为当前翻译引擎"), color: GeekTheme.emerald)
     }
 
     func onTestClicked() {
@@ -274,7 +274,7 @@ extension TranslationSettingsWindow {
         guard draft.profiles.indices.contains(selectedIndex) else { return }
         let prof = draft.profiles[selectedIndex]
         activeTestTask?.cancel(); testBtn.isEnabled = false
-        testStatusLabel.setTextWithTooltip("正在探测连通性…", color: GeekTheme.inkSecondary)
+        testStatusLabel.setTextWithTooltip(L("正在探测连通性…"), color: GeekTheme.inkSecondary)
         activeTestTask = Task { @MainActor [weak self] in
             guard let self else { return }
             let res = await TranslationService.shared.testConnectivity(profile: prof, hostWindow: self.window)
@@ -286,7 +286,7 @@ extension TranslationSettingsWindow {
                 if self.draft.activeProfileID != prof.id {
                     self.draft.activeProfileID = prof.id
                     self.persistDraft(); self.refreshTopBarPopups(); self.loadSelectedProfileIntoForm()
-                    self.testStatusLabel.setTextWithTooltip("\(res.message) · 已启用", color: GeekTheme.emerald)
+                    self.testStatusLabel.setTextWithTooltip(L("%@ · 已启用", res.message), color: GeekTheme.emerald)
                 } else {
                     self.persistDraft(); self.testStatusLabel.setTextWithTooltip(res.message, color: GeekTheme.emerald)
                 }
@@ -307,7 +307,7 @@ extension TranslationSettingsWindow {
         guard draft.profiles.indices.contains(selectedIndex) else { return }
         let prof = draft.profiles[selectedIndex]
         activeFetchModelsTask?.cancel(); fetchModelsBtn.isEnabled = false
-        testStatusLabel.setTextWithTooltip("正在拉取服务端模型列表…", color: GeekTheme.inkSecondary)
+        testStatusLabel.setTextWithTooltip(L("正在拉取服务端模型列表…"), color: GeekTheme.inkSecondary)
 
         activeFetchModelsTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -316,7 +316,7 @@ extension TranslationSettingsWindow {
                 let models = try await LLMModelFetcher.fetchModels(profile: prof)
                 guard !Task.isCancelled, self.draft.profiles.indices.contains(self.selectedIndex),
                       self.draft.profiles[self.selectedIndex].id == prof.id else { return }
-                self.testStatusLabel.setTextWithTooltip("✓ 已拉取 \(models.count) 个可用模型，请选择", color: GeekTheme.emerald)
+                self.testStatusLabel.setTextWithTooltip(L("✓ 已拉取 %@ 个可用模型，请选择", models.count), color: GeekTheme.emerald)
                 self.presentFetchedModelsMenu(models, currentModel: prof.model)
             } catch {
                 guard !Task.isCancelled, self.draft.profiles.indices.contains(self.selectedIndex),
@@ -338,7 +338,7 @@ extension TranslationSettingsWindow {
         }
         if models.count > limit {
             menu.addItem(.separator())
-            let more = NSMenuItem(title: "共 \(models.count) 个模型（已显示前 \(limit) 项，其余可直接输入）", action: nil, keyEquivalent: "")
+            let more = NSMenuItem(title: L("共 %@ 个模型（已显示前 %@ 项，其余可直接输入）", models.count, limit), action: nil, keyEquivalent: "")
             more.isEnabled = false
             menu.addItem(more)
         }
@@ -351,7 +351,7 @@ extension TranslationSettingsWindow {
         modelField.stringValue = modelID
         commitCurrentFormEdits()
         persistDraft()
-        testStatusLabel.setTextWithTooltip("✓ 已选择模型：\(modelID)", color: GeekTheme.emerald)
+        testStatusLabel.setTextWithTooltip(L("✓ 已选择模型：%@", modelID), color: GeekTheme.emerald)
     }
 
     func popAddProviderMenu() {
@@ -447,7 +447,7 @@ extension TranslationSettingsWindow {
               draft.profiles[selectedIndex].kind.isLLMProtocol else { return }
         let ep = endpointField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let matched = LLMQuickPreset.match(endpoint: ep)
-        llmPresetPill.customDisplayTitle = matched?.shortName ?? "自定义 / 中转站"
+        llmPresetPill.customDisplayTitle = matched?.shortName ?? L("自定义 / 中转站")
         let hasLink = (matched?.consoleURL != nil)
         presetGetKeyBtn.isHidden = !hasLink
         let fullW = formScrollView.bounds.width - 114

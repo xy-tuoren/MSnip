@@ -44,7 +44,7 @@ final class CollagePreviewCanvasView: NSView {
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         registerForDraggedTypes([.fileURL, .png, .tiff])
-        self.toolTip = "点击预览图可打开全尺寸高清大图（滚轮缩放 · 拖拽平移）"
+        self.toolTip = L("点击预览图可打开全尺寸高清大图（滚轮缩放 · 拖拽平移）")
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -78,8 +78,8 @@ final class CollagePreviewCanvasView: NSView {
     override func menu(for event: NSEvent) -> NSMenu? {
         guard !isPDFMode, previewImage != nil else { return nil }
         let m = NSMenu()
-        let editIt = NSMenuItem(title: "编辑 / 标注合成拼图…", action: #selector(triggerEditMenu), keyEquivalent: "")
-        let zoomIt = NSMenuItem(title: "全尺寸大图预览", action: #selector(triggerZoomMenu), keyEquivalent: "")
+        let editIt = NSMenuItem(title: L("编辑 / 标注合成拼图…"), action: #selector(triggerEditMenu), keyEquivalent: "")
+        let zoomIt = NSMenuItem(title: L("全尺寸大图预览"), action: #selector(triggerZoomMenu), keyEquivalent: "")
         editIt.target = self; zoomIt.target = self
         m.addItem(editIt); m.addItem(zoomIt)
         return m
@@ -150,7 +150,7 @@ final class CollagePreviewCanvasView: NSView {
             ctx.setStrokeColor(GeekTheme.accent.cgColor)
             ctx.setLineWidth(1.8); ctx.setLineDash(phase: 0, lengths: [6, 4])
             ctx.addPath(dp); ctx.strokePath()
-            GeekTheme.drawText("松手即可加入拼图素材", in: dr, font: .systemFont(ofSize: 13.0, weight: .semibold), color: GeekTheme.accent, align: .center)
+            GeekTheme.drawText(L("松手即可加入拼图素材"), in: dr, font: .systemFont(ofSize: 13.0, weight: .semibold), color: GeekTheme.accent, align: .center)
             ctx.restoreGState()
         }
     }
@@ -189,7 +189,7 @@ final class CollagePreviewCanvasView: NSView {
         ctx.saveGState()
         ctx.setFillColor(NSColor.black.withAlphaComponent(0.64).cgColor); ctx.addPath(pp); ctx.fillPath()
         ToolbarView.drawSymbol("magnifyingglass", in: CGRect(x: pill.minX + 6, y: pill.minY + 4, width: 11, height: 11), alpha: 0.95, tint: .white)
-        GeekTheme.drawText("大图", in: CGRect(x: pill.minX + 19, y: pill.minY, width: 28, height: pill.height), font: .systemFont(ofSize: 10.5, weight: .semibold), color: .white)
+        GeekTheme.drawText(L("大图"), in: CGRect(x: pill.minX + 19, y: pill.minY, width: 28, height: pill.height), font: .systemFont(ofSize: 10.5, weight: .semibold), color: .white)
         ctx.restoreGState()
     }
 
@@ -254,7 +254,7 @@ final class CollagePreviewCanvasView: NSView {
             let pp = CGPath(roundedRect: pill, cornerWidth: 10, cornerHeight: 10, transform: nil)
             ctx.saveGState()
             ctx.setFillColor(GeekTheme.accent.withAlphaComponent(0.90).cgColor); ctx.addPath(pp); ctx.fillPath()
-            GeekTheme.drawText("另有 +\(extra) 页（导出包含全部）", in: pill, font: .systemFont(ofSize: 9.8, weight: .semibold), color: .white, align: .center)
+            GeekTheme.drawText(L("另有 +%@ 页（导出包含全部）", extra), in: pill, font: .systemFont(ofSize: 9.8, weight: .semibold), color: .white, align: .center)
             ctx.restoreGState()
         }
     }
@@ -262,7 +262,7 @@ final class CollagePreviewCanvasView: NSView {
     private func drawEmptyHint(in ctx: CGContext) {
         let iconR = CGRect(x: round(bounds.midX - 15), y: round(bounds.midY - 28), width: 30, height: 30)
         GeekTheme.drawSymbol("photo.on.rectangle.angled", pointSize: 22, weight: .light, in: iconR, alpha: 0.46, tint: GeekTheme.inkMuted)
-        GeekTheme.drawText("拖入图片 · ⌘V 粘贴 · 点击下方加图", in: CGRect(x: 20, y: round(bounds.midY + 6), width: bounds.width - 40, height: 20), font: .systemFont(ofSize: 12.2, weight: .medium), color: GeekTheme.inkMuted, align: .center)
+        GeekTheme.drawText(L("拖入图片 · ⌘V 粘贴 · 点击下方加图"), in: CGRect(x: 20, y: round(bounds.midY + 6), width: bounds.width - 40, height: 20), font: .systemFont(ofSize: 12.2, weight: .medium), color: GeekTheme.inkMuted, align: .center)
     }
 
     private func drawCheckerboard(in rect: CGRect, ctx: CGContext, isDark: Bool) {
@@ -312,7 +312,7 @@ private final class CollageFilmstripCardView: NSView {
     init(index: Int, totalCount: Int, item: CollageSourceItem) {
         self.index = index; self.totalCount = totalCount; self.item = item
         super.init(frame: NSRect(origin: .zero, size: Self.cardSize))
-        self.toolTip = "\(item.title) · \(item.cgImage.width)×\(item.cgImage.height)\n单击看大图 · 左下 ✎ 编辑/裁剪 · 拖拽换序 · 右键更多"
+        self.toolTip = L("%@ · %@×%@\n单击看大图 · 左下 ✎ 编辑/裁剪 · 拖拽换序 · 右键更多", item.title, item.cgImage.width, item.cgImage.height)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
@@ -364,13 +364,13 @@ private final class CollageFilmstripCardView: NSView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let m = NSMenu()
         func add(_ t: String, _ sel: Selector) { let i = NSMenuItem(title: t, action: sel, keyEquivalent: ""); i.target = self; m.addItem(i) }
-        add("编辑 / 裁剪 / 标注此图…", #selector(actEdit))
-        add("顺时针旋转 90°", #selector(actRot))
-        add("水平镜像翻转", #selector(actFlip))
-        if item.originalBackup != nil { add("还原初始原图", #selector(actRevert)) }
+        add(L("编辑 / 裁剪 / 标注此图…"), #selector(actEdit))
+        add(L("顺时针旋转 90°"), #selector(actRot))
+        add(L("水平镜像翻转"), #selector(actFlip))
+        if item.originalBackup != nil { add(L("还原初始原图"), #selector(actRevert)) }
         m.addItem(.separator())
-        add("全尺寸大图预览", #selector(actInspect))
-        add("从列表中移除", #selector(actRemove))
+        add(L("全尺寸大图预览"), #selector(actInspect))
+        add(L("从列表中移除"), #selector(actRemove))
         return m
     }
 
@@ -428,7 +428,8 @@ extension CollageStudioController {
     func layoutUI() {
         guard let root = rootView else { return }
         let w = root.bounds.width, h = root.bounds.height
-        let barH: CGFloat = 38, pad: CGFloat = 10, gap: CGFloat = 9, sideW: CGFloat = 228
+        // 英文标签更长：侧栏略放宽，其余控件再按文字实际宽度排布
+        let barH: CGFloat = 38, pad: CGFloat = 10, gap: CGFloat = 9, sideW: CGFloat = MSnipL10n.usesEnglish ? 256 : 228
         topBarView?.frame = NSRect(x: 0, y: 0, width: w, height: barH)
         topBarDivider?.frame = NSRect(x: 0, y: barH, width: w, height: 1)
         layoutTopBarMeta()
@@ -449,12 +450,12 @@ extension CollageStudioController {
 
         canvasView?.frame = NSRect(x: pad, y: workY, width: leftW, height: canvasH)
         stripCard?.frame = NSRect(x: pad, y: workY + canvasH + 8, width: leftW, height: stripH)
-        let railW: CGFloat = 100, railX = leftW - railW - 8
+        let railW = max(100, addClipBtn?.fittingWidth ?? 0, (addRecentBtn?.fittingWidth ?? 0) + 32), railX = leftW - railW - 8
         stripDivider?.frame = NSRect(x: railX - 8, y: 9, width: 1, height: stripH - 18)
         stripScrollView?.frame = NSRect(x: 8, y: 7, width: max(120, railX - 24), height: 52)
         addClipBtn?.frame = NSRect(x: railX, y: 7, width: railW, height: 24)
-        addRecentBtn?.frame = NSRect(x: railX, y: 35, width: 68, height: 24)
-        clearBtn?.frame = NSRect(x: railX + 72, y: 35, width: 28, height: 24)
+        addRecentBtn?.frame = NSRect(x: railX, y: 35, width: railW - 32, height: 24)
+        clearBtn?.frame = NSRect(x: railX + railW - 28, y: 35, width: 28, height: 24)
 
         let rx = pad + leftW + gap, isPDF = (studioMode == .pdfMerge)
         inspectorCard?.frame = NSRect(x: rx, y: workY, width: sideW, height: workH)
@@ -466,46 +467,58 @@ extension CollageStudioController {
         [layoutSeg, div1, styleHeaderLabel, presetBar, gapRow, radiusRow, shadowPill, alignLabel, alignSeg, aspectLabel, aspectSeg, div3, badgeSeg].forEach { $0?.isHidden = isPDF }
         colsSeg?.isHidden = !showCols; pdfPageNumSeg?.isHidden = !isPDF; pdfHintLabel?.isHidden = !isPDF
         watermarkBox?.isHidden = !showWMInput
-        badgeLabel?.stringValue = isPDF ? "页码" : "角标"
+        badgeLabel?.stringValue = isPDF ? L("页码") : L("角标")
+        // 行标题列按最宽标题统一放宽，右侧分段控件随之收窄
+        let rowLabels = [alignLabel, aspectLabel, badgeLabel, watermarkLabel].compactMap { $0 }
+        let labelW = max(30, rowLabels.map { ceil($0.intrinsicContentSize.width) + 2 }.max() ?? 30)
+        let segX = ix + labelW + 3, segW = inW - labelW - 3
+        let sliders = [gapRow, padRow, radiusRow].compactMap { $0 }
+        let sliderTitleW = max(34, sliders.map(\.titleFittingWidth).max() ?? 34)
+        sliders.forEach { $0.titleColumnWidth = sliderTitleW }
+        let bgLabelW = max(28, ceil(bgLabel?.intrinsicContentSize.width ?? 0) + 2)
 
         if !isPDF {
             layoutSeg?.frame = NSRect(x: ix, y: cy, width: inW, height: 25); cy += 30
             if showCols { colsSeg?.frame = NSRect(x: ix, y: cy, width: inW, height: 22); cy += 27 }
             div1?.frame = NSRect(x: ix, y: cy, width: inW, height: 1); cy += 8
-            styleHeaderLabel?.frame = NSRect(x: ix, y: cy + 1.5, width: 70, height: 16)
-            presetBar?.frame = NSRect(x: ix + inW - 110, y: cy, width: 110, height: 19); cy += 23
+            let presetW = min(inW - 60, max(110, presetBar?.fittingWidth ?? 110))
+            styleHeaderLabel?.frame = NSRect(x: ix, y: cy + 1.5, width: inW - presetW - 4, height: 16)
+            presetBar?.frame = NSRect(x: ix + inW - presetW, y: cy, width: presetW, height: 19); cy += 23
             gapRow?.frame = NSRect(x: ix, y: cy, width: inW, height: 21); cy += 23
             padRow?.frame = NSRect(x: ix, y: cy, width: inW, height: 21); cy += 23
             radiusRow?.frame = NSRect(x: ix, y: cy, width: inW, height: 21); cy += 25
-            bgLabel?.frame = NSRect(x: ix, y: cy + 3, width: 28, height: 16)
-            bgTrigger?.frame = NSRect(x: ix + 29, y: cy, width: 95, height: 22)
-            bgEyedropperBtn?.frame = NSRect(x: ix + 127, y: cy, width: 24, height: 22)
-            shadowPill?.frame = NSRect(x: ix + inW - 53, y: cy + 0.5, width: 53, height: 21); cy += 28
+            let shadowW = max(53, shadowPill?.fittingWidth ?? 53)
+            bgLabel?.frame = NSRect(x: ix, y: cy + 3, width: bgLabelW, height: 16)
+            bgTrigger?.frame = NSRect(x: ix + bgLabelW + 1, y: cy, width: 95, height: 22)
+            bgEyedropperBtn?.frame = NSRect(x: ix + bgLabelW + 99, y: cy, width: 24, height: 22)
+            shadowPill?.frame = NSRect(x: ix + inW - shadowW, y: cy + 0.5, width: shadowW, height: 21); cy += 28
             div2?.frame = NSRect(x: ix, y: cy, width: inW, height: 1); cy += 8
-            alignLabel?.frame = NSRect(x: ix, y: cy + 3, width: 30, height: 16)
-            alignSeg?.frame = NSRect(x: ix + 33, y: cy, width: inW - 33, height: 22); cy += 27
-            aspectLabel?.frame = NSRect(x: ix, y: cy + 3, width: 30, height: 16)
-            aspectSeg?.frame = NSRect(x: ix + 33, y: cy, width: inW - 33, height: 22); cy += 28
+            alignLabel?.frame = NSRect(x: ix, y: cy + 3, width: labelW, height: 16)
+            alignSeg?.frame = NSRect(x: segX, y: cy, width: segW, height: 22); cy += 27
+            aspectLabel?.frame = NSRect(x: ix, y: cy + 3, width: labelW, height: 16)
+            aspectSeg?.frame = NSRect(x: segX, y: cy, width: segW, height: 22); cy += 28
             div3?.frame = NSRect(x: ix, y: cy, width: inW, height: 1); cy += 8
-            badgeLabel?.frame = NSRect(x: ix, y: cy + 3, width: 30, height: 16)
-            badgeSeg?.frame = NSRect(x: ix + 33, y: cy, width: inW - 33, height: 22); cy += 27
-            watermarkLabel?.frame = NSRect(x: ix, y: cy + 3, width: 30, height: 16)
-            watermarkSeg?.frame = NSRect(x: ix + 33, y: cy, width: inW - 33, height: 22); cy += 27
+            badgeLabel?.frame = NSRect(x: ix, y: cy + 3, width: labelW, height: 16)
+            badgeSeg?.frame = NSRect(x: segX, y: cy, width: segW, height: 22); cy += 27
+            watermarkLabel?.frame = NSRect(x: ix, y: cy + 3, width: labelW, height: 16)
+            watermarkSeg?.frame = NSRect(x: segX, y: cy, width: segW, height: 22); cy += 27
             if showWMInput { watermarkBox?.frame = NSRect(x: ix, y: cy, width: inW, height: 25) }
         } else {
             padRow?.frame = NSRect(x: ix, y: cy, width: inW, height: 22); cy += 28
-            bgLabel?.frame = NSRect(x: ix, y: cy + 3, width: 28, height: 16)
-            bgTrigger?.frame = NSRect(x: ix + 29, y: cy, width: 147, height: 22)
-            bgEyedropperBtn?.frame = NSRect(x: ix + 180, y: cy, width: 28, height: 22); cy += 30
+            bgLabel?.frame = NSRect(x: ix, y: cy + 3, width: bgLabelW, height: 16)
+            bgTrigger?.frame = NSRect(x: ix + bgLabelW + 1, y: cy, width: inW - bgLabelW - 33, height: 22)
+            bgEyedropperBtn?.frame = NSRect(x: ix + inW - 28, y: cy, width: 28, height: 22); cy += 30
             div2?.frame = NSRect(x: ix, y: cy, width: inW, height: 1); cy += 9
-            badgeLabel?.frame = NSRect(x: ix, y: cy + 3, width: 30, height: 16)
-            pdfPageNumSeg?.frame = NSRect(x: ix + 33, y: cy, width: inW - 33, height: 23); cy += 29
-            watermarkLabel?.frame = NSRect(x: ix, y: cy + 3, width: 30, height: 16)
-            watermarkSeg?.frame = NSRect(x: ix + 33, y: cy, width: inW - 33, height: 23); cy += 29
+            badgeLabel?.frame = NSRect(x: ix, y: cy + 3, width: labelW, height: 16)
+            pdfPageNumSeg?.frame = NSRect(x: segX, y: cy, width: segW, height: 23); cy += 29
+            watermarkLabel?.frame = NSRect(x: ix, y: cy + 3, width: labelW, height: 16)
+            watermarkSeg?.frame = NSRect(x: segX, y: cy, width: segW, height: 23); cy += 29
             if showWMInput { watermarkBox?.frame = NSRect(x: ix, y: cy, width: inW, height: 26); cy += 32 }
             pdfHintLabel?.frame = NSRect(x: ix, y: cy + 2, width: inW, height: 38)
         }
 
+        [layoutSeg, colsSeg, alignSeg, aspectSeg, badgeSeg, pdfPageNumSeg, watermarkSeg].compactMap { $0 }
+            .forEach { $0.proportional = $0.fittingWidth > $0.frame.width }
         [copyBtn, annotateBtn, pinBtn, saveBtn].forEach { $0?.isHidden = isPDF }
         pdfBtn?.isHidden = !isPDF
         if isPDF {
@@ -515,9 +528,18 @@ extension CollageStudioController {
         } else {
             let row2Y = workH - 10 - 27, row1Y = row2Y - 5 - 30, thirdW = floor((inW - 10) / 3.0)
             copyBtn?.frame = NSRect(x: ix, y: row1Y, width: inW, height: 30)
-            annotateBtn?.frame = NSRect(x: ix, y: row2Y, width: thirdW, height: 27)
-            pinBtn?.frame = NSRect(x: ix + thirdW + 5, y: row2Y, width: thirdW, height: 27)
-            saveBtn?.frame = NSRect(x: ix + (thirdW + 5) * 2, y: row2Y, width: inW - (thirdW + 5) * 2, height: 27)
+            // 三等分放不下较长译文时按各自所需宽度比例分配
+            let trio = [annotateBtn, pinBtn, saveBtn].compactMap { $0 }
+            let needs = trio.map(\.fittingWidth)
+            let widths = needs.contains(where: { $0 > thirdW }) && !needs.isEmpty
+                ? needs.map { floor($0 * (inW - 10) / needs.reduce(0, +)) }
+                : Array(repeating: thirdW, count: trio.count)
+            var bx = ix
+            for (i, btn) in trio.enumerated() {
+                let bw = (i == trio.count - 1) ? (ix + inW - bx) : widths[i]
+                btn.frame = NSRect(x: bx, y: row2Y, width: bw, height: 27)
+                bx += bw + 5
+            }
             divExport?.frame = NSRect(x: ix, y: row1Y - 8, width: inW, height: 1)
         }
     }

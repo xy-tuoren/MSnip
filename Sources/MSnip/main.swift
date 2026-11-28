@@ -2,6 +2,11 @@ import AppKit
 import Foundation
 import MSnipCore
 
+#if DEBUG
+// 调试用离屏渲染设置页（不触发单实例转发、不挂载日志与热键）
+if MainActor.assumeIsolated({ DebugSettingsSnapshot.runIfRequested() }) { exit(0) }
+#endif
+
 // 单实例快传：若 MSnip 已在菜单栏运行，带参数执行对应动作，无参数直接点击应用图标则呼出设置面板并 0.01s 退出
 let myPID = ProcessInfo.processInfo.processIdentifier
 let bundleID = Bundle.main.bundleIdentifier ?? "top.xy.msnip"

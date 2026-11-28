@@ -42,19 +42,21 @@ extension TranslationSettingsWindow {
         container.addSubview(prioCard)
         prioCard.addSubview(GeekShortcutIconBadge(symbol: "bolt.shield", pointSize: 12.5, frame: NSRect(x: 16, y: 8, width: 28, height: 28)))
 
-        let prioTitle = NSTextField(labelWithString: "冲突时强制优先接管")
+        let prioTitle = NSTextField(labelWithString: L("冲突时强制优先接管"))
         prioTitle.font = .systemFont(ofSize: 13.5, weight: .semibold); prioTitle.textColor = GeekTheme.inkPrimary
-        GeekTheme.placeCentered(prioTitle, x: 54, width: 146, centerY: 22.0)
+        prioTitle.sizeToFit()
+        let prioTitleW = max(146, ceil(prioTitle.frame.width) + 4)
+        GeekTheme.placeCentered(prioTitle, x: 54, width: prioTitleW, centerY: 22.0)
         prioCard.addSubview(prioTitle)
 
-        let prioStatus = NSTextField(labelWithString: "已关闭 · 零底层监听（一键开关无副作用）")
+        let prioStatus = NSTextField(labelWithString: L("已关闭 · 零底层监听（一键开关无副作用）"))
         prioStatus.font = .systemFont(ofSize: 12.0, weight: .regular); prioStatus.textColor = GeekTheme.inkMuted
         prioStatus.lineBreakMode = .byTruncatingTail
-        GeekTheme.placeCentered(prioStatus, x: 204, width: cardW - 344, centerY: 22.0)
+        GeekTheme.placeCentered(prioStatus, x: 58 + prioTitleW, width: cardW - 344 - (prioTitleW - 146), centerY: 22.0)
         shortcutAudit.priorityStatusLabel = prioStatus
         prioCard.addSubview(prioStatus)
 
-        let permBtn = GeekButton(title: "去授权", style: .amberSoft)
+        let permBtn = GeekButton(title: L("去授权"), style: .amberSoft)
         permBtn.frame = NSRect(x: cardW - 128, y: 9, width: 64, height: 26)
         permBtn.isHidden = true
         permBtn.onClick = { [weak self] in self?.onOpenPermissionGuide?(.accessibility) }
@@ -62,7 +64,7 @@ extension TranslationSettingsWindow {
         prioCard.addSubview(permBtn)
 
         let prioSw = GeekToggleSwitch(isOn: false)
-        prioSw.toolTip = "开启后使用头部优先事件接管压过冲突应用与系统热键（需辅助功能权限）；关闭即彻底卸载监听、零残留无副作用"
+        prioSw.toolTip = L("开启后使用头部优先事件接管压过冲突应用与系统热键（需辅助功能权限）；关闭即彻底卸载监听、零残留无副作用")
         prioSw.frame = NSRect(x: cardW - 54, y: 11, width: 38, height: 22)
         prioSw.onToggle = { [weak self] on in
             guard let self else { return }
@@ -85,16 +87,16 @@ extension TranslationSettingsWindow {
         let active = cfg.hotKeysEnabled && cfg.forcePriorityHotKeys && (isPriorityTapActiveProvider?() ?? false)
         shortcutAudit.prioritySwitch?.isOn = cfg.forcePriorityHotKeys
         if !cfg.forcePriorityHotKeys {
-            shortcutAudit.priorityStatusLabel?.setTextWithTooltip("已关闭 · 零底层监听（一键开关无副作用）", color: GeekTheme.inkMuted)
+            shortcutAudit.priorityStatusLabel?.setTextWithTooltip(L("已关闭 · 零底层监听（一键开关无副作用）"), color: GeekTheme.inkMuted)
             shortcutAudit.priorityPermBtn?.isHidden = true
         } else if !cfg.hotKeysEnabled {
-            shortcutAudit.priorityStatusLabel?.setTextWithTooltip("全局热键总开关关闭中 · 开启总开关后生效", color: GeekTheme.inkSecondary)
+            shortcutAudit.priorityStatusLabel?.setTextWithTooltip(L("全局热键总开关关闭中 · 开启总开关后生效"), color: GeekTheme.inkSecondary)
             shortcutAudit.priorityPermBtn?.isHidden = true
         } else if active {
-            shortcutAudit.priorityStatusLabel?.setTextWithTooltip("● 已生效 · 优先压过冲突应用与系统热键（关闭即彻底卸载）", color: GeekTheme.emerald)
+            shortcutAudit.priorityStatusLabel?.setTextWithTooltip(L("● 已生效 · 优先压过冲突应用与系统热键（关闭即彻底卸载）"), color: GeekTheme.emerald)
             shortcutAudit.priorityPermBtn?.isHidden = true
         } else {
-            shortcutAudit.priorityStatusLabel?.setTextWithTooltip("⚠ 需先授予「辅助功能」权限，当前自动回退常规热键", color: GeekTheme.amber)
+            shortcutAudit.priorityStatusLabel?.setTextWithTooltip(L("⚠ 需先授予「辅助功能」权限，当前自动回退常规热键"), color: GeekTheme.amber)
             shortcutAudit.priorityPermBtn?.isHidden = false
         }
         return active
@@ -132,11 +134,11 @@ final class HotKeyConflictBadgeView: NSView {
         }
         isHidden = false
         isOverridden = overridden && (c.owner != "MSnip")
-        text = isOverridden ? "已优先接管" : c.shortBadge
+        text = isOverridden ? L("已优先接管") : c.shortBadge
         severity = c.severity
         toolTip = isOverridden
-            ? "已开启头部优先接管，将压过冲突：\(c.detailMessage)"
-            : (c.detailMessage + "（点击查看冲突体检或开启强制优先接管）")
+            ? L("已开启头部优先接管，将压过冲突：%@", c.detailMessage)
+            : (c.detailMessage + L("（点击查看冲突体检或开启强制优先接管）"))
         needsDisplay = true
     }
 

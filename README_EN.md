@@ -170,6 +170,7 @@ Once launched, MSnip lives quietly in the menu bar — no Dock icon, no backgrou
   - `ScreenCaptureKit` fast silent capture: macOS 14.0+ (automatic fallback on macOS 12–13)
   - Apple native offline translation: macOS 15.0+
 - **Permissions**: **Screen Recording** (Required for capture/recording); **Accessibility** (Optional for UI-control snapping, IDE terminal detection, and priority hotkey takeover).
+- **Interface language**: English / Simplified Chinese, following your macOS language order by default. Switch it in Settings › General › Language (applies after relaunch).
 
 ### Option 1: Build & Install Native `2.7 MB` App from Source (Recommended)
 

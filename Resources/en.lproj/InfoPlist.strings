@@ -1,0 +1,2 @@
+/* 系统权限弹窗与「隐私与安全性」中显示的说明 */
+"NSScreenCaptureUsageDescription" = "MSnip needs Screen Recording permission to capture and freeze the screen so you can annotate and pin it.";

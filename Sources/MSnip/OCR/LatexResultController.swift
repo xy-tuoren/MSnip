@@ -86,7 +86,7 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
     func runRecognition() {
         guard let img = currentImage else { return }
         recognitionTask?.cancel()
-        statusBadgeLabel.stringValue = "正在识别 LaTeX 公式…"
+        statusBadgeLabel.stringValue = L("正在识别 LaTeX 公式…")
         statusBadgeLabel.textColor = MSnipUITheme.accent
         noticeBanner.isHidden = true
         relayout()
@@ -113,11 +113,11 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
                 }
 
                 if res.rawLatex.isEmpty {
-                    self.statusBadgeLabel.stringValue = "未识别到公式内容"
+                    self.statusBadgeLabel.stringValue = L("未识别到公式内容")
                     self.statusBadgeLabel.textColor = MSnipUITheme.warning
                 } else if self.config.autoCopy {
                     ClipboardAndSave.copyText(self.config.preferredWrap.wrap(res.rawLatex))
-                    self.statusBadgeLabel.stringValue = "✓ \(res.providerName) · \(res.elapsedMs)ms · 已复制"
+                    self.statusBadgeLabel.stringValue = L("✓ %@ · %@ms · 已复制", res.providerName, res.elapsedMs)
                     self.statusBadgeLabel.textColor = MSnipUITheme.success
                 } else {
                     self.statusBadgeLabel.stringValue = "✓ \(res.providerName) · \(res.elapsedMs)ms"
@@ -143,7 +143,7 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
         config.save()
         syncFormatPills()
         ClipboardAndSave.copyText(format.wrap(raw))
-        statusBadgeLabel.stringValue = "✓ 已复制（\(format.shortTitle)）"
+        statusBadgeLabel.stringValue = L("✓ 已复制（%@）", format.shortTitle)
         statusBadgeLabel.textColor = MSnipUITheme.success
         relayout()
     }
@@ -152,7 +152,7 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
         for (idx, fmt) in LatexWrapFormat.allCases.enumerated() where formatButtons.indices.contains(idx) {
             formatButtons[idx].isToggledOn = (fmt == config.preferredWrap)
         }
-        copyButton?.title = "复制 \(config.preferredWrap.shortTitle) (⌘↩)"
+        copyButton?.title = L("复制 %@ (⌘↩)", config.preferredWrap.shortTitle)
     }
 
     func adjustCodeFontSize(step: Int) {
@@ -164,7 +164,7 @@ final class LatexResultController: NSObject, NSWindowDelegate, NSTextViewDelegat
 
     func updateStatsLabel() {
         let len = codeTextView?.string.count ?? 0
-        statsLabel?.stringValue = "\(len) 字符 · 编辑源码实时预览"
+        statsLabel?.stringValue = L("%@ 字符 · 编辑源码实时预览", len)
     }
 
     func windowDidResize(_ notification: Notification) { relayout() }
@@ -270,7 +270,7 @@ extension LatexResultController {
     }
 
     private func buildUI(in root: NSView) {
-        titleLabel = makeLabel("LaTeX 公式识别", size: 14, weight: .bold, color: ResultTheme.inkPrimary)
+        titleLabel = makeLabel(L("LaTeX 公式识别"), size: 14, weight: .bold, color: ResultTheme.inkPrimary)
         root.addSubview(titleLabel)
         statusBadgeLabel = makeLabel("", size: 11.5, weight: .medium, color: MSnipUITheme.success)
         statusBadgeLabel.lineBreakMode = .byTruncatingTail
@@ -286,12 +286,12 @@ extension LatexResultController {
         }
         root.addSubview(enginePill)
 
-        retryButton = OCRPillButton(title: "重识", symbol: "arrow.clockwise")
+        retryButton = OCRPillButton(title: L("重识"), symbol: "arrow.clockwise")
         retryButton.onClick = { [weak self] in self?.runRecognition() }
         root.addSubview(retryButton)
 
-        configButton = OCRPillButton(title: "设置", symbol: "slider.horizontal.3")
-        configButton.toolTip = "前往「设置 → 识字与翻译」配置公式引擎与密钥"
+        configButton = OCRPillButton(title: L("设置"), symbol: "slider.horizontal.3")
+        configButton.toolTip = L("前往「设置 → 识字与翻译」配置公式引擎与密钥")
         configButton.onClick = { [weak self] in self?.onOpenLatexSettings?() }
         root.addSubview(configButton)
 
@@ -307,12 +307,12 @@ extension LatexResultController {
         leftCard.addSubview(imgWell)
         imageView = NSImageView(); imageView.imageScaling = .scaleProportionallyDown
         leftCard.addSubview(imageView)
-        leftTipLabel = makeLabel("左侧原图对照 · 右侧源码实时联动预览", size: 11, weight: .medium, color: ResultTheme.inkMuted)
+        leftTipLabel = makeLabel(L("左侧原图对照 · 右侧源码实时联动预览"), size: 11, weight: .medium, color: ResultTheme.inkMuted)
         leftCard.addSubview(leftTipLabel)
         root.addSubview(leftCard)
 
         rightCard = makeCard()
-        previewTitleLabel = makeLabel("公式渲染预览", size: 11.5, weight: .semibold, color: ResultTheme.inkSecondary)
+        previewTitleLabel = makeLabel(L("公式渲染预览"), size: 11.5, weight: .semibold, color: ResultTheme.inkSecondary)
         rightCard.addSubview(previewTitleLabel)
         previewView = LatexPreviewWebView(frame: .zero)
         rightCard.addSubview(previewView)
@@ -322,7 +322,7 @@ extension LatexResultController {
         noticeLabel = makeLabel("", size: 11, weight: .medium, color: ResultTheme.inkPrimary)
         noticeLabel.lineBreakMode = .byTruncatingTail
         noticeBanner.addSubview(noticeLabel)
-        noticeActionBtn = OCRPillButton(title: "去设置")
+        noticeActionBtn = OCRPillButton(title: L("去设置"))
         noticeActionBtn.onClick = { [weak self] in self?.onOpenLatexSettings?() }
         noticeBanner.addSubview(noticeActionBtn)
         noticeBanner.isHidden = true
@@ -349,15 +349,15 @@ extension LatexResultController {
         rightCard.addSubview(codeScrollView)
         root.addSubview(rightCard)
 
-        statsLabel = makeLabel("0 字符", size: 11.5, weight: .medium, color: ResultTheme.inkSecondary)
+        statsLabel = makeLabel(L("0 字符"), size: 11.5, weight: .medium, color: ResultTheme.inkSecondary)
         root.addSubview(statsLabel)
-        pinButton = OCRPillButton(title: "贴原图到桌面", symbol: "pin")
+        pinButton = OCRPillButton(title: L("贴原图到桌面"), symbol: "pin")
         pinButton.onClick = { [weak self] in
             guard let self, let img = self.currentImage, let scr = self.currentScreen ?? NSScreen.main ?? NSScreen.screens.first else { return }
             self.onPinImage?(img, self.currentScale, scr)
         }
         root.addSubview(pinButton)
-        copyButton = OCRPillButton(title: "复制公式 (⌘↩)", symbol: "doc.on.doc", primary: true)
+        copyButton = OCRPillButton(title: L("复制公式 (⌘↩)"), symbol: "doc.on.doc", primary: true)
         copyButton.onClick = { [weak self] in
             guard let self else { return }
             self.copyFormula(as: self.config.preferredWrap)

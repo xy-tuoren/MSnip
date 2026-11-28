@@ -117,7 +117,7 @@ extension OverlayView {
         deactivateInPlaceOCR()
         deactivateInPlaceTranslate()
         guard let raw = selection ?? hoveredAutoRect else {
-            ToastHUD.show(message: "请先框选或悬停要滚动截取的区域")
+            ToastHUD.show(message: L("请先框选或悬停要滚动截取的区域"))
             return
         }
         let rect = CGRect(
@@ -125,7 +125,7 @@ extension OverlayView {
             width: round(raw.width), height: round(raw.height)
         ).intersection(bounds)
         guard rect.width >= 48, rect.height >= 64 else {
-            ToastHUD.show(message: "长截图区域至少需 48 × 64 pt")
+            ToastHUD.show(message: L("长截图区域至少需 48 × 64 pt"))
             return
         }
         let s = snapshot.scaleFactor
@@ -217,7 +217,7 @@ extension OverlayView {
         deactivateInPlaceOCR()
         deactivateInPlaceTranslate()
         guard let raw = selection ?? hoveredAutoRect else {
-            ToastHUD.show(message: "请先点击窗口或拖拽框选要录制的区域")
+            ToastHUD.show(message: L("请先点击窗口或拖拽框选要录制的区域"))
             return
         }
         let rect = CGRect(
@@ -225,7 +225,7 @@ extension OverlayView {
             width: round(raw.width), height: round(raw.height)
         ).intersection(bounds)
         guard rect.width >= 48, rect.height >= 48 else {
-            ToastHUD.show(message: "录屏选区至少需 48 × 48 pt")
+            ToastHUD.show(message: L("录屏选区至少需 48 × 48 pt"))
             return
         }
         let s = snapshot.scaleFactor
@@ -242,7 +242,7 @@ extension OverlayView {
         commitTextEditing()
         if selection == nil, let snap = hoveredAutoRect { selection = snap }
         guard let sel = selection, sel.width >= 16, sel.height >= 16 else {
-            ToastHUD.show(message: "请先框选需要智能打码的区域")
+            ToastHUD.show(message: L("请先框选需要智能打码的区域"))
             return
         }
         guard let cropped = AnnotationRenderer.bakeExportImage(
@@ -250,12 +250,12 @@ extension OverlayView {
         ) else { return }
         let useBlur = (activeTool == .gaussianBlur)
         let curStyle = self.style
-        ToastHUD.show(message: "正在离线扫描隐私敏感信息…")
+        ToastHUD.show(message: L("正在离线扫描隐私敏感信息…"))
         Task { @MainActor [weak self] in
             let normBoxes = await VisionTextExtractor.detectSensitiveBoxesOffMain(cgImage: cropped)
             guard let self, let activeSel = self.selection, activeSel == sel else { return }
             guard !normBoxes.isEmpty else {
-                ToastHUD.show(message: "选区内未检测到 API Key、邮箱、手机号、身份证或 IP")
+                ToastHUD.show(message: L("选区内未检测到 API Key、邮箱、手机号、身份证或 IP"))
                 return
             }
             self.doc.beginTransaction()
@@ -275,7 +275,7 @@ extension OverlayView {
             self.doc.commitTransaction(changed: true)
             self.updateToolbarLayout()
             self.needsDisplay = true
-            ToastHUD.show(message: "✓ 已一键遮盖 \(normBoxes.count) 处隐私敏感信息（可按 ⌘Z 撤回）")
+            ToastHUD.show(message: L("✓ 已一键遮盖 %@ 处隐私敏感信息（可按 ⌘Z 撤回）", normBoxes.count))
         }
     }
 }
@@ -358,8 +358,8 @@ final class OverlayCornerSliderView: NSView {
         if hoveredReset != onReset { hoveredReset = onReset }
         if hoveredTrack != onTrack { hoveredTrack = onTrack }
         let tip: String = (mode == .glow)
-            ? (onReset ? "关闭发光边 (0%)" : "左右拖拽或滚轮调节发光边强度（0%–100%）")
-            : (onReset ? "归零圆角 (0%)" : "左右拖拽或滚轮调节圆角比例（100% 为胶囊/正圆）")
+            ? (onReset ? L("关闭发光边 (0%)") : L("左右拖拽或滚轮调节发光边强度（0%–100%）"))
+            : (onReset ? L("归零圆角 (0%)") : L("左右拖拽或滚轮调节圆角比例（100% 为胶囊/正圆）"))
         FloatingTooltipHUD.show(tip, anchorRectInView: onReset ? resetRect : bounds, of: self)
     }
 

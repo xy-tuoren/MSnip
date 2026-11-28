@@ -21,9 +21,9 @@ extension OverlayView {
         let letter = ansiLetter(for: event.keyCode) ?? (event.charactersIgnoringModifiers?.lowercased() ?? "")
         switch letter {
         case "c":
-            if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() { ToastHUD.show(message: "已复制划选文字") }
+            if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() { ToastHUD.show(message: L("已复制划选文字")) }
             else if !shift, let idx = selectedObjectIndex, doc.objects.indices.contains(idx) {
-                copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0; ToastHUD.show(message: "已复制标注图形 · 按 ⌘V 粘贴（⌘D 直接克隆）")
+                copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0; ToastHUD.show(message: L("已复制标注图形 · 按 ⌘V 粘贴（⌘D 直接克隆）"))
             } else { exportAndFinish(mode: shift ? .copyWithPath : .copy) }
             return true
         case "v": pasteCopiedAnnotationIfAny(); return true
@@ -160,7 +160,7 @@ extension OverlayView {
         case .copy:
             if selection != nil && !opt && !eyedropperActive {
                 if toolbar.inPlaceOCRActive, let liveV = inPlaceOCRView, liveV.copySelectionIfActive() {
-                    ToastHUD.show(message: "已复制划选文字")
+                    ToastHUD.show(message: L("已复制划选文字"))
                 } else {
                     exportAndFinish(mode: .copy)
                 }
@@ -168,7 +168,7 @@ extension OverlayView {
                 if let sample = samplePixelAtCursor() {
                     let txt = sample.color.formatted(as: colorCopyFormat)
                     ClipboardAndSave.copyText(txt)
-                    ToastHUD.show(message: "色值 \(txt) 已复制", swatch: sample.color)
+                    ToastHUD.show(message: L("色值 %@ 已复制", txt), swatch: sample.color)
                 }
             } else {
                 copyColorAtCursorAndFinish()
@@ -215,7 +215,7 @@ extension OverlayView {
             else if selection != nil, let sample = samplePixelAtCursor() {
                 let coord = formattedCoordinateAtCursor(px: sample.px, py: sample.py)
                 ClipboardAndSave.copyText(coord.copyValue)
-                ToastHUD.show(message: "坐标 \(coord.copyValue) 已复制")
+                ToastHUD.show(message: L("坐标 %@ 已复制", coord.copyValue))
             } else {
                 copyCoordinatesAtCursorAndFinish()
             }
@@ -401,7 +401,7 @@ extension OverlayView {
             ?? lastMousePoint
             ?? CGPoint(x: bounds.midX, y: bounds.midY)
         guard let hit = regionDetector.topWindow(at: probe, in: snapshot) else {
-            ToastHUD.show(message: "当前位置未命中独立应用窗口，请将鼠标移至目标窗口上再按 F 或 ⇧↩")
+            ToastHUD.show(message: L("当前位置未命中独立应用窗口，请将鼠标移至目标窗口上再按 F 或 ⇧↩"))
             return
         }
         onFinishIsolatedWindow?(

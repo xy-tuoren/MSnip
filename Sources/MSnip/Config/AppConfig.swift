@@ -326,26 +326,26 @@ enum AppConfigPortability {
         panel.nameFieldStringValue = "MSnip-config-\(df.string(from: Date())).json"
         panel.allowedContentTypes = [.json]
         panel.canCreateDirectories = true
-        panel.title = "导出 MSnip 配置文件（不含任何 API 密钥）"
+        panel.title = L("导出 MSnip 配置文件（不含任何 API 密钥）")
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         guard let data = try? enc.encode(config) else {
-            ToastHUD.show(message: "导出配置失败：序列化异常")
+            ToastHUD.show(message: L("导出配置失败：序列化异常"))
             return
         }
         do {
             try data.write(to: url, options: .atomic)
             ToastHUD.show(
-                message: "✓ 已导出配置文件（不含 API 密钥）",
+                message: L("✓ 已导出配置文件（不含 API 密钥）"),
                 subtitle: url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"),
-                actionTitle: "在访达中显示 ›",
+                actionTitle: L("在访达中显示 ›"),
                 onAction: { ClipboardAndSave.revealInFinder(url) }
             )
         } catch {
-            ToastHUD.show(message: "写入配置文件失败：\(error.localizedDescription)")
+            ToastHUD.show(message: L("写入配置文件失败：%@", error.localizedDescription))
         }
     }
 
@@ -354,17 +354,17 @@ enum AppConfigPortability {
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.title = "选择 MSnip 配置文件 (.json)"
+        panel.title = L("选择 MSnip 配置文件 (.json)")
         NSApp.activate(ignoringOtherApps: true)
         guard panel.runModal() == .OK, let url = panel.url else { return nil }
         guard let data = try? Data(contentsOf: url),
               let rawObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               Self.looksLikeMSnipConfig(rawObj),
               let decoded = try? JSONDecoder().decode(AppConfig.self, from: data) else {
-            ToastHUD.show(message: "导入失败：文件格式无效或不是 MSnip 配置文件")
+            ToastHUD.show(message: L("导入失败：文件格式无效或不是 MSnip 配置文件"))
             return nil
         }
-        ToastHUD.show(message: "✓ 已导入配置并即时生效")
+        ToastHUD.show(message: L("✓ 已导入配置并即时生效"))
         return decoded
     }
 

@@ -313,12 +313,12 @@ enum OverlayQuickLaunchMode: Equatable {
     var hudPrefix: String {
         switch self {
         case .standard:       return ""
-        case .quickOCR:       return "识字 · "
-        case .quickSilentOCR: return "静默识字 · "
-        case .quickTranslate: return "翻译 · "
-        case .quickLongShot:  return "长截图 · "
-        case .quickLatex:     return "公式 · "
-        case .quickRecord:    return "录屏 · "
+        case .quickOCR:       return L("识字 · ")
+        case .quickSilentOCR: return L("静默识字 · ")
+        case .quickTranslate: return L("翻译 · ")
+        case .quickLongShot:  return L("长截图 · ")
+        case .quickLatex:     return L("公式 · ")
+        case .quickRecord:    return L("录屏 · ")
         }
     }
 }

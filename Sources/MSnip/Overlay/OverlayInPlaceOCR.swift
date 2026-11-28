@@ -70,9 +70,9 @@ final class OverlaySidePillsView: NSView {
         }
         let tip: String?
         switch hit {
-        case 0: tip = "调节圆角比例（B · 滚轮微调 · ⌥+点击归零）"
-        case 1: tip = "调节发光边强度（G · 滚轮调节 · ⌥+点击关闭）"
-        case 2: tip = "对齐底层应用窗口（⌥+点击导出独立透明阴影窗口）"
+        case 0: tip = L("调节圆角比例（B · 滚轮微调 · ⌥+点击归零）")
+        case 1: tip = L("调节发光边强度（G · 滚轮调节 · ⌥+点击关闭）")
+        case 2: tip = L("对齐底层应用窗口（⌥+点击导出独立透明阴影窗口）")
         default: tip = nil
         }
         if let h = hit, let tip {
@@ -157,7 +157,7 @@ extension OverlayView {
             selection = snap
         }
         guard let sel = selection, sel.width >= 8, sel.height >= 8 else {
-            ToastHUD.show(message: "请先框选需要识别文字的区域")
+            ToastHUD.show(message: L("请先框选需要识别文字的区域"))
             return
         }
         guard let baked = AnnotationRenderer.bakeExportImage(
@@ -191,7 +191,7 @@ extension OverlayView {
             let engine = ocrCfg.engineKind
             let activeID = TranslationService.shared.settings.activeProfileID
             let profiles = VisionLLMOCRService.availableVisionLLMProfiles()
-            ToastHUD.show(message: "正在用「\(engine.shortName)」识字…")
+            ToastHUD.show(message: L("正在用「%@」识字…", engine.shortName))
             Task { @MainActor [weak self, weak liveView] in
                 async let liveObj = VisionTextExtractor.analyzeLiveTextOverlay(cgImage: baked)
                 if let live = await liveObj, let self, let liveView, self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive {
@@ -204,13 +204,13 @@ extension OverlayView {
                     let out = try await CloudOCRService.recognizeText(image: baked, engine: engine, config: ocrCfg, activeProfileID: activeID, profiles: profiles)
                     guard self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive else { return }
                     if self.ocrAutoCopy { ClipboardAndSave.copyText(out.text) }
-                    let verb = self.ocrAutoCopy ? "已用「\(out.providerName)」识别 \(out.text.count) 字并复制" : "已用「\(out.providerName)」识别 \(out.text.count) 字"
-                    ToastHUD.show(message: "\(verb) · 框内仍可划词", actionTitle: "双栏对照窗 ›") { [weak self] in self?.exportAndFinish(mode: .extractText) }
+                    let verb = self.ocrAutoCopy ? L("已用「%@」识别 %@ 字并复制", out.providerName, out.text.count) : L("已用「%@」识别 %@ 字", out.providerName, out.text.count)
+                    ToastHUD.show(message: L("%@ · 框内仍可划词", verb), actionTitle: L("双栏对照窗 ›")) { [weak self] in self?.exportAndFinish(mode: .extractText) }
                 } catch {
                     guard self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive else { return }
                     let output = await VisionTextExtractor.recognizeTextOnlyOffMain(cgImage: baked)
                     guard self.inPlaceOCRToken == ocrTok, self.toolbar.inPlaceOCRActive else { return }
-                    self.presentInPlaceOCROutput(output, fallbackNote: "⚠ \(engine.shortName)失败，已回退离线：\(error.localizedDescription)")
+                    self.presentInPlaceOCROutput(output, fallbackNote: L("⚠ %@失败，已回退离线：%@", engine.shortName, error.localizedDescription))
                 }
             }
         } else {
@@ -227,10 +227,10 @@ extension OverlayView {
     private func presentInPlaceOCROutput(_ output: OCRRecognitionOutput, fallbackNote: String?) {
         if let qr = output.qrPayloads.first, output.preservedText.isEmpty { Self.presentBarcodeToast(qr); return }
         let text = output.initialClipboardText
-        guard !text.isEmpty else { ToastHUD.show(message: "选区内未检测到可识别文字或二维码", subtitle: fallbackNote); return }
-        let msg = ocrAutoCopy ? { ClipboardAndSave.copyText(text); return "已识别 \(text.count) 字并复制 · 可直接在框内划词或点工具继续标注" }()
-            : "已识别 \(text.count) 字 · 可直接在框内划词或按 ⌘C 复制"
-        ToastHUD.show(message: msg, subtitle: fallbackNote, actionTitle: "双栏对照窗 ›") { [weak self] in self?.exportAndFinish(mode: .extractText) }
+        guard !text.isEmpty else { ToastHUD.show(message: L("选区内未检测到可识别文字或二维码"), subtitle: fallbackNote); return }
+        let msg = ocrAutoCopy ? { ClipboardAndSave.copyText(text); return L("已识别 %@ 字并复制 · 可直接在框内划词或点工具继续标注", text.count) }()
+            : L("已识别 %@ 字 · 可直接在框内划词或按 ⌘C 复制", text.count)
+        ToastHUD.show(message: msg, subtitle: fallbackNote, actionTitle: L("双栏对照窗 ›")) { [weak self] in self?.exportAndFinish(mode: .extractText) }
     }
 
     /// 选区锁定后静默探测二维码/条码，命中即弹出一键打开链接/复制码值提示（未命中零干扰）
@@ -261,14 +261,14 @@ extension OverlayView {
         let isURL = (lower.hasPrefix("http://") || lower.hasPrefix("https://")), url = isURL ? URL(string: payload) : nil
         let preview = payload.count > 44 ? String(payload.prefix(44)) + "…" : payload
         if let url {
-            ToastHUD.show(message: "识别到二维码链接：\(preview)", actionTitle: "打开链接 ›") {
+            ToastHUD.show(message: L("识别到二维码链接：%@", preview), actionTitle: L("打开链接 ›")) {
                 ClipboardAndSave.copyText(payload)
                 NSWorkspace.shared.open(url)
             }
         } else {
-            ToastHUD.show(message: "识别到二维码/条码：\(preview)", actionTitle: "复制码值 ›") {
+            ToastHUD.show(message: L("识别到二维码/条码：%@", preview), actionTitle: L("复制码值 ›")) {
                 ClipboardAndSave.copyText(payload)
-                ToastHUD.show(message: "✓ 已复制二维码/条码内容")
+                ToastHUD.show(message: L("✓ 已复制二维码/条码内容"))
             }
         }
     }
@@ -290,12 +290,12 @@ extension OverlayView {
             ?? lastMousePoint
             ?? CGPoint(x: bounds.midX, y: bounds.midY)
         guard let hit = regionDetector.topWindow(at: probe, in: snapshot) else {
-            ToastHUD.show(message: "当前位置下方未检测到独立应用窗口")
+            ToastHUD.show(message: L("当前位置下方未检测到独立应用窗口"))
             return
         }
         deactivateInPlaceOCR()
         deactivateInPlaceTranslate()
         selection = hit.localRect
-        ToastHUD.show(message: "已对齐窗口：\(hit.ownerName.isEmpty ? "当前窗口" : hit.ownerName)（⌥+点击可直出透明阴影图）")
+        ToastHUD.show(message: L("已对齐窗口：%@（⌥+点击可直出透明阴影图）", hit.ownerName.isEmpty ? L("当前窗口") : hit.ownerName))
     }
 }

@@ -9,10 +9,10 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         case general = 0, shortcuts = 1, ocrAndLatex = 2, translation = 3
         var title: String {
             switch self {
-            case .general:     return "通用"
-            case .shortcuts:   return "快捷键"
-            case .ocrAndLatex: return "识字与翻译"
-            case .translation: return "模型与服务"
+            case .general:     return L("通用")
+            case .shortcuts:   return L("快捷键")
+            case .ocrAndLatex: return L("识字与翻译")
+            case .translation: return L("模型与服务")
             }
         }
     }
@@ -144,7 +144,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         window?.makeKeyAndOrderFront(nil)
     }
 
-    private func ensureWindowBuilt() {
+    func ensureWindowBuilt() {
         if window != nil { return }
         let W: CGFloat = 840, H: CGFloat = 620
         let win = GeekSettingsWindowPanel(
@@ -204,6 +204,8 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
             symbols: ["slider.horizontal.3", "command", "text.viewfinder", "cpu"],
             selectedIndex: 0
         )
+        // 英文等较长标签放不下等宽分段时改为按文字宽度分配，中文保持原等宽布局
+        tabSegment.proportional = tabSegment.fittingWidth > 432
         tabSegment.frame = NSRect(x: round((W - 432) * 0.5), y: 12, width: 432, height: 34)
         tabSegment.onSelect = { [weak self] idx in
             guard let tab = SettingsTab(rawValue: idx) else { return }
@@ -211,7 +213,7 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         }
         bar.addSubview(tabSegment)
 
-        let themeBtn = GeekButton(title: "明亮", symbol: "sun.max", style: .subtle)
+        let themeBtn = GeekButton(title: L("明亮"), symbol: "sun.max", style: .subtle)
         themeBtn.frame = NSRect(x: W - 28 - 76, y: 14, width: 76, height: 30)
         themeBtn.onClick = { [weak self] in self?.toggleDarkLightQuick() }
         modeControls.themeToggleBtn = themeBtn
@@ -225,14 +227,14 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         root.addSubview(foot)
         foot.addSubview(GeekSurfaceView(frame: NSRect(x: 0, y: 0, width: W, height: 1), fill: GeekTheme.border))
 
-        let dirBtn = GeekButton(title: "打开配置目录", symbol: "folder", style: .ghost)
+        let dirBtn = GeekButton(title: L("打开配置目录"), symbol: "folder", style: .ghost)
         dirBtn.contentAlignment = .left
-        dirBtn.toolTip = "在 Finder 中打开 MSnip 配置文件夹（含 config.json 与 translation_providers.json）"
-        dirBtn.frame = NSRect(x: 20, y: 7, width: 126, height: 28)
+        dirBtn.toolTip = L("在 Finder 中打开 MSnip 配置文件夹（含 config.json 与 translation_providers.json）")
+        dirBtn.frame = NSRect(x: 20, y: 7, width: dirBtn.widthFitting(atLeast: 126), height: 28)
         dirBtn.onClick = { [weak self] in self?.revealConfigDirectory() }
         foot.addSubview(dirBtn)
 
-        let tip = NSTextField(labelWithString: "自动保存 · ⌘W 关闭")
+        let tip = NSTextField(labelWithString: L("自动保存 · ⌘W 关闭"))
         tip.font = .monospacedSystemFont(ofSize: 11.5, weight: .regular)
         tip.textColor = GeekTheme.inkMuted
         tip.alignment = .right
@@ -266,8 +268,8 @@ final class TranslationSettingsWindow: NSObject, NSWindowDelegate, NSTableViewDa
         let dotColor: NSColor = !p.isEnabled
             ? GeekTheme.inkMuted
             : (isPrimary ? GeekTheme.emerald : (p.isConfiguredReady ? GeekTheme.accent : GeekTheme.amber))
-        let stateDesc = isPrimary ? "当前使用中" : (p.isConfiguredReady ? "已就绪" : "待填写密钥")
-        let tip = p.endpoint.isEmpty ? "\(p.name)（\(stateDesc)）" : "\(p.name)（\(stateDesc)）\n\(p.endpoint)"
+        let stateDesc = isPrimary ? L("当前使用中") : (p.isConfiguredReady ? L("已就绪") : L("待填写密钥"))
+        let tip = p.endpoint.isEmpty ? L("%@（%@）", p.name, stateDesc) : L("%@（%@）\n%@", p.name, stateDesc, p.endpoint)
         return ProviderRowCellView(title: p.name, isPrimary: isPrimary, isReady: p.isConfiguredReady, isSelected: row == selectedIndex, dotColor: dotColor, fullTooltip: tip)
     }
 
@@ -324,12 +326,12 @@ extension TranslationSettingsWindow {
         scroll.documentView = tv; self.tableView = tv
         listCard.addSubview(scroll)
 
-        addBtn = GeekButton(title: "添加服务", symbol: "plus", style: .subtle)
+        addBtn = GeekButton(title: L("添加服务"), symbol: "plus", style: .subtle)
         addBtn.frame = NSRect(x: 28, y: listCard.frame.maxY + 10, width: listW - 78, height: 32)
         addBtn.onClick = { [weak self] in self?.popAddProviderMenu() }
         page.addSubview(addBtn)
 
-        removeBtn = GeekButton(title: "删除", style: .subtle)
+        removeBtn = GeekButton(title: L("删除"), style: .subtle)
         removeBtn.frame = NSRect(x: 28 + listW - 70, y: listCard.frame.maxY + 10, width: 70, height: 32)
         removeBtn.onClick = { [weak self] in self?.removeSelectedProvider() }
         page.addSubview(removeBtn)
@@ -357,7 +359,7 @@ extension TranslationSettingsWindow {
         detailHeaderSubtitle.lineBreakMode = .byTruncatingTail; cv.addSubview(detailHeaderSubtitle)
         GeekTheme.placeTwoLineStack(detailHeaderTitle, detailHeaderSubtitle, x: 18, width: fw - 138, centerY: 30.0, gap: 2.0)
 
-        setDefaultBtn = GeekButton(title: "设为当前", style: .accent)
+        setDefaultBtn = GeekButton(title: L("设为当前"), style: .accent)
         setDefaultBtn.frame = NSRect(x: fw - 110, y: 15, width: 92, height: 30)
         setDefaultBtn.onClick = { [weak self] in self?.onSetAsPrimaryClicked() }
         cv.addSubview(setDefaultBtn); cv.addHairline(atY: 60, insetX: 0)
@@ -380,7 +382,7 @@ extension TranslationSettingsWindow {
         GeekTheme.placeCentered(guideLabel, x: 14, width: fw - 152, centerY: 21.0)
         guideCard.addSubview(guideLabel)
 
-        getKeyBtn = GeekButton(title: "获取 Key", symbol: "arrow.up.right", style: .accent)
+        getKeyBtn = GeekButton(title: L("获取 Key"), symbol: "arrow.up.right", style: .accent)
         getKeyBtn.frame = NSRect(x: fw - 36 - 96, y: 7, width: 88, height: 28)
         getKeyBtn.onClick = { [weak self] in self?.onOpenConsoleURLClicked() }
         guideCard.addSubview(getKeyBtn)
@@ -394,7 +396,7 @@ extension TranslationSettingsWindow {
         nativeInfoLabel.frame = NSRect(x: 16, y: 16, width: fw - 68, height: 104)
         nativeCardBox.addSubview(nativeInfoLabel)
 
-        let sysLangBtn = GeekButton(title: "打开系统翻译语言设置…", symbol: "globe", style: .subtle)
+        let sysLangBtn = GeekButton(title: L("打开系统翻译语言设置…"), symbol: "globe", style: .subtle)
         sysLangBtn.frame = NSRect(x: 16, y: 130, width: 208, height: 30)
         sysLangBtn.onClick = {
             if let url = URL(string: "x-apple.systempreferences:com.apple.Localization-Settings.extension") { NSWorkspace.shared.open(url) }
@@ -403,77 +405,77 @@ extension TranslationSettingsWindow {
         content.addSubview(nativeCardBox)
 
         // 统一 38px 行高与 30px 控件高度，所有控件严格对齐 x = 96 .. fw - 18
-        (appIdRow, appIdLabel, appIdField) = makeDynamicRow(label: "AppID", placeholder: "输入平台应用 ID", mono: true, width: fw)
+        (appIdRow, appIdLabel, appIdField) = makeDynamicRow(label: "AppID", placeholder: L("输入平台应用 ID"), mono: true, width: fw)
 
         apiKeyRow = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 38))
-        apiKeyLabel = addRowCaption("API 密钥", rowHeight: 38, in: apiKeyRow)
+        apiKeyLabel = addRowCaption(L("API 密钥"), rowHeight: 38, in: apiKeyRow)
         let keyW = ctrlW - 94 // 50(粘贴) + 32(眼) + 12(双6pt间距)
         apiKeySecureField = NSSecureTextField()
-        apiKeySecureBox = GeekInputBox(frame: NSRect(x: ctrlX, y: 4, width: keyW, height: 30), field: apiKeySecureField, placeholder: "粘贴 API Key 即可使用", mono: true)
+        apiKeySecureBox = GeekInputBox(frame: NSRect(x: ctrlX, y: 4, width: keyW, height: 30), field: apiKeySecureField, placeholder: L("粘贴 API Key 即可使用"), mono: true)
         apiKeyRow.addSubview(apiKeySecureBox)
         apiKeyPlainField = NSTextField()
-        apiKeyPlainBox = GeekInputBox(frame: NSRect(x: ctrlX, y: 4, width: keyW, height: 30), field: apiKeyPlainField, placeholder: "粘贴 API Key 即可使用", mono: true)
+        apiKeyPlainBox = GeekInputBox(frame: NSRect(x: ctrlX, y: 4, width: keyW, height: 30), field: apiKeyPlainField, placeholder: L("粘贴 API Key 即可使用"), mono: true)
         apiKeyPlainBox.isHidden = true
         apiKeyRow.addSubview(apiKeyPlainBox)
 
-        pasteKeyBtn = GeekButton(title: "粘贴", style: .subtle)
-        pasteKeyBtn.toolTip = "一键从剪贴板粘贴 API 密钥"
+        pasteKeyBtn = GeekButton(title: L("粘贴"), style: .subtle)
+        pasteKeyBtn.toolTip = L("一键从剪贴板粘贴 API 密钥")
         pasteKeyBtn.frame = NSRect(x: ctrlX + keyW + 6, y: 4, width: 50, height: 30)
         pasteKeyBtn.onClick = { [weak self] in self?.onPasteAPIKeyClicked() }
         apiKeyRow.addSubview(pasteKeyBtn)
 
         eyeToggleBtn = GeekButton(title: "", symbol: "eye", style: .subtle)
-        eyeToggleBtn.toolTip = "显示 / 隐藏明文密钥"
+        eyeToggleBtn.toolTip = L("显示 / 隐藏明文密钥")
         eyeToggleBtn.frame = NSRect(x: ctrlX + keyW + 62, y: 4, width: 32, height: 30)
         eyeToggleBtn.onClick = { [weak self] in self?.toggleAPIKeyVisibility() }
         apiKeyRow.addSubview(eyeToggleBtn)
 
         llmProtocolRow = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 38))
-        addRowCaption("接口格式", rowHeight: 38, in: llmProtocolRow)
+        addRowCaption(L("接口格式"), rowHeight: 38, in: llmProtocolRow)
         llmProtocolPill = GeekDropdownPill(symbol: "network", items: TranslationProviderKind.llmProtocolCases.map(\.llmFormatTitle))
         llmProtocolPill.frame = NSRect(x: ctrlX, y: 4, width: ctrlW, height: 30)
         llmProtocolPill.onSelect = { [weak self] idx in self?.onSelectLLMProtocolIndex(idx) }
         llmProtocolRow.addSubview(llmProtocolPill)
 
         presetRowView = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 38))
-        addRowCaption("服务预设", rowHeight: 38, in: presetRowView)
+        addRowCaption(L("服务预设"), rowHeight: 38, in: presetRowView)
         llmPresetPill = GeekDropdownPill(symbol: "sparkles")
-        llmPresetPill.customDisplayTitle = "自定义 / 中转站"
+        llmPresetPill.customDisplayTitle = L("自定义 / 中转站")
         llmPresetPill.frame = NSRect(x: ctrlX, y: 4, width: ctrlW, height: 30)
         llmPresetPill.onCustomClick = { [weak self] anchor in self?.popLLMPresetMenu(from: anchor) }
         presetRowView.addSubview(llmPresetPill)
-        presetGetKeyBtn = GeekButton(title: "获取 Key", symbol: "arrow.up.right", style: .accent)
+        presetGetKeyBtn = GeekButton(title: L("获取 Key"), symbol: "arrow.up.right", style: .accent)
         presetGetKeyBtn.frame = NSRect(x: fw - 18 - 88, y: 4, width: 88, height: 30)
         presetGetKeyBtn.onClick = { [weak self] in self?.onOpenConsoleURLClicked() }
         presetRowView.addSubview(presetGetKeyBtn)
 
-        (nameRow, _, nameField) = makeDynamicRow(label: "显示名称", placeholder: "自定义显示名称", mono: false, width: fw)
+        (nameRow, _, nameField) = makeDynamicRow(label: L("显示名称"), placeholder: L("自定义显示名称"), mono: false, width: fw)
         kindRow = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 38))
-        addRowCaption("服务类型", rowHeight: 38, in: kindRow)
+        addRowCaption(L("服务类型"), rowHeight: 38, in: kindRow)
         kindPill = GeekDropdownPill(symbol: "network", items: TranslationProviderKind.allCases.map(\.displayName))
         kindPill.frame = NSRect(x: ctrlX, y: 4, width: ctrlW, height: 30)
         kindPill.onSelect = { [weak self] idx in self?.onSelectKindIndex(idx) }
         kindRow.addSubview(kindPill)
 
-        (endpointRow, endpointLabel, endpointField) = makeDynamicRow(label: "接口地址", placeholder: "https://your-api.com（自动补全协议路径）", mono: true, width: fw)
+        (endpointRow, endpointLabel, endpointField) = makeDynamicRow(label: L("接口地址"), placeholder: L("https://your-api.com（自动补全协议路径）"), mono: true, width: fw)
         endpointField.delegate = self
 
         modelRow = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: fw, height: 38))
-        modelLabel = addRowCaption("模型名称", rowHeight: 38, in: modelRow)
+        modelLabel = addRowCaption(L("模型名称"), rowHeight: 38, in: modelRow)
         modelField = NSTextField()
         let modelW = ctrlW - 74 // 68(拉取) + 6(间距)
-        modelInputBox = GeekInputBox(frame: NSRect(x: ctrlX, y: 4, width: modelW, height: 30), field: modelField, placeholder: "如 deepseek-chat，或点右侧拉取", mono: true)
+        modelInputBox = GeekInputBox(frame: NSRect(x: ctrlX, y: 4, width: modelW, height: 30), field: modelField, placeholder: L("如 deepseek-chat，或点右侧拉取"), mono: true)
         modelRow.addSubview(modelInputBox)
-        fetchModelsBtn = GeekButton(title: "拉取", symbol: "arrow.clockwise", style: .subtle)
-        fetchModelsBtn.toolTip = "从当前接口地址自动拉取 /v1/models 可用模型列表"
+        fetchModelsBtn = GeekButton(title: L("拉取"), symbol: "arrow.clockwise", style: .subtle)
+        fetchModelsBtn.toolTip = L("从当前接口地址自动拉取 /v1/models 可用模型列表")
         fetchModelsBtn.frame = NSRect(x: ctrlX + modelW + 6, y: 4, width: 68, height: 30)
         fetchModelsBtn.onClick = { [weak self] in self?.onFetchModelsClicked() }
         modelRow.addSubview(fetchModelsBtn)
 
-        (extra1Row, extraLabel1, extraField1) = makeDynamicRow(label: "提示词", placeholder: "", mono: false, width: fw)
-        (extra2Row, extraLabel2, extraField2) = makeDynamicRow(label: "请求头", placeholder: "", mono: true, width: fw)
+        (extra1Row, extraLabel1, extraField1) = makeDynamicRow(label: L("提示词"), placeholder: "", mono: false, width: fw)
+        (extra2Row, extraLabel2, extraField2) = makeDynamicRow(label: L("请求头"), placeholder: "", mono: true, width: fw)
 
-        advancedToggleBtn = GeekButton(title: "高级设置（显示名称 / 提示词 / 请求头）", symbol: "chevron.right", style: .ghost)
+        advancedToggleBtn = GeekButton(title: L("高级设置（显示名称 / 提示词 / 请求头）"), symbol: "chevron.right", style: .ghost)
         advancedToggleBtn.contentAlignment = .left
         advancedToggleBtn.frame = NSRect(x: 88, y: 0, width: fw - 106, height: 28)
         advancedToggleBtn.onClick = { [weak self] in
@@ -485,7 +487,7 @@ extension TranslationSettingsWindow {
         for r in [llmProtocolRow!, presetRowView!, appIdRow!, apiKeyRow!, endpointRow!, modelRow!, nameRow!, kindRow!, extra1Row!, extra2Row!] { content.addSubview(r) }
 
         cv.addHairline(atY: footerY, insetX: 0)
-        testBtn = GeekButton(title: "测试并启用", symbol: "bolt.horizontal", style: .accent)
+        testBtn = GeekButton(title: L("测试并启用"), symbol: "bolt.horizontal", style: .accent)
         testBtn.frame = NSRect(x: 18, y: footerY + 14, width: 124, height: 30)
         testBtn.onClick = { [weak self] in self?.onTestClicked() }
         cv.addSubview(testBtn)

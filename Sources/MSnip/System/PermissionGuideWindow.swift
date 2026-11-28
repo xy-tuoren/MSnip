@@ -81,7 +81,7 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         let w: CGFloat = 342
         let h: CGFloat = 244
         let p = NSPanel(contentRect: NSRect(x: 0, y: 0, width: w, height: h), styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-        p.title = "开启 MSnip 权限"; p.titleVisibility = .hidden; p.titlebarAppearsTransparent = true
+        p.title = L("开启 MSnip 权限"); p.titleVisibility = .hidden; p.titlebarAppearsTransparent = true
         p.isMovableByWindowBackground = true
         p.standardWindowButton(.miniaturizeButton)?.isHidden = true
         p.standardWindowButton(.zoomButton)?.isHidden = true
@@ -93,10 +93,10 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         p.contentView = root
 
         let header = buildHeaderView()
-        screenRow = PermissionRowView(kind: .screenRecording, title: "屏幕录制", subtitle: "捕获屏幕画面与像素级放大取色") { [weak self] in self?.openPane(.screenRecording) }
-        axRow = PermissionRowView(kind: .accessibility, title: "辅助功能", subtitle: "智能识别窗口与多层控件矩阵边界") { [weak self] in self?.openPane(.accessibility) }
-        relaunchPill = PillControl(title: "重启生效", style: .subtleButton) { [weak self] in self?.relaunchApp() }
-        donePill = PillControl(title: "完成", style: .subtleButton) { [weak self] in self?.closeAll() }
+        screenRow = PermissionRowView(kind: .screenRecording, title: L("屏幕录制"), subtitle: L("捕获屏幕画面与像素级放大取色")) { [weak self] in self?.openPane(.screenRecording) }
+        axRow = PermissionRowView(kind: .accessibility, title: L("辅助功能"), subtitle: L("智能识别窗口与多层控件矩阵边界")) { [weak self] in self?.openPane(.accessibility) }
+        relaunchPill = PillControl(title: L("重启生效"), style: .subtleButton) { [weak self] in self?.relaunchApp() }
+        donePill = PillControl(title: L("完成"), style: .subtleButton) { [weak self] in self?.closeAll() }
         [header, screenRow, axRow, relaunchPill, donePill].forEach { root.addSubview($0) }
 
         NSLayoutConstraint.activate([
@@ -132,10 +132,13 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
         let icon = (NSApp.applicationIconImage?.copy() as? NSImage) ?? NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
         icon.size = NSSize(width: 34, height: 34); iconView.image = icon
 
-        let title = NSTextField(labelWithString: "开启 MSnip 权限")
+        let title = NSTextField(labelWithString: L("开启 MSnip 权限"))
         title.font = .systemFont(ofSize: 14.5, weight: .semibold); title.textColor = .labelColor
-        let sub = NSTextField(labelWithString: "点击允许后，从系统设置底部将图标拖入列表")
+        let sub = NSTextField(labelWithString: L("点击允许后，从系统设置底部将图标拖入列表"))
         sub.font = .systemFont(ofSize: 11.5, weight: .regular); sub.textColor = .secondaryLabelColor
+        // 较长译文截断而不是撑宽固定 342pt 的面板（完整文案见提示）
+        sub.lineBreakMode = .byTruncatingTail; sub.toolTip = sub.stringValue
+        sub.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         let stack = NSStackView(views: [title, sub])
         stack.orientation = .vertical; stack.alignment = .leading; stack.spacing = 1.5
         stack.translatesAutoresizingMaskIntoConstraints = false
@@ -179,7 +182,7 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
             onPermissionChanged?()
             if screenOK && axOK {
                 closeAll()
-                ToastHUD.show(message: "✓ 屏幕录制与辅助功能权限均已生效")
+                ToastHUD.show(message: L("✓ 屏幕录制与辅助功能权限均已生效"))
                 return
             }
             let completedActivePane = settingsDock.isDockVisible && (
@@ -195,10 +198,10 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
     }
 
     private func updateUI(screenOK: Bool, axOK: Bool) {
-        screenRow.actionPill.title = screenOK ? "✓ 已开启" : "允许"
+        screenRow.actionPill.title = screenOK ? L("✓ 已开启") : L("允许")
         screenRow.actionPill.style = screenOK ? .grantedBadge : .primaryButton
 
-        axRow.actionPill.title = axOK ? "✓ 已开启" : "允许"
+        axRow.actionPill.title = axOK ? L("✓ 已开启") : L("允许")
         axRow.actionPill.style = axOK ? .grantedBadge : (screenOK ? .primaryButton : .subtleButton)
 
         relaunchPill.isHidden = screenOK
@@ -228,11 +231,7 @@ final class PermissionGuideController: NSObject, NSWindowDelegate {
 
     private func relaunchApp() {
         closeAll()
-        let proc = Process()
-        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
-        proc.arguments = ["-c", "sleep 0.35 && open \"$1\"", "--", Bundle.main.bundlePath]
-        try? proc.run()
-        NSApp.terminate(nil)
+        MSnipRelauncher.relaunch()
     }
 
     private func closeAll() {
@@ -485,7 +484,7 @@ private final class PermissionRowView: NSView {
     let actionPill: PillControl
 
     init(kind: PermissionBadgeView.Kind, title: String, subtitle: String, onAction: @escaping () -> Void) {
-        self.actionPill = PillControl(title: "允许", style: .primaryButton, onClick: onAction)
+        self.actionPill = PillControl(title: L("允许"), style: .primaryButton, onClick: onAction)
         super.init(frame: .zero)
         translatesAutoresizingMaskIntoConstraints = false
 
@@ -497,6 +496,8 @@ private final class PermissionRowView: NSView {
         let subLabel = NSTextField(labelWithString: subtitle)
         subLabel.font = .systemFont(ofSize: 11, weight: .regular)
         subLabel.textColor = .secondaryLabelColor
+        subLabel.lineBreakMode = .byTruncatingTail; subLabel.toolTip = subtitle
+        subLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
 
         let textStack = NSStackView(views: [titleLabel, subLabel])
         textStack.orientation = .vertical
@@ -537,5 +538,32 @@ private final class PermissionRowView: NSView {
         (isDark ? NSColor.white.withAlphaComponent(0.11) : NSColor.black.withAlphaComponent(0.09)).setStroke()
         path.lineWidth = 1.0
         path.stroke()
+    }
+}
+
+#if DEBUG
+extension PermissionGuideController {
+    /// 仅 Debug：离屏渲染权限引导面板（未授权 / 已授权两种状态），不显示窗口、不轮询权限
+    func debugRender(to dir: URL, suffix: String) {
+        let p = ensureWindow()
+        p.delegate = nil
+        guard let root = p.contentView else { return }
+        updateUI(screenOK: false, axOK: false)
+        DebugSettingsSnapshot.writePNG(root, named: "\(suffix)-perm-missing", to: dir, background: .windowBackgroundColor)
+        updateUI(screenOK: true, axOK: false)
+        DebugSettingsSnapshot.writePNG(root, named: "\(suffix)-perm-partial", to: dir, background: .windowBackgroundColor)
+    }
+}
+#endif
+
+/// 退出当前进程并在 0.35 秒后由 `open` 重新拉起本应用（授权生效、切换界面语言等需要重启的场景共用）
+@MainActor
+enum MSnipRelauncher {
+    static func relaunch() {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", "sleep 0.35 && open \"$1\"", "--", Bundle.main.bundlePath]
+        try? proc.run()
+        NSApp.terminate(nil)
     }
 }

@@ -26,11 +26,11 @@ enum LatexRecognitionService {
 
         var errorDescription: String? {
             switch self {
-            case .imageEncodeFailed:         return "公式截图编码失败"
+            case .imageEncodeFailed:         return L("公式截图编码失败")
             case .missingCredentials(let m): return m
-            case .invalidEndpoint(let ep):   return "无效的公式识别接口地址：\(ep)"
-            case .httpError(let c, let m):   return "识别请求失败 (HTTP \(c))：\(m)"
-            case .emptyResult:               return "未识别到有效的数学公式"
+            case .invalidEndpoint(let ep):   return L("无效的公式识别接口地址：%@", ep)
+            case .httpError(let c, let m):   return L("识别请求失败 (HTTP %@)：%@", c, m)
+            case .emptyResult:               return L("未识别到有效的数学公式")
             }
         }
     }
@@ -75,7 +75,7 @@ enum LatexRecognitionService {
         case .simpleTex:
             let token = config.simpleTexToken.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !token.isEmpty else {
-                return await offlineFallback(image: image, t0: t0, notice: "尚未填写 SimpleTex Token，已自动使用本地离线基础识别（点击「设置」填入免费 Token）")
+                return await offlineFallback(image: image, t0: t0, notice: L("尚未填写 SimpleTex Token，已自动使用本地离线基础识别（点击「设置」填入免费 Token）"))
             }
             guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 1600, maxBytes: 2_800_000) else { throw LatexError.imageEncodeFailed }
             let raw = try await callSimpleTex(payload: imgPayload, token: token)
@@ -85,7 +85,7 @@ enum LatexRecognitionService {
             let appID = config.mathpixAppID.trimmingCharacters(in: .whitespacesAndNewlines)
             let appKey = config.mathpixAppKey.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !appID.isEmpty, !appKey.isEmpty else {
-                return await offlineFallback(image: image, t0: t0, notice: "尚未填写 Mathpix App ID / Key，已自动使用本地离线基础识别")
+                return await offlineFallback(image: image, t0: t0, notice: L("尚未填写 Mathpix App ID / Key，已自动使用本地离线基础识别"))
             }
             guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 1600, maxBytes: 2_800_000) else { throw LatexError.imageEncodeFailed }
             let raw = try await callMathpix(payload: imgPayload, appID: appID, appKey: appKey)
@@ -97,7 +97,7 @@ enum LatexRecognitionService {
                 activeID: activeProfileID,
                 profiles: visionProfiles
             ) else {
-                return await offlineFallback(image: image, t0: t0, notice: "尚未配置视觉大模型或 SimpleTex，当前为离线基础识别（前往「设置 → 识字与翻译」配置）")
+                return await offlineFallback(image: image, t0: t0, notice: L("尚未配置视觉大模型或 SimpleTex，当前为离线基础识别（前往「设置 → 识字与翻译」配置）"))
             }
             guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 1600, maxBytes: 2_800_000) else { throw LatexError.imageEncodeFailed }
             let raw = try await VisionLLMOCRService.callMultimodalVisionLLM(
@@ -114,7 +114,7 @@ enum LatexRecognitionService {
             return try makeOutcome(raw: raw, provider: label, t0: t0)
 
         case .offlineBasic:
-            return await offlineFallback(image: image, t0: t0, notice: "离线基础模式仅支持行内符号，复杂分式/矩阵建议切至 SimpleTex 或视觉大模型")
+            return await offlineFallback(image: image, t0: t0, notice: L("离线基础模式仅支持行内符号，复杂分式/矩阵建议切至 SimpleTex 或视觉大模型"))
         }
     }
 
@@ -129,7 +129,7 @@ enum LatexRecognitionService {
         let output = await VisionTextExtractor.recognizeTextOnlyOffMain(cgImage: image)
         let latex = LatexPostProcessor.heuristicUnicodeToLatex(output.formattedText(for: .preserveLines))
         let ms = max(1, Int(((CFAbsoluteTimeGetCurrent() - t0) * 1000).rounded()))
-        return LatexRecognitionOutcome(rawLatex: latex, providerName: "Apple Vision 离线基础", elapsedMs: ms, usedOfflineFallback: true, notice: notice)
+        return LatexRecognitionOutcome(rawLatex: latex, providerName: L("Apple Vision 离线基础"), elapsedMs: ms, usedOfflineFallback: true, notice: notice)
     }
 
     // MARK: - SimpleTex & Mathpix Dedicated Formula APIs
@@ -158,7 +158,7 @@ enum LatexRecognitionService {
         if let res = obj["res"] as? [String: Any], let latex = res["latex"] as? String, !latex.isEmpty {
             return latex
         }
-        let errMsg = (obj["err_info"] as? [String: Any])?["err_msg"] as? String ?? (obj["msg"] as? String ?? "SimpleTex 识别返回为空")
+        let errMsg = (obj["err_info"] as? [String: Any])?["err_msg"] as? String ?? (obj["msg"] as? String ?? L("SimpleTex 识别返回为空"))
         throw LatexError.httpError(200, errMsg)
     }
 
@@ -183,7 +183,7 @@ enum LatexRecognitionService {
         }
         if let styled = obj["latex_styled"] as? String, !styled.isEmpty { return styled }
         if let txt = obj["text"] as? String, !txt.isEmpty { return txt }
-        let err = obj["error"] as? String ?? "Mathpix 未返回公式"
+        let err = obj["error"] as? String ?? L("Mathpix 未返回公式")
         throw LatexError.httpError(200, err)
     }
 

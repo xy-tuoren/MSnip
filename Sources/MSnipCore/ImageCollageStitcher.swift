@@ -11,7 +11,7 @@ public enum CollageDirection: String, CaseIterable, Sendable {
 public enum CollageLayoutMode: String, CaseIterable, Codable, Sendable {
     case horizontal, vertical, grid
     public var title: String {
-        switch self { case .horizontal: return "横向并排"; case .vertical: return "纵向长拼"; case .grid: return "网格拼图" }
+        switch self { case .horizontal: return L("横向并排"); case .vertical: return L("纵向长拼"); case .grid: return L("网格拼图") }
     }
 }
 
@@ -20,8 +20,8 @@ public enum CollageBackgroundStyle: String, CaseIterable, Codable, Sendable {
     case lightGray, white, dark, gradient, transparent
     public var title: String {
         switch self {
-        case .lightGray: return "柔灰"; case .white: return "纯白"; case .dark: return "深炭"
-        case .gradient: return "极光渐变"; case .transparent: return "透明"
+        case .lightGray: return L("柔灰"); case .white: return L("纯白"); case .dark: return L("深炭")
+        case .gradient: return L("极光渐变"); case .transparent: return L("透明")
         }
     }
     public var rgbaColor: RGBAColor? {
@@ -341,7 +341,7 @@ public enum CollagePDFPageNumberStyle: Int, CaseIterable, Codable, Sendable {
         switch self {
         case .none:     return nil
         case .fraction: return "\(index + 1) / \(total)"
-        case .chinese:  return "第 \(index + 1) 页"
+        case .chinese:  return L("第 %@ 页", index + 1)
         }
     }
 }
@@ -356,11 +356,11 @@ public enum CollageGradientPreset: Int, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .aurora:   return "极光渐变"
-        case .sunset:   return "落日珊瑚"
-        case .mint:     return "薄荷青空"
-        case .dawn:     return "破晓微光"
-        case .obsidian: return "暗曜深空"
+        case .aurora:   return L("极光渐变")
+        case .sunset:   return L("落日珊瑚")
+        case .mint:     return L("薄荷青空")
+        case .dawn:     return L("破晓微光")
+        case .obsidian: return L("暗曜深空")
         }
     }
 

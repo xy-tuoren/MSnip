@@ -8,7 +8,8 @@ import MSnipCore
 @MainActor
 final class ShelfPanelController {
     static let panelHeight: CGFloat = 98.0
-    static let railWidth: CGFloat = 112.0
+    /// 右侧操作栏宽度（英文计数与「Collage / PDF」更长，略放宽）
+    static var railWidth: CGFloat { MSnipL10n.usesEnglish ? 128.0 : 112.0 }
     static let cardGap: CGFloat = 7.0
 
     var onCopyHistory: ((CaptureHistoryEntry) -> Void)?
@@ -239,16 +240,16 @@ final class ShelfPanelController {
         root.onDropFiles = { [weak self] urls in
             guard let self else { return }
             let n = self.store.addFileURLs(urls)
-            if n > 0 { self.reloadCards(); ToastHUD.show(message: "已挂架 \(n) 个文件") }
+            if n > 0 { self.reloadCards(); ToastHUD.show(message: L("已挂架 %@ 个文件", n)) }
         }
         root.onDropImage = { [weak self] cg in
             guard let self else { return }
             _ = self.historyRing.record(cgImage: cg, scaleFactor: NSScreen.main?.backingScaleFactor ?? 2.0)
-            self.reloadCards(); self.onHistoryMutated?(); ToastHUD.show(message: "已将图片挂上暂存架")
+            self.reloadCards(); self.onHistoryMutated?(); ToastHUD.show(message: L("已将图片挂上暂存架"))
         }
         root.onDropText = { [weak self] txt in
             guard let self else { return }
-            if self.store.addText(txt) { self.reloadCards(); ToastHUD.show(message: "已将文本挂上暂存架") }
+            if self.store.addText(txt) { self.reloadCards(); ToastHUD.show(message: L("已将文本挂上暂存架")) }
         }
         ev.addSubview(root)
 
@@ -273,17 +274,17 @@ final class ShelfPanelController {
             guard let self else { return }
             if let msg = self.store.addFromClipboard(historyRing: self.historyRing) {
                 self.reloadCards(); self.onHistoryMutated?(); ToastHUD.show(message: msg)
-            } else { ToastHUD.show(message: "剪贴板暂无可加入的图片、文件或文本") }
+            } else { ToastHUD.show(message: L("剪贴板暂无可加入的图片、文件或文本")) }
         }
         rail.onOpenCollage = { [weak self] in self?.triggerCollageStudio() }
         root.addSubview(rail)
 
-        let lBtn = ShelfEdgeArrowButton(symbolName: "chevron.left", toolTip: "向左翻页")
+        let lBtn = ShelfEdgeArrowButton(symbolName: "chevron.left", toolTip: L("向左翻页"))
         lBtn.onClick = { [weak self] in self?.scrollView?.scrollBy(deltaX: -340) }; root.addSubview(lBtn)
-        let rBtn = ShelfEdgeArrowButton(symbolName: "chevron.right", toolTip: "向右翻页")
+        let rBtn = ShelfEdgeArrowButton(symbolName: "chevron.right", toolTip: L("向右翻页"))
         rBtn.onClick = { [weak self] in self?.scrollView?.scrollBy(deltaX: 340) }; root.addSubview(rBtn)
 
-        let empty = NSTextField(labelWithString: "暂无条目 · 截图与录屏自动收录于此，或直接拖入文件 / 文字")
+        let empty = NSTextField(labelWithString: L("暂无条目 · 截图与录屏自动收录于此，或直接拖入文件 / 文字"))
         empty.font = .systemFont(ofSize: 11.5, weight: .regular); empty.alignment = .center; root.addSubview(empty)
 
         p.contentView = ev

@@ -69,15 +69,15 @@ extension TranslationSettingsWindow {
         ocrLatex.scrollView = scroll; ocrLatex.contentView = content
 
         // 2) 文字识别 (OCR) —— 按所选引擎动态联动展开对应接口/厂商凭据/通用 HTTP 适配项
-        let ocrHdr = NSTextField(labelWithString: "文字识别 (OCR)")
+        let ocrHdr = NSTextField(labelWithString: L("文字识别 (OCR)"))
         ocrHdr.font = .systemFont(ofSize: 12.0, weight: .semibold); ocrHdr.textColor = GeekTheme.inkSecondary
         GeekTheme.placeCentered(ocrHdr, x: headerX, width: 180, centerY: 0)
         content.addSubview(ocrHdr); ocrLatex.ocrHeaderLabel = ocrHdr
         let ocrCard = GeekCardView(frame: NSRect(x: cardX, y: 0, width: cardW, height: rowH * 3))
         content.addSubview(ocrCard); ocrLatex.ocrCard = ocrCard
 
-        let ocrTip = "原位划词：留在截图页直接拖选文字；双栏面板：打开双栏对照窗；静默直拷：不打开双栏，提取完直接关闭截图页并复制（按住 ⌥ 可临时切换）"
-        addRowLabel("默认展示方式", y: 0, height: rowH, in: ocrCard, toolTip: ocrTip)
+        let ocrTip = L("原位划词：留在截图页直接拖选文字；双栏面板：打开双栏对照窗；静默直拷：不打开双栏，提取完直接关闭截图页并复制（按住 ⌥ 可临时切换）")
+        addRowLabel(L("默认展示方式"), y: 0, height: rowH, in: ocrCard, toolTip: ocrTip)
         let modeSeg = GeekSegmentControl(items: OCRDefaultPresentation.allCases.map(\.title), selectedIndex: 0)
         modeSeg.toolTip = ocrTip; modeSeg.frame = NSRect(x: cardW - insetX - 276, y: ctrlY, width: 276, height: ctrlH)
         modeSeg.onSelect = { [weak self] idx in
@@ -88,8 +88,8 @@ extension TranslationSettingsWindow {
         ocrLatex.ocrModeSegment = modeSeg; ocrCard.addSubview(modeSeg)
 
         ocrCard.addHairline(atY: rowH)
-        let engTip = "支持 Apple 离线 Vision、视觉大模型、百度/腾讯/有道云 OCR 及自定义 HTTP 通用接口；切换后自动展开对应配置"
-        addRowLabel("默认识字引擎", y: rowH, height: rowH, in: ocrCard, toolTip: engTip)
+        let engTip = L("支持 Apple 离线 Vision、视觉大模型、百度/腾讯/有道云 OCR 及自定义 HTTP 通用接口；切换后自动展开对应配置")
+        addRowLabel(L("默认识字引擎"), y: rowH, height: rowH, in: ocrCard, toolTip: engTip)
         let ocrEngPill = GeekDropdownPill(symbol: "text.viewfinder", items: OCREngineKind.allCases.map(\.displayName))
         ocrEngPill.toolTip = engTip; ocrEngPill.frame = NSRect(x: ctrlX, y: rowH + ctrlY, width: ctrlW, height: ctrlH)
         ocrEngPill.onSelect = { [weak self] idx in
@@ -101,7 +101,7 @@ extension TranslationSettingsWindow {
         ocrLatex.ocrEnginePill = ocrEngPill; ocrCard.addSubview(ocrEngPill)
 
         // 视觉大模型行
-        let ovRow = makeOCRLatexDynRow("AI 视觉接口", cardW: cardW, in: ocrCard, tip: "复用「模型与服务」中的 OpenAI / Claude / Gemini 接口进行高精度识字与表格提取")
+        let ovRow = makeOCRLatexDynRow(L("AI 视觉接口"), cardW: cardW, in: ocrCard, tip: L("复用「模型与服务」中的 OpenAI / Claude / Gemini 接口进行高精度识字与表格提取"))
         let ocrProfPill = GeekDropdownPill(symbol: "cpu", items: [])
         ocrProfPill.frame = NSRect(x: ctrlX, y: ctrlY, width: ctrlW - 84, height: ctrlH)
         ocrProfPill.onSelect = { [weak self] idx in
@@ -110,87 +110,87 @@ extension TranslationSettingsWindow {
             self.saveOCRAndLatexConfigs()
         }
         ovRow.addSubview(ocrProfPill); ocrLatex.ocrVisionProfilePill = ocrProfPill
-        let ocrManageBtn = GeekButton(title: "管理服务", style: .subtle)
+        let ocrManageBtn = GeekButton(title: L("管理服务"), style: .subtle)
         ocrManageBtn.frame = NSRect(x: cardW - insetX - 78, y: ctrlY, width: 78, height: ctrlH)
         ocrManageBtn.onClick = { [weak self] in self?.switchTab(.translation) }
         ovRow.addSubview(ocrManageBtn); ocrLatex.ocrVisionProfileRow = ovRow
 
         (ocrLatex.ocrVisionModelRow, ocrLatex.ocrVisionModelField) = makeTextDynRow(
-            "视觉模型名", placeholder: "选填，留空沿用所选接口默认模型",
-            tip: "可单独指定视觉专用模型（如 gpt-4o-mini / gemini-2.5-flash / qwen-vl-plus）",
+            L("视觉模型名"), placeholder: L("选填，留空沿用所选接口默认模型"),
+            tip: L("可单独指定视觉专用模型（如 gpt-4o-mini / gemini-2.5-flash / qwen-vl-plus）"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
 
         // 百度智能云 OCR 行
         (ocrLatex.baiduKeyRow, ocrLatex.baiduKeyField) = makeTextDynRow(
-            "API Key", placeholder: "粘贴百度智能云 OCR API Key",
-            tip: "百度智能云通用文字识别（高精度版），每月含免费调用额度",
+            "API Key", placeholder: L("粘贴百度智能云 OCR API Key"),
+            tip: L("百度智能云通用文字识别（高精度版），每月含免费调用额度"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
         (ocrLatex.baiduSecretRow, ocrLatex.baiduSecretField) = makeSecretDynRow(
-            "Secret Key", placeholder: "粘贴百度智能云 Secret Key",
+            "Secret Key", placeholder: L("粘贴百度智能云 Secret Key"),
             consoleURL: "https://console.bce.baidu.com/ai/#/ai/ocr/overview/index",
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
 
         // 腾讯云 OCR 行
         (ocrLatex.tencentIDRow, ocrLatex.tencentIDField) = makeTextDynRow(
-            "SecretId", placeholder: "粘贴腾讯云 API 密钥 SecretId",
-            tip: "使用腾讯云 GeneralAccurateOCR（TC3-HMAC-SHA256 签名直连）",
+            "SecretId", placeholder: L("粘贴腾讯云 API 密钥 SecretId"),
+            tip: L("使用腾讯云 GeneralAccurateOCR（TC3-HMAC-SHA256 签名直连）"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
         (ocrLatex.tencentKeyRow, ocrLatex.tencentKeyField) = makeSecretDynRow(
-            "SecretKey", placeholder: "粘贴腾讯云 SecretKey",
+            "SecretKey", placeholder: L("粘贴腾讯云 SecretKey"),
             consoleURL: "https://console.cloud.tencent.com/ocr",
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
         (ocrLatex.tencentRegionRow, ocrLatex.tencentRegionField) = makeTextDynRow(
-            "服务地域", placeholder: "默认 ap-guangzhou（如 ap-shanghai / ap-beijing）",
+            L("服务地域"), placeholder: L("默认 ap-guangzhou（如 ap-shanghai / ap-beijing）"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
 
         // 有道智云 OCR 行
         (ocrLatex.youdaoIDRow, ocrLatex.youdaoIDField) = makeTextDynRow(
-            "应用 ID", placeholder: "粘贴有道智云应用 ID (appKey)",
-            tip: "有道智云通用文字识别（V3 SHA256 签名）",
+            L("应用 ID"), placeholder: L("粘贴有道智云应用 ID (appKey)"),
+            tip: L("有道智云通用文字识别（V3 SHA256 签名）"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
         (ocrLatex.youdaoSecretRow, ocrLatex.youdaoSecretField) = makeSecretDynRow(
-            "应用密钥", placeholder: "粘贴有道智云应用密钥",
+            L("应用密钥"), placeholder: L("粘贴有道智云应用密钥"),
             consoleURL: "https://ai.youdao.com/console/",
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
 
         // 通用自定义 HTTP OCR 适配器行
         (ocrLatex.customURLRow, ocrLatex.customURLField) = makeTextDynRow(
-            "接口 URL", placeholder: "如 http://127.0.0.1:1224/api/ocr",
-            tip: "兼容 Umi-OCR、PaddleOCR、RapidOCR、阿里云或任意自建 HTTP OCR 接口",
+            L("接口 URL"), placeholder: L("如 http://127.0.0.1:1224/api/ocr"),
+            tip: L("兼容 Umi-OCR、PaddleOCR、RapidOCR、阿里云或任意自建 HTTP OCR 接口"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
         (ocrLatex.customHeadersRow, ocrLatex.customHeadersField) = makeTextDynRow(
-            "请求头 JSON", placeholder: "{\"Content-Type\":\"application/json\"}",
-            tip: "可选自定义请求头（JSON 对象），如 Authorization / X-API-Key",
+            L("请求头 JSON"), placeholder: "{\"Content-Type\":\"application/json\"}",
+            tip: L("可选自定义请求头（JSON 对象），如 Authorization / X-API-Key"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
         (ocrLatex.customBodyRow, ocrLatex.customBodyField) = makeTextDynRow(
-            "Body 模版", placeholder: "{\"base64\":\"{{image_base64}}\"}",
-            tip: "支持占位符：{{image_base64}}（纯 PNG Base64）或 {{image_data_uri}}（含 data:image/png;base64, 前缀）",
+            L("Body 模版"), placeholder: "{\"base64\":\"{{image_base64}}\"}",
+            tip: L("支持占位符：{{image_base64}}（纯 PNG Base64）或 {{image_data_uri}}（含 data:image/png;base64, 前缀）"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
         (ocrLatex.customPathRow, ocrLatex.customPathField) = makeTextDynRow(
-            "JSON 路径", placeholder: "如 data.*.text 或 words_result.*.words",
-            tip: "点分路径提取文字，支持 * 数组通配符（自动按行拼接所有匹配项）",
+            L("JSON 路径"), placeholder: L("如 data.*.text 或 words_result.*.words"),
+            tip: L("点分路径提取文字，支持 * 数组通配符（自动按行拼接所有匹配项）"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: ocrCard
         )
 
-        let oacRow = makeOCRLatexDynRow("识字完成后自动复制", cardW: cardW, in: ocrCard, tip: "关闭后，双栏 OCR 窗口仅展示识别结果，不会自动覆盖剪贴板")
+        let oacRow = makeOCRLatexDynRow(L("识字完成后自动复制"), cardW: cardW, in: ocrCard, tip: L("关闭后，双栏 OCR 窗口仅展示识别结果，不会自动覆盖剪贴板"))
         let copySw = GeekToggleSwitch(isOn: true)
         copySw.frame = NSRect(x: switchX, y: switchY, width: 38, height: switchH)
         copySw.onToggle = { [weak self] on in self?.onAppConfigMutated? { $0.ocrAutoCopy = on } }
         oacRow.addSubview(copySw); ocrLatex.ocrAutoCopySwitch = copySw; ocrLatex.ocrAutoCopyRow = oacRow
 
         (ocrLatex.ocrTestRow, ocrLatex.ocrTestBtn, ocrLatex.ocrTestStatusLabel) = makeTestDynRow(
-            title: "测试识字", cardW: cardW, in: ocrCard
+            title: L("测试识字"), cardW: cardW, in: ocrCard
         ) { [weak self] in self?.onTestOCRClicked() }
 
         buildLatexAndTranslateSections(in: content, cardX: cardX, cardW: cardW, headerX: headerX, ctrlX: ctrlX, ctrlW: ctrlW, switchX: switchX)
@@ -201,12 +201,13 @@ extension TranslationSettingsWindow {
         let row = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: cardW, height: rowH))
         row.addSubview(GeekSurfaceView(frame: NSRect(x: insetX, y: 0, width: cardW - insetX * 2, height: 1), fill: GeekTheme.divider))
         let btn = GeekButton(title: title, symbol: "bolt.horizontal", style: .subtle)
-        btn.frame = NSRect(x: insetX, y: 8, width: 102, height: 28)
+        let btnW = btn.widthFitting(atLeast: 102)
+        btn.frame = NSRect(x: insetX, y: 8, width: btnW, height: 28)
         btn.onClick = action; row.addSubview(btn)
         let lbl = NSTextField(labelWithString: "")
         lbl.font = .monospacedSystemFont(ofSize: 11.5, weight: .medium); lbl.textColor = GeekTheme.inkSecondary
         lbl.lineBreakMode = .byTruncatingTail
-        GeekTheme.placeCentered(lbl, x: insetX + 112, width: cardW - insetX * 2 - 112, centerY: rowH * 0.5)
+        GeekTheme.placeCentered(lbl, x: insetX + btnW + 10, width: cardW - insetX * 2 - btnW - 10, centerY: rowH * 0.5)
         row.addSubview(lbl); card.addSubview(row)
         return (row, btn, lbl)
     }
@@ -243,7 +244,7 @@ extension TranslationSettingsWindow {
         let boxW = hasGet ? (ctrlW - 132) : (ctrlW - 56)
         row.addSubview(GeekInputBox(frame: NSRect(x: ctrlX, y: ctrlY, width: boxW, height: ctrlH), field: sf, placeholder: placeholder, mono: true))
 
-        let pasteBtn = GeekButton(title: "粘贴", style: .subtle)
+        let pasteBtn = GeekButton(title: L("粘贴"), style: .subtle)
         pasteBtn.frame = NSRect(x: ctrlX + boxW + 6, y: ctrlY, width: 50, height: ctrlH)
         pasteBtn.onClick = { [weak self] in
             if let s = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
@@ -253,7 +254,7 @@ extension TranslationSettingsWindow {
         row.addSubview(pasteBtn)
 
         if let urlStr = consoleURL {
-            let getBtn = GeekButton(title: "获取", symbol: "arrow.up.right", style: .accent)
+            let getBtn = GeekButton(title: L("获取"), symbol: "arrow.up.right", style: .accent)
             getBtn.frame = NSRect(x: cardW - insetX - 70, y: ctrlY, width: 70, height: ctrlH)
             getBtn.onClick = { if let u = URL(string: urlStr) { NSWorkspace.shared.open(u) } }
             row.addSubview(getBtn)
@@ -273,7 +274,7 @@ extension TranslationSettingsWindow {
         let insetX: CGFloat = 16, rowH: CGFloat = 44, ctrlH: CGFloat = 28, ctrlY: CGFloat = 8, switchH: CGFloat = 22, switchY: CGFloat = 11
 
         // 2) LaTeX 公式识别（按所选引擎动态展开对应接口/凭据行）
-        let lxHdr = NSTextField(labelWithString: "LaTeX 公式识别")
+        let lxHdr = NSTextField(labelWithString: L("LaTeX 公式识别"))
         lxHdr.font = .systemFont(ofSize: 12.0, weight: .semibold); lxHdr.textColor = GeekTheme.inkSecondary
         GeekTheme.placeCentered(lxHdr, x: headerX, width: 180, centerY: 0)
         content.addSubview(lxHdr); ocrLatex.latexHeaderLabel = lxHdr
@@ -281,7 +282,7 @@ extension TranslationSettingsWindow {
         let lxCard = GeekCardView(frame: NSRect(x: cardX, y: 0, width: cardW, height: rowH * 4))
         content.addSubview(lxCard); ocrLatex.latexCard = lxCard
 
-        addRowLabel("公式识别引擎", y: 0, height: rowH, in: lxCard)
+        addRowLabel(L("公式识别引擎"), y: 0, height: rowH, in: lxCard)
         let lxEngPill = GeekDropdownPill(symbol: "function", items: LatexEngineKind.allCases.map(\.displayName))
         lxEngPill.frame = NSRect(x: ctrlX, y: ctrlY, width: ctrlW, height: ctrlH)
         lxEngPill.onSelect = { [weak self] idx in
@@ -292,7 +293,7 @@ extension TranslationSettingsWindow {
         }
         ocrLatex.latexEnginePill = lxEngPill; lxCard.addSubview(lxEngPill)
 
-        let lvRow = makeOCRLatexDynRow("AI 视觉接口", cardW: cardW, in: lxCard, tip: "复用「模型与服务」里的多模态大模型识别复杂分式、积分与矩阵")
+        let lvRow = makeOCRLatexDynRow(L("AI 视觉接口"), cardW: cardW, in: lxCard, tip: L("复用「模型与服务」里的多模态大模型识别复杂分式、积分与矩阵"))
         let lvPill = GeekDropdownPill(symbol: "cpu", items: [])
         lvPill.frame = NSRect(x: ctrlX, y: ctrlY, width: ctrlW - 84, height: ctrlH)
         lvPill.onSelect = { [weak self] idx in
@@ -301,36 +302,36 @@ extension TranslationSettingsWindow {
             self.saveOCRAndLatexConfigs()
         }
         lvRow.addSubview(lvPill); ocrLatex.latexVisionProfilePill = lvPill
-        let lvManage = GeekButton(title: "管理服务", style: .subtle)
+        let lvManage = GeekButton(title: L("管理服务"), style: .subtle)
         lvManage.frame = NSRect(x: cardW - insetX - 78, y: ctrlY, width: 78, height: ctrlH)
         lvManage.onClick = { [weak self] in self?.switchTab(.translation) }
         lvRow.addSubview(lvManage); ocrLatex.latexVisionProfileRow = lvRow
 
         (ocrLatex.latexVisionModelRow, ocrLatex.latexVisionModelField) = makeTextDynRow(
-            "视觉模型名", placeholder: "选填，留空沿用接口默认模型",
-            tip: "选填：留空沿用所选接口默认模型", cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: lxCard
+            L("视觉模型名"), placeholder: L("选填，留空沿用接口默认模型"),
+            tip: L("选填：留空沿用所选接口默认模型"), cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: lxCard
         )
         (ocrLatex.simpleTexRow, ocrLatex.simpleTexTokenField) = makeSecretDynRow(
-            "UAT 令牌", placeholder: "粘贴 SimpleTex UAT Token", consoleURL: "https://simpletex.cn",
-            tip: "SimpleTex 专攻印刷体与手写数学公式，国内直连极快且每月自带免费额度",
+            L("UAT 令牌"), placeholder: L("粘贴 SimpleTex UAT Token"), consoleURL: "https://simpletex.cn",
+            tip: L("SimpleTex 专攻印刷体与手写数学公式，国内直连极快且每月自带免费额度"),
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: lxCard
         )
         (ocrLatex.mathpixIDRow, ocrLatex.mathpixIDField) = makeTextDynRow(
-            "App ID", placeholder: "粘贴 Mathpix app_id", cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: lxCard
+            "App ID", placeholder: L("粘贴 Mathpix app_id"), cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: lxCard
         )
         (ocrLatex.mathpixKeyRow, ocrLatex.mathpixKeyField) = makeSecretDynRow(
-            "App Key", placeholder: "粘贴 Mathpix app_key", consoleURL: "https://console.mathpix.com",
+            "App Key", placeholder: L("粘贴 Mathpix app_key"), consoleURL: "https://console.mathpix.com",
             cardW: cardW, ctrlX: ctrlX, ctrlW: ctrlW, in: lxCard
         )
 
         let offRow = GeekFlippedView(frame: NSRect(x: 0, y: 0, width: cardW, height: 38))
         offRow.addSubview(GeekSurfaceView(frame: NSRect(x: insetX, y: 0, width: cardW - insetX * 2, height: 1), fill: GeekTheme.divider))
-        let offLbl = NSTextField(labelWithString: "完全离线运行（基于 Apple Vision + 数学符号转换），无需联网，适合基础行内公式")
+        let offLbl = NSTextField(labelWithString: L("完全离线运行（基于 Apple Vision + 数学符号转换），无需联网，适合基础行内公式"))
         offLbl.font = .systemFont(ofSize: 12.0); offLbl.textColor = GeekTheme.inkSecondary
         GeekTheme.placeCentered(offLbl, x: insetX, width: cardW - insetX * 2, centerY: 19)
         offRow.addSubview(offLbl); lxCard.addSubview(offRow); ocrLatex.offlineHintRow = offRow
 
-        let wrapRow = makeOCRLatexDynRow("默认复制格式", cardW: cardW, in: lxCard)
+        let wrapRow = makeOCRLatexDynRow(L("默认复制格式"), cardW: cardW, in: lxCard)
         let wrapSeg = GeekSegmentControl(items: LatexWrapFormat.allCases.map(\.shortTitle), selectedIndex: 2, mono: true)
         wrapSeg.frame = NSRect(x: ctrlX, y: ctrlY, width: ctrlW, height: ctrlH)
         wrapSeg.onSelect = { [weak self] idx in
@@ -339,18 +340,18 @@ extension TranslationSettingsWindow {
         }
         wrapRow.addSubview(wrapSeg); ocrLatex.latexWrapSegment = wrapSeg; ocrLatex.latexWrapRow = wrapRow
 
-        let acRow = makeOCRLatexDynRow("识别完成后自动复制", cardW: cardW, in: lxCard)
+        let acRow = makeOCRLatexDynRow(L("识别完成后自动复制"), cardW: cardW, in: lxCard)
         let acSw = GeekToggleSwitch(isOn: true)
         acSw.frame = NSRect(x: switchX, y: switchY, width: 38, height: switchH)
         acSw.onToggle = { [weak self] on in self?.ocrLatex.latexConfig.autoCopy = on; self?.saveOCRAndLatexConfigs() }
         acRow.addSubview(acSw); ocrLatex.latexAutoCopySwitch = acSw; ocrLatex.latexAutoCopyRow = acRow
 
         (ocrLatex.latexTestRow, ocrLatex.latexTestBtn, ocrLatex.latexTestStatusLabel) = makeTestDynRow(
-            title: "测试公式", cardW: cardW, in: lxCard
+            title: L("测试公式"), cardW: cardW, in: lxCard
         ) { [weak self] in self?.onTestLatexClicked() }
 
         // 3) 截图翻译（从「模型与服务」池拆出，与 OCR / LaTeX 并列管理功能级偏好）
-        let trHdr = NSTextField(labelWithString: "截图翻译")
+        let trHdr = NSTextField(labelWithString: L("截图翻译"))
         trHdr.font = .systemFont(ofSize: 12.0, weight: .semibold); trHdr.textColor = GeekTheme.inkSecondary
         GeekTheme.placeCentered(trHdr, x: headerX, width: 180, centerY: 0)
         content.addSubview(trHdr); ocrLatex.transHeaderLabel = trHdr
@@ -358,9 +359,9 @@ extension TranslationSettingsWindow {
         let trCard = GeekCardView(frame: NSRect(x: cardX, y: 0, width: cardW, height: rowH * 4))
         content.addSubview(trCard); ocrLatex.transCard = trCard
 
-        let trModeTip = "原位译文：在截图选区内直接悬浮替换译文；双栏面板：打开双栏流式翻译对照窗（按住 ⌥ 可临时切换）"
-        addRowLabel("默认展示方式", y: 0, height: rowH, in: trCard, toolTip: trModeTip)
-        let trModeSeg = GeekSegmentControl(items: ["原位译文", "双栏面板"], selectedIndex: 0)
+        let trModeTip = L("原位译文：在截图选区内直接悬浮替换译文；双栏面板：打开双栏流式翻译对照窗（按住 ⌥ 可临时切换）")
+        addRowLabel(L("默认展示方式"), y: 0, height: rowH, in: trCard, toolTip: trModeTip)
+        let trModeSeg = GeekSegmentControl(items: [L("原位译文"), L("双栏面板")], selectedIndex: 0)
         trModeSeg.toolTip = trModeTip; trModeSeg.frame = NSRect(x: cardW - insetX - 200, y: ctrlY, width: 200, height: ctrlH)
         trModeSeg.onSelect = { [weak self] idx in
             self?.onAppConfigMutated? { $0.translateAutoOpenDualPane = (idx == 1) }
@@ -368,7 +369,7 @@ extension TranslationSettingsWindow {
         ocrLatex.transModeSegment = trModeSeg; trCard.addSubview(trModeSeg)
 
         trCard.addHairline(atY: rowH)
-        addRowLabel("默认翻译引擎", y: rowH, height: rowH, in: trCard, toolTip: "从「模型与服务」池中挑选默认用于截图翻译的引擎（可独立于 OCR / 公式引擎）")
+        addRowLabel(L("默认翻译引擎"), y: rowH, height: rowH, in: trCard, toolTip: L("从「模型与服务」池中挑选默认用于截图翻译的引擎（可独立于 OCR / 公式引擎）"))
         let trEngPill = GeekDropdownPill(symbol: "cpu", items: [])
         trEngPill.frame = NSRect(x: ctrlX, y: rowH + ctrlY, width: ctrlW - 84, height: ctrlH)
         trEngPill.onSelect = { [weak self] idx in
@@ -379,13 +380,13 @@ extension TranslationSettingsWindow {
             self.persistDraft(); self.refreshOCRAndLatexUI()
         }
         ocrLatex.transEnginePill = trEngPill; trCard.addSubview(trEngPill)
-        let trManage = GeekButton(title: "管理服务", style: .subtle)
+        let trManage = GeekButton(title: L("管理服务"), style: .subtle)
         trManage.frame = NSRect(x: cardW - insetX - 78, y: rowH + ctrlY, width: 78, height: ctrlH)
         trManage.onClick = { [weak self] in self?.switchTab(.translation) }
         trCard.addSubview(trManage)
 
         trCard.addHairline(atY: rowH * 2)
-        addRowLabel("默认目标语言", y: rowH * 2, height: rowH, in: trCard)
+        addRowLabel(L("默认目标语言"), y: rowH * 2, height: rowH, in: trCard)
         targetLangPill = GeekDropdownPill(symbol: "globe")
         targetLangPill.customDisplayTitle = draft.targetLang.displayName
         targetLangPill.frame = NSRect(x: ctrlX, y: rowH * 2 + ctrlY, width: ctrlW, height: ctrlH)
@@ -393,7 +394,7 @@ extension TranslationSettingsWindow {
         trCard.addSubview(targetLangPill)
 
         trCard.addHairline(atY: rowH * 3)
-        addRowLabel("翻译完成后自动复制", y: rowH * 3, height: rowH, in: trCard)
+        addRowLabel(L("翻译完成后自动复制"), y: rowH * 3, height: rowH, in: trCard)
         autoCopySwitch = GeekToggleSwitch(isOn: draft.autoCopyTranslation)
         autoCopySwitch.frame = NSRect(x: switchX, y: rowH * 3 + switchY, width: 38, height: switchH)
         autoCopySwitch.onToggle = { [weak self] on in self?.draft.autoCopyTranslation = on; self?.persistDraft() }
@@ -402,10 +403,10 @@ extension TranslationSettingsWindow {
 
     func visionProfileDropdownItems() -> [String] {
         let list = ocrLatex.visionProfiles
-        if list.isEmpty { return ["暂无可用 AI 接口（点右侧添加）"] }
+        if list.isEmpty { return [L("暂无可用 AI 接口（点右侧添加）")] }
         if list.count == 1 { return [list[0].name] }
         let activeLLM = OCRRecognitionConfig.resolveVisionProfile(preferredID: nil, activeID: draft.activeProfileID, profiles: list)
-        let autoTitle = activeLLM.map { "自动跟随当前接口（\($0.name)）" } ?? "自动跟随当前接口"
+        let autoTitle = activeLLM.map { L("自动跟随当前接口（%@）", $0.name) } ?? L("自动跟随当前接口")
         return [autoTitle] + list.map(\.name)
     }
 
@@ -425,7 +426,7 @@ extension TranslationSettingsWindow {
     func refreshTranslationEnginePill() {
         let enabled = draft.profiles.filter(\.isEnabled)
         ocrLatex.translationProfiles = enabled
-        ocrLatex.transEnginePill?.items = enabled.isEmpty ? ["暂无可用服务"] : enabled.map(\.name)
+        ocrLatex.transEnginePill?.items = enabled.isEmpty ? [L("暂无可用服务")] : enabled.map(\.name)
         if let aid = draft.activeProfileID, let idx = enabled.firstIndex(where: { $0.id == aid }) {
             ocrLatex.transEnginePill?.selectedIndex = idx
         } else {
@@ -562,7 +563,7 @@ extension TranslationSettingsWindow {
         let activeID = draft.activeProfileID
         let profiles = draft.profiles.filter { $0.isEnabled && $0.kind.isLLMProtocol }
         ocrLatex.ocrTestBtn?.isEnabled = false
-        ocrLatex.ocrTestStatusLabel?.setTextWithTooltip("正在探测「\(cfg.engineKind.shortName)」…", color: GeekTheme.inkSecondary)
+        ocrLatex.ocrTestStatusLabel?.setTextWithTooltip(L("正在探测「%@」…", cfg.engineKind.shortName), color: GeekTheme.inkSecondary)
         ocrLatex.ocrTestTask?.cancel()
         ocrLatex.ocrTestTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -579,7 +580,7 @@ extension TranslationSettingsWindow {
         let activeID = draft.activeProfileID
         let profiles = draft.profiles.filter { $0.isEnabled && $0.kind.isLLMProtocol }
         ocrLatex.latexTestBtn?.isEnabled = false
-        ocrLatex.latexTestStatusLabel?.setTextWithTooltip("正在探测「\(cfg.engineKind.shortName)」…", color: GeekTheme.inkSecondary)
+        ocrLatex.latexTestStatusLabel?.setTextWithTooltip(L("正在探测「%@」…", cfg.engineKind.shortName), color: GeekTheme.inkSecondary)
         ocrLatex.latexTestTask?.cancel()
         ocrLatex.latexTestTask = Task { @MainActor [weak self] in
             guard let self else { return }

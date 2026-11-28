@@ -51,7 +51,7 @@ final class QuickAccessOverlayController {
         sourceImage: CGImage,
         scale: CGFloat,
         savedURL: URL? = nil,
-        statusPrefix: String = "已复制"
+        statusPrefix: String = L("已复制")
     ) {
         let thumb = makeThumbCG(from: sourceImage, maxSide: 480)
         let badge = "\(statusPrefix) · \(sourceImage.width)×\(sourceImage.height)"
@@ -59,7 +59,7 @@ final class QuickAccessOverlayController {
         showCard(thumbnail: thumb, badge: badge, isMediaFile: false, hasSavedURL: savedURL != nil, payload: payload)
     }
 
-    func presentMediaFile(url: URL, format: RecordingFormat, statusPrefix: String = "已完成") {
+    func presentMediaFile(url: URL, format: RecordingFormat, statusPrefix: String = L("已完成")) {
         let kb = max(1, ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) / 1024)
         let sizeText = kb >= 1024 ? String(format: "%.1f MB", Double(kb) / 1024.0) : "\(kb) KB"
         let badge = "\(format.badgeTitle) \(statusPrefix) · \(sizeText)"
@@ -180,10 +180,10 @@ final class QuickAccessOverlayController {
         case .screenshot(let id, _, _):
             guard let (img, scale) = onResolveHistoryCGImage?(id) else { return }
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
-            ToastHUD.show(message: "✓ 已再次复制截图到剪贴板")
+            ToastHUD.show(message: L("✓ 已再次复制截图到剪贴板"))
         case .mediaFile(let url, let fmt):
             let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([url as NSURL])
-            ToastHUD.show(message: "✓ 已复制 \(fmt.badgeTitle) 文件到剪贴板")
+            ToastHUD.show(message: L("✓ 已复制 %@ 文件到剪贴板", fmt.badgeTitle))
         }
     }
 
@@ -220,7 +220,7 @@ final class QuickAccessOverlayController {
             case .revealFile: ClipboardAndSave.revealInFinder(url)
             case .copyFile:
                 let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([url as NSURL])
-                ToastHUD.show(message: "✓ 已复制 \(fmt.badgeTitle) 文件")
+                ToastHUD.show(message: L("✓ 已复制 %@ 文件", fmt.badgeTitle))
             default: break
             }
         }
@@ -245,7 +245,7 @@ final class QuickAccessOverlayController {
 // MARK: - 悬浮速览卡片自绘与拖拽视图
 
 /// 截后 / 录后左下角悬浮速览卡视图（支持直接拖拽文件到聊天窗/桌面、悬停暂停倒计时、GPU 零 CPU 进度条与一键标注/贴图/识字/访达）
-private final class QuickAccessCardView: NSView, NSDraggingSource {
+final class QuickAccessCardView: NSView, NSDraggingSource {
     enum Action: Int { case annotate = 0, pin = 1, ocr = 2, saveOrReveal = 3, copyFile = 4, revealFile = 5 }
 
     static let shadowPad: CGFloat = 16
@@ -284,20 +284,20 @@ private final class QuickAccessCardView: NSView, NSDraggingSource {
         self.hasSavedURL = hasSavedURL
         if isMediaFile {
             self.actionButtons = [
-                (.revealFile, "在访达中显示", "folder"),
-                (.copyFile, "复制文件", "doc.on.doc")
+                (.revealFile, L("在访达中显示"), "folder"),
+                (.copyFile, L("复制文件"), "doc.on.doc")
             ]
         } else {
             self.actionButtons = [
-                (.annotate, "标注", "pencil"),
-                (.pin, "贴图", "pin"),
-                (.ocr, "识字", "text.viewfinder"),
-                (.saveOrReveal, hasSavedURL ? "访达" : "保存", hasSavedURL ? "folder" : "square.and.arrow.down")
+                (.annotate, L("标注"), "pencil"),
+                (.pin, L("贴图"), "pin"),
+                (.ocr, L("识字"), "text.viewfinder"),
+                (.saveOrReveal, hasSavedURL ? L("访达") : L("保存"), hasSavedURL ? "folder" : "square.and.arrow.down")
             ]
         }
         super.init(frame: NSRect(origin: .zero, size: Self.panelSize))
         wantsLayer = true
-        toolTip = isMediaFile ? "拖拽缩略图直接发送录屏文件" : "拖拽缩略图直接发送图片 · 点击复制"
+        toolTip = isMediaFile ? L("拖拽缩略图直接发送录屏文件") : L("拖拽缩略图直接发送图片 · 点击复制")
         setupProgressLayers()
     }
 
@@ -490,7 +490,7 @@ private final class QuickAccessCardView: NSView, NSDraggingSource {
             let dragPill = CGRect(x: tr.midX - 48, y: tr.midY - 11, width: 96, height: 22)
             let dp = CGPath(roundedRect: dragPill, cornerWidth: 11, cornerHeight: 11, transform: nil)
             ctx.setFillColor(NSColor.black.withAlphaComponent(0.72).cgColor); ctx.addPath(dp); ctx.fillPath()
-            GeekTheme.drawText("拖拽即可发送", in: dragPill, font: .systemFont(ofSize: 10.2, weight: .semibold), color: .white, align: .center)
+            GeekTheme.drawText(L("拖拽即可发送"), in: dragPill, font: .systemFont(ofSize: 10.2, weight: .semibold), color: .white, align: .center)
         }
         ctx.restoreGState()
 

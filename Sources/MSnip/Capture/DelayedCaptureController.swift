@@ -70,7 +70,7 @@ final class DelayedCaptureController {
         let wasRunning = (panel != nil || timer != nil)
         teardown()
         if showToast && wasRunning {
-            ToastHUD.show(message: "已取消延时截图")
+            ToastHUD.show(message: L("已取消延时截图"))
         }
     }
 
@@ -163,7 +163,7 @@ private final class DelayedCountdownRingView: NSView {
         let nSz = numStr.size(withAttributes: numAttrs)
         numStr.draw(at: CGPoint(x: round(center.x - nSz.width * 0.5), y: round(center.y - nSz.height * 0.5)), withAttributes: numAttrs)
 
-        let tip = "点击立即截图 · Esc 取消" as NSString
+        let tip = L("点击立即截图 · Esc 取消") as NSString
         let tipAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 10.5, weight: .medium),
             .foregroundColor: NSColor.white.withAlphaComponent(0.72)

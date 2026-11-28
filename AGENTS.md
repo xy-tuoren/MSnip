@@ -16,6 +16,7 @@
   - `TranslationModels.swift` / `TranslationConfigStore.swift` / `LLMProtocolHelpers.swift`：多协议翻译配置、`0600` 本地隔离与可选系统钥匙串（`Security`）加密凭据仓。
   - `ClipboardImagePromise.swift` / `CaptureHistoryRing.swift` / `ColorSampling.swift` / `ShortcutModels.swift`：延迟剪贴板提供器、异步微缩略图环形历史与取色/快捷键模型。
   - `DiagnosticLog.swift`：`MSnipLog` 本地诊断日志（系统统一日志 + `~/Library/Logs/MSnip` 双文件滚动、写盘前统一脱敏）。
+  - `Localization.swift`：`L()` 界面文案本地化（中文原文作键、只认 `%@` 占位符的防崩溃格式化）与界面语言偏好 `MSnipInterfaceLanguage`。
 - `Sources/MSnip/`：macOS AppKit 平台接入层：
   - `App/`：菜单栏 `NSStatusItem`、应用主控制器生命周期、快存与各子会话路由。
   - `Config/`：本地 JSON 偏好配置、导出导入/诊断报告与开机自启封装（`SMAppService` / `LaunchAgents`）。
@@ -29,6 +30,7 @@
   - `Translation/`：Apple 原生离线翻译桥接、LLM SSE 流式与主流云翻译客户端、4 标签极客设置中心。
   - `System/`：Carbon/CGEventTap 全局热键、剪贴板/保存面板、双管线 Vision 提取器、全局外观协调、权限引导、Toast HUD、悬浮速览卡与诊断日志接入（`DiagnosticLogging`）。
 - `Sources/MSnipTests/`：零外部测试框架依赖的自动化单测套件（兼容仅安装 CommandLineTools 的环境）。
+- `Resources/<语言>.lproj/`：`Localizable.strings`（英文译文表，键为源码中的中文原文）与 `InfoPlist.strings`（权限说明）；`bundle.sh` 去掉整行注释后以 UTF-8 文本拷入 App（比二进制 plist 小约 20%），因此注释必须写在单行 `/* … */` 内。
 - `scripts/`：`bundle.sh`（单文件行数守门、本机单架构/发版 `--universal` 双架构构建、纯矢量图标 `.icns` 生成与签名）、`install.sh`、`setup-cert.sh`、`update-cask.sh`（发版后按线上 Release 包回写 Cask 的版本号与 SHA256）。
 
 ## 3. 代码铁律
@@ -39,6 +41,7 @@
    - 最终导出与马赛克/毛玻璃采样按屏幕 `backingScaleFactor` 换算为物理像素，严禁 Retina 模糊失真。
 4. **内存零驻留**：截图/录屏/预览会话结束后必须释放所有全屏 `CGImage`、临时暂存文件、渲染切片缓存与子进程窗口引用。
 5. **日志只记事件不记内容**：失败路径用 `MSnipLog` 记录事件、计数、状态码与 `error:`；绝不传入截图内容、识别/翻译/剪贴板文本、API Key、接口地址或完整路径，也不在鼠标移动、逐帧编码等高频路径打日志。
+6. **界面文案走 `L()`**：用户可见文案写成 `L("中文原文")`，带参数的写成 `L("已复制 %@ 项", count)`（只用 `%@`，不要插值进键），并在 `Resources/en.lproj/Localizable.strings` 补英文；`swift run MSnipTests` 会拦下缺译、多余键、占位符不一致与仍含中文的译文。日志、发给模型的提示词、用于匹配或持久化的字符串不包 `L()`。固定宽度的按钮与分段控件用 `widthFitting(atLeast:)` / `fittingWidth` 给较长译文留位，改完用 `swift run MSnip --debug-render-settings <目录> --lang en` 离屏渲染检查。
 
 ## 4. 常用命令
 ```bash
@@ -48,4 +51,5 @@ bash scripts/bundle.sh                  # 本机单架构极致瘦身打包（< 
 bash scripts/bundle.sh --universal      # 构建 Release 双架构通用二进制（发版用）
 bash scripts/install.sh                 # 停止旧实例并安装启动至 /Applications/MSnip.app
 bash scripts/update-cask.sh             # 上传 Release 后，把线上 Universal Zip 的 SHA256 写入 Casks/msnip.rb
+swift run MSnip --debug-render-settings /tmp/shots --lang en  # 仅 Debug：离屏渲染设置窗口、权限引导、截图/录屏/长截图工具栏、速览卡、暂存架侧栏与拼图窗口为 PNG（只读，不碰用户配置）
 ```

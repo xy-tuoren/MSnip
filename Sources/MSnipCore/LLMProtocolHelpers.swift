@@ -369,10 +369,10 @@ public enum LLMQuickPresetGroup: Int, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .custom:        return "自定义 / 中转"
-        case .domestic:      return "国内主流大模型官网"
-        case .international: return "国际主流厂商与聚合网关"
-        case .local:         return "本机离线推理引擎（免 Key）"
+        case .custom:        return L("自定义 / 中转")
+        case .domestic:      return L("国内主流大模型官网")
+        case .international: return L("国际主流厂商与聚合网关")
+        case .local:         return L("本机离线推理引擎（免 Key）")
         }
     }
 }
@@ -410,44 +410,44 @@ public enum LLMQuickPreset: String, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .customOpenAI:  return "自定义 / 中转站"
-        case .deepseek:      return "DeepSeek 官方"
-        case .zhipuFree:     return "智谱 BigModel · GLM"
-        case .qwen:          return "阿里云百炼 · 通义千问"
-        case .doubao:        return "火山方舟 · 豆包"
-        case .kimi:          return "Kimi · 月之暗面"
-        case .hunyuan:       return "腾讯混元大模型"
-        case .qianfan:       return "百度千帆 · 文心"
-        case .minimax:       return "MiniMax · 海螺 AI"
-        case .spark:         return "讯飞星火大模型"
-        case .stepfun:       return "阶跃星辰 StepFun"
-        case .siliconflow:   return "硅基流动 SiliconFlow"
-        case .openai:        return "OpenAI 官方"
+        case .customOpenAI:  return L("自定义 / 中转站")
+        case .deepseek:      return L("DeepSeek 官方")
+        case .zhipuFree:     return L("智谱 BigModel · GLM")
+        case .qwen:          return L("阿里云百炼 · 通义千问")
+        case .doubao:        return L("火山方舟 · 豆包")
+        case .kimi:          return L("Kimi · 月之暗面")
+        case .hunyuan:       return L("腾讯混元大模型")
+        case .qianfan:       return L("百度千帆 · 文心")
+        case .minimax:       return L("MiniMax · 海螺 AI")
+        case .spark:         return L("讯飞星火大模型")
+        case .stepfun:       return L("阶跃星辰 StepFun")
+        case .siliconflow:   return L("硅基流动 SiliconFlow")
+        case .openai:        return L("OpenAI 官方")
         case .claude:        return "Anthropic Claude"
         case .gemini:        return "Google Gemini"
         case .xai:           return "xAI Grok"
         case .groq:          return "Groq"
         case .mistral:       return "Mistral AI"
         case .openrouter:    return "OpenRouter"
-        case .ollamaLocal:   return "本地 Ollama"
-        case .lmStudioLocal: return "本地 LM Studio"
+        case .ollamaLocal:   return L("本地 Ollama")
+        case .lmStudioLocal: return L("本地 LM Studio")
         }
     }
 
     public var shortName: String {
         switch self {
-        case .customOpenAI:  return "自定义中转"
+        case .customOpenAI:  return L("自定义中转")
         case .deepseek:      return "DeepSeek"
-        case .zhipuFree:     return "智谱 GLM"
-        case .qwen:          return "通义千问"
-        case .doubao:        return "豆包 · 火山方舟"
+        case .zhipuFree:     return L("智谱 GLM")
+        case .qwen:          return L("通义千问")
+        case .doubao:        return L("豆包 · 火山方舟")
         case .kimi:          return "Kimi · Moonshot"
-        case .hunyuan:       return "腾讯混元"
-        case .qianfan:       return "百度千帆"
+        case .hunyuan:       return L("腾讯混元")
+        case .qianfan:       return L("百度千帆")
         case .minimax:       return "MiniMax"
-        case .spark:         return "讯飞星火"
-        case .stepfun:       return "阶跃星辰"
-        case .siliconflow:   return "硅基流动"
+        case .spark:         return L("讯飞星火")
+        case .stepfun:       return L("阶跃星辰")
+        case .siliconflow:   return L("硅基流动")
         case .openai:        return "OpenAI"
         case .claude:        return "Claude"
         case .gemini:        return "Google Gemini"
@@ -455,8 +455,8 @@ public enum LLMQuickPreset: String, CaseIterable, Sendable {
         case .groq:          return "Groq"
         case .mistral:       return "Mistral AI"
         case .openrouter:    return "OpenRouter"
-        case .ollamaLocal:   return "本地 Ollama"
-        case .lmStudioLocal: return "本地 LM Studio"
+        case .ollamaLocal:   return L("本地 Ollama")
+        case .lmStudioLocal: return L("本地 LM Studio")
         }
     }
 

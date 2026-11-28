@@ -81,7 +81,7 @@ final class LongShotSession {
             previewView?.pixelWidth = initImg.width
             previewView?.pixelHeight = initImg.height
             borderView?.statusStyle = .ready
-            borderView?.statusText = "长截图 · 在框内向下滚轮 (\(initImg.width) × \(initImg.height))"
+            borderView?.statusText = L("长截图 · 在框内向下滚轮 (%@ × %@)", initImg.width, initImg.height)
         }
 
         let stitcherRef = self.stitcher
@@ -124,7 +124,7 @@ final class LongShotSession {
         switch action {
         case .toggleAutoScroll:
             if stitcher.axis == .horizontal {
-                ToastHUD.show(message: "横向长截图请手动按住 ⇧+滚轮 或双指横向滑动")
+                ToastHUD.show(message: L("横向长截图请手动按住 ⇧+滚轮 或双指横向滑动"))
                 return
             }
             let primaryH = NSScreen.screens.first?.frame.height ?? targetScreen.frame.height
@@ -137,7 +137,7 @@ final class LongShotSession {
                 y: quartzOriginY + captureLocalRect.height * 0.62
             )
             autoScroller.toggle(targetQuartzPoint: targetQuartz) {
-                ToastHUD.show(message: "开启「辅助功能」后可用自动滚动，当前可直接手动滚轮")
+                ToastHUD.show(message: L("开启「辅助功能」后可用自动滚动，当前可直接手动滚轮"))
                 _ = RegionDetector.checkAccessibilityPermission(prompt: true)
             }
         case .toggleAxis:
@@ -148,8 +148,8 @@ final class LongShotSession {
             controlView?.canUndoLast = false
             borderView?.statusStyle = .ready
             borderView?.statusText = nextAxis == .horizontal
-                ? "横向长截图 · 在框内向右滑动页面拼接"
-                : "纵向长截图 · 在框内向下滚轮拼接"
+                ? L("横向长截图 · 在框内向右滑动页面拼接")
+                : L("纵向长截图 · 在框内向下滚轮拼接")
             if let initImg = fallbackInitialFrame {
                 previewView?.previewImage = initImg
                 previewView?.pixelWidth = initImg.width
@@ -172,7 +172,7 @@ final class LongShotSession {
     private func performUndoLastAppend() {
         autoScroller.stop()
         guard stitcher.undoLastAppend() else {
-            ToastHUD.show(message: "暂无可撤回的上一段拼接")
+            ToastHUD.show(message: L("暂无可撤回的上一段拼接"))
             return
         }
         let sz = stitcher.outputSizePx
@@ -182,7 +182,7 @@ final class LongShotSession {
         previewView?.isFollowingTail = Double(max(sz.width, sz.height)) / Double(max(1, min(sz.width, sz.height))) > 2.8
         controlView?.canUndoLast = stitcher.canUndoAppend
         borderView?.statusStyle = .ready
-        borderView?.statusText = "已撤回上一段 · \(sz.width) × \(sz.height) px · 可继续滚动"
+        borderView?.statusText = L("已撤回上一段 · %@ × %@ px · 可继续滚动", sz.width, sz.height)
     }
 
     private func applyStitchResult(_ step: ScrollStitcher.StepResult, preview: CGImage?) {
@@ -199,20 +199,20 @@ final class LongShotSession {
         case .initialized(let w, let h):
             borderView?.statusStyle = .ready
             borderView?.statusText = stitcher.axis == .horizontal
-                ? "横向长截图 · 在框内向右滚动 (\(w) × \(h))"
-                : "长截图 · 在框内向下滚轮 (\(w) × \(h))"
+                ? L("横向长截图 · 在框内向右滚动 (%@ × %@)", w, h)
+                : L("长截图 · 在框内向下滚轮 (%@ × %@)", w, h)
         case .appended:
             lastAppendTimestamp = ProcessInfo.processInfo.systemUptime
             borderView?.statusStyle = .stitching
-            borderView?.statusText = "正在拼接 · \(sz.width) × \(sz.height) px · ⌘Z 撤回 · ⌘↩ 完成"
+            borderView?.statusText = L("正在拼接 · %@ × %@ px · ⌘Z 撤回 · ⌘↩ 完成", sz.width, sz.height)
         case .mismatchLostOverlap:
             autoScroller.stop()
             borderView?.statusStyle = .warning
-            borderView?.statusText = "⚠ 跨屏略快：往回滚可对齐，继续滚动自动续接"
+            borderView?.statusText = L("⚠ 跨屏略快：往回滚可对齐，继续滚动自动续接")
         case .reachedHeightLimit:
             autoScroller.stop()
             borderView?.statusStyle = .finishedBottom
-            borderView?.statusText = "已达最大拼接长度 (\(sz.width) × \(sz.height) px)，请点击完成"
+            borderView?.statusText = L("已达最大拼接长度 (%@ × %@ px)，请点击完成", sz.width, sz.height)
         case .unchanged, .scrolledBackward:
             break
         }
@@ -228,10 +228,10 @@ final class LongShotSession {
                     self.autoScroller.stop()
                     if moved {
                         self.borderView?.statusStyle = .finishedBottom
-                        self.borderView?.statusText = "✓ 已滚动到底部 · \(self.stitcher.widthPx) × \(self.stitcher.totalHeightPx) px"
+                        self.borderView?.statusText = L("✓ 已滚动到底部 · %@ × %@ px", self.stitcher.widthPx, self.stitcher.totalHeightPx)
                     } else {
                         self.borderView?.statusStyle = .warning
-                        self.borderView?.statusText = "⚠ 未检测到页面滚动：请确认窗口焦点或手动在框内滚轮"
+                        self.borderView?.statusText = L("⚠ 未检测到页面滚动：请确认窗口焦点或手动在框内滚轮")
                     }
                 }
             }

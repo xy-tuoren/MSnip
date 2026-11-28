@@ -194,11 +194,11 @@ extension OverlayView {
     func autoSnapHudText(for targetRect: CGRect) -> String {
         let pxW = Int((targetRect.width * snapshot.scaleFactor).rounded())
         let pxH = Int((targetRect.height * snapshot.scaleFactor).rounded())
-        let prefix = isRecordingMode ? "录屏 · " : quickLaunchMode.hudPrefix
+        let prefix = isRecordingMode ? L("录屏 · ") : quickLaunchMode.hudPrefix
         let tierInfo: String
         if autoSnap.stack.count > 1 {
             let kind = semanticTierLabel(for: targetRect)
-            tierInfo = "  ·  \(kind) \(autoSnap.index + 1)/\(autoSnap.stack.count) 滚轮切层"
+            tierInfo = L("  ·  %@ %@/%@ 滚轮切层", kind, autoSnap.index + 1, autoSnap.stack.count)
         } else {
             let pxX = Int((targetRect.minX * snapshot.scaleFactor).rounded())
             let pxY = Int((targetRect.minY * snapshot.scaleFactor).rounded())
@@ -208,10 +208,10 @@ extension OverlayView {
     }
 
     private func semanticTierLabel(for rect: CGRect) -> String {
-        if Self.isSameRegion(rect, bounds, tol: 4) { return "全屏" }
-        if let winRect = autoSnap.activeWindowRect, Self.isSameRegion(rect, winRect, tol: 6) { return "窗口" }
-        if rect.width <= 160 && rect.height <= 72 { return "控件" }
-        return "区域"
+        if Self.isSameRegion(rect, bounds, tol: 4) { return L("全屏") }
+        if let winRect = autoSnap.activeWindowRect, Self.isSameRegion(rect, winRect, tol: 6) { return L("窗口") }
+        if rect.width <= 160 && rect.height <= 72 { return L("控件") }
+        return L("区域")
     }
 
     private func startSnapGlideToTarget() {
@@ -529,8 +529,8 @@ final class OverlayShortcutTipsView: NSView {
         ctx.addPath(path); ctx.strokePath()
 
         let padX: CGFloat = 18
-        ("快捷键操作" as NSString).draw(at: CGPoint(x: padX, y: 9), withAttributes: Self.headerTitleAttrs)
-        let hideHint = "按 \(hideKey) 隐藏" as NSString
+        (L("快捷键操作") as NSString).draw(at: CGPoint(x: padX, y: 9), withAttributes: Self.headerTitleAttrs)
+        let hideHint = L("按 %@ 隐藏", hideKey) as NSString
         let hideSz = hideHint.size(withAttributes: Self.headerHintAttrs)
         hideHint.draw(at: CGPoint(x: round(rect.width - padX - hideSz.width), y: 9), withAttributes: Self.headerHintAttrs)
         ctx.setFillColor(MSnipUITheme.borderHairline.cgColor)

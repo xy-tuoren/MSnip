@@ -36,7 +36,7 @@ final class InPlaceTranslationOverlayView: NSView {
     override func menu(for event: NSEvent) -> NSMenu? {
         let m = NSMenu()
         let curLang = TranslationService.shared.settings.targetLang
-        let header = NSMenuItem(title: "切换目标语种并原位重译", action: nil, keyEquivalent: "")
+        let header = NSMenuItem(title: L("切换目标语种并原位重译"), action: nil, keyEquivalent: "")
         header.isEnabled = false
         m.addItem(header)
         for (i, lang) in Self.quickLangs.enumerated() {
@@ -47,10 +47,10 @@ final class InPlaceTranslationOverlayView: NSView {
             m.addItem(item)
         }
         m.addItem(.separator())
-        let dual = NSMenuItem(title: "打开双栏流式对照窗…", action: #selector(openDual), keyEquivalent: "")
+        let dual = NSMenuItem(title: L("打开双栏流式对照窗…"), action: #selector(openDual), keyEquivalent: "")
         dual.target = self
         m.addItem(dual)
-        let exitItem = NSMenuItem(title: "退出原位翻译", action: #selector(exitTranslate), keyEquivalent: "")
+        let exitItem = NSMenuItem(title: L("退出原位翻译"), action: #selector(exitTranslate), keyEquivalent: "")
         exitItem.target = self
         m.addItem(exitItem)
         return m
@@ -84,7 +84,7 @@ extension OverlayView {
     var inPlaceTranslateHUDTag: String? {
         guard let tr = inPlaceTranslateView, !tr.isHidden else { return nil }
         if let banner = tr.statusBanner, !banner.isEmpty { return banner }
-        if tr.translatedImage != nil { return tr.comparingOriginal ? "原图预览中" : "已翻译 · 按住对比 · 右键切语种" }
+        if tr.translatedImage != nil { return tr.comparingOriginal ? L("原图预览中") : L("已翻译 · 按住对比 · 右键切语种") }
         return nil
     }
 
@@ -101,7 +101,7 @@ extension OverlayView {
         deactivateInPlaceOCR()
         if selection == nil, let snap = hoveredAutoRect { selection = snap }
         guard let sel = selection, sel.width >= 12, sel.height >= 12 else {
-            ToastHUD.show(message: "请先框选需要原位翻译的区域")
+            ToastHUD.show(message: L("请先框选需要原位翻译的区域"))
             return
         }
         guard let baked = AnnotationRenderer.bakeExportImage(
@@ -134,9 +134,9 @@ extension OverlayView {
         overlay.baseImage = baked
         overlay.translatedImage = nil
         let cfg = TranslationService.shared.settings
-        let activeName = cfg.resolvedActiveProfile?.name ?? "离线翻译"
+        let activeName = cfg.resolvedActiveProfile?.name ?? L("离线翻译")
         let targetLang = targetLangOverride ?? cfg.targetLang
-        overlay.statusBanner = "正在用「\(activeName)」译为\(targetLang.displayName)…"
+        overlay.statusBanner = L("正在用「%@」译为%@…", activeName, targetLang.displayName)
         overlay.isHidden = false
         updateToolbarLayout(); syncGPUChromeLayers()
         needsDisplay = true
@@ -150,7 +150,7 @@ extension OverlayView {
             guard !blocks.isEmpty else {
                 overlay.statusBanner = nil
                 self.deactivateInPlaceTranslate()
-                ToastHUD.show(message: "选区内未检测到可翻译的文字")
+                ToastHUD.show(message: L("选区内未检测到可翻译的文字"))
                 return
             }
 
@@ -176,8 +176,8 @@ extension OverlayView {
                 }
                 let pinKey = self.toolbar.pinHint.isEmpty ? self.keyUpper(.pin) : self.toolbar.pinHint
                 ToastHUD.show(
-                    message: "✓ 已用「\(usedProvider)」译为\(targetLang.displayName) · ↩ 复制 / \(pinKey) 贴图 / 右键切语种",
-                    actionTitle: "双栏流式对照 ›",
+                    message: L("✓ 已用「%@」译为%@ · ↩ 复制 / %@ 贴图 / 右键切语种", usedProvider, targetLang.displayName, pinKey),
+                    actionTitle: L("双栏流式对照 ›"),
                     onAction: { [weak self] in
                         self?.exportAndFinish(mode: .translateWindow)
                     }
@@ -187,8 +187,8 @@ extension OverlayView {
                 overlay.statusBanner = nil
                 self.deactivateInPlaceTranslate()
                 ToastHUD.show(
-                    message: "翻译失败：\(error.localizedDescription)",
-                    actionTitle: "配置翻译接口 ›",
+                    message: L("翻译失败：%@", error.localizedDescription),
+                    actionTitle: L("配置翻译接口 ›"),
                     onAction: { [weak self] in
                         self?.onOpenTranslationSettings?()
                     }

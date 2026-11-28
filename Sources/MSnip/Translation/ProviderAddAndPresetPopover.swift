@@ -85,7 +85,7 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
         sf.isBordered = false; sf.drawsBackground = false; sf.focusRingType = .none
         let sfFont = NSFont.systemFont(ofSize: 13.0)
         sf.font = sfFont; sf.textColor = GeekTheme.inkPrimary
-        sf.setGeekPlaceholder(isAdd ? "搜索厂商或服务（如 DeepSeek、豆包、腾讯、Ollama）…" : "搜索主流大模型官网预设（支持中英文 / 域名）…")
+        sf.setGeekPlaceholder(isAdd ? L("搜索厂商或服务（如 DeepSeek、豆包、腾讯、Ollama）…") : L("搜索主流大模型官网预设（支持中英文 / 域名）…"))
         sf.cell?.isScrollable = true; sf.cell?.wraps = false
         GeekTheme.placeCentered(sf, x: 30, width: searchBox.bounds.width - 40, centerY: 17.0)
         sf.delegate = self
@@ -94,7 +94,7 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
 
         var listTopY: CGFloat = 56
         if isAdd {
-            let seg = GeekSegmentControl(items: ["全部服务", "LLM 大模型 (21)", "云翻译 & 离线"], selectedIndex: 0)
+            let seg = GeekSegmentControl(items: [L("全部服务"), L("LLM 大模型 (21)"), L("云翻译 & 离线")], selectedIndex: 0)
             seg.frame = NSRect(x: 12, y: 54, width: W - 24, height: 30)
             seg.onSelect = { [weak self] idx in
                 self?.filterIndex = idx
@@ -168,7 +168,7 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
                     return u.port.map { "\(h):\($0)" } ?? h
                 } ?? preset.baseURL
                 let sub = preset == .customOpenAI
-                    ? "支持 OpenAI Chat / Responses / Anthropic / Gemini 四种格式"
+                    ? L("支持 OpenAI Chat / Responses / Anthropic / Gemini 四种格式")
                     : host
                 return PickOption(
                     title: preset.title,
@@ -201,14 +201,14 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
 
         if case .addService = mode {
             let nativeAndCloud: [(String, String, TranslationProviderKind, String, String, NSColor)] = [
-                ("Apple 离线翻译（免费）", "macOS 系统内置神经网络 · 无需 Key · 断网可用", .appleNative, "apple.logo", "免费离线", GeekTheme.emerald),
-                ("腾讯云翻译", "每月 500 万字符免费额度 · 填入 SecretId / SecretKey", .tencent, "cloud", "云翻译", GeekTheme.inkSecondary),
-                ("百度翻译开放平台", "每月百万字符免费额度 · 填入 AppID / 密钥", .baidu, "cloud", "云翻译", GeekTheme.inkSecondary),
-                ("有道智云翻译", "有道神经网络翻译 · 填入应用 ID / 应用密钥", .youdao, "cloud", "云翻译", GeekTheme.inkSecondary),
-                ("DeepL / 自建 DeepLX", "支持官方 Auth Key 与本机免密钥 DeepLX 服务", .deepl, "globe", "云 / 自建", GeekTheme.inkSecondary),
-                ("自定义 HTTP JSON 接口", "开发者自由定制 URL、请求体模版与 JSON 提取路径", .customWebhook, "wrench.and.screwdriver", "Webhook", GeekTheme.amber)
+                (L("Apple 离线翻译（免费）"), L("macOS 系统内置神经网络 · 无需 Key · 断网可用"), .appleNative, "apple.logo", L("免费离线"), GeekTheme.emerald),
+                (L("腾讯云翻译"), L("每月 500 万字符免费额度 · 填入 SecretId / SecretKey"), .tencent, "cloud", L("云翻译"), GeekTheme.inkSecondary),
+                (L("百度翻译开放平台"), L("每月百万字符免费额度 · 填入 AppID / 密钥"), .baidu, "cloud", L("云翻译"), GeekTheme.inkSecondary),
+                (L("有道智云翻译"), L("有道神经网络翻译 · 填入应用 ID / 应用密钥"), .youdao, "cloud", L("云翻译"), GeekTheme.inkSecondary),
+                (L("DeepL / 自建 DeepLX"), L("支持官方 Auth Key 与本机免密钥 DeepLX 服务"), .deepl, "globe", L("云 / 自建"), GeekTheme.inkSecondary),
+                (L("自定义 HTTP JSON 接口"), L("开发者自由定制 URL、请求体模版与 JSON 提取路径"), .customWebhook, "wrench.and.screwdriver", "Webhook", GeekTheme.amber)
             ]
-            appendGroup("系统离线 & 传统云翻译", nativeAndCloud.map { item in
+            appendGroup(L("系统离线 & 传统云翻译"), nativeAndCloud.map { item in
                 PickOption(
                     title: item.0, subtitle: item.1, symbol: item.3, badge: item.4, badgeColor: item.5,
                     searchBlob: "\(item.0) \(item.1) \(item.2.displayName) \(item.4)".lowercased(),
@@ -224,8 +224,8 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
     }
 
     private static func protocolBadge(for preset: LLMQuickPreset) -> (text: String, color: NSColor) {
-        if preset == .customOpenAI { return ("自定义", GeekTheme.inkSecondary) }
-        if preset.group == .local { return ("本机免 Key", GeekTheme.emerald) }
+        if preset == .customOpenAI { return (L("自定义"), GeekTheme.inkSecondary) }
+        if preset.group == .local { return (L("本机免 Key"), GeekTheme.emerald) }
         switch preset.providerKind {
         case .openAIResponses:     return ("Responses", GeekTheme.accent)
         case .anthropicCompatible: return ("Anthropic", GeekTheme.amber)
@@ -267,7 +267,7 @@ final class ProviderAddAndPresetPopover: NSObject, NSTableViewDataSource, NSTabl
         case .option(let opt):
             return ProviderPickerRowView(
                 title: opt.title, subtitle: opt.subtitle, symbol: opt.symbol,
-                badge: opt.isCurrent ? "✓ 当前" : opt.badge,
+                badge: opt.isCurrent ? L("✓ 当前") : opt.badge,
                 badgeColor: opt.isCurrent ? GeekTheme.emerald : opt.badgeColor,
                 selected: opt.isCurrent
             )

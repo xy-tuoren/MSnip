@@ -56,10 +56,14 @@ public enum DiagnosticLogText {
     }
 
     private static let failureMarkers = ["失败", "无法", "错误", "⚠", "✗", "未能", "异常", "超时", "拒绝", "缺少", "不可用", "过短", "未找到", "冲突"]
+    /// 英文界面下的同义词（按小写匹配），译文中的失败提示需包含其一
+    private static let englishFailureMarkers = ["failed", "couldn't", "could not", "cannot", "can't", "unable", "error", "denied", "timed out", "not found", "unavailable", "too short"]
 
     /// 判断一条用户可见提示是否在报告失败（只有失败提示会写入日志，普通提示可能含二维码等用户内容）
     public static func looksLikeFailure(_ message: String) -> Bool {
-        failureMarkers.contains { message.contains($0) }
+        if failureMarkers.contains(where: { message.contains($0) }) { return true }
+        let lower = message.lowercased()
+        return englishFailureMarkers.contains { lower.contains($0) }
     }
 
     /// 错误摘要：`域#码` + 底层错误 + 截断后的描述；Swift 原生错误枚举额外保留 case 名，方便定位

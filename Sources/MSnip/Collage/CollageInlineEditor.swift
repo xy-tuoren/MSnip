@@ -60,16 +60,16 @@ final class CollageInlineEditorView: NSView {
             let b = GeekButton(title: title, symbol: sym, style: style); b.toolTip = tip; b.onClick = action
             topControlsView.addSubview(b); return b
         }
-        backBtn = tBtn("返回", sym: "chevron.left", style: .subtle, tip: "返回拼图工作台 (Esc)") { [weak self] in self?.cancelAndExit() }
-        cropBtn = tBtn("裁剪", sym: "crop", tip: "自由框选裁剪画面") { [weak self] in self?.toggleCropMode() }
-        rotateBtn = tBtn("旋转", sym: "rotate.right", tip: "顺时针无损旋转 90°") { [weak self] in self?.applyGeometryTransform(ImageTransform.rotateClockwise90) }
-        flipBtn = tBtn("翻转", sym: "arrow.left.and.right.righttriangle.left.righttriangle.right", tip: "水平镜像翻转") { [weak self] in self?.applyGeometryTransform(ImageTransform.flipHorizontal) }
-        revertBtn = tBtn("还原", sym: "arrow.uturn.backward", style: .amberSoft, tip: "恢复编辑前初始图像") { [weak self] in self?.handleRevertAction() }
+        backBtn = tBtn(L("返回"), sym: "chevron.left", style: .subtle, tip: L("返回拼图工作台 (Esc)")) { [weak self] in self?.cancelAndExit() }
+        cropBtn = tBtn(L("裁剪"), sym: "crop", tip: L("自由框选裁剪画面")) { [weak self] in self?.toggleCropMode() }
+        rotateBtn = tBtn(L("旋转"), sym: "rotate.right", tip: L("顺时针无损旋转 90°")) { [weak self] in self?.applyGeometryTransform(ImageTransform.rotateClockwise90) }
+        flipBtn = tBtn(L("翻转"), sym: "arrow.left.and.right.righttriangle.left.righttriangle.right", tip: L("水平镜像翻转")) { [weak self] in self?.applyGeometryTransform(ImageTransform.flipHorizontal) }
+        revertBtn = tBtn(L("还原"), sym: "arrow.uturn.backward", style: .amberSoft, tip: L("恢复编辑前初始图像")) { [weak self] in self?.handleRevertAction() }
 
-        copyOutBtn = tBtn("复制", sym: "doc.on.doc", tip: "复制标注后的成品到剪贴板 (⌘C)") { [weak self] in self?.finishWithExport(.copy) }
-        pinOutBtn = tBtn("贴图", sym: "pin", tip: "将标注后的成品贴到桌面") { [weak self] in self?.finishWithExport(.pin) }
-        saveOutBtn = tBtn("保存", sym: "square.and.arrow.down", tip: "保存标注后的高清图片 (⌘S)") { [weak self] in self?.finishWithExport(.save) }
-        primaryBtn = tBtn("完成 (↩)", sym: "checkmark", style: .accent, tip: "应用当前修改并返回 (↩)") { [weak self] in self?.commitPrimaryAction() }
+        copyOutBtn = tBtn(L("复制"), sym: "doc.on.doc", tip: L("复制标注后的成品到剪贴板 (⌘C)")) { [weak self] in self?.finishWithExport(.copy) }
+        pinOutBtn = tBtn(L("贴图"), sym: "pin", tip: L("将标注后的成品贴到桌面")) { [weak self] in self?.finishWithExport(.pin) }
+        saveOutBtn = tBtn(L("保存"), sym: "square.and.arrow.down", tip: L("保存标注后的高清图片 (⌘S)")) { [weak self] in self?.finishWithExport(.save) }
+        primaryBtn = tBtn(L("完成 (↩)"), sym: "checkmark", style: .accent, tip: L("应用当前修改并返回 (↩)")) { [weak self] in self?.commitPrimaryAction() }
 
         let well = CollageEditorBackdropWellView(frame: .zero)
         addSubview(well)
@@ -139,29 +139,33 @@ final class CollageInlineEditorView: NSView {
     func layoutEditor() {
         let tw = topControlsView.bounds.width, th = topControlsView.bounds.height
         let cy = round((th - 25) * 0.5)
-        backBtn?.frame = NSRect(x: 2, y: cy, width: 56, height: 25)
+        // 按钮宽度取设计宽度与文字所需宽度的较大者（英文等较长译文不截断）
+        let backW = backBtn?.widthFitting(atLeast: 56) ?? 56
+        backBtn?.frame = NSRect(x: 2, y: cy, width: backW, height: 25)
 
         var rx = tw - 10
         switch mode {
         case .sourceItem:
-            let pw: CGFloat = 108
+            let pw = primaryBtn?.widthFitting(atLeast: 108) ?? 108
             rx -= pw; primaryBtn?.frame = NSRect(x: rx, y: cy, width: pw, height: 25)
         case .stitchedCollage:
-            let pw: CGFloat = 82
+            let pw = primaryBtn?.widthFitting(atLeast: 82) ?? 82
             rx -= pw; primaryBtn?.frame = NSRect(x: rx, y: cy, width: pw, height: 25)
             for b in [saveOutBtn, pinOutBtn, copyOutBtn] {
-                rx -= 59; b?.frame = NSRect(x: rx, y: cy, width: 54, height: 25)
+                let bw = b?.widthFitting(atLeast: 54) ?? 54
+                rx -= bw + 5; b?.frame = NSRect(x: rx, y: cy, width: bw, height: 25)
             }
         }
 
         let geoBtns = [cropBtn, rotateBtn, flipBtn, revertBtn].compactMap { $0 }.filter { !$0.isHidden }
-        let geoW = CGFloat(geoBtns.count) * 56 + CGFloat(max(0, geoBtns.count - 1)) * 5
-        var gx = max(140, rx - geoW - 12)
-        for b in geoBtns {
-            b.frame = NSRect(x: gx, y: cy, width: 56, height: 25); gx += 61
+        let geoWidths = geoBtns.map { $0.widthFitting(atLeast: 56) }
+        let geoW = geoWidths.reduce(0, +) + CGFloat(max(0, geoBtns.count - 1)) * 5
+        var gx = max(backW + 84, rx - geoW - 12)
+        for (b, bw) in zip(geoBtns, geoWidths) {
+            b.frame = NSRect(x: gx, y: cy, width: bw, height: 25); gx += bw + 5
         }
-        let titleMaxW = max(60, (geoBtns.first?.frame.minX ?? rx) - 70)
-        titleLabel?.frame = NSRect(x: 64, y: round((th - 18) * 0.5), width: titleMaxW, height: 18)
+        let titleMaxW = max(60, (geoBtns.first?.frame.minX ?? rx) - backW - 14)
+        titleLabel?.frame = NSRect(x: backW + 8, y: round((th - 18) * 0.5), width: titleMaxW, height: 18)
 
         let w = bounds.width, h = bounds.height
         let showSub = (annotationCanvas?.activeTool != nil)
@@ -357,10 +361,10 @@ extension CollageInlineEditorView {
         case .autoRedact:
             guard let img = baseImage else { return }
             let useBlur = (canvas.activeTool == .gaussianBlur), st = canvas.style, bSz = canvas.baseSize
-            ToastHUD.show(message: "正在离线扫描隐私敏感信息…")
+            ToastHUD.show(message: L("正在离线扫描隐私敏感信息…"))
             Task { @MainActor [weak canvas, weak self] in
                 let boxes = await VisionTextExtractor.detectSensitiveBoxesOffMain(cgImage: img)
-                guard let canvas, !boxes.isEmpty else { ToastHUD.show(message: "未检测到敏感信息"); return }
+                guard let canvas, !boxes.isEmpty else { ToastHUD.show(message: L("未检测到敏感信息")); return }
                 canvas.doc.beginTransaction()
                 var objs = canvas.doc.objects
                 for nb in boxes {
@@ -369,7 +373,7 @@ extension CollageInlineEditorView {
                 }
                 canvas.doc.replaceObjectsWithoutHistory(objs); canvas.doc.commitTransaction(changed: true)
                 canvas.needsDisplay = true; self?.syncToolbarFromCanvas()
-                ToastHUD.show(message: "✓ 已自动遮盖 \(boxes.count) 处隐私信息")
+                ToastHUD.show(message: L("✓ 已自动遮盖 %@ 处隐私信息", boxes.count))
             }
         case .cancel: cancelAndExit()
         case .confirmCopy: commitPrimaryAction()
@@ -393,11 +397,11 @@ extension CollageInlineEditorView {
         let hasDoc = (annotationCanvas?.doc.isEmpty == false)
         switch mode {
         case .sourceItem(_, let hasBackup):
-            primaryBtn?.title = "应用修改 (↩)"
+            primaryBtn?.title = L("应用修改 (↩)")
             [copyOutBtn, pinOutBtn, saveOutBtn].forEach { $0?.isHidden = true }
             revertBtn?.isHidden = !(hasBackup || geometryModified || hasDoc)
         case .stitchedCollage(let hasRevert):
-            primaryBtn?.title = "完成 (↩)"
+            primaryBtn?.title = L("完成 (↩)")
             [copyOutBtn, pinOutBtn, saveOutBtn].forEach { $0?.isHidden = false }
             revertBtn?.isHidden = !(hasRevert || geometryModified || hasDoc)
         }
@@ -482,7 +486,7 @@ extension CollageStudioController {
             backupExpireWork = expire
             DispatchQueue.main.asyncAfter(deadline: .now() + 7.5, execute: expire)
             resetCollageEdits()
-            ToastHUD.show(message: "拼图参数已调整，原合成标注已暂存", actionTitle: "恢复标注 ›") { [weak self] in
+            ToastHUD.show(message: L("拼图参数已调整，原合成标注已暂存"), actionTitle: L("恢复标注 ›")) { [weak self] in
                 self?.restoreDiscardedCollageEdits()
             }
         } else {
@@ -501,7 +505,7 @@ extension CollageStudioController {
 
     func syncAnnotateButtonBadge() {
         let active = (editedCollageOverride != nil)
-        annotateBtn?.title = active ? "已标注" : "标注"
+        annotateBtn?.title = active ? L("已标注") : L("标注")
         annotateBtn?.style = active ? .amberSoft : .subtle
     }
 
@@ -509,7 +513,7 @@ extension CollageStudioController {
         guard items.indices.contains(index) else { return }
         colorPopover.closeIfShown()
         let it = items[index]
-        inlineEditor.enter(title: "素材 #\(index + 1)", cgImage: it.cgImage, scaleFactor: it.scaleFactor,
+        inlineEditor.enter(title: L("素材 #%@", index + 1), cgImage: it.cgImage, scaleFactor: it.scaleFactor,
                            mode: .sourceItem(index: index, hasBackup: it.originalBackup != nil))
         layoutUI()
     }
@@ -518,7 +522,7 @@ extension CollageStudioController {
         colorPopover.closeIfShown()
         let refScale = items.last?.scaleFactor ?? 2.0
         if let existingBase = collageEditorBase {
-            inlineEditor.enter(title: "标注合成拼图", cgImage: existingBase, scaleFactor: refScale,
+            inlineEditor.enter(title: L("标注合成拼图"), cgImage: existingBase, scaleFactor: refScale,
                                mode: .stitchedCollage(hasRevert: editedCollageOverride != nil),
                                initialDoc: collageEditorDoc, alreadyModifiedGeometry: collageEditorGeoModified)
             layoutUI(); return
@@ -528,7 +532,7 @@ extension CollageStudioController {
         Task { @MainActor [weak self] in
             let hd = await Task.detached(priority: .userInitiated) { ImageCollageStitcher.stitch(images: imgs, options: opts, maxRefSide: 2400) }.value
             guard let self, let hd else { return }
-            self.inlineEditor.enter(title: "标注合成拼图", cgImage: hd, scaleFactor: refScale, mode: .stitchedCollage(hasRevert: false))
+            self.inlineEditor.enter(title: L("标注合成拼图"), cgImage: hd, scaleFactor: refScale, mode: .stitchedCollage(hasRevert: false))
             self.layoutUI()
         }
     }

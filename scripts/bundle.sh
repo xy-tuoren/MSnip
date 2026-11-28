@@ -131,8 +131,26 @@ cp "$FINAL_BIN" "$MACOS_DIR/$APP_NAME"
 rm -f "$FINAL_BIN"
 chmod +x "$MACOS_DIR/$APP_NAME"
 
-echo "==> [3/5] 生成纯矢量高压缩应用图标 AppIcon.icns..."
+echo "==> [3/5] 生成纯矢量高压缩应用图标 AppIcon.icns 并编译本地化文案..."
 swift "$ROOT_DIR/scripts/generate-icon.swift" "$RES_DIR/AppIcon.icns"
+# Resources/<语言>.lproj/*.strings 以 UTF-8 文本打包并去掉整行注释与空行：
+# 二进制 plist 会把含「·」「…」等非 ASCII 字符的英文整串存成 UTF-16，反而比 UTF-8 文本大约 20%。
+# 打包后再校验语法与条目数，与源文件不一致直接中断。
+for LPROJ in "$ROOT_DIR"/Resources/*.lproj; do
+    LPROJ_DEST="$RES_DIR/$(basename "$LPROJ")"
+    mkdir -p "$LPROJ_DEST"
+    for STRINGS in "$LPROJ"/*.strings; do
+        OUT="$LPROJ_DEST/$(basename "$STRINGS")"
+        sed -e '/^\/\*.*\*\/$/d' -e '/^[[:space:]]*$/d' "$STRINGS" > "$OUT"
+        SRC_N="$(plutil -p "$STRINGS" 2>/dev/null | grep -c ' => ' || true)"
+        OUT_N="$(plutil -p "$OUT" 2>/dev/null | grep -c ' => ' || true)"
+        if ! plutil -lint -s "$OUT" || [ "$SRC_N" = "0" ] || [ "$SRC_N" != "$OUT_N" ]; then
+            echo "  ❌ 本地化文件语法错误或条目丢失: $STRINGS ($SRC_N → $OUT_N)" >&2
+            exit 1
+        fi
+    done
+done
+echo "  ✓ 已编译本地化资源: $(cd "$RES_DIR" && ls -d *.lproj | tr '\n' ' ')"
 
 ARCH_MINOS_PLIST=""
 if [ "$UNIVERSAL" = "1" ] && [ "$X86_MINOS" != "12.0" ]; then
@@ -153,7 +171,12 @@ cat > "$CONTENTS/Info.plist" << EOF
 <plist version="1.0">
 <dict>
     <key>CFBundleDevelopmentRegion</key>
-    <string>zh_CN</string>
+    <string>en</string>
+    <key>CFBundleLocalizations</key>
+    <array>
+        <string>en</string>
+        <string>zh-Hans</string>
+    </array>
     <key>CFBundleDisplayName</key>
     <string>$APP_NAME</string>
     <key>CFBundleExecutable</key>

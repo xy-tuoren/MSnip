@@ -9,6 +9,8 @@ final class GeekSegmentControl: NSView {
     var symbols: [String]? { didSet { needsDisplay = true } }
     var selectedIndex: Int = 0 { didSet { needsDisplay = true } }
     var monoFont: Bool = false
+    /// 各段按文字宽度分配（多出的空间均分）；默认等宽，仅在等宽放不下较长译文时启用
+    var proportional: Bool = false { didSet { needsDisplay = true } }
     var onSelect: ((Int) -> Void)?
     private var hoveredIdx: Int? { didSet { if oldValue != hoveredIdx { needsDisplay = true } } }
     override var isFlipped: Bool { true }
@@ -32,17 +34,54 @@ final class GeekSegmentControl: NSView {
 
     override func mouseMoved(with event: NSEvent) {
         guard !items.isEmpty else { return }
-        let x = convert(event.locationInWindow, from: nil).x
-        hoveredIdx = min(items.count - 1, max(0, Int(x / (bounds.width / CGFloat(items.count)))))
+        hoveredIdx = segmentIndex(atX: convert(event.locationInWindow, from: nil).x)
     }
     override func mouseExited(with event: NSEvent) { hoveredIdx = nil }
 
     override func mouseDown(with event: NSEvent) {
         guard !items.isEmpty else { return }
-        let x = convert(event.locationInWindow, from: nil).x
-        let idx = min(items.count - 1, max(0, Int(x / (bounds.width / CGFloat(items.count)))))
+        let idx = segmentIndex(atX: convert(event.locationInWindow, from: nil).x)
         selectedIndex = idx
         onSelect?(idx)
+    }
+
+    private static let pad: CGFloat = 2.5
+
+    /// 单段完整显示文字（按选中态粗体）与图标所需的宽度
+    private func contentWidths() -> [CGFloat] {
+        let font: NSFont = monoFont
+            ? .monospacedSystemFont(ofSize: 12.0, weight: .semibold)
+            : .systemFont(ofSize: 12.5, weight: .semibold)
+        return items.enumerated().map { i, label in
+            let iconW: CGFloat = (symbols?.indices.contains(i) == true) ? 14 + 5 : 0
+            return GeekTheme.measureTextWidth(label, font: font) + 2 + iconW + 12
+        }
+    }
+
+    /// 各段等宽时完整显示最长一段所需的总宽度
+    var fittingWidth: CGFloat {
+        ceil((contentWidths().max() ?? 0) * CGFloat(items.count) + Self.pad * 2)
+    }
+
+    private func segmentRects() -> [CGRect] {
+        let inner = bounds.width - Self.pad * 2
+        let h = bounds.height - Self.pad * 2
+        var widths = Array(repeating: inner / CGFloat(max(1, items.count)), count: items.count)
+        if proportional {
+            let content = contentWidths()
+            let extra = max(0, inner - content.reduce(0, +)) / CGFloat(max(1, items.count))
+            widths = content.map { $0 + extra }
+        }
+        var x = Self.pad
+        return widths.map { w in
+            defer { x += w }
+            return CGRect(x: x, y: Self.pad, width: w, height: h)
+        }
+    }
+
+    private func segmentIndex(atX x: CGFloat) -> Int {
+        let rects = segmentRects()
+        return rects.firstIndex { x < $0.maxX } ?? max(0, rects.count - 1)
     }
 
     override func draw(_ dirtyRect: NSRect) {
@@ -55,10 +94,9 @@ final class GeekSegmentControl: NSView {
         ctx.setStrokeColor(GeekTheme.border.cgColor)
         ctx.setLineWidth(1.0); ctx.addPath(bg); ctx.strokePath()
 
-        let pad: CGFloat = 2.5
-        let segW = (bounds.width - pad * 2) / CGFloat(items.count)
+        let rects = segmentRects()
         for (i, label) in items.enumerated() {
-            let sr = CGRect(x: pad + CGFloat(i) * segW, y: pad, width: segW, height: bounds.height - pad * 2)
+            let sr = rects[i]
             let active = (i == selectedIndex)
             if active || hoveredIdx == i {
                 let p = CGPath(roundedRect: sr, cornerWidth: 6.0, cornerHeight: 6.0, transform: nil)
@@ -126,6 +164,22 @@ final class GeekButton: NSView {
     override func mouseExited(with event: NSEvent) { hovered = false }
     override func mouseDown(with event: NSEvent) { if isEnabled { onClick?() } }
 
+    private var titleFont: NSFont {
+        mono ? .monospacedSystemFont(ofSize: 12.0, weight: .medium)
+            : .systemFont(ofSize: 12.5, weight: (style == .subtle || style == .ghost) ? .medium : .semibold)
+    }
+
+    /// 完整显示图标与标题所需的最小宽度（英文等较长文案据此放宽固定宽度）
+    var fittingWidth: CGFloat {
+        let symPt: CGFloat = title.isEmpty ? 12.5 : 11.5
+        let iconW = symbolName.flatMap { GeekTheme.symbolEntry($0, pointSize: symPt, weight: .semibold) }?.pointSize.width ?? 0
+        let gap: CGFloat = (iconW > 0 && !title.isEmpty) ? 5.5 : 0
+        return ceil(iconW + gap + GeekTheme.measureTextWidth(title, font: titleFont) + 2 + 20)
+    }
+
+    /// 在设计宽度基础上按需放宽，返回最终宽度
+    func widthFitting(atLeast designWidth: CGFloat) -> CGFloat { max(designWidth, fittingWidth) }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let r = bounds.insetBy(dx: 0.5, dy: 0.5)
@@ -175,9 +229,7 @@ final class GeekButton: NSView {
             fg = (hovered && isEnabled) ? GeekTheme.inkPrimary : GeekTheme.inkSecondary
         }
 
-        let font: NSFont = mono
-            ? .monospacedSystemFont(ofSize: 12.0, weight: .medium)
-            : .systemFont(ofSize: 12.5, weight: (style == .subtle || style == .ghost) ? .medium : .semibold)
+        let font = titleFont
         let symPt: CGFloat = title.isEmpty ? 12.5 : 11.5
         let symEntry = symbolName.flatMap { GeekTheme.symbolEntry($0, pointSize: symPt, weight: .semibold) }
         let iconW = symEntry?.pointSize.width ?? 0
@@ -329,7 +381,7 @@ final class ProviderRowCellView: NSTableCellView {
         }
         MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: 14, y: bounds.midY), color: dotColor, halo: isPrimary)
 
-        let badgeText: String = isPrimary ? "使用中" : (isReady ? "已就绪" : "填 Key")
+        let badgeText: String = isPrimary ? L("使用中") : (isReady ? L("已就绪") : L("填 Key"))
         let badgeBg: NSColor = isPrimary ? GeekTheme.emeraldSoft : (isReady ? GeekTheme.accentSoft : GeekTheme.pillSubtle)
         let badgeFg: NSColor = isPrimary ? GeekTheme.emerald : (isReady ? GeekTheme.accent : GeekTheme.inkMuted)
         let bw: CGFloat = 44, bh: CGFloat = 20
@@ -514,9 +566,9 @@ extension TranslationSettingsWindow {
             modeControls.appearanceSegment?.selectedIndex = idx
         }
         let dark = GeekTheme.isDark
-        modeControls.themeToggleBtn?.title = dark ? "明亮" : "暗黑"
+        modeControls.themeToggleBtn?.title = dark ? L("明亮") : L("暗黑")
         modeControls.themeToggleBtn?.symbolName = dark ? "sun.max" : "moon"
-        modeControls.themeToggleBtn?.toolTip = dark ? "当前暗黑模式 · 点击一键切换明亮模式" : "当前明亮模式 · 点击一键切换暗黑模式"
+        modeControls.themeToggleBtn?.toolTip = dark ? L("当前暗黑模式 · 点击一键切换明亮模式") : L("当前明亮模式 · 点击一键切换暗黑模式")
     }
 }
 
@@ -532,7 +584,7 @@ final class GeekProgressSlider: NSView {
         }
     }
     var defaultValue: CGFloat = 0.45
-    var zeroLabel: String = "关闭"
+    var zeroLabel: String = L("关闭")
     var onChange: ((CGFloat) -> Void)?
     var onCommit: ((CGFloat) -> Void)?
 
@@ -542,7 +594,7 @@ final class GeekProgressSlider: NSView {
     override var isFlipped: Bool { true }
     override var mouseDownCanMoveWindow: Bool { false }
 
-    init(value: CGFloat = 0.45, defaultValue: CGFloat = 0.45, zeroLabel: String = "关闭") {
+    init(value: CGFloat = 0.45, defaultValue: CGFloat = 0.45, zeroLabel: String = L("关闭")) {
         self.value = min(1.0, max(0.0, value))
         self.defaultValue = defaultValue
         self.zeroLabel = zeroLabel

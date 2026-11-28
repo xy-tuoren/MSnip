@@ -72,7 +72,7 @@ final class ShelfStore {
     func addText(_ raw: String) -> Bool {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        let previewTitle = trimmed.split(whereSeparator: \.isNewline).first.map { String($0.prefix(26)) } ?? "文本片段"
+        let previewTitle = trimmed.split(whereSeparator: \.isNewline).first.map { String($0.prefix(26)) } ?? L("文本片段")
         customItems.removeAll { $0.kind == .text && $0.textContent == trimmed }
         customItems.insert(ShelfCustomItem(kind: .text, title: previewTitle, textContent: trimmed), at: 0)
         trimAndSave()
@@ -85,16 +85,16 @@ final class ShelfStore {
         if let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL],
            !urls.isEmpty {
             let n = addFileURLs(urls)
-            return n > 0 ? "已挂架 \(n) 个剪贴板文件" : nil
+            return n > 0 ? L("已挂架 %@ 个剪贴板文件", n) : nil
         }
         if let nsImg = ClipboardAndSave.readImageFromClipboard(),
            let cg = nsImg.cgImage(forProposedRect: nil, context: nil, hints: nil) {
             let scale = NSScreen.main?.backingScaleFactor ?? 2.0
             _ = historyRing.record(cgImage: cg, scaleFactor: scale)
-            return "已将剪贴板图片挂上暂存架"
+            return L("已将剪贴板图片挂上暂存架")
         }
         if let str = pb.string(forType: .string), addText(str) {
-            return "已将剪贴板文本挂上暂存架"
+            return L("已将剪贴板文本挂上暂存架")
         }
         return nil
     }
@@ -148,7 +148,7 @@ extension ShelfPanelController {
         switch item {
         case .history(let e):
             thumb = historyRing.shelfThumbnail(for: e)
-            title = e.isCollage ? "并排对比" : timeFormatter.string(from: e.createdAt)
+            title = e.isCollage ? L("并排对比") : timeFormatter.string(from: e.createdAt)
             sub = "\(e.pixelWidth)×\(e.pixelHeight)"; sym = "photo"; snippet = nil; canOCR = true; isFileNonImage = false
         case .custom(let c):
             if c.kind == .file, let p = c.filePath {
@@ -165,11 +165,11 @@ extension ShelfPanelController {
                         }
                     }
                 } else { thumb = nil }
-                title = c.title; sub = ext.isEmpty ? "文件" : ext.uppercased()
+                title = c.title; sub = ext.isEmpty ? L("文件") : ext.uppercased()
                 sym = isImg ? "photo" : (isVid ? "film" : "doc.fill")
                 snippet = nil; canOCR = isImg; isFileNonImage = !isImg
             } else {
-                thumb = nil; title = c.title; sub = "\((c.textContent ?? "").count) 字"
+                thumb = nil; title = c.title; sub = L("%@ 字", (c.textContent ?? "").count)
                 sym = nil; snippet = c.textContent; canOCR = false; isFileNonImage = false
             }
         }
@@ -189,8 +189,8 @@ extension ShelfPanelController {
         case .custom(let c):
             if c.kind == .file, let p = c.filePath {
                 let pb = NSPasteboard.general; pb.clearContents(); pb.writeObjects([URL(fileURLWithPath: p) as NSURL])
-                ToastHUD.show(message: "已复制文件：\(c.title)")
-            } else if let txt = c.textContent { ClipboardAndSave.copyText(txt); ToastHUD.show(message: "已复制暂存文本 (\(txt.count) 字)") }
+                ToastHUD.show(message: L("已复制文件：%@", c.title))
+            } else if let txt = c.textContent { ClipboardAndSave.copyText(txt); ToastHUD.show(message: L("已复制暂存文本 (%@ 字)", txt.count)) }
         }
     }
 
@@ -275,7 +275,7 @@ extension ShelfPanelController {
         for it in chosen {
             switch it {
             case .history(let e):
-                if let cg = historyRing.loadCGImage(for: e) { imgs.append(("截图 \(tf.string(from: e.createdAt))", cg, e.scaleFactor)) }
+                if let cg = historyRing.loadCGImage(for: e) { imgs.append((L("截图 %@", tf.string(from: e.createdAt)), cg, e.scaleFactor)) }
             case .custom(let c):
                 if c.kind == .file, let p = c.filePath, let cg = loadImage(at: p) {
                     imgs.append((c.title, cg, 2.0))

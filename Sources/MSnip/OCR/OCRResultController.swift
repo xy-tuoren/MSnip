@@ -95,8 +95,8 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
 
         modeSwitch.mode = layoutMode
         translateButton.isToggledOn = isTranslationActive
-        titleLabel.stringValue = isTranslationActive ? "截图识字与翻译" : "截图提取文字"
-        copyButton.title = isTranslationActive ? "复制译文 (⌘↩)" : "复制文本 (⌘↩)"
+        titleLabel.stringValue = isTranslationActive ? L("截图识字与翻译") : L("截图提取文字")
+        copyButton.title = isTranslationActive ? L("复制译文 (⌘↩)") : L("复制文本 (⌘↩)")
         ocrEnginePill?.selectedIndex = OCREngineKind.allCases.firstIndex(of: selectedOCREngine) ?? 0
         exactModeButton?.isHidden = (selectedOCREngine != .appleVision)
         refreshTranslationPopups()
@@ -106,10 +106,10 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
             height: CGFloat(cgImage.height) / currentScale
         )
         liveImageView.setPreviewImageOnly(cgImage: cgImage, logicalSize: logicalSize, highlightBlocks: highlightButton.isToggledOn)
-        statusBadgeLabel.stringValue = "正在离线识别…"
+        statusBadgeLabel.stringValue = L("正在离线识别…")
         statusBadgeLabel.textColor = MSnipUITheme.inkSecondary
         textView.string = ""
-        transTextView.string = autoTranslate ? "等待文字识别后立即翻译…" : ""
+        transTextView.string = autoTranslate ? L("等待文字识别后立即翻译…") : ""
         qrBannerBox.isHidden = true
         tableCopyButton?.isHidden = true
         updateStatsLabel()
@@ -144,7 +144,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         guard let img = currentCGImage else { return }
         requestToken &+= 1
         let token = requestToken
-        statusBadgeLabel.stringValue = exactCodeMode ? "正在按防纠错原样重识…" : "正在按高精度模式重识…"
+        statusBadgeLabel.stringValue = exactCodeMode ? L("正在按防纠错原样重识…") : L("正在按高精度模式重识…")
         statusBadgeLabel.textColor = MSnipUITheme.inkSecondary
         relayoutContent()
         runOCRPass(on: img, token: token)
@@ -157,7 +157,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     func applyRecognitionOutput(_ output: OCRRecognitionOutput, fallbackWarning: String? = nil) {
         self.currentOutput = output; self.rawNonAppleText = nil
         if output.isEmpty {
-            statusBadgeLabel.stringValue = fallbackWarning ?? "未识别到文字或二维码"
+            statusBadgeLabel.stringValue = fallbackWarning ?? L("未识别到文字或二维码")
             statusBadgeLabel.textColor = MSnipUITheme.warning
             textView.string = ""; transTextView.string = ""; qrBannerBox.isHidden = true
             updateStatsLabel(); relayoutContent(); return
@@ -173,14 +173,14 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
                 statusBadgeLabel.stringValue = warn
                 statusBadgeLabel.textColor = MSnipUITheme.warning
             } else {
-                statusBadgeLabel.stringValue = (ocrAutoCopyProvider?() ?? true) ? "✓ 已自动复制 · \(autoClip.count) 字" : "✓ 识别完成 · \(autoClip.count) 字"
+                statusBadgeLabel.stringValue = (ocrAutoCopyProvider?() ?? true) ? L("✓ 已自动复制 · %@ 字", autoClip.count) : L("✓ 识别完成 · %@ 字", autoClip.count)
                 statusBadgeLabel.textColor = MSnipUITheme.success
             }
         }
 
         if let firstQR = output.qrPayloads.first {
             qrBannerBox.isHidden = false
-            qrValueLabel.stringValue = "二维码：\(firstQR)"
+            qrValueLabel.stringValue = L("二维码：%@", firstQR)
             let isLink = firstQR.lowercased().hasPrefix("http://") || firstQR.lowercased().hasPrefix("https://")
             qrOpenBtn.isHidden = !isLink
         } else {
@@ -198,7 +198,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     func copyPreferredText() {
         if liveImageView.hasSelection, liveImageView.copySelectionIfActive() {
             let cnt = liveImageView.selectedText.count
-            statusBadgeLabel.stringValue = cnt > 0 ? "✓ 已复制左图划选（\(cnt) 字）" : "✓ 已复制左图划选文本"
+            statusBadgeLabel.stringValue = cnt > 0 ? L("✓ 已复制左图划选（%@ 字）", cnt) : L("✓ 已复制左图划选文本")
             statusBadgeLabel.textColor = MSnipUITheme.success
             relayoutContent()
             return
@@ -207,16 +207,16 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
             let selTrans = transTextView.selectedRange()
             if selTrans.length > 0, let sub = (transTextView.string as NSString?)?.substring(with: selTrans) {
                 ClipboardAndSave.copyText(sub)
-                statusBadgeLabel.stringValue = "✓ 已复制选中译文（\(sub.count) 字）"
+                statusBadgeLabel.stringValue = L("✓ 已复制选中译文（%@ 字）", sub.count)
                 statusBadgeLabel.textColor = MSnipUITheme.success
                 relayoutContent()
                 return
             }
             let fullTrans = transTextView.string.trimmingCharacters(in: .whitespacesAndNewlines)
-            let isPlaceholder = fullTrans.isEmpty || fullTrans == "正在翻译…" || fullTrans == "等待文字识别后立即翻译…" || fullTrans == "等待识别原文…"
+            let isPlaceholder = fullTrans.isEmpty || fullTrans == L("正在翻译…") || fullTrans == L("等待文字识别后立即翻译…") || fullTrans == L("等待识别原文…")
             if !isPlaceholder {
                 ClipboardAndSave.copyText(fullTrans)
-                statusBadgeLabel.stringValue = "✓ 已复制全文译文（\(fullTrans.count) 字）"
+                statusBadgeLabel.stringValue = L("✓ 已复制全文译文（%@ 字）", fullTrans.count)
                 statusBadgeLabel.textColor = MSnipUITheme.success
                 relayoutContent()
                 return
@@ -225,13 +225,13 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
         let selectedRange = textView.selectedRange()
         if selectedRange.length > 0, let sub = (textView.string as NSString?)?.substring(with: selectedRange) {
             ClipboardAndSave.copyText(sub)
-            statusBadgeLabel.stringValue = "✓ 已复制选中文本（\(sub.count) 字）"
+            statusBadgeLabel.stringValue = L("✓ 已复制选中文本（%@ 字）", sub.count)
             statusBadgeLabel.textColor = MSnipUITheme.success
             relayoutContent()
             return
         }
         ClipboardAndSave.copyText(textView.string)
-        statusBadgeLabel.stringValue = "✓ 已复制全文（\(textView.string.count) 字）"
+        statusBadgeLabel.stringValue = L("✓ 已复制全文（%@ 字）", textView.string.count)
         statusBadgeLabel.textColor = MSnipUITheme.success
         relayoutContent()
     }
@@ -251,7 +251,7 @@ final class OCRResultController: NSObject, NSWindowDelegate, NSTextViewDelegate 
     func updateStatsLabel() {
         let s = textView?.string ?? ""
         let lines = s.isEmpty ? 0 : s.components(separatedBy: .newlines).filter { !$0.isEmpty }.count
-        statsLabel?.stringValue = "\(lines) 行 · \(s.count) 字"
+        statsLabel?.stringValue = L("%@ 行 · %@ 字", lines, s.count)
     }
 
     func windowDidResize(_ notification: Notification) { relayoutContent() }
@@ -316,7 +316,7 @@ extension OCRResultController {
     }
 
     private func buildSubtree(in root: NSView) {
-        titleLabel = makeLabel("截图提取文字", size: 14, weight: .bold, color: ResultTheme.inkPrimary)
+        titleLabel = makeLabel(L("截图提取文字"), size: 14, weight: .bold, color: ResultTheme.inkPrimary)
         root.addSubview(titleLabel)
 
         statusBadgeLabel = makeLabel("", size: 11.5, weight: .medium, color: MSnipUITheme.success)
@@ -331,11 +331,11 @@ extension OCRResultController {
         }
         root.addSubview(latexButton)
 
-        translateButton = OCRPillButton(title: "翻译对照", symbol: "character.bubble")
+        translateButton = OCRPillButton(title: L("翻译对照"), symbol: "character.bubble")
         translateButton.onClick = { [weak self] in self?.toggleTranslationPane() }
         root.addSubview(translateButton)
 
-        highlightButton = OCRPillButton(title: "高亮字块", symbol: "text.viewfinder")
+        highlightButton = OCRPillButton(title: L("高亮字块"), symbol: "text.viewfinder")
         highlightButton.isToggledOn = false
         highlightButton.onClick = { [weak self] in
             guard let self else { return }
@@ -358,7 +358,7 @@ extension OCRResultController {
                     self.triggerStreamingTranslation()
                 } else if self.ocrAutoCopyProvider?() ?? true {
                     ClipboardAndSave.copyText(nextText)
-                    self.statusBadgeLabel.stringValue = "✓ 已切换并复制 · \(nextText.count) 字"
+                    self.statusBadgeLabel.stringValue = L("✓ 已切换并复制 · %@ 字", nextText.count)
                     self.statusBadgeLabel.textColor = MSnipUITheme.success; self.relayoutContent()
                 }
             }
@@ -380,7 +380,7 @@ extension OCRResultController {
 
         liveImageView = LiveTextImageView(scaling: .scaleProportionallyUpOrDown)
         leftCard.addSubview(liveImageView)
-        leftTipLabel = makeLabel("原图支持直接划选局部词句 (⌘C)", size: 11, weight: .medium, color: ResultTheme.inkMuted)
+        leftTipLabel = makeLabel(L("原图支持直接划选局部词句 (⌘C)"), size: 11, weight: .medium, color: ResultTheme.inkMuted)
         leftCard.addSubview(leftTipLabel)
         root.addSubview(leftCard)
 
@@ -392,16 +392,16 @@ extension OCRResultController {
         qrValueLabel.lineBreakMode = .byTruncatingMiddle
         qrBannerBox.addSubview(qrValueLabel)
 
-        qrCopyBtn = OCRPillButton(title: "复制码值")
+        qrCopyBtn = OCRPillButton(title: L("复制码值"))
         qrCopyBtn.onClick = { [weak self] in
             if let code = self?.currentOutput?.qrPayloads.first ?? self?.nonAppleQRPayloads.first {
                 ClipboardAndSave.copyText(code)
-                self?.statusBadgeLabel.stringValue = "✓ 二维码内容已复制"
+                self?.statusBadgeLabel.stringValue = L("✓ 二维码内容已复制")
             }
         }
         qrBannerBox.addSubview(qrCopyBtn)
 
-        qrOpenBtn = OCRPillButton(title: "打开链接")
+        qrOpenBtn = OCRPillButton(title: L("打开链接"))
         qrOpenBtn.onClick = { [weak self] in
             if let raw = self?.currentOutput?.qrPayloads.first ?? self?.nonAppleQRPayloads.first, let url = URL(string: raw) {
                 NSWorkspace.shared.open(url)
@@ -434,18 +434,18 @@ extension OCRResultController {
         buildTranslationSubtree(in: rightCard)
         root.addSubview(rightCard)
 
-        statsLabel = makeLabel("0 行 · 0 字", size: 11.5, weight: .medium, color: ResultTheme.inkSecondary)
+        statsLabel = makeLabel(L("0 行 · 0 字"), size: 11.5, weight: .medium, color: ResultTheme.inkSecondary)
         root.addSubview(statsLabel)
         buildOCREngineControls(in: root)
 
-        exactModeButton = OCRPillButton(title: "代码防纠错", symbol: "curlybraces")
+        exactModeButton = OCRPillButton(title: L("代码防纠错"), symbol: "curlybraces")
         exactModeButton.isToggledOn = exactCodeMode
         exactModeButton.onClick = { [weak self] in self?.toggleExactCodeMode() }
         root.addSubview(exactModeButton)
 
         buildTableCopyButton(in: root)
 
-        pinButton = OCRPillButton(title: "贴原图到桌面", symbol: "pin")
+        pinButton = OCRPillButton(title: L("贴原图到桌面"), symbol: "pin")
         pinButton.onClick = { [weak self] in
             guard let self, let img = self.currentCGImage else { return }
             let scr = self.currentScreen ?? NSScreen.main ?? NSScreen.screens.first
@@ -453,7 +453,7 @@ extension OCRResultController {
         }
         root.addSubview(pinButton)
 
-        copyButton = OCRPillButton(title: "复制文本 (⌘↩)", symbol: "doc.on.doc", primary: true)
+        copyButton = OCRPillButton(title: L("复制文本 (⌘↩)"), symbol: "doc.on.doc", primary: true)
         copyButton.onClick = { [weak self] in self?.copyPreferredText() }
         root.addSubview(copyButton)
     }

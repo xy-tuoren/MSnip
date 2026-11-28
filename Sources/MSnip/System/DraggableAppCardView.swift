@@ -1,6 +1,7 @@
 import AppKit
 import QuartzCore
 import Foundation
+import MSnipCore
 
 /// ChatGPT 风格的悬浮蓝白贴纸上指箭头（GPU CoreAnimation 轻柔上弹拉伸，待机 0% CPU）
 final class HintArrowView: NSView {
@@ -127,7 +128,7 @@ final class DraggableAppRowView: NSView, NSDraggingSource {
         super.init(frame: frameRect)
         translatesAutoresizingMaskIntoConstraints = false
         let menu = NSMenu()
-        let item = NSMenuItem(title: "在访达中显示", action: #selector(revealInFinder), keyEquivalent: "")
+        let item = NSMenuItem(title: L("在访达中显示"), action: #selector(revealInFinder), keyEquivalent: "")
         item.target = self
         menu.addItem(item)
         self.menu = menu
@@ -200,7 +201,7 @@ final class DraggableAppRowView: NSView, NSDraggingSource {
             NSColor.separatorColor.setStroke()
             dashPath.stroke()
 
-            let ph = "拖到上方权限列表中松手" as NSString
+            let ph = L("拖到上方权限列表中松手") as NSString
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 12, weight: .regular),
                 .foregroundColor: NSColor.tertiaryLabelColor
@@ -238,7 +239,7 @@ final class DraggableAppRowView: NSView, NSDraggingSource {
         let nSz = name.size(withAttributes: nameAttrs)
         name.draw(at: NSPoint(x: iconRect.maxX + 10, y: round((bounds.height - nSz.height) * 0.5)), withAttributes: nameAttrs)
 
-        let hint = "按住拖入上方" as NSString
+        let hint = L("按住拖入上方") as NSString
         let hintColor = isHovered ? NSColor.controlAccentColor : NSColor.secondaryLabelColor
         let hintAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.systemFont(ofSize: 11.5, weight: .medium),

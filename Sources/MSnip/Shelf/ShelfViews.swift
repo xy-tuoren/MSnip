@@ -57,11 +57,11 @@ final class ShelfCardView: NSView, NSDraggingSource {
         let hit = overlayView.actionSlots().slots.first(where: { $0.rect.contains(localPoint) })?.tag
         overlayView.setHover(active: true, btnTag: hit)
         switch hit {
-        case 3:  toolTip = "标注与编辑"
-        case 0:  toolTip = isFileNonImage ? "在访达中显示" : "贴图到桌面"
-        case 1:  toolTip = "提取文字 (OCR)"
-        case 2:  toolTip = "从暂存架移除"
-        default: toolTip = isFileNonImage ? "点击复制文件 · 拖拽直接分享" : "点击复制 · 拖拽分享 · ⌘+点击多选拼图"
+        case 3:  toolTip = L("标注与编辑")
+        case 0:  toolTip = isFileNonImage ? L("在访达中显示") : L("贴图到桌面")
+        case 1:  toolTip = L("提取文字 (OCR)")
+        case 2:  toolTip = L("从暂存架移除")
+        default: toolTip = isFileNonImage ? L("点击复制文件 · 拖拽直接分享") : L("点击复制 · 拖拽分享 · ⌘+点击多选拼图")
         }
     }
 
@@ -443,10 +443,10 @@ final class ShelfActionRailView: NSView {
         guard let slot = hoveredSlot else { FloatingTooltipHUD.hide(for: self); return }
         let tip: String
         switch slot {
-        case .pin:       tip = isPinned ? "取消钉住（离开后自动收起）" : "钉住暂存架保持展开"
-        case .close:     tip = "收起暂存架 (Esc)"
-        case .clipboard: tip = "将当前剪贴板图片、文件或文本加入暂存架"
-        case .collage:   tip = "打开多图拼接与合并 PDF 窗口（⌘+点击卡片可先自选顺序）"
+        case .pin:       tip = isPinned ? L("取消钉住（离开后自动收起）") : L("钉住暂存架保持展开")
+        case .close:     tip = L("收起暂存架 (Esc)")
+        case .clipboard: tip = L("将当前剪贴板图片、文件或文本加入暂存架")
+        case .collage:   tip = L("打开多图拼接与合并 PDF 窗口（⌘+点击卡片可先自选顺序）")
         }
         FloatingTooltipHUD.show(tip, anchorRectInView: rect(for: slot), of: self)
     }
@@ -458,7 +458,7 @@ final class ShelfActionRailView: NSView {
         // Row 1 左侧：精炼计数标签
         let countRect = CGRect(x: 1, y: 1, width: max(20, bounds.width - 50), height: 19)
         GeekTheme.drawText(
-            "\(itemCount) 项",
+            L("%@ 项", itemCount),
             in: countRect,
             font: .monospacedDigitSystemFont(ofSize: 11.2, weight: .semibold),
             color: isDark ? NSColor.white.withAlphaComponent(0.76) : NSColor(white: 0.24, alpha: 0.88)
@@ -481,13 +481,13 @@ final class ShelfActionRailView: NSView {
         // Row 2：剪贴板入架（半透明融背景质感）
         drawRowButton(
             in: ctx, rect: rect(for: .clipboard),
-            symbol: "plus.square.on.square", title: "剪贴板",
+            symbol: "plus.square.on.square", title: L("剪贴板"),
             accented: false, hovered: hoveredSlot == .clipboard, pressed: pressedSlot == .clipboard,
             isDark: isDark
         )
 
         // Row 3：拼图 / PDF（多选 ≥ 2 张时优雅点亮强调色）
-        let collageTitle = selectedCount > 0 ? "拼图 (\(selectedCount))" : "拼图 / PDF"
+        let collageTitle = selectedCount > 0 ? L("拼图 (%@)", selectedCount) : L("拼图 / PDF")
         drawRowButton(
             in: ctx, rect: rect(for: .collage),
             symbol: "rectangle.split.2x2", title: collageTitle,

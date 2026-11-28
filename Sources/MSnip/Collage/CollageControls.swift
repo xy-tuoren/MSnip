@@ -12,6 +12,10 @@ final class CollageFineSliderRow: NSView {
     let unit: String
     var intValue: Int { didSet { if oldValue != intValue { needsDisplay = true } } }
     var onChange: ((Int) -> Void)?
+    /// 左侧标题列宽度（较长译文时由外部按最宽标题统一放宽）
+    var titleColumnWidth: CGFloat = 34 { didSet { needsDisplay = true } }
+    static let titleFont = NSFont.systemFont(ofSize: 11.2, weight: .medium)
+    var titleFittingWidth: CGFloat { ceil(GeekTheme.measureTextWidth(title, font: Self.titleFont)) + 6 }
 
     private var hovered = false { didSet { if oldValue != hovered { needsDisplay = true } } }
     private var dragging = false { didSet { if oldValue != dragging { needsDisplay = true } } }
@@ -23,13 +27,13 @@ final class CollageFineSliderRow: NSView {
         self.title = title; self.minVal = min; self.maxVal = max
         self.intValue = value; self.defaultVal = defaultValue ?? value; self.unit = unit
         super.init(frame: .zero)
-        self.toolTip = "拖动微调\(title)，双击恢复默认 (\(self.defaultVal)\(unit))"
+        self.toolTip = L("拖动微调%@，双击恢复默认 (%@%@)", title, self.defaultVal, unit)
     }
 
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
 
     private var trackRect: CGRect {
-        CGRect(x: 34, y: round(bounds.midY - 2.0), width: max(40, bounds.width - 74), height: 4.0)
+        CGRect(x: titleColumnWidth, y: round(bounds.midY - 2.0), width: max(40, bounds.width - titleColumnWidth - 40), height: 4.0)
     }
 
     override func resetCursorRects() { addCursorRect(trackRect.insetBy(dx: -6, dy: -8), cursor: .pointingHand) }
@@ -48,7 +52,7 @@ final class CollageFineSliderRow: NSView {
             intValue = defaultVal; onChange?(intValue); return
         }
         let p = convert(event.locationInWindow, from: nil)
-        guard p.x >= 28 && p.x <= bounds.width - 34 else { return }
+        guard p.x >= titleColumnWidth - 6 && p.x <= bounds.width - 34 else { return }
         dragging = true; updateValue(atX: p.x)
     }
 
@@ -68,8 +72,8 @@ final class CollageFineSliderRow: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
-        GeekTheme.drawText(title, in: CGRect(x: 0, y: 0, width: 30, height: bounds.height),
-                           font: .systemFont(ofSize: 11.2, weight: .medium), color: GeekTheme.inkSecondary)
+        GeekTheme.drawText(title, in: CGRect(x: 0, y: 0, width: titleColumnWidth - 4, height: bounds.height),
+                           font: Self.titleFont, color: GeekTheme.inkSecondary)
         GeekTheme.drawText("\(intValue)\(unit)", in: CGRect(x: bounds.width - 36, y: 0, width: 36, height: bounds.height),
                            font: .monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold), color: GeekTheme.inkPrimary, align: .right)
 
@@ -109,6 +113,13 @@ final class CollageInlinePresetBar: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
 
     init(items: [String], selectedIndex: Int = 1) { self.items = items; self.selectedIndex = selectedIndex; super.init(frame: .zero) }
+
+    /// 完整显示最长一项（选中态粗体）所需的总宽度
+    var fittingWidth: CGFloat {
+        let font = NSFont.systemFont(ofSize: 10.2, weight: .semibold)
+        let widest = items.map { GeekTheme.measureTextWidth($0, font: font) + 12 }.max() ?? 0
+        return ceil(widest * CGFloat(items.count) + 4 * CGFloat(max(0, items.count - 1)))
+    }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
 
@@ -195,7 +206,7 @@ final class CollageBgTriggerPill: NSView {
             ctx.setFillColor(NSColor(white: 0.72, alpha: 1).cgColor)
             ctx.fill(CGRect(x: sw.minX, y: sw.minY, width: 6.5, height: 6.5))
             ctx.fill(CGRect(x: sw.midX, y: sw.midY, width: 6.5, height: 6.5))
-            label = "透明底"; useMono = false
+            label = L("透明底"); useMono = false
         case .gradient:
             CollageOverlaysRenderer.drawGradient(gradientPreset, in: sw, ctx: ctx, topLeftToBottomRightInBottomUpCG: false)
             label = gradientPreset.title; useMono = false
@@ -231,6 +242,10 @@ final class CollageMiniTogglePill: NSView {
     override var mouseDownCanMoveWindow: Bool { false }
 
     init(title: String, isOn: Bool) { self.title = title; self.isOn = isOn; super.init(frame: .zero) }
+
+    var fittingWidth: CGFloat {
+        ceil(GeekTheme.measureTextWidth(title, font: .systemFont(ofSize: 10.6, weight: .semibold))) + 7 + 5.5 + 4 + 8
+    }
     @available(*, unavailable) required init?(coder: NSCoder) { fatalError() }
     override func resetCursorRects() { addCursorRect(bounds, cursor: .pointingHand) }
     override func updateTrackingAreas() {
@@ -286,7 +301,7 @@ final class CollageAddTileView: NSView {
         ctx.setLineWidth(1.0); ctx.setLineDash(phase: 0, lengths: [3.5, 2.5]); ctx.addPath(p); ctx.strokePath()
         let tint = hovered ? GeekTheme.accent : GeekTheme.inkSecondary
         GeekTheme.drawSymbol("plus", pointSize: 13.5, weight: .semibold, in: CGRect(x: 0, y: 9, width: bounds.width, height: 18), alpha: 0.92, tint: tint)
-        GeekTheme.drawText("加图", in: CGRect(x: 0, y: 29, width: bounds.width, height: 15), font: .systemFont(ofSize: 10.0, weight: .medium), color: tint, align: .center)
+        GeekTheme.drawText(L("加图"), in: CGRect(x: 0, y: 29, width: bounds.width, height: 15), font: .systemFont(ofSize: 10.0, weight: .medium), color: tint, align: .center)
         ctx.restoreGState()
     }
 }
@@ -303,13 +318,13 @@ final class CollageColorPickerPopover: NSObject, NSPopoverDelegate, NSTextFieldD
     }
 
     static let quickSolids: [(name: String, color: RGBAColor)] = [
-        ("纯白", RGBAColor(255, 255, 255)),
-        ("柔灰", RGBAColor(244, 246, 250)),
-        ("暖米", RGBAColor(250, 245, 237)),
-        ("冰雾蓝", RGBAColor(236, 244, 255)),
-        ("深灰蓝", RGBAColor(30, 41, 59)),
-        ("暗炭", RGBAColor(24, 26, 32)),
-        ("纯黑", RGBAColor(0, 0, 0))
+        (L("纯白"), RGBAColor(255, 255, 255)),
+        (L("柔灰"), RGBAColor(244, 246, 250)),
+        (L("暖米"), RGBAColor(250, 245, 237)),
+        (L("冰雾蓝"), RGBAColor(236, 244, 255)),
+        (L("深灰蓝"), RGBAColor(30, 41, 59)),
+        (L("暗炭"), RGBAColor(24, 26, 32)),
+        (L("纯黑"), RGBAColor(0, 0, 0))
     ]
 
     private let popover = NSPopover()
@@ -376,9 +391,9 @@ final class CollageColorPickerPopover: NSObject, NSPopoverDelegate, NSTextFieldD
         hf.stringValue = initRGB.formatted(as: .hex)
         root.addSubview(hexBox)
 
-        let eyeBtn = GeekButton(title: "吸色", symbol: "eyedropper", style: .subtle)
+        let eyeBtn = GeekButton(title: L("吸色"), symbol: "eyedropper", style: .subtle)
         eyeBtn.frame = NSRect(x: 160, y: 154, width: 64, height: 26)
-        eyeBtn.toolTip = "用放大镜从屏幕或截图中吸取任意背景色"
+        eyeBtn.toolTip = L("用放大镜从屏幕或截图中吸取任意背景色")
         eyeBtn.onClick = { [weak self] in self?.pickColorFromScreen() }
         root.addSubview(eyeBtn)
 

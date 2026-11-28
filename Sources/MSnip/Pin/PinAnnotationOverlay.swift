@@ -346,7 +346,7 @@ extension PinAnnotationCanvasView {
         }
         if chars == "c", let idx = selectedIndex, doc.objects.indices.contains(idx) {
             copiedAnnotation = doc.objects[idx]; pasteCascadeCount = 0
-            ToastHUD.show(message: "已复制标注图形 · 按 ⌘V 粘贴"); return true
+            ToastHUD.show(message: L("已复制标注图形 · 按 ⌘V 粘贴")); return true
         }
         if chars == "v", let copied = copiedAnnotation {
             pasteCascadeCount += 1

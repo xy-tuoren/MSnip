@@ -33,6 +33,9 @@ func testDiagnosticLog() {
     check(DiagnosticLogText.looksLikeFailure("⚠ 2 项全局快捷键注册冲突"), "警告符号与冲突提示应记录")
     check(!DiagnosticLogText.looksLikeFailure("✓ 已复制到剪贴板"), "成功提示不应记录")
     check(!DiagnosticLogText.looksLikeFailure("已识别二维码：https://example.com/?code=123"), "普通内容提示不应记录")
+    check(DiagnosticLogText.looksLikeFailure("Failed to save the image") && DiagnosticLogText.looksLikeFailure("Window capture failed. Check permissions"),
+          "英文界面的失败提示同样应记录")
+    check(!DiagnosticLogText.looksLikeFailure("✓ Copied to the clipboard"), "英文成功提示不应记录")
 
     // 3) 错误摘要：域#码 + 底层错误 + 描述；Swift 枚举错误保留 case 名
     let underlying = NSError(domain: NSPOSIXErrorDomain, code: 13)

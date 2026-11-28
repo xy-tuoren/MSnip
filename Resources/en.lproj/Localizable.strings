@@ -1,0 +1,1494 @@
+/* MSnip English UI strings. Keys are the Simplified Chinese source text passed to L("…") in Swift; a missing entry falls back to Chinese. */
+/* %@ / %1$@ placeholders must match the key (checked by `swift run MSnipTests`). Keep every comment on a single line: bundle.sh strips whole-line comments. */
+
+/* App/AppController.swift */
+"⚠ %@ 项全局快捷键注册冲突" = "⚠ %@ global shortcut(s) failed to register";
+"查看冲突 ›" = "View Conflicts ›";
+"MSnip（麦截）· 点击展开菜单 · ⌥+左键切换暂存架" = "MSnip · Click to open the menu · ⌥-click to toggle the Shelf";
+"MSnip（麦截）" = "MSnip";
+"请先完成或关闭当前 MP4 裁剪窗口" = "Finish or close the MP4 trim window first";
+"正在录屏中 · 可在菜单栏结束或按 Esc 取消" = "Recording · Stop it from the menu bar or press Esc to cancel";
+"已复制(含路径)" = "Copied (with path)";
+"已复制截图与临时 PNG 路径" = "Copied the screenshot and a temporary PNG path";
+"%@ 已复制  ·  %@ 贴色卡" = "%@ copied  ·  %@ to pin a swatch";
+"%@ 已复制" = "%@ copied";
+"坐标 %@ 已复制" = "Coordinates %@ copied";
+"已截全屏" = "Full screen captured";
+"✓ 已截取当前全屏并复制" = "✓ Captured the current screen and copied it";
+"保存到默认目录 ›" = "Save to Default Folder ›";
+"全屏已保存" = "Full screen saved";
+"✓ 已截取当前全屏（已复制并保存）" = "✓ Captured the current screen (copied and saved)";
+"在访达中显示" = "Show in Finder";
+"✓ 已复制当前全屏（保存文件失败）" = "✓ Copied the current screen (saving the file failed)";
+
+/* App/AppMenuBuilder.swift */
+"回到 MP4 裁剪窗口" = "Back to MP4 Trim Window";
+"完成并复制当前录屏" = "Finish and Copy Recording";
+"放弃当前录屏" = "Discard Recording";
+"开启屏幕录制权限…" = "Enable Screen Recording Permission…";
+"区域截图" = "Capture Area";
+"重截上次选区" = "Recapture Last Area";
+"延时截图（%@ 秒）" = "Delayed Capture (%@ s)";
+"按默认延时截图（%@ 秒）" = "Capture After Default Delay (%@ s)";
+"%@ 秒后截图" = "Capture in %@ s";
+"自定义秒数与快捷键…" = "Customize Delay and Shortcut…";
+"截取当前全屏" = "Capture Current Screen";
+"截取鼠标所在屏幕（当前默认：%@；按住 ⌥ 点击直接保存到默认目录）" = "Captures the screen under the pointer (default: %@; ⌥-click to save straight to the default folder)";
+"桌面贴图" = "Pin to Desktop";
+"快捷识字" = "Extract Text";
+"公式识别 (LaTeX)" = "Recognize Formula (LaTeX)";
+"截图翻译" = "Translate Screenshot";
+"滚动长截图" = "Scrolling Capture";
+"区域录屏" = "Record Area";
+"顶部暂存架" = "Top Shelf";
+"拼图与合并 PDF…" = "Collage & Merge PDF…";
+"最近截图" = "Recent Screenshots";
+"最近截图 (%@)" = "Recent Screenshots (%@)";
+"恢复显示贴图 (%@)" = "Show Pins (%@)";
+"暂藏全部贴图 (%@)" = "Hide All Pins (%@)";
+"恢复穿透贴图 (%@)" = "Restore Click-Through Pins (%@)";
+"关闭全部贴图 (%@)" = "Close All Pins (%@)";
+"设置…" = "Settings…";
+"开机自启" = "Launch at Login";
+"退出 MSnip" = "Quit MSnip";
+"暂无截图记录" = "No screenshots yet";
+"打开最近截图目录…" = "Open Recent Screenshots Folder…";
+"点击复制 · ⌘贴图 · ⇧识字 · ⌥打开" = "Click: Copy · ⌘ Pin · ⇧ Extract Text · ⌥ Open";
+"拼图 · " = "Collage · ";
+"多图拼接 / 合并 PDF…" = "Collage / Merge PDF…";
+"清空记录" = "Clear History";
+"已将历史截图贴到屏幕" = "Pinned the screenshot to the screen";
+"已恢复历史截图到剪贴板 · %@ × %@" = "Copied the screenshot to the clipboard · %@ × %@";
+"已清空最近截图记录" = "Cleared recent screenshots";
+
+/* App/AppSessionActions.swift */
+"✓ 已复制高清拼图到剪贴板 · %@ × %@ px" = "✓ Copied the collage to the clipboard · %@ × %@ px";
+"已复制暂存截图 · %@ × %@" = "Copied the shelf screenshot · %@ × %@";
+"编辑" = "Edit";
+"撤销" = "Undo";
+"重做" = "Redo";
+"剪切" = "Cut";
+"复制" = "Copy";
+"粘贴" = "Paste";
+"全选" = "Select All";
+"正在用「%@」识字…" = "Extracting text with %@…";
+"✓ 已用「%@」识别 %@ 字并复制" = "✓ %@ recognized %@ characters and copied them";
+"双栏查看 ›" = "Open Side by Side ›";
+"⚠ %@失败，已回退离线：%@" = "⚠ %@ failed, used offline OCR instead: %@";
+"正在离线识字…" = "Extracting text offline…";
+"✓ 已静默识别二维码并复制" = "✓ Read the QR code and copied it";
+"打开链接 ›" = "Open Link ›";
+"选区内未检测到可识别文字或二维码" = "No text or QR code found in the selection";
+"✓ 已静默识别 %@ 字并复制" = "✓ Recognized %@ characters and copied them";
+"重截已复制" = "Recapture copied";
+"✓ 已重截上次区域并复制" = "✓ Recaptured the last area and copied it";
+"保存图片失败" = "Failed to save the image";
+"已保存" = "Saved";
+"✓ 已保存截图至「%@」" = "✓ Saved the screenshot to “%@”";
+"抓取独立窗口失败，请确认屏幕录制权限已开启" = "Window capture failed. Check that Screen Recording permission is on";
+"已将纯净独立窗口贴到桌面" = "Pinned the window to the desktop";
+"纯净独立窗口（含悬浮阴影）已复制到剪贴板" = "Copied the window (with shadow) to the clipboard";
+"已复制" = "Copied";
+"%@ 已复制到剪贴板 (%@ KB) · 可直接粘贴发送" = "%@ copied to the clipboard (%@ KB) · ready to paste";
+"✓ 已保存 %@ 录屏文件" = "✓ Saved the %@ recording";
+"在访达中显示 ›" = "Show in Finder ›";
+"长图已复制" = "Scrolling capture copied";
+"长截图已复制 · %@ × %@ px" = "Scrolling capture copied · %@ × %@ px";
+
+/* Translation/GeekSettingsControls.swift */
+"使用中" = "In Use";
+"已就绪" = "Ready";
+"填 Key" = "No Key";
+"明亮" = "Light";
+"暗黑" = "Dark";
+"当前暗黑模式 · 点击一键切换明亮模式" = "Dark mode · Click to switch to light mode";
+"当前明亮模式 · 点击一键切换暗黑模式" = "Light mode · Click to switch to dark mode";
+"关闭" = "Off";
+
+/* Translation/GeekSettingsTheme.swift */
+"按下双键…" = "Press keys…";
+"未设置" = "Not Set";
+
+/* Translation/HotKeyConflictBadgeView.swift */
+"冲突时强制优先接管" = "Priority Override";
+"已关闭 · 零底层监听（一键开关无副作用）" = "Off · No low-level event monitoring (safe to toggle)";
+"去授权" = "Grant";
+"开启后使用头部优先事件接管压过冲突应用与系统热键（需辅助功能权限）；关闭即彻底卸载监听、零残留无副作用" = "When on, MSnip intercepts its shortcuts first, ahead of conflicting apps and system shortcuts (needs Accessibility permission). Turning it off removes the event tap completely";
+"全局热键总开关关闭中 · 开启总开关后生效" = "Global shortcuts are off · Takes effect when they are turned on";
+"● 已生效 · 优先压过冲突应用与系统热键（关闭即彻底卸载）" = "● Active · Takes priority over conflicting apps and system shortcuts";
+"⚠ 需先授予「辅助功能」权限，当前自动回退常规热键" = "⚠ Needs Accessibility permission · Using regular shortcuts for now";
+"已优先接管" = "Priority On";
+"已开启头部优先接管，将压过冲突：%@" = "Priority override is on and takes precedence over: %@";
+"（点击查看冲突体检或开启强制优先接管）" = " (click to check conflicts or enable priority override)";
+
+/* Translation/HotKeyConflictPopover.swift */
+"热键冲突体检与占用一览" = "Shortcut Conflicts and Usage";
+"重扫" = "Rescan";
+"重新扫描 macOS 系统热键与当前后台运行中应用" = "Rescan macOS system shortcuts and running apps";
+"当前体检" = "Check";
+"实测归属" = "Live Test";
+"系统已占" = "System";
+"运行中应用" = "Running Apps";
+"筛选快捷键、功能或应用名（如 截图 / ⌥1 / ⌘␣ / 聚焦搜索）…" = "Filter by shortcut, feature or app (e.g. capture / ⌥1 / ⌘␣ / Spotlight)…";
+"已更新" = "Updated";
+"监听中…" = "Listening…";
+"系统 (%@)" = "System (%@)";
+"应用 (%@)" = "Apps (%@)";
+"全局热键总开关已关闭 · 扫描于 %@" = "Global shortcuts are off · Scanned at %@";
+"⚡ 已强制优先接管 %@ 项外部冲突 · 扫描于 %@" = "⚡ Overriding %@ external conflict(s) · Scanned at %@";
+"发现 %@ 项冲突/预警 · 扫描于 %@（共 %@ 系统 / %@ 应用）" = "%@ conflict(s) or warning(s) · Scanned at %@ (%@ system / %@ app shortcuts)";
+"✓ 全部已设热键零冲突 · 扫描于 %@（已核验 %@ 项）" = "✓ No conflicts · Scanned at %@ (%@ shortcuts checked)";
+"未匹配到符合条件的 macOS 系统热键" = "No matching macOS system shortcuts";
+"当前后台未匹配到已知冲突应用，可切至「实测归属」直接按键抓取真实占用方。" = "No known conflicting apps are running. Use Live Test to press a shortcut and find out what owns it.";
+"已为 %@ 项冲突热键计算互不重复的零冲突替代键" = "Found conflict-free replacements for %@ shortcut(s)";
+"一键全部解决" = "Fix All";
+"未启用全局绑定" = "No global shortcut";
+"全局热键总开关已关闭" = "Global shortcuts are off";
+"⚡ 已由 MSnip 优先接管（压过：%@）" = "⚡ MSnip takes priority (over: %@)";
+"无冲突 · 可放心使用" = "No conflicts";
+"%@（%@）\n%@" = "%@ (%@)\n%@";
+"换 %@" = "Use %@";
+"一键将「%@」更换为零冲突组合键 %@" = "Change “%@” to the conflict-free shortcut %@";
+"%@  %@（%@）" = "%@  %@ (%@)";
+"冲突中" = "Conflict";
+"找不到自定义热键？去「实测归属」按下现场抓取" = "Custom shortcut not listed? Press it in Live Test to find its owner";
+"正在实时监听… 剩余 %@ 秒（按 Esc 停止）" = "Listening… %@ s left (Esc to stop)";
+"按下任意快捷键，现场检测占用它的具体应用" = "Press any shortcut to find the app that uses it";
+"请直接按下你想检测的组合键（如 ⌥1、⌃⌘A、⌘␣）。若触发了其他软件的窗口或悬浮面板，MSnip 将立即捕获其名称。" = "Press the shortcut you want to check (e.g. ⌥1, ⌃⌘A, ⌘␣). If it opens another app's window or panel, MSnip shows that app's name.";
+"无论对方是常规前台应用窗口，还是无焦点悬浮面板与全屏覆盖层，按下即可实时定位占用该快捷键的具体应用。" = "Works whether the shortcut opens a regular app window, a floating panel or a full-screen overlay.";
+"停止监听" = "Stop";
+"开始按键实测" = "Start Live Test";
+"最近实测记录" = "Recent Tests";
+"清空" = "Clear";
+
+/* Translation/LanguagePickerPopover.swift */
+"搜索全语种，或输入自定义语言回车…" = "Search languages, or type a custom target and press Return…";
+"支持中英文与代码搜索 · 可直接输入粤语口语、文言文等" = "Search by English or Chinese name or code · Custom targets like “casual American English” work too";
+"自动互译（外→中 / 中→英）" = "Auto (other → Chinese / Chinese → English)";
+"智能识别原文语种" = "Detects the source language";
+"自定义：%@" = "Custom: %@";
+"当前自定义目标" = "Current custom target";
+"常用语种" = "Common Languages";
+"全部世界语种 (%@)" = "All Languages (%@)";
+"使用自定义目标：「%@」" = "Use custom target “%@”";
+"按 ↩ 回车或点击直接生效" = "Press ↩ or click to apply";
+
+/* Translation/ProviderAddAndPresetPopover.swift */
+"搜索厂商或服务（如 DeepSeek、豆包、腾讯、Ollama）…" = "Search providers (e.g. DeepSeek, Doubao, Tencent, Ollama)…";
+"搜索主流大模型官网预设（支持中英文 / 域名）…" = "Search LLM provider presets (name or domain)…";
+"全部服务" = "All";
+"LLM 大模型 (21)" = "LLMs (21)";
+"云翻译 & 离线" = "Cloud & Offline";
+"支持 OpenAI Chat / Responses / Anthropic / Gemini 四种格式" = "Supports OpenAI Chat, OpenAI Responses, Anthropic and Gemini formats";
+"Apple 离线翻译（免费）" = "Apple Offline Translation (Free)";
+"macOS 系统内置神经网络 · 无需 Key · 断网可用" = "Built into macOS · No key needed · Works offline";
+"免费离线" = "Free · Offline";
+"腾讯云翻译" = "Tencent Translate";
+"每月 500 万字符免费额度 · 填入 SecretId / SecretKey" = "5M free characters per month · Enter SecretId / SecretKey";
+"云翻译" = "Cloud";
+"百度翻译开放平台" = "Baidu Translate";
+"每月百万字符免费额度 · 填入 AppID / 密钥" = "1M free characters per month · Enter AppID / key";
+"有道智云翻译" = "Youdao Translation";
+"有道神经网络翻译 · 填入应用 ID / 应用密钥" = "Youdao neural translation · Enter app ID / app key";
+"DeepL / 自建 DeepLX" = "DeepL / Self-hosted DeepLX";
+"支持官方 Auth Key 与本机免密钥 DeepLX 服务" = "Official Auth Key or a local DeepLX service without a key";
+"云 / 自建" = "Cloud / Self-hosted";
+"自定义 HTTP JSON 接口" = "Custom HTTP JSON API";
+"开发者自由定制 URL、请求体模版与 JSON 提取路径" = "Set your own URL, body template and JSON result path";
+"系统离线 & 传统云翻译" = "Offline & Cloud Translation";
+"自定义" = "Custom";
+"本机免 Key" = "Local · No Key";
+"✓ 当前" = "✓ Current";
+
+/* Translation/SettingsGeneralTab.swift */
+"基础" = "Basics";
+"外观模式" = "Appearance";
+"切换全应用窗口、悬浮通知与暂存架的外观主题（也可点击右上角一键切换）" = "Theme for all MSnip windows, notifications and the Shelf (also switchable from the top-right button)";
+"开机自动启动" = "Launch at login";
+"截图时显示快捷键提示" = "Show shortcut tips while capturing";
+"截图保存位置" = "Save location";
+"更改" = "Change";
+"打开" = "Open";
+"格式与安全" = "Formats & Security";
+"截图保存格式" = "Image format";
+"快存与另存为的默认图片格式（按当前 macOS 原生硬件编码能力自动列出支持格式，低版本系统安全兼容）" = "Default format for Quick Save and Save As (only formats this Mac can encode are listed)";
+"仅对保存的图片文件生效：在 Retina 高分屏（2×）上自动缩为 1× 标准尺寸，避免发文档或网页时大一倍并减小体积；普通 1080p 屏与剪贴板原图不受影响" = "Saved files only: on a Retina (2×) display, saves at 1× so images are not doubled in size in documents and web pages. 1× displays and the clipboard are not affected";
+"高分屏保存缩为标准尺寸" = "Save Retina captures at 1×";
+"开启后，独立终端自动粘贴临时 PNG 路径，访达自动粘贴文件；主流编辑器内置终端按 ⌘V 自动适配路径，切回 AI 聊天框/Markdown/微信/浏览器自动保持纯净图像（编辑器自动感应需开启辅助功能；截图时也可按 ⇧⌘C 或 ⌥↩ 强制带路径复制）" = "When on, pasting into a terminal gives a temporary PNG path and Finder gets the file. Terminals inside common editors get the path on ⌘V, while chat boxes, Markdown, browsers and similar apps still get the image (editor detection needs Accessibility; press ⇧⌘C or ⌥↩ while capturing to always include the path)";
+"终端、编辑器与访达粘贴适配" = "Smart paste for terminals & Finder";
+"取色复制格式" = "Color copy format";
+"录屏导出格式" = "Recording format";
+"将翻译与公式 API 密钥存入 macOS 登录钥匙串，本地 JSON 自动脱敏留空" = "Stores translation and formula API keys in the macOS login keychain and blanks them in the local JSON";
+"将密钥转存至系统钥匙串（提示：建议先运行 scripts/setup-cert.sh 配置固定证书以免升级弹窗）" = "Moves keys into the system keychain (tip: run scripts/setup-cert.sh first to set up a stable signing certificate and avoid prompts after updates)";
+"钥匙串加密存储 API 密钥" = "Store API keys in Keychain";
+"系统权限" = "Permissions";
+"前往开启" = "Enable";
+"屏幕录制" = "Screen Recording";
+"已授权" = "Granted";
+"辅助功能" = "Accessibility";
+"设为保存目录" = "Use as Save Folder";
+"延时与全屏截图" = "Delayed & Full-Screen Capture";
+"绑定快捷键 ›" = "Set Shortcuts ›";
+"前往「快捷键」标签页为「延时截图」与「截取当前全屏」绑定全局热键" = "Open the Shortcuts tab to set global shortcuts for Delayed Capture and Capture Current Screen";
+"全局快捷键或菜单「按默认延时截图」使用的倒计时秒数（支持 1–60 秒，快捷键可在「快捷键」页绑定）" = "Countdown used by the shortcut and the “Capture After Default Delay” menu item (1–60 s; set the shortcut in the Shortcuts tab)";
+"延时截图默认秒数" = "Default delay";
+"%@ 秒" = "%@ s";
+"输入任意 1–60 的整数秒数，回车或失焦自动保存" = "Enter a whole number from 1 to 60; saved on Return or when you leave the field";
+"秒" = "s";
+"通过全局快捷键或菜单触发「截取当前全屏」时的默认动作（快捷键可在「快捷键」页自由绑定）" = "What “Capture Current Screen” does from the shortcut or menu (set the shortcut in the Shortcuts tab)";
+"截取全屏默认动作" = "Full-screen capture action";
+"录屏参数" = "Recording";
+"轻巧：10fps · 最长边 ≤720px｜标准：12fps · 最长边 ≤960px（默认）｜高清：15fps · 最长边 ≤1280px" = "Light: 10 fps · long edge ≤720 px | Standard: 12 fps · ≤960 px (default) | HD: 15 fps · ≤1280 px";
+"GIF 清晰度与帧率" = "GIF quality";
+"轻巧·720px" = "Light·720px";
+"标准·960px" = "Std·960px";
+"高清·1280px" = "HD·1280px";
+"标准：最长边 ≤1280px（适合聊天秒发）｜高清：最长边 ≤1920px（默认推荐）｜原画：Retina 1:1 原生像素" = "Standard: long edge ≤1280 px (quick to share) | HD: ≤1920 px (recommended) | Original: native Retina pixels";
+"MP4 清晰度" = "MP4 quality";
+"「原刷」自动读取当前显示器刷新率（当前屏最高 %@fps；原画超 2560px 时自动稳帧 60fps 防硬件掉帧），码率随帧率自适应拉升" = "“Native” uses the display's refresh rate (up to %@ fps on this screen; capped at 60 fps above 2560 px in Original quality to avoid dropped frames). Bitrate scales with the frame rate";
+"MP4 录制帧率" = "MP4 frame rate";
+"原刷(%@)" = "Native (%@)";
+"录屏显示鼠标光标" = "Show pointer in recordings";
+"仅对 MP4 生效（macOS 13+ ScreenCaptureKit 原生内录系统声音，自动排除 MSnip 自身提示音）" = "MP4 only (records system audio with ScreenCaptureKit on macOS 13+, excluding MSnip's own sounds)";
+"MP4 录制系统音频" = "Record system audio (MP4)";
+"命名、贴图与反馈" = "Naming, Pins & Feedback";
+"支持占位符：{date} {time} {yyyy} {MM} {dd} {HH} {mm} {ss} {w} {h}（留空自动恢复默认）" = "Placeholders: {date} {time} {yyyy} {MM} {dd} {HH} {mm} {ss} {w} {h} (leave empty for the default)";
+"保存文件名模板" = "File name template";
+"拖动进度条精细调节贴图默认发光边（0% 为关闭，双击滑条复位 45%），与截图选框右侧发光边滑条及贴图 ⌥+滚轮实时双向同步" = "Drag to set the default glow border for pins (0% is off, double-click to reset to 45%). Stays in sync with the glow slider next to the selection and ⌥-scroll on a pin";
+"贴图默认发光边" = "Pin glow border";
+"悬停展开（推荐）：贴顶停留 0.55 秒或拖文件到顶边下拉，截图静默收录不自动弹窗打扰；快捷键切换：仅热键或右键菜单呼出；常驻显示：紧凑悬浮条常驻顶部" = "Hover (recommended): opens when the pointer rests at the top edge for 0.55 s or you drag a file there; screenshots are added quietly. Shortcut: opens only with the shortcut or menu. Always: a compact bar stays at the top";
+"顶部暂存架显示方式" = "Top Shelf";
+"保存截图文件或录屏完成后，在屏幕左下角半透明显示 3.5 秒悬浮速览卡（悬停清晰并暂停倒计时，支持直接拖拽文件发送或访达定位）；普通截图复制默认静默无打扰" = "After saving a screenshot or finishing a recording, shows a preview card in the bottom-left corner for 3.5 s (hover to keep it, drag the file out or show it in Finder). Copying a screenshot stays silent";
+"保存 / 录屏后悬浮速览卡" = "Preview card after save";
+"复制与保存轻提示音" = "Sound on copy & save";
+"配置与诊断" = "Settings & Diagnostics";
+"导入/导出常规偏好、保存格式与快捷键配置（自动排除全部 API Key 保证密钥安全）" = "Import or export preferences, formats and shortcuts (API keys are never included)";
+"备份与迁移配置" = "Back up settings";
+"导入配置" = "Import";
+"导出配置" = "Export";
+"复制系统版本、芯片架构、屏幕拓扑、权限状态、近期崩溃报告与最近运行日志到剪贴板，便于反馈问题（不含密钥、截图或识别内容；日志只存于本机 ~/Library/Logs/MSnip）" = "Copies the macOS version, chip, display layout, permission status, recent crash reports and recent log lines for bug reports (no keys, screenshots or recognized text; the log stays in ~/Library/Logs/MSnip)";
+"诊断信息与日志" = "Diagnostics & logs";
+"复制诊断信息" = "Copy Diagnostics";
+"✓ 已复制诊断信息（含最近日志）到剪贴板" = "✓ Copied diagnostics (with recent log) to the clipboard";
+"打开日志" = "Open Log";
+"在访达中显示本地运行日志 msnip.log" = "Show the local log msnip.log in Finder";
+"例：%@" = "e.g. %@";
+"示例导出文件名：%@" = "Example file name: %@";
+
+/* Translation/SettingsOCRAndLatexTab.swift */
+"文字识别 (OCR)" = "Text Recognition (OCR)";
+"原位划词：留在截图页直接拖选文字；双栏面板：打开双栏对照窗；静默直拷：不打开双栏，提取完直接关闭截图页并复制（按住 ⌥ 可临时切换）" = "In place: select text right on the screenshot. Side by side: open the comparison window. Silent copy: copy the text and close the capture (hold ⌥ to switch for one capture)";
+"默认展示方式" = "Show results";
+"支持 Apple 离线 Vision、视觉大模型、百度/腾讯/有道云 OCR 及自定义 HTTP 通用接口；切换后自动展开对应配置" = "Apple Vision (offline), vision LLMs, Baidu / Tencent / Youdao cloud OCR or a custom HTTP API. Settings for the chosen engine appear below";
+"默认识字引擎" = "OCR engine";
+"AI 视觉接口" = "AI vision service";
+"复用「模型与服务」中的 OpenAI / Claude / Gemini 接口进行高精度识字与表格提取" = "Uses an OpenAI / Claude / Gemini service from the Services tab for accurate text and table extraction";
+"管理服务" = "Manage";
+"视觉模型名" = "Vision model";
+"选填，留空沿用所选接口默认模型" = "Optional · service default if empty";
+"可单独指定视觉专用模型（如 gpt-4o-mini / gemini-2.5-flash / qwen-vl-plus）" = "Optionally set a vision model (e.g. gpt-4o-mini / gemini-2.5-flash / qwen-vl-plus)";
+"粘贴百度智能云 OCR API Key" = "Paste your Baidu AI Cloud OCR API Key";
+"百度智能云通用文字识别（高精度版），每月含免费调用额度" = "Baidu AI Cloud general OCR (high accuracy), with a free monthly quota";
+"粘贴百度智能云 Secret Key" = "Paste your Baidu AI Cloud Secret Key";
+"粘贴腾讯云 API 密钥 SecretId" = "Paste your Tencent Cloud SecretId";
+"使用腾讯云 GeneralAccurateOCR（TC3-HMAC-SHA256 签名直连）" = "Tencent Cloud GeneralAccurateOCR (TC3-HMAC-SHA256 signed requests)";
+"粘贴腾讯云 SecretKey" = "Paste your Tencent Cloud SecretKey";
+"服务地域" = "Region";
+"默认 ap-guangzhou（如 ap-shanghai / ap-beijing）" = "Default ap-guangzhou (e.g. ap-shanghai / ap-beijing)";
+"应用 ID" = "App ID";
+"粘贴有道智云应用 ID (appKey)" = "Paste your Youdao app ID (appKey)";
+"有道智云通用文字识别（V3 SHA256 签名）" = "Youdao general OCR (v3 SHA256 signature)";
+"应用密钥" = "App Secret";
+"粘贴有道智云应用密钥" = "Paste your Youdao app secret";
+"接口 URL" = "API URL";
+"如 http://127.0.0.1:1224/api/ocr" = "e.g. http://127.0.0.1:1224/api/ocr";
+"兼容 Umi-OCR、PaddleOCR、RapidOCR、阿里云或任意自建 HTTP OCR 接口" = "Works with Umi-OCR, PaddleOCR, RapidOCR, Alibaba Cloud or any self-hosted HTTP OCR API";
+"请求头 JSON" = "Headers JSON";
+"可选自定义请求头（JSON 对象），如 Authorization / X-API-Key" = "Optional request headers as a JSON object, e.g. Authorization / X-API-Key";
+"Body 模版" = "Body template";
+"支持占位符：{{image_base64}}（纯 PNG Base64）或 {{image_data_uri}}（含 data:image/png;base64, 前缀）" = "Placeholders: {{image_base64}} (plain PNG Base64) or {{image_data_uri}} (with the data:image/png;base64, prefix)";
+"JSON 路径" = "JSON path";
+"如 data.*.text 或 words_result.*.words" = "e.g. data.*.text or words_result.*.words";
+"点分路径提取文字，支持 * 数组通配符（自动按行拼接所有匹配项）" = "Dot path to the text; * matches every array item (matches are joined line by line)";
+"识字完成后自动复制" = "Copy text automatically";
+"关闭后，双栏 OCR 窗口仅展示识别结果，不会自动覆盖剪贴板" = "When off, the side-by-side OCR window shows the result without replacing the clipboard";
+"测试识字" = "Test OCR";
+"获取" = "Get";
+"LaTeX 公式识别" = "LaTeX Formula Recognition";
+"公式识别引擎" = "Formula engine";
+"复用「模型与服务」里的多模态大模型识别复杂分式、积分与矩阵" = "Uses a multimodal model from the Services tab for complex fractions, integrals and matrices";
+"选填，留空沿用接口默认模型" = "Optional · service default if empty";
+"选填：留空沿用所选接口默认模型" = "Optional: leave empty to use the selected service's default model";
+"UAT 令牌" = "UAT token";
+"粘贴 SimpleTex UAT Token" = "Paste your SimpleTex UAT token";
+"SimpleTex 专攻印刷体与手写数学公式，国内直连极快且每月自带免费额度" = "SimpleTex specializes in printed and handwritten math, is fast from mainland China and has a free monthly quota";
+"粘贴 Mathpix app_id" = "Paste your Mathpix app_id";
+"粘贴 Mathpix app_key" = "Paste your Mathpix app_key";
+"完全离线运行（基于 Apple Vision + 数学符号转换），无需联网，适合基础行内公式" = "Runs fully offline (Apple Vision plus symbol conversion). Good for simple inline formulas";
+"默认复制格式" = "Copy as";
+"识别完成后自动复制" = "Copy result automatically";
+"测试公式" = "Test Formula";
+"原位译文：在截图选区内直接悬浮替换译文；双栏面板：打开双栏流式翻译对照窗（按住 ⌥ 可临时切换）" = "In place: overlay the translation on the selection. Side by side: open the streaming translation window (hold ⌥ to switch for one capture)";
+"原位译文" = "In Place";
+"双栏面板" = "Side by Side";
+"默认翻译引擎" = "Translation engine";
+"从「模型与服务」池中挑选默认用于截图翻译的引擎（可独立于 OCR / 公式引擎）" = "The service from the Services tab used to translate screenshots (separate from the OCR and formula engines)";
+"默认目标语言" = "Target language";
+"翻译完成后自动复制" = "Copy translation automatically";
+"暂无可用 AI 接口（点右侧添加）" = "No AI service yet (add one on the right)";
+"自动跟随当前接口（%@）" = "Follow current service (%@)";
+"自动跟随当前接口" = "Follow current service";
+"暂无可用服务" = "No services available";
+"正在探测「%@」…" = "Testing %@…";
+
+/* Translation/SettingsShortcutsTab.swift */
+"全局热键 (%@)" = "Global (%@)";
+"截图内按键 (%@)" = "In Capture (%@)";
+"无冲突 · 已占热键" = "No Conflicts · In Use";
+"点击实时查看 macOS 系统热键占用、后台运行中应用冲突，并支持一键更换推荐键" = "Click to see which shortcuts macOS and running apps use, and swap in suggested keys";
+"启用全局热键" = "Global shortcuts";
+"恢复默认" = "Reset";
+"快捷预设" = "Preset";
+"全局触发动作" = "Global Actions";
+"点击键帽录入双键（如 ⌥A、⌃1、F1） · Esc 取消 · ⌫ 停用单项" = "Click a key to record a shortcut (e.g. ⌥A, ⌃1, F1) · Esc cancels · ⌫ disables";
+"点击录入新组合键 · 录入时按 ⌫ 停用该项" = "Click to record a new shortcut · Press ⌫ while recording to disable it";
+"✓ 已恢复为当前预设方案默认热键" = "✓ Restored the preset's default shortcuts";
+"✓ 已恢复全部截图内按键为默认单键" = "✓ Restored all in-capture keys to their defaults";
+"系统热键注册" = "System registration";
+"注册失败" = "Failed";
+"常规 Carbon 热键注册被系统拒绝（已被独占），请更换键位或开启上方「冲突时强制优先接管」" = "macOS refused to register this shortcut (it is taken). Choose another key or turn on “Priority Override” above";
+"已优先接管 · 查看" = "Priority On · View";
+"%@ 项冲突 · 查看" = "%@ Conflict(s) · View";
+"%@ 项预警 · 查看" = "%@ Warning(s) · View";
+"按单键…" = "Press a key…";
+"请按下「%@」快捷键（实时检测系统与应用冲突 · Esc 取消 · ⌫ 停用）" = "Press the shortcut for “%@” (checked against system and app shortcuts · Esc cancels · ⌫ disables)";
+"点击键帽直接按单键修改（中英文通用 · 冲突自动互换 · ⌫ 恢复默认）" = "Click a key and press a single key to change it (works with any input source · duplicates are swapped · ⌫ resets)";
+"截图画布单键映射" = "Single-Key Actions in Capture";
+"点击后按下任意单字母键修改（默认 %@）" = "Click, then press a letter key to change it (default %@)";
+"请直接按下「%@」的单键（无需按 ⌘/⌥ · Esc 取消 · ⌫ 恢复默认 %@）" = "Press a single key for “%@” (no ⌘/⌥ needed · Esc cancels · ⌫ resets to %@)";
+"已停用「%@」全局热键（可随时点击重新绑定或点右上角恢复默认）" = "Disabled the global shortcut for “%@” (click to set it again, or use Reset)";
+"请按双键组合（如 ⌥A、⌥1、⌘E）或直接按 F1–F19" = "Press a modifier plus a key (e.g. ⌥A, ⌥1, ⌘E) or F1–F19";
+"%@，请换一个按键" = "%@. Choose another key";
+"⚠ %@ · 建议换键（再按一次 %@ 强制绑定）" = "⚠ %@ · Consider another key (press %@ again to use it anyway)";
+"⚠ 已强制设为 %@（%@）" = "⚠ Set to %@ anyway (%@)";
+"⚠ 已设为 %@ · %@" = "⚠ Set to %@ · %@";
+"✓ 「%@」已设为 %@ · 系统与运行中应用均无冲突" = "✓ “%@” set to %@ · No conflicts with macOS or running apps";
+"✓ 「%@」已恢复为默认键 %@" = "✓ “%@” reset to %@";
+"截图内快捷键只需按单个字母键（无需按住 ⌘ / ⌥ / ⌃）" = "In-capture shortcuts are single keys (no ⌘ / ⌥ / ⌃ needed)";
+"请使用 A–Z 字母或 ; ' , . \\ 单键（数字 1–9 与方向键已保留）" = "Use A–Z or one of ; ' , . \\ (1–9 and arrow keys are reserved)";
+"✓ 已设为 %@（原占用项「%@」已自动互换为 %@）" = "✓ Set to %@ (“%@” was swapped to %@)";
+"✓ 「%@」已更新为单键 %@" = "✓ “%@” is now %@";
+"✓ 「%@」已更换为零冲突推荐键 %@" = "✓ “%@” changed to the conflict-free shortcut %@";
+"✓ 已一键为 %@ 项动作切换为零冲突组合键" = "✓ Changed %@ action(s) to conflict-free shortcuts";
+"按下后捕获到「%@」弹出了界面/浮层。可在「%@」设置中改键，或在 MSnip 换用其他组合键。" = "Pressing it opened a window or panel from %@. Change the shortcut in %@'s settings, or use another one in MSnip.";
+"按下后激活了前台应用「%@」。可在「%@」中关闭该键，或在 MSnip 改用其他组合键。" = "Pressing it activated %@. Turn the shortcut off in %@, or use another one in MSnip.";
+"🎯 实测命中：由「%@」占用" = "🎯 Found it: used by %@";
+"🎯 实测命中：该快捷键由「%@」占用" = "🎯 Found it: this shortcut is used by %@";
+"触发了「%@」浮层窗口" = "Opened a panel from %@";
+"激活了「%@」" = "Activated %@";
+"⚠ %@ 存在系统或通用冲突" = "⚠ %@ conflicts with a system or common shortcut";
+"⚠ %@ 存在冲突" = "⚠ %@ has a conflict";
+"✓ 实测通过：%@ 可放心使用" = "✓ Test passed: %@ is free to use";
+"未触发任何后台应用，且与 macOS 系统热键及通用快捷键均无冲突。" = "No app reacted, and it does not conflict with macOS or common shortcuts.";
+"✓ 实测通过：%@ 未被其他应用占用" = "✓ Test passed: no other app uses %@";
+"监听已超时（10 秒内未捕获响应）" = "Timed out (nothing reacted within 10 seconds)";
+"若刚按了某快捷键却毫无反应，可能是被无窗口的静默系统热键拦截；可点上方「开始按键实测」重试。" = "If you pressed a shortcut and nothing happened, a system shortcut without a window may have caught it. Click Start Live Test to try again.";
+
+/* Translation/TranslationSettingsActions.swift */
+"设为当前" = "Use";
+"测试连接" = "Test";
+"测试并启用" = "Test & Use";
+"自定义 / 中转站" = "Custom / Relay";
+"macOS 内置神经网络 · 免费离线" = "Built into macOS · Free · Offline";
+"默认模型" = "Default model";
+"模型 %@" = "Model %@";
+"%@ · 本机离线免密钥" = "%@ · Local, no key";
+"%@ · 仅需填入 API 密钥" = "%@ · Just add an API key";
+"腾讯云机器翻译 · 填入 SecretId / SecretKey" = "Tencent Cloud Machine Translation · Enter SecretId / SecretKey";
+"百度翻译开放平台 · 填入 AppID / 密钥" = "Baidu Translate · Enter AppID / key";
+"有道智云 · 填入应用 ID / 应用密钥" = "Youdao · Enter app ID / app secret";
+"自建 DeepLX · 无需 Auth Key" = "Self-hosted DeepLX · No Auth Key needed";
+"DeepL 官方 · 仅需填入 Auth Key" = "DeepL · Just add an Auth Key";
+"剪贴板中暂无文本" = "The clipboard has no text";
+"✓ 已粘贴密钥 · 点左侧「%@」验证" = "✓ Key pasted · Click “%@” on the left to verify";
+"可选（本机/局域网免鉴权可留空）" = "Optional (leave empty for local services without auth)";
+"粘贴 API Key 即可使用" = "Paste an API key to get started";
+"收起高级设置" = "Hide Advanced";
+"高级设置（显示名称 / 提示词 / 请求头）" = "Advanced (name / prompt / headers)";
+"更多设置（显示名称 / 类型 / 地址 / 参数）" = "More (name / type / URL / options)";
+"macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n正在检测本机离线语言包状态…" = "Offline neural translation built into macOS\nFree · No API key · Works offline\n\nChecking installed language packs…";
+"macOS 系统内置离线神经网络翻译\n完全免费 · 无需 API 密钥 · 断网可用\n\n%@" = "Offline neural translation built into macOS\nFree · No API key · Works offline\n\n%@";
+"接口地址" = "Endpoint";
+"API 密钥" = "API Key";
+"模型名称" = "Model";
+"https://your-relay.com（自动补全 %@）" = "https://your-relay.com (%@ is added automatically)";
+"提示词" = "Prompt";
+"留空使用内置精准截图翻译提示词" = "Leave empty to use the built-in translation prompt";
+"请求头" = "Headers";
+"可选 JSON，如 {\"X-Key\":\"val\"}" = "Optional JSON, e.g. {\"X-Key\":\"val\"}";
+"填入腾讯云 SecretId" = "Enter your Tencent Cloud SecretId";
+"请求域名" = "Host";
+"默认 tmt.tencentcloudapi.com" = "Default tmt.tencentcloudapi.com";
+"地域" = "Region";
+"默认 ap-guangzhou" = "Default ap-guangzhou";
+"填入百度翻译 AppID" = "Enter your Baidu Translate AppID";
+"密钥" = "Key";
+"默认百度通用翻译 API" = "Default Baidu general translation API";
+"填入有道应用 ID" = "Enter your Youdao app ID";
+"默认有道智云文本翻译 API" = "Default Youdao text translation API";
+"默认 DeepL 官方或自建 DeepLX 地址" = "Default DeepL API, or your DeepLX address";
+"请求 URL" = "Request URL";
+"JSON 模板，支持 {{text}} {{target}}" = "JSON template with {{text}} and {{target}}";
+"如 data.translatedText" = "e.g. data.translatedText";
+"✓ 已设为当前翻译引擎" = "✓ Now the active translation service";
+"正在探测连通性…" = "Testing connection…";
+"%@ · 已启用" = "%@ · Enabled";
+"正在拉取服务端模型列表…" = "Fetching the model list…";
+"✓ 已拉取 %@ 个可用模型，请选择" = "✓ Found %@ models. Pick one";
+"共 %@ 个模型（已显示前 %@ 项，其余可直接输入）" = "%@ models (showing the first %@; type any other name)";
+"✓ 已选择模型：%@" = "✓ Model selected: %@";
+
+/* Translation/TranslationSettingsWindow.swift */
+"通用" = "General";
+"快捷键" = "Shortcuts";
+"识字与翻译" = "OCR & Translate";
+"模型与服务" = "Services";
+"打开配置目录" = "Open Config Folder";
+"在 Finder 中打开 MSnip 配置文件夹（含 config.json 与 translation_providers.json）" = "Open MSnip's config folder in Finder (config.json and translation_providers.json)";
+"自动保存 · ⌘W 关闭" = "Saved automatically · ⌘W to close";
+"当前使用中" = "in use";
+"待填写密钥" = "needs a key";
+"%@（%@）" = "%@ (%@)";
+"添加服务" = "Add Service";
+"删除" = "Delete";
+"获取 Key" = "Get Key";
+"打开系统翻译语言设置…" = "Open Translation Language Settings…";
+"输入平台应用 ID" = "Enter the platform app ID";
+"一键从剪贴板粘贴 API 密钥" = "Paste the API key from the clipboard";
+"显示 / 隐藏明文密钥" = "Show / hide the key";
+"接口格式" = "API format";
+"服务预设" = "Preset";
+"显示名称" = "Name";
+"自定义显示名称" = "Display name";
+"服务类型" = "Type";
+"https://your-api.com（自动补全协议路径）" = "https://your-api.com (API path added automatically)";
+"如 deepseek-chat，或点右侧拉取" = "e.g. deepseek-chat, or click Fetch";
+"拉取" = "Fetch";
+"从当前接口地址自动拉取 /v1/models 可用模型列表" = "Fetch the model list from /v1/models at this endpoint";
+
+/* System/HotKeyConflictScanner.swift */
+"主呼出热键" = "Main shortcut";
+"macOS 系统保留热键" = "Reserved by macOS";
+"未知应用" = "Unknown app";
+"macOS 系统截屏" = "macOS Screenshot";
+"macOS 聚焦搜索 (Spotlight)" = "macOS Spotlight";
+
+/* System/PermissionGuideWindow.swift */
+"开启 MSnip 权限" = "Set Up MSnip Permissions";
+"捕获屏幕画面与像素级放大取色" = "Capture what's on screen";
+"智能识别窗口与多层控件矩阵边界" = "Detect windows & controls";
+"重启生效" = "Relaunch";
+"完成" = "Done";
+"点击允许后，从系统设置底部将图标拖入列表" = "Click Allow, then drag MSnip into the list";
+"✓ 屏幕录制与辅助功能权限均已生效" = "✓ Screen Recording and Accessibility are both enabled";
+"✓ 已开启" = "✓ On";
+"允许" = "Allow";
+
+/* System/SettingsDockOverlay.swift */
+"返回权限列表" = "Back to permissions";
+"关闭提示" = "Close";
+"拖入上方列表开启" = "Drag into the list above to enable ";
+"（若列表中已有 MSnip，请先关再开开关）" = " (if MSnip is already listed, turn its switch off and on again)";
+
+/* MSnipCore/CommandAndShelfModels.swift */
+"原位划词" = "In Place";
+"静默直拷" = "Silent Copy";
+"悬停展开" = "Hover";
+"快捷键切换" = "Shortcut";
+"常驻显示" = "Always";
+
+/* MSnipCore/HotKeyConflictModels.swift */
+"系统实测" = "System (live)";
+"配置实测" = "App config (live)";
+"默认参考" = "Default";
+"键盘聚焦菜单栏" = "Move focus to the menu bar";
+"键盘聚焦程序坞" = "Move focus to the Dock";
+"键盘聚焦活动窗口" = "Move focus to the active window";
+"切换同应用窗口" = "Cycle windows of the same app";
+"系统全屏截图" = "Screenshot of the screen";
+"全屏截图到剪贴板" = "Copy screen to clipboard";
+"系统区域截图" = "Screenshot of selected area";
+"区域截图到剪贴板" = "Copy selected area to clipboard";
+"调度中心 (Mission Control)" = "Mission Control";
+"应用程序窗口" = "Application windows";
+"显示桌面" = "Show Desktop";
+"隐藏/显示程序坞 (Dock)" = "Hide / show the Dock";
+"切换上一个输入法" = "Previous input source";
+"切换下一个输入法" = "Next input source";
+"聚焦搜索 (Spotlight)" = "Spotlight";
+"访达搜索窗口" = "Finder search window";
+"查询词典" = "Look up in Dictionary";
+"向左切换桌面空间" = "Move left a space";
+"向右切换桌面空间" = "Move right a space";
+"聚焦帮助菜单" = "Show Help menu";
+"切换到桌面 %@" = "Switch to Desktop %@";
+"启动台 (Launchpad)" = "Launchpad";
+"系统截屏与录屏" = "Screenshot and recording options";
+"快速备忘录" = "Quick Note";
+"表情与符号" = "Emoji & Symbols";
+"隐藏/显示程序坞" = "Hide / show the Dock";
+"锁定屏幕" = "Lock Screen";
+"应用切换器" = "App Switcher";
+"反向切换应用" = "App Switcher (reverse)";
+"强制退出应用" = "Force Quit";
+"帮助菜单搜索" = "Search the Help menu";
+"调度中心" = "Mission Control";
+"切换左侧桌面" = "Space to the left";
+"切换右侧桌面" = "Space to the right";
+"同「%@」冲突" = "Same as “%@”";
+"%@ 已被 MSnip「%@」占用" = "%@ is already used by MSnip's “%@”";
+"系统热键" = "System shortcut";
+"%@ 已被 macOS 系统「%@」占用" = "%@ is used by macOS (“%@”)";
+"系统/常驻应用" = "System / background app";
+"已被独占" = "Taken";
+"%@ 已被系统或其他常驻应用独占注册" = "%@ is registered exclusively by macOS or another background app";
+"「%@」已配置热键（%@），会直接冲突" = "%@ has this shortcut set (%@) and will conflict";
+"「%@」运行中 · %@默认热键，可能冲突" = "%@ is running · its default %@ shortcut may conflict";
+"%@已占用" = "Used by %@";
+"%@运行中" = "%@ running";
+"通用快捷键" = "Standard shortcut";
+"%@ 会拦截前台应用的%@" = "%@ would block %@ in the frontmost app";
+"截图" = "Screenshot";
+"贴图" = "Pin";
+"微信" = "WeChat";
+"企业微信" = "WeCom";
+"钉钉" = "DingTalk";
+"飞书" = "Feishu";
+"快速访问" = "Quick Access";
+"自动填充" = "Autofill";
+"唤起对话" = "Open chat";
+"划词翻译" = "Translate selection";
+"输入翻译" = "Translate input";
+"录屏菜单" = "Recording menu";
+"呼出" = "Open";
+"剪贴板历史" = "Clipboard history";
+"拦截复制" = "Blocks Copy";
+"通用「复制 (⌘C)」" = "the standard Copy (⌘C)";
+"拦截粘贴" = "Blocks Paste";
+"通用「粘贴 (⌘V)」" = "the standard Paste (⌘V)";
+"拦截剪切" = "Blocks Cut";
+"通用「剪切 (⌘X)」" = "the standard Cut (⌘X)";
+"拦截撤销" = "Blocks Undo";
+"通用「撤销 (⌘Z)」" = "the standard Undo (⌘Z)";
+"拦截全选" = "Blocks Select All";
+"通用「全选 (⌘A)」" = "the standard Select All (⌘A)";
+"拦截保存" = "Blocks Save";
+"通用「保存 (⌘S)」" = "the standard Save (⌘S)";
+"拦截关闭" = "Blocks Close";
+"通用「关闭窗口 (⌘W)」" = "the standard Close Window (⌘W)";
+"拦截退出" = "Blocks Quit";
+"通用「退出应用 (⌘Q)」" = "the standard Quit (⌘Q)";
+"拦截隐藏" = "Blocks Hide";
+"通用「隐藏应用 (⌘H)」" = "the standard Hide (⌘H)";
+"拦截最小化" = "Blocks Minimize";
+"通用「最小化 (⌘M)」" = "the standard Minimize (⌘M)";
+"拦截新建" = "Blocks New";
+"通用「新建 (⌘N)」" = "the standard New (⌘N)";
+"拦截新标签" = "Blocks New Tab";
+"通用「新标签页 (⌘T)」" = "the standard New Tab (⌘T)";
+"拦截刷新" = "Blocks Reload";
+"通用「刷新 (⌘R)」" = "the standard Reload (⌘R)";
+"拦截查找" = "Blocks Find";
+"通用「查找 (⌘F)」" = "the standard Find (⌘F)";
+"拦截打印" = "Blocks Print";
+"通用「打印 (⌘P)」" = "the standard Print (⌘P)";
+"拦截偏好" = "Blocks Settings";
+"通用「应用设置 (⌘,)」" = "the standard Settings (⌘,)";
+"拦截标签 1" = "Blocks Tab 1";
+"浏览器/编辑器「标签 1 (⌘1)」" = "Tab 1 (⌘1) in browsers and editors";
+"拦截标签 2" = "Blocks Tab 2";
+"浏览器/编辑器「标签 2 (⌘2)」" = "Tab 2 (⌘2) in browsers and editors";
+"拦截标签 3" = "Blocks Tab 3";
+"浏览器/编辑器「标签 3 (⌘3)」" = "Tab 3 (⌘3) in browsers and editors";
+"拦截重做" = "Blocks Redo";
+"通用「重做 (⇧⌘Z)」" = "the standard Redo (⇧⌘Z)";
+"拦截命令板" = "Blocks Command Palette";
+"编辑器「命令面板 (⇧⌘P)」" = "the editor Command Palette (⇧⌘P)";
+"自定义热键" = "Custom shortcut";
+
+/* MSnipCore/ImageExportOptions.swift */
+"跟随系统" = "System";
+"仅复制" = "Copy";
+"仅保存" = "Save";
+"复制并保存" = "Copy & Save";
+"PNG · 无损原图" = "PNG · Lossless";
+"JPG · 通用高压缩" = "JPG · Small, compatible";
+"HEIC · 苹果高压缩" = "HEIC · Small (Apple)";
+"AVIF · 极致高压缩" = "AVIF · Smallest";
+"BMP · 原始位图" = "BMP · Uncompressed";
+"TIFF · 印刷无损" = "TIFF · Lossless for print";
+
+/* MSnipCore/LLMProtocolHelpers.swift */
+"自定义 / 中转" = "Custom / Relay";
+"国内主流大模型官网" = "Providers in China";
+"国际主流厂商与聚合网关" = "International Providers & Gateways";
+"本机离线推理引擎（免 Key）" = "Local Inference (No Key)";
+"DeepSeek 官方" = "DeepSeek";
+"智谱 BigModel · GLM" = "Zhipu BigModel · GLM";
+"阿里云百炼 · 通义千问" = "Alibaba Cloud Model Studio · Qwen";
+"火山方舟 · 豆包" = "Volcano Ark · Doubao";
+"Kimi · 月之暗面" = "Kimi · Moonshot AI";
+"腾讯混元大模型" = "Tencent Hunyuan";
+"百度千帆 · 文心" = "Baidu Qianfan · ERNIE";
+"MiniMax · 海螺 AI" = "MiniMax · Hailuo AI";
+"讯飞星火大模型" = "iFlytek Spark";
+"阶跃星辰 StepFun" = "StepFun";
+"硅基流动 SiliconFlow" = "SiliconFlow";
+"OpenAI 官方" = "OpenAI";
+"本地 Ollama" = "Local Ollama";
+"本地 LM Studio" = "Local LM Studio";
+"自定义中转" = "Custom Relay";
+"智谱 GLM" = "Zhipu GLM";
+"通义千问" = "Qwen";
+"豆包 · 火山方舟" = "Doubao · Volcano Ark";
+"腾讯混元" = "Hunyuan";
+"百度千帆" = "Qianfan";
+"讯飞星火" = "Spark";
+"阶跃星辰" = "StepFun";
+"硅基流动" = "SiliconFlow";
+
+/* MSnipCore/MediaClipEncoder.swift */
+"标准" = "Standard";
+"高清" = "HD";
+"原画" = "Original";
+"原刷" = "Native";
+
+/* MSnipCore/OCRLatexModels.swift */
+"Apple 原生离线 Vision（极速 · 免费）" = "Apple Vision, offline (fast · free)";
+"视觉大模型（复用「模型与服务」）" = "Vision LLM (from the Services tab)";
+"百度智能云 OCR（高精度 · 含免费额度）" = "Baidu AI Cloud OCR (accurate · free quota)";
+"腾讯云 OCR（通用高精度 · TC3 签名）" = "Tencent Cloud OCR (accurate · TC3 signing)";
+"有道智云 OCR（通用图文识别）" = "Youdao OCR (general)";
+"自定义 HTTP OCR（通用适配接口）" = "Custom HTTP OCR";
+"Apple 离线" = "Apple Offline";
+"AI 视觉" = "AI Vision";
+"百度 OCR" = "Baidu OCR";
+"腾讯 OCR" = "Tencent OCR";
+"有道 OCR" = "Youdao OCR";
+"自定义 OCR" = "Custom OCR";
+"纯 LaTeX" = "Plain";
+"$ 行内 $" = "$ … $";
+"$$ 行间 $$" = "$$ … $$";
+"\\[ 块级 \\]" = "\\[ … \\]";
+"视觉大模型（复用已配 AI 接口）" = "Vision LLM (uses your AI services)";
+"SimpleTex 专用公式识别" = "SimpleTex formula recognition";
+"Mathpix 学术公式识别" = "Mathpix formula recognition";
+"离线基础转换（Apple Vision）" = "Basic offline (Apple Vision)";
+"视觉大模型" = "Vision LLM";
+"离线基础" = "Offline Basic";
+
+/* MSnipCore/ShortcutModels.swift */
+"快捷识字 (OCR)" = "Extract Text (OCR)";
+"区域录屏 (GIF/MP4)" = "Record Area (GIF/MP4)";
+"延时截图" = "Delayed Capture";
+"显隐全部贴图" = "Show / Hide All Pins";
+"呼出顶部暂存架" = "Toggle Top Shelf";
+"冻结屏幕框选、圈记标注、取色与独立窗口抓拍" = "Freeze the screen to select, annotate, pick colors or capture a window";
+"将剪贴板图片/色值钉在桌面，或在截图中直接贴出" = "Pin the clipboard image or color to the desktop, or pin the current selection";
+"框选屏幕任意区域后立即识字（支持原位/双栏/静默直拷）" = "Select an area to extract its text (in place, side by side or silent copy)";
+"框选屏幕任意区域后立即原位替换译文" = "Select an area to translate it in place";
+"框选可滚动区域后直接开始长图自动拼接" = "Select a scrollable area to start a scrolling capture";
+"直接进入 GIF / MP4 选区录屏准备状态" = "Start selecting an area to record as GIF / MP4";
+"按设定的默认秒数启动悬浮倒计时，适合捕获菜单与悬停态" = "Start a countdown with the default delay, handy for menus and hover states";
+"一键截取鼠标所在显示器整屏，按设定复制或保存到默认目录" = "Capture the whole screen under the pointer, then copy or save it as configured";
+"框选数学公式直接识别并弹出 KaTeX 预览" = "Select a math formula to recognize it with a KaTeX preview";
+"一键暂藏或恢复桌面上所有置顶贴图窗口" = "Hide or show all pinned images";
+"按上一次截图的选区位置静默重截并复制到剪贴板" = "Recapture the last selected area and copy it";
+"展开或收起屏幕顶部暂存架，集中拖拽最近截图、文件与文本" = "Open or close the Top Shelf of recent screenshots, files and text";
+"⌥A / ⌥S 左手双键" = "⌥A / ⌥S left hand";
+"⌃1 / ⌃2 数字双键" = "⌃1 / ⌃2 numbers";
+"F1 / F2 单键" = "F1 / F2 keys";
+"⌃⌘A 经典三键" = "⌃⌘A classic";
+"输出与多模态动作" = "Output & Modes";
+"圈记标注工具" = "Annotation Tools";
+"美化、窗口对齐与取色测量" = "Styling, Window Snapping & Measuring";
+"复制截图 / 复制色值" = "Copy screenshot / color";
+"一键快存（配 ⇧ 另存为）" = "Quick Save (⇧ Save As)";
+"贴到桌面" = "Pin to Desktop";
+"原位识字（配 ⇧ 公式 / ⌥ 对照窗）" = "Extract text (⇧ formula / ⌥ side by side)";
+"原位翻译（配 ⌥ 双栏流式窗）" = "Translate in place (⌥ side by side)";
+"切换录屏模式" = "Switch to recording";
+"退出截图（Esc 始终可用）" = "Exit capture (Esc always works)";
+"矩形 / 椭圆 (+⇧)" = "Rectangle / ellipse (+⇧)";
+"箭头标注" = "Arrow";
+"画笔 / 荧光笔 (+⇧)" = "Pen / highlighter (+⇧)";
+"文字标注" = "Text";
+"步骤序号 ①②③" = "Step numbers ①②③";
+"马赛克 / 高斯模糊 (+⇧)" = "Mosaic / blur (+⇧)";
+"橡皮擦 / 恢复上次选区" = "Eraser / restore last area";
+"切换文字胶囊底色" = "Toggle text background";
+"圆角裁切滑块（配 ⌥ 重置）" = "Corner radius slider (⌥ resets)";
+"发光边强度滑块 / 切换相对坐标" = "Glow slider / relative coordinates";
+"对齐底层窗口（配 ⌥ 抓独立窗口）" = "Snap to window (⌥ capture window)";
+"像素卡尺四向测距" = "Pixel ruler";
+"画笔吸管取色" = "Eyedropper for pen color";
+"复制光标坐标" = "Copy pointer coordinates";
+"显示 / 隐藏取色放大镜" = "Show / hide magnifier";
+"显示 / 隐藏快捷键提示面板" = "Show / hide shortcut tips";
+
+/* MSnipCore/TranslationModels.swift */
+"Google Gemini 原生 (/v1beta/models)" = "Google Gemini native (/v1beta/models)";
+"macOS 原生离线翻译（免费 · 无需 Key）" = "macOS offline translation (free · no key)";
+"通用大模型 · OpenAI Chat Completions (/v1/chat/completions)" = "LLM · OpenAI Chat Completions (/v1/chat/completions)";
+"通用大模型 · OpenAI Responses (/v1/responses)" = "LLM · OpenAI Responses (/v1/responses)";
+"通用大模型 · Anthropic Messages (/v1/messages)" = "LLM · Anthropic Messages (/v1/messages)";
+"通用大模型 · Google Gemini 原生协议" = "LLM · Google Gemini native API";
+"国内云接口 · 腾讯云机器翻译 TMT" = "Cloud · Tencent Cloud TMT";
+"国内云接口 · 百度翻译开放平台" = "Cloud · Baidu Translate";
+"国内云接口 · 有道智云文本翻译" = "Cloud · Youdao text translation";
+"国际翻译 · DeepL 官方 / DeepLX 免 Key" = "DeepL · Official API / DeepLX without a key";
+"自定义通用 HTTP JSON 模版接口" = "Custom HTTP JSON template API";
+"系统内置免费离线模型 · 无需配置，开箱即用" = "Free offline model built into macOS · Works out of the box";
+"本机/局域网兼容服务 · 可免 Key，点「拉取」自动选模型" = "Local or LAN service · No key needed, click Fetch to pick a model";
+"填入任意 OpenAI 兼容 Base URL、Key 与模型名即可直连" = "Enter any OpenAI-compatible base URL, key and model";
+"智谱含免费 glm-4-flash · 填 Key 后测通即用" = "Zhipu includes free glm-4-flash · Add a key and test";
+"硅基流动含免费额度 · 填 Key 后可拉取模型列表" = "SiliconFlow has a free quota · Add a key to fetch models";
+"兼容 OpenAI Chat 协议 · 填好地址、密钥与模型即可直连" = "OpenAI Chat compatible · Enter the URL, key and model";
+"局域网 OpenAI Responses 服务 · 填地址与模型即用" = "LAN OpenAI Responses service · Enter the URL and model";
+"兼容 /v1/responses 协议（Codex / GPT-5 等）· 填入地址、Key 与模型即用" = "/v1/responses compatible (Codex, GPT-5, …) · Enter the URL, key and model";
+"局域网 Anthropic 兼容服务 · 填地址与模型即用" = "LAN Anthropic-compatible service · Enter the URL and model";
+"兼容 /v1/messages 协议 · 填入地址、Key 与模型即用" = "/v1/messages compatible · Enter the URL, key and model";
+"Google AI Studio 含免费额度 · 粘贴 Key 即用" = "Google AI Studio has a free tier · Paste a key to start";
+"每月 500 万字符免费额度 · 填入双密钥即用" = "5M free characters per month · Enter both keys";
+"每月含免费翻译额度 · 填入 AppID 与密钥即用" = "Free monthly quota · Enter the AppID and key";
+"填入有道智云应用 ID 与密钥 · 测通即启用" = "Enter your Youdao app ID and secret, then test";
+"自建 DeepLX 免密钥 · 确认地址即可使用" = "Self-hosted DeepLX, no key · Just check the URL";
+"粘贴 DeepL Auth Key · 测通即可启用" = "Paste a DeepL Auth Key, then test";
+"开发者自定义 HTTP 接口 · 填写 URL 与模板" = "Custom HTTP API · Enter the URL and templates";
+
+/* Translation/SettingsGeneralTab.swift (interface language) */
+"切换 MSnip 的界面语言（重启后生效）；「跟随系统」时按 macOS 首选语言自动选择" = "MSnip's interface language (applies after relaunch). “System” follows your macOS language order";
+"界面语言" = "Language";
+"界面语言将在重启 MSnip 后切换" = "The new language applies after MSnip relaunches";
+"立即重启 ›" = "Relaunch Now ›";
+
+/* MSnipCore/TranslationConfigStore.swift (default service names, saved when a service is created) */
+"Apple 离线翻译" = "Apple Translation";
+"百度翻译" = "Baidu Translate";
+"有道智云" = "Youdao";
+"自定义接口" = "Custom API";
+
+/* Capture/DelayedCaptureController.swift */
+"已取消延时截图" = "Delayed capture canceled";
+"点击立即截图 · Esc 取消" = "Click to capture now · Esc to cancel";
+
+/* Capture/ScreenCapturer.swift */
+"长截图实时流需要 macOS 13.0 及以上系统" = "Scrolling capture needs macOS 13.0 or later";
+"无法识别目标显示器" = "Couldn't identify the target display";
+"长截图选区过小" = "The scrolling capture area is too small";
+"未找到目标屏幕采集源" = "Couldn't find the display to capture";
+"启动实时画面采集流失败：%@" = "Failed to start the screen stream: %@";
+
+/* Pin/PinAnnotationOverlay.swift */
+"已复制标注图形 · 按 ⌘V 粘贴" = "Copied the shape · Press ⌘V to paste";
+
+/* Pin/PinHoverAndDragViews.swift */
+"按住拖动整张贴图（满屏文字无空白处时可直接拖这里）" = "Drag to move the pin (handy when the image has no empty space)";
+"二次圈记标注贴图 (E)" = "Annotate pin (E)";
+"提取图中文字 (T)" = "Extract text (T)";
+"翻译图中文字 (Y)" = "Translate text (Y)";
+"复制贴图图像 (⌘C)" = "Copy image (⌘C)";
+"保存到默认目录 (⌘S · 按住 ⇧ 点击另存为)" = "Save to default folder (⌘S · ⇧-click to Save As)";
+"关闭贴图 (Esc / 双击空白处)" = "Close pin (Esc / double-click an empty area)";
+
+/* Pin/PinManager.swift */
+"已解除 %@ 张贴图的鼠标穿透状态" = "Turned off click-through for %@ pin(s)";
+"已将剪贴板文本贴为桌面便签" = "Pinned the clipboard text as a note";
+"剪贴板暂无图片、色值或文本 · 复制后再按快捷键贴图" = "The clipboard has no image, color or text · Copy something, then press the shortcut";
+"当前桌面暂无贴图" = "No pins on the desktop";
+"已暂藏 %@ 张桌面贴图 · 再按快捷键恢复" = "Hid %@ pin(s) · Press the shortcut again to show them";
+"已恢复显示 %@ 张桌面贴图" = "Showed %@ pin(s)";
+
+/* Pin/PinResizeAndCropOverlays.swift */
+"拖选裁剪区域 · ↩ 确认 · Esc 取消" = "Drag to crop · ↩ to confirm · Esc to cancel";
+"已裁剪贴图 · %@ × %@ px" = "Cropped the pin · %@ × %@ px";
+
+/* Pin/PinWindow.swift */
+"已复制贴图图像" = "Copied the pinned image";
+"已复制贴图划选文字" = "Copied the selected text";
+"已开启贴图鼠标穿透对照 · 可在顶部菜单栏一键恢复" = "Click-through is on · Turn it off from the menu bar";
+"正在离线扫描隐私敏感信息…" = "Scanning for sensitive info offline…";
+"未检测到隐私敏感信息" = "No sensitive info found";
+"✓ 已一键遮盖 %@ 处隐私敏感信息" = "✓ Redacted %@ item(s) of sensitive info";
+"已更新贴图标注" = "Updated the pin's annotations";
+"已复制贴图与临时文件路径 · 可直接粘贴到任意终端" = "Copied the image and a temporary file path · Ready to paste into a terminal";
+"贴图中未检测到二维码或条形码" = "No QR code or barcode found in the pin";
+"已顺时针旋转 90°" = "Rotated 90° clockwise";
+"已水平镜像翻转" = "Flipped horizontally";
+"编辑 / 二次标注贴图 (E)…" = "Edit / Annotate (E)…";
+"二次裁剪贴图 (C)…" = "Crop (C)…";
+"开启鼠标穿透对照 (P)" = "Enable Click-Through (P)";
+"提取图中文字 (T)…" = "Extract Text (T)…";
+"翻译图中文字 (Y)…" = "Translate Text (Y)…";
+"扫描二维码 / 条形码" = "Scan QR Code / Barcode";
+"高亮图中可划选文字块" = "Highlight Selectable Text";
+"复制贴图图像 (按住 ⌘ 可拖拽成文件)" = "Copy Image (⌘-drag to export a file)";
+"复制临时文件路径 (供 IDE / 终端粘贴)" = "Copy Temporary File Path (for IDEs / terminals)";
+"一键保存到默认目录" = "Save to Default Folder";
+"另存为…" = "Save As…";
+"顺时针旋转 90° (R)" = "Rotate 90° Clockwise (R)";
+"水平镜像翻转 (H)" = "Flip Horizontally (H)";
+"自适应屏幕大小" = "Fit to Screen";
+"重置 100% 大小与不透明" = "Reset to 100% Size and Opacity";
+"切换半透明对照 (55%)" = "Toggle 55% Opacity";
+"关闭此贴图 (Esc / 双击空白处)" = "Close This Pin (Esc / double-click)";
+"关闭全部贴图" = "Close All Pins";
+
+/* Translation/AppleNativeTranslator.swift */
+"macOS 原生离线翻译需要 macOS 15.0 及以上系统，请切换大模型或云翻译接口" = "Offline translation needs macOS 15.0 or later. Use an LLM or cloud service instead";
+"系统暂不支持该语种组合 (%@) 的离线翻译" = "macOS can't translate this language pair (%@) offline";
+"离线语言包未完成下载或已取消（可在系统设置 › 通用 › 语言与地区 › 翻译语言 中下载）" = "The offline language pack isn't downloaded (get it in System Settings › General › Language & Region › Translation Languages)";
+"✓ 中英离线神经网络模型已就绪（完全免费 · 断网可用）" = "✓ Offline Chinese–English model is ready (free · works offline)";
+"系统支持免费离线模型 · 首次点击翻译或「测试连接」将提示下载语言包" = "Free offline model available · You'll be asked to download the language pack on first use or when you click Test";
+"当前系统暂不支持中英离线语言包" = "This macOS version has no offline Chinese–English pack";
+"系统离线翻译可用" = "Offline translation available";
+"当前系统版本低于 macOS 15，不支持原生离线翻译" = "Offline translation needs macOS 15 or later";
+
+/* Translation/CloudAPITranslator.swift */
+"翻译接口配置有误：%@" = "Translation service misconfigured: %@";
+"翻译接口返回错误：%@" = "Translation service error: %@";
+"请填写腾讯云 SecretId 与 SecretKey" = "Enter your Tencent Cloud SecretId and SecretKey";
+"响应解析失败" = "Failed to parse the response";
+"未返回译文列表" = "The response had no translations";
+"请填写百度翻译 AppID 与密钥" = "Enter your Baidu Translate AppID and key";
+"百度响应格式异常" = "Unexpected response from Baidu";
+"未获取到百度翻译结果" = "Baidu returned no translation";
+"请填写有道智云应用 ID 与应用密钥" = "Enter your Youdao app ID and app secret";
+"有道响应解析失败" = "Failed to parse the Youdao response";
+"有道未返回译文" = "Youdao returned no translation";
+"DeepL 响应无 translations 字段" = "The DeepL response has no translations field";
+"DeepLX 响应未包含 data 译文" = "The DeepLX response has no data field";
+"未能按路径「%@」提取译文" = "Couldn't extract the translation at path “%@”";
+"响应非有效 JSON 或未能按路径「%@」提取译文" = "The response isn't valid JSON, or nothing was found at path “%@”";
+
+/* Translation/LLMTranslator.swift */
+"无效的大模型接口地址：%@" = "Invalid LLM endpoint: %@";
+"大模型请求失败 (HTTP %@)：%@" = "LLM request failed (HTTP %@): %@";
+"大模型未返回有效译文" = "The LLM returned no translation";
+"请先填写有效的接口地址（Base URL）" = "Enter a valid endpoint (base URL) first";
+"拉取模型失败 (HTTP %@)：%@" = "Failed to fetch models (HTTP %@): %@";
+"服务端未返回可用模型列表，可手动填写模型名" = "The server returned no models. Type a model name instead";
+
+/* Translation/TranslationService.swift */
+"%@ (自动回退)" = "%@ (fallback)";
+"✓ 连通正常 (%@ ms) · 示例译文：%@" = "✓ Connected (%@ ms) · Sample: %@";
+"✗ 测试失败：%@" = "✗ Test failed: %@";
+
+/* Config/AppConfig.swift */
+"导出 MSnip 配置文件（不含任何 API 密钥）" = "Export MSnip Settings (no API keys)";
+"导出配置失败：序列化异常" = "Export failed: couldn't encode the settings";
+"✓ 已导出配置文件（不含 API 密钥）" = "✓ Exported settings (no API keys)";
+"写入配置文件失败：%@" = "Failed to write the settings file: %@";
+"选择 MSnip 配置文件 (.json)" = "Choose an MSnip Settings File (.json)";
+"导入失败：文件格式无效或不是 MSnip 配置文件" = "Import failed: not a valid MSnip settings file";
+"✓ 已导入配置并即时生效" = "✓ Imported settings and applied them";
+
+/* Recording/RecordingControls.swift */
+"已开启：录屏显示鼠标点击波纹与快捷键角标（点击关闭）" = "On: recordings show click ripples and key presses (click to turn off)";
+"已关闭：点击开启录屏鼠标波纹与快捷键角标回显" = "Off: click to show click ripples and key presses in recordings";
+"即将录屏" = "Starting";
+"跳过倒计时立即开始录制 (↩)" = "Skip the countdown and start now (↩)";
+"立即开始" = "Start Now";
+"取消录制 (Esc)" = "Cancel recording (Esc)";
+"切换为 %@ 格式" = "Switch to %@";
+"开始录制选区画面 (↩)" = "Start recording the selection (↩)";
+"开始录制" = "Record";
+"取消 (Esc)" = "Cancel (Esc)";
+"画笔标记中（默认激光渐隐，按住 ⇧ 常驻，右键或 ⌥+点此清屏）" = "Drawing (strokes fade like a laser; hold ⇧ to keep them; right-click or ⌥-click here to clear)";
+"开启录屏实时画笔标记（按住 ⌥ 点此清屏）" = "Draw on screen while recording (⌥-click here to clear)";
+"继续录制 (Space)" = "Resume (Space)";
+"暂停录制 (Space)" = "Pause (Space)";
+"结束录制并打开首尾裁剪预览 (MP4)" = "Stop and trim the start and end (MP4)";
+"结束并保存 %@ 到默认目录（按住 ⌥ 另存为）" = "Stop and save the %@ to the default folder (⌥ to Save As)";
+"放弃录制 (Esc)" = "Discard recording (Esc)";
+"完成并复制 %@ 到剪贴板 (↩)" = "Stop and copy the %@ to the clipboard (↩)";
+"正在封装 %@…" = "Finishing %@…";
+
+/* Recording/RecordingTrimWindow.swift */
+"裁剪录屏 MP4" = "Trim MP4 Recording";
+"播放 / 暂停" = "Play / Pause";
+"保存" = "Save";
+"保存裁剪版到默认目录（按住 ⌥ 另存为）" = "Save the trimmed video to the default folder (⌥ to Save As)";
+"复制裁剪版" = "Copy Trimmed";
+"%@ → %@（共 %@）" = "%@ → %@ (%@ total)";
+"正在无损裁切…" = "Trimming…";
+
+/* Recording/RegionRecordingSession.swift */
+"选区录屏就绪 · 选择 GIF/MP4 后点击开始录制" = "Ready to record · Pick GIF or MP4, then click Record";
+"正在录制 %@%@ · 框内可直接点击操作" = "Recording %@%@ · You can keep clicking inside the frame";
+"录制已暂停 · 点击继续或完成导出" = "Recording paused · Resume or finish to export";
+"正在录制 %@ · 框内可直接点击操作" = "Recording %@ · You can keep clicking inside the frame";
+"录制时间过短或未采集到有效画面" = "The recording is too short or captured no frames";
+"即将录制 %@ · %@ 秒后开始（↩ 立即开始 · Esc 取消）" = "Recording %@ in %@ s (↩ to start now · Esc to cancel)";
+"画笔标记模式 · 拖动绘制激光红线（按住 ⇧ 常驻，右键清屏）" = "Drawing mode · Drag to draw a fading red line (hold ⇧ to keep it, right-click to clear)";
+
+/* OCR/CloudOCRService.swift */
+"OCR 接口返回错误：%@" = "OCR service error: %@";
+"未识别到有效文字" = "No text recognized";
+"Apple 离线 Vision 请走本地管线" = "Apple Vision runs locally, not through this service";
+"请先在「设置 → 识字与翻译」填写百度 OCR API Key 与 Secret Key" = "Enter your Baidu OCR API Key and Secret Key in Settings › OCR & Translate first";
+"图片编码失败" = "Failed to encode the image";
+"百度 OCR 地址无效" = "Invalid Baidu OCR URL";
+"百度 OCR 响应解析失败" = "Failed to parse the Baidu OCR response";
+"百度鉴权地址无效" = "Invalid Baidu auth URL";
+"百度鉴权响应异常" = "Unexpected Baidu auth response";
+"百度鉴权失败，请检查 API Key / Secret Key" = "Baidu authentication failed. Check your API Key / Secret Key";
+"请先在「设置 → 识字与翻译」填写腾讯云 SecretId 与 SecretKey" = "Enter your Tencent Cloud SecretId and SecretKey in Settings › OCR & Translate first";
+"腾讯 OCR 响应异常" = "Unexpected Tencent OCR response";
+"请先在「设置 → 识字与翻译」填写有道智云应用 ID 与密钥" = "Enter your Youdao app ID and secret in Settings › OCR & Translate first";
+"有道 OCR 响应异常" = "Unexpected Youdao OCR response";
+"请先填写有效的自定义 OCR 接口 URL" = "Enter a valid custom OCR URL first";
+"未能按路径「%@」提取到文字" = "Couldn't extract text at path “%@”";
+"截图编码失败" = "Failed to encode the screenshot";
+"尚未配置可用的 AI 大模型接口，请前往「设置 → 模型与服务」添加" = "No AI service is set up. Add one in Settings › Services";
+"无效的视觉大模型接口地址：%@" = "Invalid vision model endpoint: %@";
+"视觉模型请求失败 (HTTP %@)：%@" = "Vision model request failed (HTTP %@): %@";
+"视觉大模型未返回可识别文本" = "The vision model returned no text";
+"样本图生成失败" = "Failed to create the test image";
+"✗ Apple Vision 未识别到样本文字" = "✗ Apple Vision didn't recognize the test text";
+"✓ 离线就绪 (%@ms) · 识别：%@" = "✓ Offline OCR ready (%@ ms) · Read: %@";
+"✓ 连通正常 (%@ms) · 识别：%@" = "✓ Connected (%@ ms) · Read: %@";
+"✗ 凭据未就绪：%@" = "✗ Credentials not ready: %@";
+"已回退离线" = "used offline recognition";
+"✓ 连通正常 (%@ms) · %@" = "✓ Connected (%@ ms) · %@";
+
+/* OCR/LatexRecognitionService.swift */
+"公式截图编码失败" = "Failed to encode the formula image";
+"无效的公式识别接口地址：%@" = "Invalid formula service endpoint: %@";
+"识别请求失败 (HTTP %@)：%@" = "Recognition request failed (HTTP %@): %@";
+"未识别到有效的数学公式" = "No math formula recognized";
+"尚未填写 SimpleTex Token，已自动使用本地离线基础识别（点击「设置」填入免费 Token）" = "No SimpleTex token yet, so basic offline recognition was used (click Settings to add a free token)";
+"尚未填写 Mathpix App ID / Key，已自动使用本地离线基础识别" = "No Mathpix App ID / Key yet, so basic offline recognition was used";
+"尚未配置视觉大模型或 SimpleTex，当前为离线基础识别（前往「设置 → 识字与翻译」配置）" = "No vision model or SimpleTex set up, so basic offline recognition was used (set one up in Settings › OCR & Translate)";
+"离线基础模式仅支持行内符号，复杂分式/矩阵建议切至 SimpleTex 或视觉大模型" = "Basic offline mode handles simple inline math only. Use SimpleTex or a vision model for fractions and matrices";
+"Apple Vision 离线基础" = "Apple Vision (basic offline)";
+"SimpleTex 识别返回为空" = "SimpleTex returned nothing";
+"Mathpix 未返回公式" = "Mathpix returned no formula";
+
+/* OCR/LatexResultController.swift */
+"正在识别 LaTeX 公式…" = "Recognizing the LaTeX formula…";
+"未识别到公式内容" = "No formula recognized";
+"✓ %@ · %@ms · 已复制" = "✓ %@ · %@ ms · Copied";
+"✓ 已复制（%@）" = "✓ Copied (%@)";
+"复制 %@ (⌘↩)" = "Copy %@ (⌘↩)";
+"%@ 字符 · 编辑源码实时预览" = "%@ chars · Edit the source to update the preview";
+"重识" = "Retry";
+"设置" = "Settings";
+"前往「设置 → 识字与翻译」配置公式引擎与密钥" = "Set the formula engine and keys in Settings › OCR & Translate";
+"左侧原图对照 · 右侧源码实时联动预览" = "Original on the left · Source and live preview on the right";
+"公式渲染预览" = "Preview";
+"去设置" = "Settings";
+"0 字符" = "0 chars";
+"贴原图到桌面" = "Pin Image";
+"复制公式 (⌘↩)" = "Copy Formula (⌘↩)";
+
+/* OCR/OCRResultController.swift */
+"截图识字与翻译" = "Text & Translation";
+"截图提取文字" = "Extracted Text";
+"复制译文 (⌘↩)" = "Copy Translation (⌘↩)";
+"复制文本 (⌘↩)" = "Copy Text (⌘↩)";
+"正在离线识别…" = "Recognizing offline…";
+"等待文字识别后立即翻译…" = "Will translate as soon as the text is recognized…";
+"正在按防纠错原样重识…" = "Re-reading in exact (code) mode…";
+"正在按高精度模式重识…" = "Re-reading in high-accuracy mode…";
+"未识别到文字或二维码" = "No text or QR code recognized";
+"✓ 已自动复制 · %@ 字" = "✓ Copied · %@ chars";
+"✓ 识别完成 · %@ 字" = "✓ Done · %@ chars";
+"二维码：%@" = "QR code: %@";
+"✓ 已复制左图划选（%@ 字）" = "✓ Copied the selection (%@ chars)";
+"✓ 已复制左图划选文本" = "✓ Copied the selected text";
+"✓ 已复制选中译文（%@ 字）" = "✓ Copied the selected translation (%@ chars)";
+"正在翻译…" = "Translating…";
+"等待识别原文…" = "Waiting for the recognized text…";
+"✓ 已复制全文译文（%@ 字）" = "✓ Copied the full translation (%@ chars)";
+"✓ 已复制选中文本（%@ 字）" = "✓ Copied the selected text (%@ chars)";
+"✓ 已复制全文（%@ 字）" = "✓ Copied all text (%@ chars)";
+"%@ 行 · %@ 字" = "%@ lines · %@ chars";
+"翻译对照" = "Translate";
+"高亮字块" = "Highlight";
+"✓ 已切换并复制 · %@ 字" = "✓ Switched and copied · %@ chars";
+"原图支持直接划选局部词句 (⌘C)" = "Select text right on the image (⌘C)";
+"复制码值" = "Copy Code";
+"✓ 二维码内容已复制" = "✓ QR code content copied";
+"打开链接" = "Open Link";
+"0 行 · 0 字" = "0 lines · 0 chars";
+"代码防纠错" = "Exact Mode";
+
+/* OCR/OCRResultTranslation.swift */
+"快速切换文字识别引擎（Apple 离线 / AI 视觉 / 百度 / 腾讯 / 有道 / 自定义 HTTP）" = "Switch the OCR engine (Apple offline / AI vision / Baidu / Tencent / Youdao / custom HTTP)";
+"前往「设置 → 识字与翻译」统一配置 OCR、公式与翻译引擎" = "Set up OCR, formula and translation engines in Settings › OCR & Translate";
+"正在用「%@」识别…" = "Recognizing with %@…";
+"⚠ %@（已回退离线）" = "⚠ %@ (used offline recognition)";
+"复制表格" = "Copy Table";
+"复制为 Markdown 表格（按住 ⌥ 点击复制 TSV，可直接粘贴进 Excel / Numbers 分列）" = "Copy as a Markdown table (⌥-click to copy TSV for Excel / Numbers)";
+"✓ 已复制 TSV 表格（%@×%@）" = "✓ Copied TSV table (%@×%@)";
+"✓ 已复制 Markdown 表格（%@×%@）" = "✓ Copied Markdown table (%@×%@)";
+"实时译文" = "Translation";
+"重译" = "Retranslate";
+"按当前原文与所选翻译引擎重新翻译" = "Translate the current text again with the selected service";
+"接口设置" = "Services";
+"正在请求翻译…" = "Requesting translation…";
+" (备选)" = " (fallback)";
+"翻译未完成：%@\n\n点击上方「接口设置」可切换免费的 macOS 原生离线翻译或检查 API Key。" = "Translation failed: %@\n\nClick Services above to switch to free macOS offline translation or check your API key.";
+"翻译未完成" = "Translation failed";
+"保持换行" = "Keep Lines";
+"合并段落" = "Merge";
+
+/* OCR/ResultWindowChrome.swift */
+"当前已置顶浮于其他窗口上方（点击取消置顶）" = "Floating above other windows (click to stop)";
+"置顶此窗口（默认常规层级，允许切换其他应用自然覆盖）" = "Keep this window on top";
+"当前深色外观（点击切换为浅色瓷白外观）" = "Dark appearance (click for light)";
+"当前浅色外观（点击切换为深色极客外观）" = "Light appearance (click for dark)";
+
+/* System/ClipboardAndSave.swift */
+"默认 · %@" = "Default · %@";
+"桌面" = "Desktop";
+"下载" = "Downloads";
+"图片" = "Pictures";
+"文稿" = "Documents";
+"保存截图" = "Save Screenshot";
+
+/* System/DraggableAppCardView.swift */
+"拖到上方权限列表中松手" = "Drop into the permission list above";
+"按住拖入上方" = "Drag up";
+
+/* System/MSnipUITheme.swift */
+"未选择" = "None";
+
+/* System/QuickAccessOverlay.swift */
+"已完成" = "Done";
+"✓ 已再次复制截图到剪贴板" = "✓ Copied the screenshot again";
+"✓ 已复制 %@ 文件到剪贴板" = "✓ Copied the %@ file to the clipboard";
+"✓ 已复制 %@ 文件" = "✓ Copied the %@ file";
+"复制文件" = "Copy File";
+"标注" = "Edit";
+"识字" = "OCR";
+"访达" = "Finder";
+"拖拽缩略图直接发送录屏文件" = "Drag the thumbnail to share the recording";
+"拖拽缩略图直接发送图片 · 点击复制" = "Drag the thumbnail to share the image · Click to copy";
+"拖拽即可发送" = "Drag to share";
+
+/* Shelf/ShelfPanelController.swift */
+"已挂架 %@ 个文件" = "Added %@ file(s) to the Shelf";
+"已将图片挂上暂存架" = "Added the image to the Shelf";
+"已将文本挂上暂存架" = "Added the text to the Shelf";
+"剪贴板暂无可加入的图片、文件或文本" = "The clipboard has no image, file or text to add";
+"向左翻页" = "Previous page";
+"向右翻页" = "Next page";
+"暂无条目 · 截图与录屏自动收录于此，或直接拖入文件 / 文字" = "Nothing here yet · Screenshots and recordings appear here, or drag in files and text";
+
+/* Shelf/ShelfStoreAndWatcher.swift */
+"文本片段" = "Text snippet";
+"已挂架 %@ 个剪贴板文件" = "Added %@ clipboard file(s) to the Shelf";
+"已将剪贴板图片挂上暂存架" = "Added the clipboard image to the Shelf";
+"已将剪贴板文本挂上暂存架" = "Added the clipboard text to the Shelf";
+"并排对比" = "Side by side";
+"文件" = "File";
+"%@ 字" = "%@ chars";
+"已复制文件：%@" = "Copied file: %@";
+"已复制暂存文本 (%@ 字)" = "Copied the text (%@ chars)";
+"截图 %@" = "Screenshot %@";
+
+/* Shelf/ShelfViews.swift */
+"标注与编辑" = "Annotate & edit";
+"贴图到桌面" = "Pin to desktop";
+"提取文字 (OCR)" = "Extract text (OCR)";
+"从暂存架移除" = "Remove from Shelf";
+"点击复制文件 · 拖拽直接分享" = "Click to copy the file · Drag to share";
+"点击复制 · 拖拽分享 · ⌘+点击多选拼图" = "Click to copy · Drag to share · ⌘-click to select for a collage";
+"取消钉住（离开后自动收起）" = "Unpin (the Shelf closes when you move away)";
+"钉住暂存架保持展开" = "Pin the Shelf open";
+"收起暂存架 (Esc)" = "Close the Shelf (Esc)";
+"将当前剪贴板图片、文件或文本加入暂存架" = "Add the clipboard image, file or text to the Shelf";
+"打开多图拼接与合并 PDF 窗口（⌘+点击卡片可先自选顺序）" = "Open Collage & Merge PDF (⌘-click cards first to choose the order)";
+"%@ 项" = "%@ items";
+"剪贴板" = "Clipboard";
+"拼图 (%@)" = "Collage (%@)";
+"拼图 / PDF" = "Collage / PDF";
+
+/* Overlay/LongShotSession.swift */
+"长截图 · 在框内向下滚轮 (%@ × %@)" = "Scrolling capture · Scroll down inside the frame (%@ × %@)";
+"横向长截图请手动按住 ⇧+滚轮 或双指横向滑动" = "For horizontal capture, hold ⇧ while scrolling or swipe sideways with two fingers";
+"开启「辅助功能」后可用自动滚动，当前可直接手动滚轮" = "Auto-scroll needs Accessibility permission · You can scroll manually now";
+"横向长截图 · 在框内向右滑动页面拼接" = "Horizontal capture · Scroll right inside the frame";
+"纵向长截图 · 在框内向下滚轮拼接" = "Vertical capture · Scroll down inside the frame";
+"暂无可撤回的上一段拼接" = "Nothing to undo";
+"已撤回上一段 · %@ × %@ px · 可继续滚动" = "Undid the last segment · %@ × %@ px · Keep scrolling";
+"横向长截图 · 在框内向右滚动 (%@ × %@)" = "Horizontal capture · Scroll right inside the frame (%@ × %@)";
+"正在拼接 · %@ × %@ px · ⌘Z 撤回 · ⌘↩ 完成" = "Stitching · %@ × %@ px · ⌘Z undo · ⌘↩ finish";
+"⚠ 跨屏略快：往回滚可对齐，继续滚动自动续接" = "⚠ Scrolled a bit fast: scroll back to realign, or keep going";
+"已达最大拼接长度 (%@ × %@ px)，请点击完成" = "Reached the maximum length (%@ × %@ px). Click Done";
+"✓ 已滚动到底部 · %@ × %@ px" = "✓ Reached the bottom · %@ × %@ px";
+"⚠ 未检测到页面滚动：请确认窗口焦点或手动在框内滚轮" = "⚠ The page didn't scroll: check the window has focus, or scroll inside the frame";
+
+/* Overlay/LongShotViews.swift */
+"长截图 · 请在框内向下滚动滚轮" = "Scrolling capture · Scroll down inside the frame";
+"长图预览" = "Preview";
+"等待画面…" = "Waiting…";
+"停止自动滚动" = "Stop auto-scroll";
+"平滑自动向下滚动（需辅助功能权限）" = "Scroll down automatically (needs Accessibility)";
+"停止滚动" = "Stop";
+"自动滚动" = "Auto";
+"当前纵向长截图 · 点击切换为横向向右长截图" = "Vertical capture · Click to switch to horizontal";
+"当前横向长截图 · 点击切换为纵向向下长截图" = "Horizontal capture · Click to switch to vertical";
+"撤回上一段拼接 (⌘Z)" = "Undo last segment (⌘Z)";
+"完成并直接进入标注编辑" = "Finish and annotate";
+"长图识字 (OCR)" = "Extract text (OCR)";
+"长图翻译" = "Translate";
+"长图贴到屏幕 (%@)" = "Pin to screen (%@)";
+"保存长图到默认目录（按住 ⌥ 另存为）" = "Save to the default folder (⌥ to Save As)";
+"取消长截图 (Esc)" = "Cancel (Esc)";
+"完成并复制长图到剪贴板 (⌘↩ / ↩)" = "Finish and copy to the clipboard (⌘↩ / ↩)";
+
+/* Overlay/OverlayHUDViews.swift (shortcut tips panel) */
+"单击 / 拖拽" = "Click / drag";
+"吸附窗口 / 框选录屏区" = "Snap to window / select area";
+"滚轮 / 方向键" = "Scroll / arrows";
+"切窗口层级 / 1px 微调" = "Change window layer / nudge 1px";
+"切换回截图模式" = "Back to screenshot mode";
+"右键 / Esc" = "Right-click / Esc";
+"退出录屏" = "Exit recording";
+"↩ / 双击" = "↩ / double-click";
+"开始 3-2-1 倒计时录屏" = "Start recording after 3-2-1";
+"方向键" = "Arrows";
+"1px 微调录屏选区" = "Nudge the area 1px";
+"对齐窗口 / 上次选区" = "Snap to window / last area";
+"重选录屏区域" = "Reselect the area";
+"复制色值 / 切格式" = "Copy color / change format";
+"像素测距 / 复制坐标" = "Measure / copy coordinates";
+"相对坐标 / 显隐放大镜" = "Relative coords / magnifier";
+"直接贴图 / 一键快存" = "Pin / Quick Save";
+"识字 / 原位翻译" = "OCR / translate in place";
+"长截图 / 录视频" = "Scrolling capture / record";
+"上次选区 / 对齐窗口" = "Last area / snap to window";
+"切层级 / 1px 微调" = "Change layer / nudge 1px";
+"复制截图并退出" = "Copy and exit";
+"贴图 / 一键快存" = "Pin / Quick Save";
+"框 箭 笔 字 马赛克 橡皮" = "Shape, arrow, pen, text, mosaic, eraser";
+"调工具大小 / 撤销" = "Tool size / undo";
+"识字 / 公式 / 翻译" = "OCR / formula / translate";
+"长截图 / 录制视频" = "Scrolling capture / record";
+"取消选框" = "Cancel selection";
+"录屏 · %@,%@  %@ × %@ px" = "Record · %@,%@  %@ × %@ px";
+"圆角 %@%" = "Radius %@%";
+"发光边 %@%" = "Glow %@%";
+"另存为 / 其他位置…" = "Save As / Other Location…";
+"自由选择文件夹或修改文件名 (⌘S / ⇧S)" = "Choose a folder or rename the file (⌘S / ⇧S)";
+
+/* Overlay/OverlayInPlaceOCR.swift */
+"调节圆角比例（B · 滚轮微调 · ⌥+点击归零）" = "Corner radius (B · scroll to adjust · ⌥-click to reset)";
+"调节发光边强度（G · 滚轮调节 · ⌥+点击关闭）" = "Glow strength (G · scroll to adjust · ⌥-click to turn off)";
+"对齐底层应用窗口（⌥+点击导出独立透明阴影窗口）" = "Snap to the window underneath (⌥-click to export it with a transparent shadow)";
+"请先框选需要识别文字的区域" = "Select the area with text first";
+"已用「%@」识别 %@ 字并复制" = "%@ recognized %@ characters and copied them";
+"已用「%@」识别 %@ 字" = "%@ recognized %@ characters";
+"%@ · 框内仍可划词" = "%@ · You can still select text in the frame";
+"双栏对照窗 ›" = "Side by Side ›";
+"已识别 %@ 字并复制 · 可直接在框内划词或点工具继续标注" = "Recognized %@ characters and copied them · Select text in the frame or keep annotating";
+"已识别 %@ 字 · 可直接在框内划词或按 ⌘C 复制" = "Recognized %@ characters · Select text in the frame or press ⌘C";
+"识别到二维码链接：%@" = "QR code link: %@";
+"识别到二维码/条码：%@" = "QR code / barcode: %@";
+"复制码值 ›" = "Copy Code ›";
+"✓ 已复制二维码/条码内容" = "✓ Copied the code content";
+"当前位置下方未检测到独立应用窗口" = "No app window found under the pointer";
+"已对齐窗口：%@（⌥+点击可直出透明阴影图）" = "Snapped to %@ (⌥-click to export with a transparent shadow)";
+"当前窗口" = "the current window";
+
+/* Overlay/OverlayInPlaceTranslate.swift */
+"切换目标语种并原位重译" = "Translate Again Into";
+"打开双栏流式对照窗…" = "Open Side by Side…";
+"退出原位翻译" = "Exit Translation";
+"原图预览中" = "Showing original";
+"已翻译 · 按住对比 · 右键切语种" = "Translated · Hold to compare · Right-click to change language";
+"请先框选需要原位翻译的区域" = "Select the area to translate first";
+"离线翻译" = "Offline translation";
+"正在用「%@」译为%@…" = "Translating into %2$@ with %1$@…";
+"选区内未检测到可翻译的文字" = "No text to translate in the selection";
+"✓ 已用「%@」译为%@ · ↩ 复制 / %@ 贴图 / 右键切语种" = "✓ %@ translated into %@ · ↩ copy / %@ pin / right-click to change language";
+"双栏流式对照 ›" = "Side by Side ›";
+"翻译失败：%@" = "Translation failed: %@";
+"配置翻译接口 ›" = "Set Up Translation ›";
+
+/* Overlay/OverlayInteraction.swift */
+"输入胶囊标签文字（⌘B 切换纯字）" = "Label text (⌘B for plain text)";
+"输入文字（⌘B 切胶囊底色）" = "Type text (⌘B for a label background)";
+
+/* Overlay/OverlayKeyboardAndExport.swift */
+"已复制划选文字" = "Copied the selected text";
+"已复制标注图形 · 按 ⌘V 粘贴（⌘D 直接克隆）" = "Copied the shape · ⌘V to paste (⌘D to duplicate)";
+"色值 %@ 已复制" = "Color %@ copied";
+"当前位置未命中独立应用窗口，请将鼠标移至目标窗口上再按 F 或 ⇧↩" = "No app window under the pointer. Move it over a window, then press F or ⇧↩";
+
+/* Overlay/OverlayMagnifier.swift (short labels in the magnifier) */
+"相对 (%@, %@)" = "Rel (%@, %@)";
+"绝对 (%@, %@)" = "Abs (%@, %@)";
+"左键" = "Click";
+"吸色" = "Pick";
+"色值" = "Color";
+"格式" = "Format";
+"关距" = "Stop";
+"测距" = "Ruler";
+"坐标" = "XY";
+"绝对" = "Abs";
+"相对" = "Rel";
+"显隐" = "Lens";
+
+/* Overlay/OverlaySession.swift */
+"识字 · " = "OCR · ";
+"静默识字 · " = "Silent OCR · ";
+"翻译 · " = "Translate · ";
+"长截图 · " = "Scrolling · ";
+"公式 · " = "Formula · ";
+"录屏 · " = "Record · ";
+
+/* Overlay/OverlaySnapAndLayers.swift */
+"  ·  %@ %@/%@ 滚轮切层" = "  ·  %@ %@/%@ scroll for layers";
+"全屏" = "Screen";
+"窗口" = "Window";
+"控件" = "Element";
+"区域" = "Area";
+"快捷键操作" = "Shortcuts";
+"按 %@ 隐藏" = "%@ to hide";
+
+/* Overlay/OverlayToolbarActions.swift */
+"请先框选或悬停要滚动截取的区域" = "Select or hover over the area to scroll first";
+"长截图区域至少需 48 × 64 pt" = "The scrolling area must be at least 48 × 64 pt";
+"请先点击窗口或拖拽框选要录制的区域" = "Click a window or drag to select the area to record first";
+"录屏选区至少需 48 × 48 pt" = "The recording area must be at least 48 × 48 pt";
+"请先框选需要智能打码的区域" = "Select the area to redact first";
+"选区内未检测到 API Key、邮箱、手机号、身份证或 IP" = "No API keys, emails, phone numbers, ID numbers or IPs found in the selection";
+"✓ 已一键遮盖 %@ 处隐私敏感信息（可按 ⌘Z 撤回）" = "✓ Redacted %@ item(s) of sensitive info (⌘Z to undo)";
+"关闭发光边 (0%)" = "Turn off glow (0%)";
+"左右拖拽或滚轮调节发光边强度（0%–100%）" = "Drag or scroll to set the glow (0%–100%)";
+"归零圆角 (0%)" = "Reset radius (0%)";
+"左右拖拽或滚轮调节圆角比例（100% 为胶囊/正圆）" = "Drag or scroll to set the corner radius (100% is a pill / circle)";
+
+/* Overlay/ToolbarItemsAndSubbar.swift */
+"形状：矩形 (%@) / 椭圆 (⇧%@) / 聚光灯高亮" = "Shapes: rectangle (%@) / ellipse (⇧%@) / spotlight";
+"画笔 (%@) / 荧光笔 (⇧%@) / 直线 (4)" = "Pen (%@) / highlighter (⇧%@) / line (4)";
+"箭头指示 (%@)" = "Arrow (%@)";
+"文字标注 (%@ · 按 %@ 切胶囊底色)" = "Text (%@ · %@ toggles the label background)";
+"步骤序号 ①②③ (%@ · 拖拽可拉出箭头)" = "Step numbers ①②③ (%@ · drag to add an arrow)";
+"马赛克 (%@) / 高斯毛玻璃 (⇧%@)" = "Mosaic (%@) / blur (⇧%@)";
+"橡皮擦：点击或涂抹擦除标注 (%@)" = "Eraser: click or brush over annotations (%@)";
+"撤销 (⌘Z)" = "Undo (⌘Z)";
+"重做 (⌘⇧Z)" = "Redo (⌘⇧Z)";
+"放弃修改 (Esc)" = "Discard changes (Esc)";
+"更新贴图 (↩)" = "Update the pin (↩)";
+"滚动长截图 (%@)" = "Scrolling capture (%@)";
+"选区录制 GIF / MP4 视频 (%@)" = "Record the selection as GIF / MP4 (%@)";
+"正在页内实况识字：可直接划词复制（再次点击返回标注 · ⌥+点击打开双栏面板）" = "Live text is on: select text to copy it (click again to go back to annotating · ⌥-click for side by side)";
+"提取文字：在当前选区内直接划选文字 (%@ · ⌥+点击打开双栏面板)" = "Extract text: select text right in the selection (%@ · ⌥-click for side by side)";
+"提取文字：直接打开双栏对照面板 (%@ · ⌥+点击页内划词)" = "Extract text: open side by side (%@ · ⌥-click to select in place)";
+"提取文字：直接关闭截图并静默识别复制 (%@ · ⌥+点击打开双栏面板)" = "Extract text: close the capture and copy the text (%@ · ⌥-click for side by side)";
+"识别 LaTeX 数学公式与实时预览 (⇧%@)" = "Recognize a LaTeX formula with live preview (⇧%@)";
+"正在页内原位翻译：按住画面对比原图，按 ↩ 复制翻译图（再次点击还原 · ⌥+点击打开双栏面板）" = "Translated in place: hold to compare with the original, ↩ copies the translated image (click again to restore · ⌥-click for side by side)";
+"截图翻译：直接打开双栏流式翻译面板 (%@ · ⌥+点击原位译文)" = "Translate: open the side-by-side window (%@ · ⌥-click to translate in place)";
+"截图翻译：原位替换译文 (%@ · ⌥+点击打开双栏流式面板)" = "Translate: replace the text in place (%@ · ⌥-click for side by side)";
+"贴到桌面 (%@)" = "Pin to desktop (%@)";
+"贴到桌面 (%@ / %@)" = "Pin to desktop (%@ / %@)";
+"一键保存到默认目录 (%@ · ⌘S 另存为)" = "Save to the default folder (%@ · ⌘S to Save As)";
+"选择其他保存目录 / 另存为 (⌘S)" = "Choose another folder / Save As (⌘S)";
+"退出截图 (%@ / Esc / 右键)" = "Exit (%@ / Esc / right-click)";
+"复制到剪贴板 (%@ / ↩ / 双击选区)" = "Copy to the clipboard (%@ / ↩ / double-click the selection)";
+"拖动进度条调节大小（方向键 ↑↓←→ 或滚轮也可快速调大缩小）" = "Drag to set the size (arrow keys or the scroll wheel work too)";
+"矩形框 (R)" = "Rectangle (R)";
+"椭圆圈记 (⇧R)" = "Ellipse (⇧R)";
+"聚光灯高亮（框内清晰、框外柔和压暗）" = "Spotlight (dims everything outside the box)";
+"自由画笔 (D)" = "Pen (D)";
+"荧光马克笔 (⇧D)" = "Highlighter (⇧D)";
+"直线 (4)" = "Line (4)";
+"像素马赛克 (M)" = "Mosaic (M)";
+"高斯毛玻璃 (⇧M)" = "Blur (⇧M)";
+"切换圆角胶囊底色标签 (K / ⌘B)" = "Toggle the rounded label background (K / ⌘B)";
+"胶囊底" = "Pill";
+"小号 (2)" = "Small (2)";
+"中号 (5)" = "Medium (5)";
+"大号 (10)" = "Large (10)";
+"一键智能隐私打码：自动识别并遮盖 API Key、邮箱、手机号、身份证与 IP" = "Auto-redact: find and cover API keys, emails, phone numbers, ID numbers and IPs";
+"一键隐码" = "Redact";
+"清空当前全部标注（可用 ⌘Z 撤销）" = "Clear all annotations (⌘Z to undo)";
+"切换标注颜色" = "Annotation color";
+"屏幕取色吸管 (I / ⌥+点击)" = "Eyedropper (I / ⌥-click)";
+
+/* Overlay/ToolbarView.swift */
+"按住拖拽移动工具栏位置" = "Drag to move the toolbar";
+"录屏输出格式：%@" = "Recording format: %@";
+"已开启：录屏显示点击波纹与按键提示（点击关闭）" = "On: recordings show click ripples and key presses (click to turn off)";
+"已关闭：点击开启录屏点击波纹与按键提示" = "Off: click to show click ripples and key presses";
+"切回截图工具栏 (%@)" = "Back to the screenshot toolbar (%@)";
+"退出录屏 (%@ / Esc)" = "Exit recording (%@ / Esc)";
+"开始录制当前选区 (↩ / 双击选区)" = "Record the selection (↩ / double-click it)";
+
+/* Collage/CollageCanvasViews.swift */
+"点击预览图可打开全尺寸高清大图（滚轮缩放 · 拖拽平移）" = "Click the preview to open it full size (scroll to zoom · drag to pan)";
+"编辑 / 标注合成拼图…" = "Edit / Annotate Collage…";
+"全尺寸大图预览" = "View Full Size";
+"松手即可加入拼图素材" = "Drop to add to the collage";
+"大图" = "Zoom";
+"另有 +%@ 页（导出包含全部）" = "+%@ more pages (all are exported)";
+"拖入图片 · ⌘V 粘贴 · 点击下方加图" = "Drag images here · ⌘V to paste · or click Add below";
+"%@ · %@×%@\n单击看大图 · 左下 ✎ 编辑/裁剪 · 拖拽换序 · 右键更多" = "%@ · %@×%@\nClick to view · ✎ bottom left to edit/crop · Drag to reorder · Right-click for more";
+"编辑 / 裁剪 / 标注此图…" = "Edit / Crop / Annotate…";
+"顺时针旋转 90°" = "Rotate 90° Clockwise";
+"水平镜像翻转" = "Flip Horizontally";
+"还原初始原图" = "Revert to Original";
+"从列表中移除" = "Remove";
+"页码" = "Page No.";
+"角标" = "Badge";
+
+/* Collage/CollageControls.swift */
+"拖动微调%@，双击恢复默认 (%@%@)" = "Drag to adjust %@, double-click to reset (%@%@)";
+"透明底" = "Clear";
+"加图" = "Add";
+"纯白" = "White";
+"柔灰" = "Soft Gray";
+"暖米" = "Warm Beige";
+"冰雾蓝" = "Ice Blue";
+"深灰蓝" = "Slate";
+"暗炭" = "Charcoal";
+"纯黑" = "Black";
+"用放大镜从屏幕或截图中吸取任意背景色" = "Pick a background color from the screen with the magnifier";
+
+/* Collage/CollageImageLightbox.swift */
+"适应" = "Fit";
+"%@  ·  %@%（滚轮缩放 · 拖拽平移 · 双击 1:1 · Esc 关闭）" = "%@  ·  %@% (scroll to zoom · drag to pan · double-click for 1:1 · Esc to close)";
+
+/* Collage/CollageInlineEditor.swift */
+"返回" = "Back";
+"返回拼图工作台 (Esc)" = "Back to the collage (Esc)";
+"裁剪" = "Crop";
+"自由框选裁剪画面" = "Drag to crop";
+"旋转" = "Rotate";
+"顺时针无损旋转 90°" = "Rotate 90° clockwise (lossless)";
+"翻转" = "Flip";
+"还原" = "Revert";
+"恢复编辑前初始图像" = "Restore the image from before editing";
+"复制标注后的成品到剪贴板 (⌘C)" = "Copy the result to the clipboard (⌘C)";
+"将标注后的成品贴到桌面" = "Pin the result to the desktop";
+"保存标注后的高清图片 (⌘S)" = "Save the result (⌘S)";
+"完成 (↩)" = "Done (↩)";
+"应用当前修改并返回 (↩)" = "Apply changes and go back (↩)";
+"未检测到敏感信息" = "No sensitive info found";
+"✓ 已自动遮盖 %@ 处隐私信息" = "✓ Redacted %@ item(s)";
+"应用修改 (↩)" = "Apply (↩)";
+"拼图参数已调整，原合成标注已暂存" = "Layout changed · Your collage annotations are set aside";
+"恢复标注 ›" = "Restore Annotations ›";
+"已标注" = "Edited";
+"素材 #%@" = "Image #%@";
+"标注合成拼图" = "Annotate Collage";
+
+/* Collage/CollageStudioController.swift */
+"紧贴" = "Tight";
+"适中" = "Normal";
+"展示" = "Wide";
+"拼图与 PDF" = "Collage & PDF";
+"拼成一图" = "Collage";
+"多页 PDF" = "PDF Pages";
+"✓ 已复制当前预览图到剪贴板 · %@ × %@ px" = "✓ Copied the preview to the clipboard · %@ × %@ px";
+"粘贴剪贴板图片或文件 (⌘V)" = "Paste an image or file from the clipboard (⌘V)";
+"最近" = "Recent";
+"从最近截图中挑选添加" = "Add from recent screenshots";
+"清空所有素材" = "Remove all images";
+"横向" = "Row";
+"纵向" = "Column";
+"网格" = "Grid";
+"2 列" = "2 cols";
+"3 列" = "3 cols";
+"4 列" = "4 cols";
+"留白与圆角" = "Spacing";
+"间距" = "Gap";
+"边距" = "Margin";
+"圆角" = "Radius";
+"底色" = "Fill";
+"点击打开极客取色板（2D 色盘 / #HEX / 精选纯色与多款渐变）" = "Open the color picker (color field / #HEX / presets and gradients)";
+"从屏幕或截图中吸取背景色" = "Pick the background color from the screen";
+"柔影" = "Shadow";
+"对齐" = "Align";
+"齐平" = "Fill";
+"居中" = "Center";
+"顶齐" = "Top";
+"画幅" = "Ratio";
+"自动" = "Auto";
+"无" = "None";
+"序号" = "Steps";
+"对比" = "Compare";
+"第N页" = "Page N";
+"水印" = "Watermark";
+"关" = "Off";
+"角落" = "Corner";
+"平铺" = "Tiled";
+"水印文字（留空默认 MSnip）" = "Watermark (default: MSnip)";
+"点击底部缩略图左下角 ✎ 可在窗内直接裁剪/打码单页；页码与水印以原生矢量写入。" = "Click ✎ on a thumbnail below to crop or redact that page. Page numbers and watermarks are written as vectors.";
+"复制拼图 (⌘C)" = "Copy Collage (⌘C)";
+"直接在当前窗口内对合成拼图画箭头/红框/裁剪/打码" = "Draw arrows and boxes, crop or redact the collage in this window";
+"将合成拼图贴到桌面" = "Pin the collage to the desktop";
+"保存高清拼图文件 (⌘S)" = "Save the collage (⌘S)";
+"导出多页 PDF… (⌘S)" = "Export PDF… (⌘S)";
+"已标注拼图预览" = "Annotated collage";
+"%@拼图预览" = "%@ collage";
+"网页图片" = "Web image";
+"剪贴板暂无图片" = "No image on the clipboard";
+"剪贴板图片" = "Clipboard image";
+"清空当前全部 %@ 张素材？" = "Remove all %@ images?";
+"已完成的拼图标注也将一并清除。" = "Your collage annotations will be removed too.";
+"清空后可重新拖入图片或从最近截图添加。" = "You can drag images in again or add recent screenshots.";
+"取消" = "Cancel";
+"暂无最近截图" = "No recent screenshots";
+"拼图合成失败" = "Failed to create the collage";
+"MSnip-合并文档-%@.pdf" = "MSnip-Merged-%@.pdf";
+"✓ 已合并导出 %@ 页 PDF 文档" = "✓ Exported a %@-page PDF";
+"导出 PDF 失败" = "Failed to export the PDF";
+"共 %@ 页 · 原图无损" = "%@ pages · Original quality";
+"%@ 张 · %@×%@ · 已标注" = "%@ images · %@×%@ · Annotated";
+"%@ 张 · %@×%@" = "%@ images · %@×%@";
+
+/* MSnipCore/Annotation.swift */
+"矩形 (1)" = "Rectangle (1)";
+"椭圆 (2)" = "Ellipse (2)";
+"箭头 (3)" = "Arrow (3)";
+"画笔 (5)" = "Pen (5)";
+"荧光笔 (6)" = "Highlighter (6)";
+"步骤序号 ①②③ (7)" = "Step numbers ①②③ (7)";
+"像素马赛克 (8)" = "Mosaic (8)";
+"毛玻璃模糊 (9)" = "Blur (9)";
+"文字标注 (0)" = "Text (0)";
+"橡皮擦 (E)" = "Eraser (E)";
+"聚光灯高亮" = "Spotlight";
+
+/* MSnipCore/BackdropBeautifier.swift */
+"无衬底" = "No Backdrop";
+"极光蓝紫" = "Aurora";
+"落日暖橙" = "Sunset";
+"森系青翠" = "Forest";
+"极简银灰" = "Silver";
+"暗夜深空" = "Night";
+
+/* MSnipCore/ImageCollageStitcher.swift */
+"横向并排" = "Side by side";
+"纵向长拼" = "Stacked";
+"网格拼图" = "Grid";
+"深炭" = "Charcoal";
+"极光渐变" = "Aurora";
+"透明" = "Transparent";
+"第 %@ 页" = "Page %@";
+"落日珊瑚" = "Coral Sunset";
+"薄荷青空" = "Mint Sky";
+"破晓微光" = "Dawn";
+"暗曜深空" = "Obsidian";
+
+/* MSnipCore/TextPinCardRenderer.swift */
+"\n… (共 %@ 行)" = "\n… (%@ lines)";
+"代码便签" = "Code note";
+"文本便签" = "Text note";
+"%@  ·  %@ 行 · %@ 字" = "%@  ·  %@ lines · %@ chars";

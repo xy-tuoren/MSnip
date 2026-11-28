@@ -12,25 +12,27 @@ extension TranslationSettingsWindow {
         page.addSubview(topStrip)
 
         shortcutModeSegment = GeekSegmentControl(
-            items: ["全局热键 (\(GlobalHotKeyAction.allCases.count))", "截图内按键 (\(CanvasAction.allCases.count))"],
+            items: [L("全局热键 (%@)", GlobalHotKeyAction.allCases.count), L("截图内按键 (%@)", CanvasAction.allCases.count)],
             selectedIndex: 0
         )
         shortcutModeSegment.frame = NSRect(x: 8, y: 8, width: 268, height: 32)
         shortcutModeSegment.onSelect = { [weak self] idx in self?.switchShortcutSubMode(idx) }
         topStrip.addSubview(shortcutModeSegment)
 
-        let auditBtn = GeekButton(title: "无冲突 · 已占热键", symbol: "checkmark.shield", style: .emeraldSoft)
-        auditBtn.toolTip = "点击实时查看 macOS 系统热键占用、后台运行中应用冲突，并支持一键更换推荐键"
+        let auditBtn = GeekButton(title: L("无冲突 · 已占热键"), symbol: "checkmark.shield", style: .emeraldSoft)
+        auditBtn.toolTip = L("点击实时查看 macOS 系统热键占用、后台运行中应用冲突，并支持一键更换推荐键")
         auditBtn.frame = NSRect(x: 286, y: 8, width: 174, height: 32)
         auditBtn.onClick = { [weak self] in self?.presentHotKeyConflictPopover() }
         shortcutAudit.auditButton = auditBtn
         topStrip.addSubview(auditBtn)
 
-        hotKeyEnableLabel = NSTextField(labelWithString: "启用全局热键")
+        hotKeyEnableLabel = NSTextField(labelWithString: L("启用全局热键"))
         hotKeyEnableLabel.font = .systemFont(ofSize: 13.0, weight: .medium)
         hotKeyEnableLabel.textColor = GeekTheme.inkSecondary
         hotKeyEnableLabel.alignment = .right
-        GeekTheme.placeCentered(hotKeyEnableLabel, x: cardW - 258, width: 96, centerY: 24.0)
+        hotKeyEnableLabel.sizeToFit()
+        let enableLabelW = max(96, ceil(hotKeyEnableLabel.frame.width) + 4)
+        GeekTheme.placeCentered(hotKeyEnableLabel, x: cardW - 162 - enableLabelW, width: enableLabelW, centerY: 24.0)
         topStrip.addSubview(hotKeyEnableLabel)
 
         hotKeyEnableSwitch = GeekToggleSwitch(isOn: true)
@@ -42,7 +44,7 @@ extension TranslationSettingsWindow {
         }
         topStrip.addSubview(hotKeyEnableSwitch)
 
-        resetShortcutsBtn = GeekButton(title: "恢复默认", symbol: "arrow.counterclockwise", style: .subtle)
+        resetShortcutsBtn = GeekButton(title: L("恢复默认"), symbol: "arrow.counterclockwise", style: .subtle)
         resetShortcutsBtn.frame = NSRect(x: cardW - 102, y: 8, width: 94, height: 32)
         resetShortcutsBtn.onClick = { [weak self] in self?.resetCurrentShortcutSubMode() }
         topStrip.addSubview(resetShortcutsBtn)
@@ -63,7 +65,7 @@ extension TranslationSettingsWindow {
         let presetCard = GeekCardView(frame: NSRect(x: 28, y: 4, width: cardW, height: 46))
         container.addSubview(presetCard)
 
-        let pLbl = NSTextField(labelWithString: "快捷预设")
+        let pLbl = NSTextField(labelWithString: L("快捷预设"))
         pLbl.font = .systemFont(ofSize: 13.5, weight: .regular); pLbl.textColor = GeekTheme.inkPrimary
         GeekTheme.placeCentered(pLbl, x: 16, width: 68, centerY: 23.0)
         presetCard.addSubview(pLbl)
@@ -81,8 +83,8 @@ extension TranslationSettingsWindow {
         presetCard.addSubview(presetSegment)
         buildPriorityTakeoverCard(in: container, cardW: cardW)
 
-        addSectionHeader("全局触发动作", x: 44, y: 112, in: container)
-        hotKeyHintLabel = NSTextField(labelWithString: "点击键帽录入双键（如 ⌥A、⌃1、F1） · Esc 取消 · ⌫ 停用单项")
+        addSectionHeader(L("全局触发动作"), x: 44, y: 112, in: container)
+        hotKeyHintLabel = NSTextField(labelWithString: L("点击键帽录入双键（如 ⌥A、⌃1、F1） · Esc 取消 · ⌫ 停用单项"))
         hotKeyHintLabel.font = .systemFont(ofSize: 11.5, weight: .regular); hotKeyHintLabel.textColor = GeekTheme.inkMuted
         hotKeyHintLabel.alignment = .right; hotKeyHintLabel.lineBreakMode = .byTruncatingTail
         hotKeyHintLabel.toolTip = hotKeyHintLabel.stringValue
@@ -130,7 +132,7 @@ extension TranslationSettingsWindow {
             row.addSubview(badge)
 
             let pill = GeekHotKeyPill(frame: NSRect(x: docW - 144, y: 12, width: 128, height: 30))
-            pill.toolTip = "点击录入新组合键 · 录入时按 ⌫ 停用该项"
+            pill.toolTip = L("点击录入新组合键 · 录入时按 ⌫ 停用该项")
             pill.onClick = { [weak self] in self?.toggleInlineGlobalHotKey(slot) }
             hotKeyPills[slot] = pill
             row.addSubview(pill)
@@ -160,11 +162,11 @@ extension TranslationSettingsWindow {
             onAppConfigMutated? { $0.clearCustomHotKeys(); $0.hotKeysEnabled = true }
             _ = rescanHotKeyConflicts()
             hotKeyHintLabel.textColor = GeekTheme.emerald
-            hotKeyHintLabel.stringValue = "✓ 已恢复为当前预设方案默认热键"
+            hotKeyHintLabel.stringValue = L("✓ 已恢复为当前预设方案默认热键")
         } else {
             onAppConfigMutated? { $0.resetAllCanvasKeys() }
             canvasKeyHintLabel.textColor = GeekTheme.emerald
-            canvasKeyHintLabel.stringValue = "✓ 已恢复全部截图内按键为默认单键"
+            canvasKeyHintLabel.stringValue = L("✓ 已恢复全部截图内按键为默认单键")
         }
         refreshGeneralAndPermissionsUI()
     }
@@ -191,9 +193,9 @@ extension TranslationSettingsWindow {
             if active != nil && failedRegs.contains(slot) && !conflicts.contains(where: { $0.severity == .blocking }) {
                 conflicts.insert(HotKeyConflict(
                     severity: .blocking,
-                    owner: "系统热键注册",
-                    shortBadge: "注册失败",
-                    detailMessage: "常规 Carbon 热键注册被系统拒绝（已被独占），请更换键位或开启上方「冲突时强制优先接管」",
+                    owner: L("系统热键注册"),
+                    shortBadge: L("注册失败"),
+                    detailMessage: L("常规 Carbon 热键注册被系统拒绝（已被独占），请更换键位或开启上方「冲突时强制优先接管」"),
                     requiresDoublePressConfirm: true
                 ), at: 0)
             }
@@ -210,25 +212,25 @@ extension TranslationSettingsWindow {
                 recording: activeRecordingSlot == slot,
                 modified: isMod,
                 conflict: priorityActive ? nil : top?.severity,
-                prompt: "按下双键…"
+                prompt: L("按下双键…")
             )
         }
         if let btn = shortcutAudit.auditButton {
             let total = blockingCount + warningCount
             if priorityActive && total > 0 {
-                btn.title = "已优先接管 · 查看"
+                btn.title = L("已优先接管 · 查看")
                 btn.symbolName = "bolt.shield"
                 btn.style = .accent
             } else if blockingCount > 0 {
-                btn.title = "\(total) 项冲突 · 查看"
+                btn.title = L("%@ 项冲突 · 查看", total)
                 btn.symbolName = "exclamationmark.triangle"
                 btn.style = .dangerSoft
             } else if warningCount > 0 {
-                btn.title = "\(total) 项预警 · 查看"
+                btn.title = L("%@ 项预警 · 查看", total)
                 btn.symbolName = "exclamationmark.triangle"
                 btn.style = .amberSoft
             } else {
-                btn.title = "无冲突 · 已占热键"
+                btn.title = L("无冲突 · 已占热键")
                 btn.symbolName = "checkmark.shield"
                 btn.style = .emeraldSoft
             }
@@ -239,7 +241,7 @@ extension TranslationSettingsWindow {
                 label: k.uppercased(),
                 recording: activeCanvasRecording == act,
                 modified: k != act.defaultKey,
-                prompt: "按单键…"
+                prompt: L("按单键…")
             )
         }
     }
@@ -251,7 +253,7 @@ extension TranslationSettingsWindow {
         activeRecordingSlot = slot
         onBeginHotKeyRecording?()
         _ = rescanHotKeyConflicts()
-        hotKeyHintLabel.setTextWithTooltip("请按下「\(slot.title)」快捷键（实时检测系统与应用冲突 · Esc 取消 · ⌫ 停用）", color: GeekTheme.accent)
+        hotKeyHintLabel.setTextWithTooltip(L("请按下「%@」快捷键（实时检测系统与应用冲突 · Esc 取消 · ⌫ 停用）", slot.title), color: GeekTheme.accent)
         refreshGeneralAndPermissionsUI()
     }
 
@@ -263,8 +265,8 @@ extension TranslationSettingsWindow {
         activeCanvasRecording = nil
         shortcutAudit.pendingForceCombo = nil
         if hadGlobal && restoreHotKeys { onEndHotKeyRecording?() }
-        hotKeyHintLabel?.setTextWithTooltip("点击键帽录入双键（如 ⌥A、⌃1、F1） · Esc 取消 · ⌫ 停用单项", color: GeekTheme.inkMuted)
-        canvasKeyHintLabel?.setTextWithTooltip("点击键帽直接按单键修改（中英文通用 · 冲突自动互换 · ⌫ 恢复默认）", color: GeekTheme.inkMuted)
+        hotKeyHintLabel?.setTextWithTooltip(L("点击键帽录入双键（如 ⌥A、⌃1、F1） · Esc 取消 · ⌫ 停用单项"), color: GeekTheme.inkMuted)
+        canvasKeyHintLabel?.setTextWithTooltip(L("点击键帽直接按单键修改（中英文通用 · 冲突自动互换 · ⌫ 恢复默认）"), color: GeekTheme.inkMuted)
         refreshGeneralAndPermissionsUI()
     }
 }
@@ -274,8 +276,8 @@ extension TranslationSettingsWindow {
 /// 设置窗口「截图内按键」子页面构建与全局/画布双模式按键录入路由扩展
 extension TranslationSettingsWindow {
     func buildCanvasShortcutsSubPage(in container: GeekFlippedView, cardW: CGFloat) {
-        addSectionHeader("截图画布单键映射", x: 44, y: 8, in: container)
-        canvasKeyHintLabel = NSTextField(labelWithString: "点击键帽直接按单键修改（中英文通用 · 冲突自动互换 · ⌫ 恢复默认）")
+        addSectionHeader(L("截图画布单键映射"), x: 44, y: 8, in: container)
+        canvasKeyHintLabel = NSTextField(labelWithString: L("点击键帽直接按单键修改（中英文通用 · 冲突自动互换 · ⌫ 恢复默认）"))
         canvasKeyHintLabel.font = .systemFont(ofSize: 11.5, weight: .regular)
         canvasKeyHintLabel.textColor = GeekTheme.inkMuted
         canvasKeyHintLabel.alignment = .right
@@ -329,7 +331,7 @@ extension TranslationSettingsWindow {
                 row.addSubview(titleLbl)
 
                 let pill = GeekHotKeyPill(frame: NSRect(x: docW - 108, y: 8, width: 92, height: 28))
-                pill.toolTip = "点击后按下任意单字母键修改（默认 \(act.defaultKey.uppercased())）"
+                pill.toolTip = L("点击后按下任意单字母键修改（默认 %@）", act.defaultKey.uppercased())
                 pill.onClick = { [weak self] in self?.toggleInlineCanvasKey(act) }
                 canvasKeyPills[act] = pill
                 row.addSubview(pill)
@@ -349,7 +351,7 @@ extension TranslationSettingsWindow {
         }
         activeCanvasRecording = action
         canvasKeyHintLabel.textColor = GeekTheme.accent
-        canvasKeyHintLabel.stringValue = "请直接按下「\(action.title)」的单键（无需按 ⌘/⌥ · Esc 取消 · ⌫ 恢复默认 \(action.defaultKey.uppercased())）"
+        canvasKeyHintLabel.stringValue = L("请直接按下「%@」的单键（无需按 ⌘/⌥ · Esc 取消 · ⌫ 恢复默认 %@）", action.title, action.defaultKey.uppercased())
         refreshGeneralAndPermissionsUI()
     }
 
@@ -371,13 +373,13 @@ extension TranslationSettingsWindow {
         if event.keyCode == 51 || event.keyCode == 117 {
             applyGlobalCombo(nil, for: slot)
             hotKeyHintLabel.textColor = GeekTheme.inkSecondary
-            hotKeyHintLabel.stringValue = "已停用「\(slot.title)」全局热键（可随时点击重新绑定或点右上角恢复默认）"
+            hotKeyHintLabel.stringValue = L("已停用「%@」全局热键（可随时点击重新绑定或点右上角恢复默认）", slot.title)
             return true
         }
         guard let combo = KeyCombo.from(event: event) else {
             NSSound.beep()
             hotKeyHintLabel.textColor = GeekTheme.amber
-            hotKeyHintLabel.stringValue = "请按双键组合（如 ⌥A、⌥1、⌘E）或直接按 F1–F19"
+            hotKeyHintLabel.stringValue = L("请按双键组合（如 ⌥A、⌥1、⌘E）或直接按 F1–F19")
             return true
         }
         let cfg = appConfigProvider?() ?? AppConfig()
@@ -391,27 +393,27 @@ extension TranslationSettingsWindow {
         if let internalHit = conflicts.first(where: { $0.owner == "MSnip" }) {
             NSSound.beep()
             shortcutAudit.pendingForceCombo = nil
-            hotKeyHintLabel.setTextWithTooltip("\(internalHit.detailMessage)，请换一个按键", color: GeekTheme.danger)
+            hotKeyHintLabel.setTextWithTooltip(L("%@，请换一个按键", internalHit.detailMessage), color: GeekTheme.danger)
             return true
         }
         if let top = conflicts.first, top.requiresDoublePressConfirm {
             if shortcutAudit.pendingForceCombo != combo {
                 NSSound.beep()
                 shortcutAudit.pendingForceCombo = combo
-                hotKeyHintLabel.setTextWithTooltip("⚠ \(top.detailMessage) · 建议换键（再按一次 \(combo.displayString) 强制绑定）", color: (top.severity == .blocking) ? GeekTheme.danger : GeekTheme.amber)
+                hotKeyHintLabel.setTextWithTooltip(L("⚠ %@ · 建议换键（再按一次 %@ 强制绑定）", top.detailMessage, combo.displayString), color: (top.severity == .blocking) ? GeekTheme.danger : GeekTheme.amber)
                 return true
             }
             shortcutAudit.pendingForceCombo = nil
             applyGlobalCombo(combo, for: slot)
-            hotKeyHintLabel.setTextWithTooltip("⚠ 已强制设为 \(combo.displayString)（\(top.detailMessage)）", color: GeekTheme.amber)
+            hotKeyHintLabel.setTextWithTooltip(L("⚠ 已强制设为 %@（%@）", combo.displayString, top.detailMessage), color: GeekTheme.amber)
             return true
         }
         shortcutAudit.pendingForceCombo = nil
         applyGlobalCombo(combo, for: slot)
         if let warn = conflicts.first {
-            hotKeyHintLabel.setTextWithTooltip("⚠ 已设为 \(combo.displayString) · \(warn.detailMessage)", color: GeekTheme.amber)
+            hotKeyHintLabel.setTextWithTooltip(L("⚠ 已设为 %@ · %@", combo.displayString, warn.detailMessage), color: GeekTheme.amber)
         } else {
-            hotKeyHintLabel.setTextWithTooltip("✓ 「\(slot.title)」已设为 \(combo.displayString) · 系统与运行中应用均无冲突", color: GeekTheme.emerald)
+            hotKeyHintLabel.setTextWithTooltip(L("✓ 「%@」已设为 %@ · 系统与运行中应用均无冲突", slot.title, combo.displayString), color: GeekTheme.emerald)
         }
         return true
     }
@@ -424,7 +426,7 @@ extension TranslationSettingsWindow {
             onAppConfigMutated? { $0.resetCanvasKey(for: action) }
             activeCanvasRecording = nil
             canvasKeyHintLabel.textColor = GeekTheme.emerald
-            canvasKeyHintLabel.stringValue = "✓ 「\(action.title)」已恢复为默认键 \(action.defaultKey.uppercased())"
+            canvasKeyHintLabel.stringValue = L("✓ 「%@」已恢复为默认键 %@", action.title, action.defaultKey.uppercased())
             refreshGeneralAndPermissionsUI()
             return true
         }
@@ -432,13 +434,13 @@ extension TranslationSettingsWindow {
         if flags.contains(.command) || flags.contains(.option) || flags.contains(.control) {
             NSSound.beep()
             canvasKeyHintLabel.textColor = GeekTheme.amber
-            canvasKeyHintLabel.stringValue = "截图内快捷键只需按单个字母键（无需按住 ⌘ / ⌥ / ⌃）"
+            canvasKeyHintLabel.stringValue = L("截图内快捷键只需按单个字母键（无需按住 ⌘ / ⌥ / ⌃）")
             return true
         }
         guard let token = CanvasAction.singleKeyToken(for: event.keyCode) else {
             NSSound.beep()
             canvasKeyHintLabel.textColor = GeekTheme.amber
-            canvasKeyHintLabel.stringValue = "请使用 A–Z 字母或 ; ' , . \\ 单键（数字 1–9 与方向键已保留）"
+            canvasKeyHintLabel.stringValue = L("请使用 A–Z 字母或 ; ' , . \\ 单键（数字 1–9 与方向键已保留）")
             return true
         }
         var swapped: CanvasAction?
@@ -447,9 +449,9 @@ extension TranslationSettingsWindow {
         activeCanvasRecording = nil
         canvasKeyHintLabel.textColor = GeekTheme.emerald
         if let other = swapped {
-            canvasKeyHintLabel.stringValue = "✓ 已设为 \(token.uppercased())（原占用项「\(other.title)」已自动互换为 \(oldKey)）"
+            canvasKeyHintLabel.stringValue = L("✓ 已设为 %@（原占用项「%@」已自动互换为 %@）", token.uppercased(), other.title, oldKey)
         } else {
-            canvasKeyHintLabel.stringValue = "✓ 「\(action.title)」已更新为单键 \(token.uppercased())"
+            canvasKeyHintLabel.stringValue = L("✓ 「%@」已更新为单键 %@", action.title, token.uppercased())
         }
         refreshGeneralAndPermissionsUI()
         return true
@@ -498,7 +500,7 @@ extension TranslationSettingsWindow {
                 guard let self else { return }
                 self.onAppConfigMutated? { c in c.hotKeysEnabled = true; c.setGlobalCombo(combo, for: slot) }
                 _ = self.rescanHotKeyConflicts()
-                self.hotKeyHintLabel.setTextWithTooltip("✓ 「\(slot.title)」已更换为零冲突推荐键 \(combo.displayString)", color: GeekTheme.emerald)
+                self.hotKeyHintLabel.setTextWithTooltip(L("✓ 「%@」已更换为零冲突推荐键 %@", slot.title, combo.displayString), color: GeekTheme.emerald)
                 self.refreshGeneralAndPermissionsUI()
             },
             onApplyBatchRecommended: { [weak self] pairs in
@@ -508,7 +510,7 @@ extension TranslationSettingsWindow {
                     for (slot, combo) in pairs { c.setGlobalCombo(combo, for: slot) }
                 }
                 _ = self.rescanHotKeyConflicts()
-                self.hotKeyHintLabel.setTextWithTooltip("✓ 已一键为 \(pairs.count) 项动作切换为零冲突组合键", color: GeekTheme.emerald)
+                self.hotKeyHintLabel.setTextWithTooltip(L("✓ 已一键为 %@ 项动作切换为零冲突组合键", pairs.count), color: GeekTheme.emerald)
                 self.refreshGeneralAndPermissionsUI()
             },
             onToggleLiveProbe: { [weak self] in self?.toggleLiveHotKeyProbe() },
@@ -532,21 +534,21 @@ extension TranslationSettingsWindow {
             switch outcome {
             case .appTriggered(let appName, let viaWindow):
                 let detail = viaWindow
-                    ? "按下后捕获到「\(appName)」弹出了界面/浮层。可在「\(appName)」设置中改键，或在 MSnip 换用其他组合键。"
-                    : "按下后激活了前台应用「\(appName)」。可在「\(appName)」中关闭该键，或在 MSnip 改用其他组合键。"
-                let entry = LiveProbeLogEntry(timeText: now, title: "🎯 实测命中：由「\(appName)」占用", detail: detail, color: GeekTheme.danger, symbol: "exclamationmark.triangle.fill")
+                    ? L("按下后捕获到「%@」弹出了界面/浮层。可在「%@」设置中改键，或在 MSnip 换用其他组合键。", appName, appName)
+                    : L("按下后激活了前台应用「%@」。可在「%@」中关闭该键，或在 MSnip 改用其他组合键。", appName, appName)
+                let entry = LiveProbeLogEntry(timeText: now, title: L("🎯 实测命中：由「%@」占用", appName), detail: detail, color: GeekTheme.danger, symbol: "exclamationmark.triangle.fill")
                 HotKeyConflictPopover.shared.finishProbing(entry: entry)
-                ToastHUD.show(message: "🎯 实测命中：该快捷键由「\(appName)」占用", subtitle: viaWindow ? "触发了「\(appName)」浮层窗口" : "激活了「\(appName)」")
+                ToastHUD.show(message: L("🎯 实测命中：该快捷键由「%@」占用", appName), subtitle: viaWindow ? L("触发了「%@」浮层窗口", appName) : L("激活了「%@」", appName))
             case .localKeyConflict(let combo, let hit):
-                let entry = LiveProbeLogEntry(timeText: now, title: "⚠ \(combo.displayString) 存在系统或通用冲突", detail: hit.detailMessage, color: GeekTheme.amber, symbol: "exclamationmark.triangle")
+                let entry = LiveProbeLogEntry(timeText: now, title: L("⚠ %@ 存在系统或通用冲突", combo.displayString), detail: hit.detailMessage, color: GeekTheme.amber, symbol: "exclamationmark.triangle")
                 HotKeyConflictPopover.shared.finishProbing(entry: entry)
-                ToastHUD.show(message: "⚠ \(combo.displayString) 存在冲突", subtitle: hit.detailMessage)
+                ToastHUD.show(message: L("⚠ %@ 存在冲突", combo.displayString), subtitle: hit.detailMessage)
             case .localKeyClean(let combo):
-                let entry = LiveProbeLogEntry(timeText: now, title: "✓ 实测通过：\(combo.displayString) 可放心使用", detail: "未触发任何后台应用，且与 macOS 系统热键及通用快捷键均无冲突。", color: GeekTheme.emerald, symbol: "checkmark.shield.fill")
+                let entry = LiveProbeLogEntry(timeText: now, title: L("✓ 实测通过：%@ 可放心使用", combo.displayString), detail: L("未触发任何后台应用，且与 macOS 系统热键及通用快捷键均无冲突。"), color: GeekTheme.emerald, symbol: "checkmark.shield.fill")
                 HotKeyConflictPopover.shared.finishProbing(entry: entry)
-                ToastHUD.show(message: "✓ 实测通过：\(combo.displayString) 未被其他应用占用")
+                ToastHUD.show(message: L("✓ 实测通过：%@ 未被其他应用占用", combo.displayString))
             case .timedOut:
-                let entry = LiveProbeLogEntry(timeText: now, title: "监听已超时（10 秒内未捕获响应）", detail: "若刚按了某快捷键却毫无反应，可能是被无窗口的静默系统热键拦截；可点上方「开始按键实测」重试。", color: GeekTheme.inkSecondary, symbol: "clock")
+                let entry = LiveProbeLogEntry(timeText: now, title: L("监听已超时（10 秒内未捕获响应）"), detail: L("若刚按了某快捷键却毫无反应，可能是被无窗口的静默系统热键拦截；可点上方「开始按键实测」重试。"), color: GeekTheme.inkSecondary, symbol: "clock")
                 HotKeyConflictPopover.shared.finishProbing(entry: entry)
             case .cancelled:
                 HotKeyConflictPopover.shared.finishProbing(entry: nil)

@@ -334,11 +334,11 @@ extension OverlayView {
             if let ref = selection ?? hoveredAutoRect {
                 let rx = px - Int((ref.minX * snapshot.scaleFactor).rounded())
                 let ry = py - Int((ref.minY * snapshot.scaleFactor).rounded())
-                return ("REL", "相对 (\(rx), \(ry))", "\(rx), \(ry)")
+                return ("REL", L("相对 (%@, %@)", rx, ry), "\(rx), \(ry)")
             }
-            return ("REL", "相对 (\(px), \(py))", "\(px), \(py)")
+            return ("REL", L("相对 (%@, %@)", px, py), "\(px), \(py)")
         }
-        return ("ABS", "绝对 (\(px), \(py))", "\(px), \(py)")
+        return ("ABS", L("绝对 (%@, %@)", px, py), "\(px), \(py)")
     }
 
     private func cropMagnifierPatch(px: Int, py: Int, cols: Int, rows: Int) -> CGImage? {
@@ -382,12 +382,12 @@ extension OverlayView {
         NSGraphicsContext.current = NSGraphicsContext(cgContext: ctx, flipped: true)
         defer { NSGraphicsContext.current = prev }
         let coral = NSColor(srgbRed: 0.965, green: 0.255, blue: 0.376, alpha: 1.0)
-        drawMiniKeyHint(ctx: ctx, x: 14, y: 2, key: pickMode ? "左键" : keys.copy, label: pickMode ? "吸色" : "色值")
-        drawMiniKeyHint(ctx: ctx, x: 80, y: 2, key: "Tab", label: "格式")
-        drawMiniKeyHint(ctx: ctx, x: 14, y: 17, key: keys.cal, label: caliperActive ? "关距" : "测距", activeTint: caliperActive ? coral : nil)
-        drawMiniKeyHint(ctx: ctx, x: 80, y: 17, key: keys.coord, label: "坐标")
-        drawMiniKeyHint(ctx: ctx, x: 14, y: 32, key: keys.rel, label: useRelativeCoordinates ? "绝对" : "相对", activeTint: useRelativeCoordinates ? MSnipUITheme.accent : nil)
-        drawMiniKeyHint(ctx: ctx, x: 80, y: 32, key: keys.mag, label: "显隐", activeTint: forceVisible ? MSnipUITheme.accent : nil)
+        drawMiniKeyHint(ctx: ctx, x: 14, y: 2, key: pickMode ? L("左键") : keys.copy, label: pickMode ? L("吸色") : L("色值"))
+        drawMiniKeyHint(ctx: ctx, x: 80, y: 2, key: "Tab", label: L("格式"))
+        drawMiniKeyHint(ctx: ctx, x: 14, y: 17, key: keys.cal, label: caliperActive ? L("关距") : L("测距"), activeTint: caliperActive ? coral : nil)
+        drawMiniKeyHint(ctx: ctx, x: 80, y: 17, key: keys.coord, label: L("坐标"))
+        drawMiniKeyHint(ctx: ctx, x: 14, y: 32, key: keys.rel, label: useRelativeCoordinates ? L("绝对") : L("相对"), activeTint: useRelativeCoordinates ? MSnipUITheme.accent : nil)
+        drawMiniKeyHint(ctx: ctx, x: 80, y: 32, key: keys.mag, label: L("显隐"), activeTint: forceVisible ? MSnipUITheme.accent : nil)
         return ctx.makeImage()
     }
 

@@ -194,30 +194,30 @@ extension OverlayView {
     private func currentShortcutTipRows() -> [(key: String, desc: String)] {
         if isRecordingMode {
             return selection == nil
-                ? [("单击 / 拖拽", "吸附窗口 / 框选录屏区"), ("滚轮 / 方向键", "切窗口层级 / 1px 微调"), (keyUpper(.record), "切换回截图模式"), ("右键 / Esc", "退出录屏")]
-                : [("↩ / 双击", "开始 3-2-1 倒计时录屏"), ("方向键", "1px 微调录屏选区"), ("\(keyUpper(.snapWindow)) / \(keyUpper(.eraser))", "对齐窗口 / 上次选区"), (keyUpper(.record), "切换回截图模式"), ("右键 / Esc", "重选录屏区域")]
+                ? [(L("单击 / 拖拽"), L("吸附窗口 / 框选录屏区")), (L("滚轮 / 方向键"), L("切窗口层级 / 1px 微调")), (keyUpper(.record), L("切换回截图模式")), (L("右键 / Esc"), L("退出录屏"))]
+                : [(L("↩ / 双击"), L("开始 3-2-1 倒计时录屏")), (L("方向键"), L("1px 微调录屏选区")), ("\(keyUpper(.snapWindow)) / \(keyUpper(.eraser))", L("对齐窗口 / 上次选区")), (keyUpper(.record), L("切换回截图模式")), (L("右键 / Esc"), L("重选录屏区域"))]
         }
         if selection == nil {
             return [
-                ("\(keyUpper(.copy)) / Tab", "复制色值 / 切格式"),
-                ("\(keyUpper(.caliper)) / \(keyUpper(.copyCoord))", "像素测距 / 复制坐标"),
-                ("\(keyUpper(.backdropOrCoord)) / \(keyUpper(.toggleMagnifier))", "相对坐标 / 显隐放大镜"),
-                ("\(keyUpper(.pin)) / \(keyUpper(.quickSave))", "直接贴图 / 一键快存"),
-                ("\(keyUpper(.ocr)) / \(keyUpper(.translate))", "识字 / 原位翻译"),
-                ("\(keyUpper(.longShot)) / \(keyUpper(.record))", "长截图 / 录视频"),
-                ("\(keyUpper(.eraser)) / \(keyUpper(.snapWindow))", "上次选区 / 对齐窗口"),
-                ("滚轮 / 方向键", "切层级 / 1px 微调")
+                ("\(keyUpper(.copy)) / Tab", L("复制色值 / 切格式")),
+                ("\(keyUpper(.caliper)) / \(keyUpper(.copyCoord))", L("像素测距 / 复制坐标")),
+                ("\(keyUpper(.backdropOrCoord)) / \(keyUpper(.toggleMagnifier))", L("相对坐标 / 显隐放大镜")),
+                ("\(keyUpper(.pin)) / \(keyUpper(.quickSave))", L("直接贴图 / 一键快存")),
+                ("\(keyUpper(.ocr)) / \(keyUpper(.translate))", L("识字 / 原位翻译")),
+                ("\(keyUpper(.longShot)) / \(keyUpper(.record))", L("长截图 / 录视频")),
+                ("\(keyUpper(.eraser)) / \(keyUpper(.snapWindow))", L("上次选区 / 对齐窗口")),
+                (L("滚轮 / 方向键"), L("切层级 / 1px 微调"))
             ]
         }
         let tools = [keyUpper(.rect), keyUpper(.arrow), keyUpper(.pen), keyUpper(.text), keyUpper(.mosaic), keyUpper(.eraser)].joined(separator: " ")
         return [
-            ("\(keyUpper(.copy)) / ↩", "复制截图并退出"),
-            ("\(keyUpper(.pin)) / \(keyUpper(.quickSave))", "贴图 / 一键快存"),
-            (tools, "框 箭 笔 字 马赛克 橡皮"),
-            ("↑↓←→ / ⌘Z", "调工具大小 / 撤销"),
-            ("\(keyUpper(.ocr)) / ⇧\(keyUpper(.ocr)) / \(keyUpper(.translate))", "识字 / 公式 / 翻译"),
-            ("\(keyUpper(.longShot)) / \(keyUpper(.record))", "长截图 / 录制视频"),
-            ("右键 / Esc", "取消选框")
+            ("\(keyUpper(.copy)) / ↩", L("复制截图并退出")),
+            ("\(keyUpper(.pin)) / \(keyUpper(.quickSave))", L("贴图 / 一键快存")),
+            (tools, L("框 箭 笔 字 马赛克 橡皮")),
+            ("↑↓←→ / ⌘Z", L("调工具大小 / 撤销")),
+            ("\(keyUpper(.ocr)) / ⇧\(keyUpper(.ocr)) / \(keyUpper(.translate))", L("识字 / 公式 / 翻译")),
+            ("\(keyUpper(.longShot)) / \(keyUpper(.record))", L("长截图 / 录制视频")),
+            (L("右键 / Esc"), L("取消选框"))
         ]
     }
 
@@ -268,12 +268,12 @@ extension OverlayView {
         let s = snapshot.scaleFactor
         let pxX = Int((sel.minX * s).rounded()), pxY = Int((sel.minY * s).rounded())
         let pxW = Int((sel.width * s).rounded()), pxH = Int((sel.height * s).rounded())
-        var parts = [isRecordingMode ? "录屏 · \(pxX),\(pxY)  \(pxW) × \(pxH) px" : "\(pxX),\(pxY)  \(pxW) × \(pxH) px"]
+        var parts = [isRecordingMode ? L("录屏 · %@,%@  %@ × %@ px", pxX, pxY, pxW, pxH) : "\(pxX),\(pxY)  \(pxW) × \(pxH) px"]
         if isRecordingMode {
             parts.append(toolbar.recordingFormat.badgeTitle)
         } else {
-            if cornerRadius > 0.5 { parts.append("圆角 \(Int((cornerRadiusRatio * 100).rounded()))%") }
-            if glowStrength > 0.005 { parts.append("发光边 \(Int((glowStrength * 100).rounded()))%") }
+            if cornerRadius > 0.5 { parts.append(L("圆角 %@%", Int((cornerRadiusRatio * 100).rounded()))) }
+            if glowStrength > 0.005 { parts.append(L("发光边 %@%", Int((glowStrength * 100).rounded()))) }
             if let trTag = inPlaceTranslateHUDTag { parts.append(trTag) }
         }
         return parts.joined(separator: "  ·  ")
@@ -381,8 +381,8 @@ final class OverlaySaveMenuView: NSView {
         y += 7
 
         built.append(Row(
-            title: "另存为 / 其他位置…",
-            subtitle: "自由选择文件夹或修改文件名 (⌘S / ⇧S)",
+            title: L("另存为 / 其他位置…"),
+            subtitle: L("自由选择文件夹或修改文件名 (⌘S / ⇧S)"),
             symbol: "folder.badge.plus",
             tint: MSnipUITheme.accent,
             choice: .saveAsPanel,

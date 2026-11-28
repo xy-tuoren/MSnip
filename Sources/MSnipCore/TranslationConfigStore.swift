@@ -94,7 +94,7 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
     public static func makePreset(_ kind: TranslationProviderKind, llmPreset: LLMQuickPreset? = nil) -> TranslationProviderProfile {
         switch kind {
         case .appleNative:
-            return TranslationProviderProfile(name: "Apple 离线翻译", kind: .appleNative, isEnabled: true)
+            return TranslationProviderProfile(name: L("Apple 离线翻译"), kind: .appleNative, isEnabled: true)
         case .openAICompatible:
             let p = llmPreset ?? .deepseek
             return TranslationProviderProfile(
@@ -128,20 +128,20 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
             )
         case .tencent:
             return TranslationProviderProfile(
-                name: "腾讯云翻译",
+                name: L("腾讯云翻译"),
                 kind: .tencent,
                 endpoint: "https://tmt.tencentcloudapi.com",
                 model: "ap-guangzhou"
             )
         case .baidu:
             return TranslationProviderProfile(
-                name: "百度翻译",
+                name: L("百度翻译"),
                 kind: .baidu,
                 endpoint: "https://fanyi-api.baidu.com/api/trans/vip/translate"
             )
         case .youdao:
             return TranslationProviderProfile(
-                name: "有道智云",
+                name: L("有道智云"),
                 kind: .youdao,
                 endpoint: "https://openapi.youdao.com/api"
             )
@@ -153,7 +153,7 @@ public struct TranslationProviderProfile: Codable, Identifiable, Equatable, Send
             )
         case .customWebhook:
             return TranslationProviderProfile(
-                name: "自定义接口",
+                name: L("自定义接口"),
                 kind: .customWebhook,
                 endpoint: "http://127.0.0.1:1188/translate",
                 customHeadersJSON: "{\"Content-Type\": \"application/json\"}",

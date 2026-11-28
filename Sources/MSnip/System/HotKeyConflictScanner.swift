@@ -84,7 +84,7 @@ enum HotKeyConflictScanner {
                     out.append(OccupiedHotKeyEntry(
                         combo: combo,
                         owner: appName,
-                        feature: "主呼出热键",
+                        feature: L("主呼出热键"),
                         category: .runningApp,
                         sourceKind: .appConfigLive
                     ))
@@ -185,14 +185,15 @@ enum HotKeyConflictScanner {
 
             let name = customNamesByCombo[combo]
                 ?? HotKeyConflictCatalog.systemSignatureName(for: combo)
-                ?? "macOS 系统保留热键"
+                ?? L("macOS 系统保留热键")
             entries.append(OccupiedHotKeyEntry(combo: combo, owner: "macOS", feature: name, category: .system))
         }
 
         // 将知名核心热键排在最前面，方便一眼扫视
+        let unnamed = L("macOS 系统保留热键")
         return entries.sorted { a, b in
-            let aNamed = (a.feature != "macOS 系统保留热键")
-            let bNamed = (b.feature != "macOS 系统保留热键")
+            let aNamed = (a.feature != unnamed)
+            let bNamed = (b.feature != unnamed)
             if aNamed != bNamed { return aNamed }
             return a.combo.displayString < b.combo.displayString
         }
@@ -244,7 +245,7 @@ final class HotKeyLiveDetective {
         ) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
             let pid = app.processIdentifier
-            let name = app.localizedName ?? app.bundleIdentifier ?? "未知应用"
+            let name = app.localizedName ?? app.bundleIdentifier ?? L("未知应用")
             Task { @MainActor [weak self] in
                 guard let self, self.isListening, pid != self.ownPID else { return }
                 self.complete(with: .appTriggered(appName: Self.friendlyOwnerName(name), viaWindow: false))
@@ -352,8 +353,8 @@ final class HotKeyLiveDetective {
 
     private static func friendlyOwnerName(_ raw: String) -> String {
         switch raw {
-        case "screencaptureui": return "macOS 系统截屏"
-        case "Spotlight":       return "macOS 聚焦搜索 (Spotlight)"
+        case "screencaptureui": return L("macOS 系统截屏")
+        case "Spotlight":       return L("macOS 聚焦搜索 (Spotlight)")
         default:                return raw
         }
     }

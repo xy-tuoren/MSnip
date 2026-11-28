@@ -18,18 +18,18 @@ public enum ToolKind: Int, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .rect:         return "矩形 (1)"
-        case .ellipse:      return "椭圆 (2)"
-        case .arrow:        return "箭头 (3)"
-        case .line:         return "直线 (4)"
-        case .pen:          return "画笔 (5)"
-        case .highlighter:  return "荧光笔 (6)"
-        case .step:         return "步骤序号 ①②③ (7)"
-        case .mosaic:       return "像素马赛克 (8)"
-        case .gaussianBlur: return "毛玻璃模糊 (9)"
-        case .text:         return "文字标注 (0)"
-        case .eraser:       return "橡皮擦 (E)"
-        case .spotlight:    return "聚光灯高亮"
+        case .rect:         return L("矩形 (1)")
+        case .ellipse:      return L("椭圆 (2)")
+        case .arrow:        return L("箭头 (3)")
+        case .line:         return L("直线 (4)")
+        case .pen:          return L("画笔 (5)")
+        case .highlighter:  return L("荧光笔 (6)")
+        case .step:         return L("步骤序号 ①②③ (7)")
+        case .mosaic:       return L("像素马赛克 (8)")
+        case .gaussianBlur: return L("毛玻璃模糊 (9)")
+        case .text:         return L("文字标注 (0)")
+        case .eraser:       return L("橡皮擦 (E)")
+        case .spotlight:    return L("聚光灯高亮")
         }
     }
 

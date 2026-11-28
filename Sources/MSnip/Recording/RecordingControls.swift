@@ -123,28 +123,28 @@ final class RecordingControlBarView: NSView {
         }
 
         let hudTip = interactionHUDEnabled
-            ? "已开启：录屏显示鼠标点击波纹与快捷键角标（点击关闭）"
-            : "已关闭：点击开启录屏鼠标波纹与快捷键角标回显"
+            ? L("已开启：录屏显示鼠标点击波纹与快捷键角标（点击关闭）")
+            : L("已关闭：点击开启录屏鼠标波纹与快捷键角标回显")
         let tagW = Self.formatTagWidth(for: format.badgeTitle)
         var x: CGFloat = pad + Self.outerPad
 
         if countdownNumber != nil {
-            let lblW = ceil(("即将录屏" as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)]).width)
+            let lblW = ceil((L("即将录屏") as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: 12.5, weight: .semibold)]).width)
             let divX = round(pad + 12 + 22 + 8 + lblW + 7 + tagW + 10)
             dividerX = divX
             x = divX + 11
             let nowRect = CGRect(x: x, y: y, width: 94, height: h)
-            list.append(HitSlot(rect: nowRect, tip: "跳过倒计时立即开始录制 (↩)", action: .startRecording) { ctx, rect, hov in
+            list.append(HitSlot(rect: nowRect, tip: L("跳过倒计时立即开始录制 (↩)"), action: .startRecording) { ctx, rect, hov in
                 MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: rect, radius: Self.btnRadius, color: MSnipUITheme.danger, hovered: hov)
-                Self.drawIconAndLabel(symbol: "play.fill", symPt: 9.5, text: "立即开始", in: rect, color: .white)
+                Self.drawIconAndLabel(symbol: "play.fill", symPt: 9.5, text: L("立即开始"), in: rect, color: .white)
             })
             x += 94 + 6
-            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "取消录制 (Esc)", tint: MSnipUITheme.inkSecondary, filledBg: true, action: .cancel))
+            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: L("取消录制 (Esc)"), tint: MSnipUITheme.inkSecondary, filledBg: true, action: .cancel))
         } else if !isRecording {
             for fmt in RecordingFormat.allCases {
                 let active = (format == fmt)
                 let r = CGRect(x: x, y: y, width: 46, height: h)
-                list.append(HitSlot(rect: r, tip: "切换为 \(fmt.badgeTitle) 格式", action: .selectFormat(fmt)) { ctx, rect, hov in
+                list.append(HitSlot(rect: r, tip: L("切换为 %@ 格式", fmt.badgeTitle), action: .selectFormat(fmt)) { ctx, rect, hov in
                     ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: active, hovered: hov)
                     Self.drawOpticalLabel(fmt.badgeTitle, in: rect, font: NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .semibold), color: active ? MSnipUITheme.accent : MSnipUITheme.inkSecondary)
                 })
@@ -153,33 +153,33 @@ final class RecordingControlBarView: NSView {
             list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? MSnipUITheme.accent : MSnipUITheme.inkPrimary, active: interactionHUDEnabled, action: .toggleInteractionHUD))
             x += 4
             let recRect = CGRect(x: x, y: y, width: 96, height: h)
-            list.append(HitSlot(rect: recRect, tip: "开始录制选区画面 (↩)", action: .startRecording) { ctx, rect, hov in
+            list.append(HitSlot(rect: recRect, tip: L("开始录制选区画面 (↩)"), action: .startRecording) { ctx, rect, hov in
                 MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: rect, radius: Self.btnRadius, color: MSnipUITheme.danger, hovered: hov)
-                Self.drawDotAndLabel(text: "开始录制", in: rect, color: .white)
+                Self.drawDotAndLabel(text: L("开始录制"), in: rect, color: .white)
             })
             x += 96 + 6
-            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "取消 (Esc)", tint: MSnipUITheme.inkSecondary, filledBg: true, action: .cancel))
+            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: L("取消 (Esc)"), tint: MSnipUITheme.inkSecondary, filledBg: true, action: .cancel))
         } else {
             let timerW = ceil(("00:00" as NSString).size(withAttributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 12.5, weight: .semibold)]).width)
             let divX = round(pad + 12 + 12 + 7 + timerW + 7 + tagW + 10)
             dividerX = divX
             x = divX + 10
             list.append(iconSlot(x: &x, y: y, symbol: "cursorarrow.click.2", tip: hudTip, tint: interactionHUDEnabled ? MSnipUITheme.accent : MSnipUITheme.inkPrimary, active: interactionHUDEnabled, action: .toggleInteractionHUD))
-            let drawTip = isDrawingActive ? "画笔标记中（默认激光渐隐，按住 ⇧ 常驻，右键或 ⌥+点此清屏）" : "开启录屏实时画笔标记（按住 ⌥ 点此清屏）"
+            let drawTip = isDrawingActive ? L("画笔标记中（默认激光渐隐，按住 ⇧ 常驻，右键或 ⌥+点此清屏）") : L("开启录屏实时画笔标记（按住 ⌥ 点此清屏）")
             list.append(iconSlot(x: &x, y: y, symbol: "pencil.tip.crop.circle", tip: drawTip, tint: isDrawingActive ? MSnipUITheme.danger : MSnipUITheme.inkPrimary, active: isDrawingActive, action: .toggleDrawing))
             let pauseSym = isPaused ? "play.fill" : "pause.fill"
-            let pauseTip = isPaused ? "继续录制 (Space)" : "暂停录制 (Space)"
+            let pauseTip = isPaused ? L("继续录制 (Space)") : L("暂停录制 (Space)")
             list.append(iconSlot(x: &x, y: y, symbol: pauseSym, tip: pauseTip, tint: isPaused ? MSnipUITheme.warning : MSnipUITheme.inkPrimary, action: .togglePause))
             if format == .mp4 {
-                list.append(iconSlot(x: &x, y: y, symbol: "scissors", tip: "结束录制并打开首尾裁剪预览 (MP4)", tint: MSnipUITheme.inkPrimary, action: .finishTrim))
+                list.append(iconSlot(x: &x, y: y, symbol: "scissors", tip: L("结束录制并打开首尾裁剪预览 (MP4)"), tint: MSnipUITheme.inkPrimary, action: .finishTrim))
             }
-            list.append(iconSlot(x: &x, y: y, symbol: "square.and.arrow.down", tip: "结束并保存 \(format.badgeTitle) 到默认目录（按住 ⌥ 另存为）", tint: MSnipUITheme.inkPrimary, action: .finishSave))
-            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: "放弃录制 (Esc)", tint: MSnipUITheme.danger, action: .cancel))
+            list.append(iconSlot(x: &x, y: y, symbol: "square.and.arrow.down", tip: L("结束并保存 %@ 到默认目录（按住 ⌥ 另存为）", format.badgeTitle), tint: MSnipUITheme.inkPrimary, action: .finishSave))
+            list.append(iconSlot(x: &x, y: y, symbol: "xmark", tip: L("放弃录制 (Esc)"), tint: MSnipUITheme.danger, action: .cancel))
             x += 2
             let okRect = CGRect(x: x, y: y, width: 68, height: h)
-            list.append(HitSlot(rect: okRect, tip: "完成并复制 \(format.badgeTitle) 到剪贴板 (↩)", action: .finishCopy) { ctx, rect, hov in
+            list.append(HitSlot(rect: okRect, tip: L("完成并复制 %@ 到剪贴板 (↩)", format.badgeTitle), action: .finishCopy) { ctx, rect, hov in
                 MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: rect, radius: Self.btnRadius, hovered: hov)
-                Self.drawIconAndLabel(symbol: "checkmark", symPt: 10.5, text: "完成", in: rect, color: .white)
+                Self.drawIconAndLabel(symbol: "checkmark", symPt: 10.5, text: L("完成"), in: rect, color: .white)
             })
             x += 68
         }
@@ -222,7 +222,7 @@ final class RecordingControlBarView: NSView {
         MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: barRect, radius: 12.0)
 
         if isEncoding {
-            Self.drawOpticalLabel("正在封装 \(format.badgeTitle)…", in: barRect, font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), color: MSnipUITheme.accent)
+            Self.drawOpticalLabel(L("正在封装 %@…", format.badgeTitle), in: barRect, font: NSFont.systemFont(ofSize: 12.5, weight: .semibold), color: MSnipUITheme.accent)
             return
         }
 
@@ -237,9 +237,9 @@ final class RecordingControlBarView: NSView {
             Self.drawOpticalLabel("\(cd)", in: chipRect, font: NSFont.monospacedDigitSystemFont(ofSize: 12.0, weight: .bold), color: Self.coral, yBias: 0)
 
             let lblFont = NSFont.systemFont(ofSize: 12.5, weight: .semibold)
-            let lblW = ceil(("即将录屏" as NSString).size(withAttributes: [.font: lblFont]).width)
+            let lblW = ceil((L("即将录屏") as NSString).size(withAttributes: [.font: lblFont]).width)
             let lblRect = CGRect(x: chipRect.maxX + 8, y: barRect.minY, width: lblW, height: barRect.height)
-            Self.drawOpticalLabel("即将录屏", in: lblRect, font: lblFont, color: MSnipUITheme.inkPrimary)
+            Self.drawOpticalLabel(L("即将录屏"), in: lblRect, font: lblFont, color: MSnipUITheme.inkPrimary)
             Self.drawFormatTag(format.badgeTitle, atX: lblRect.maxX + 7, midY: barRect.midY, in: ctx)
         } else if isRecording {
             MSnipUITheme.drawStatusDot(ctx: ctx, center: CGPoint(x: pad + 18, y: barRect.midY), color: isPaused ? MSnipUITheme.warning : MSnipUITheme.danger, halo: true)

@@ -379,7 +379,7 @@ extension OverlayView {
             )
         )
         field.stringValue = initialText
-        field.placeholderString = style.textCapsule ? "输入胶囊标签文字（⌘B 切换纯字）" : "输入文字（⌘B 切胶囊底色）"
+        field.placeholderString = style.textCapsule ? L("输入胶囊标签文字（⌘B 切换纯字）") : L("输入文字（⌘B 切胶囊底色）")
         field.drawsBackground = true
         field.isBordered = true
         field.focusRingType = .exterior

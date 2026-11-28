@@ -19,11 +19,11 @@ enum AppleNativeTranslator {
         var errorDescription: String? {
             switch self {
             case .unsupportedOS:
-                return "macOS 原生离线翻译需要 macOS 15.0 及以上系统，请切换大模型或云翻译接口"
+                return L("macOS 原生离线翻译需要 macOS 15.0 及以上系统，请切换大模型或云翻译接口")
             case .unsupportedPair(let pair):
-                return "系统暂不支持该语种组合 (\(pair)) 的离线翻译"
+                return L("系统暂不支持该语种组合 (%@) 的离线翻译", pair)
             case .timedOutOrCancelled:
-                return "离线语言包未完成下载或已取消（可在系统设置 › 通用 › 语言与地区 › 翻译语言 中下载）"
+                return L("离线语言包未完成下载或已取消（可在系统设置 › 通用 › 语言与地区 › 翻译语言 中下载）")
             }
         }
     }
@@ -49,17 +49,17 @@ enum AppleNativeTranslator {
             let st = await avail.status(from: en, to: zh)
             switch st {
             case .installed:
-                return "✓ 中英离线神经网络模型已就绪（完全免费 · 断网可用）"
+                return L("✓ 中英离线神经网络模型已就绪（完全免费 · 断网可用）")
             case .supported:
-                return "系统支持免费离线模型 · 首次点击翻译或「测试连接」将提示下载语言包"
+                return L("系统支持免费离线模型 · 首次点击翻译或「测试连接」将提示下载语言包")
             case .unsupported:
-                return "当前系统暂不支持中英离线语言包"
+                return L("当前系统暂不支持中英离线语言包")
             @unknown default:
-                return "系统离线翻译可用"
+                return L("系统离线翻译可用")
             }
         }
         #endif
-        return "当前系统版本低于 macOS 15，不支持原生离线翻译"
+        return L("当前系统版本低于 macOS 15，不支持原生离线翻译")
     }
 
     @MainActor

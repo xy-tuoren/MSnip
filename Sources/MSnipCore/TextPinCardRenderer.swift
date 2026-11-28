@@ -19,7 +19,7 @@ public enum TextPinCardRenderer {
             displayText = String(displayText.prefix(2200)) + "…"
         }
         if truncated {
-            displayText += "\n… (共 \(allLines.count) 行)"
+            displayText += L("\n… (共 %@ 行)", allLines.count)
         }
 
         let isCodeLike = looksLikeCode(normalized)
@@ -95,8 +95,8 @@ public enum TextPinCardRenderer {
         ctx.setFillColor(NSColor.white.withAlphaComponent(0.08).cgColor)
         ctx.fill(CGRect(x: padX, y: divY, width: textW, height: 1))
 
-        let tag = isCodeLike ? "代码便签" : "文本便签"
-        let meta = "\(tag)  ·  \(allLines.count) 行 · \(normalized.count) 字" as NSString
+        let tag = isCodeLike ? L("代码便签") : L("文本便签")
+        let meta = L("%@  ·  %@ 行 · %@ 字", tag, allLines.count, normalized.count) as NSString
         let metaAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .medium),
             .foregroundColor: NSColor(white: 0.58, alpha: 1.0)

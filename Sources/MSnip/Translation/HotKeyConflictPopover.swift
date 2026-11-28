@@ -72,7 +72,7 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         popover.contentSize = NSSize(width: W, height: H)
         popover.contentViewController = vc
 
-        let title = NSTextField(labelWithString: "热键冲突体检与占用一览")
+        let title = NSTextField(labelWithString: L("热键冲突体检与占用一览"))
         title.font = .systemFont(ofSize: 14.5, weight: .semibold); title.textColor = GeekTheme.inkPrimary
         summaryLabel = NSTextField(labelWithString: "")
         summaryLabel.font = .systemFont(ofSize: 11.5, weight: .regular); summaryLabel.textColor = GeekTheme.inkMuted
@@ -80,13 +80,13 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         GeekTheme.placeTwoLineStack(title, summaryLabel, x: 16, width: W - 116, centerY: 29, gap: 2)
         root.addSubview(title); root.addSubview(summaryLabel)
 
-        rescanBtn = GeekButton(title: "重扫", symbol: "arrow.clockwise", style: .subtle)
-        rescanBtn.toolTip = "重新扫描 macOS 系统热键与当前后台运行中应用"
+        rescanBtn = GeekButton(title: L("重扫"), symbol: "arrow.clockwise", style: .subtle)
+        rescanBtn.toolTip = L("重新扫描 macOS 系统热键与当前后台运行中应用")
         rescanBtn.frame = NSRect(x: W - 92, y: 15, width: 76, height: 28)
         rescanBtn.onClick = { [weak self] in self?.handleRescanClicked() }
         root.addSubview(rescanBtn)
 
-        tabSegment = GeekSegmentControl(items: ["当前体检", "实测归属", "系统已占", "运行中应用"], selectedIndex: 0)
+        tabSegment = GeekSegmentControl(items: [L("当前体检"), L("实测归属"), L("系统已占"), L("运行中应用")], selectedIndex: 0)
         tabSegment.frame = NSRect(x: 14, y: 58, width: W - 28, height: 32)
         tabSegment.onSelect = { [weak self] idx in
             guard let self else { return }
@@ -102,7 +102,7 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         searchField = NSTextField()
         searchField.isBordered = false; searchField.drawsBackground = false; searchField.focusRingType = .none
         searchField.font = .systemFont(ofSize: 12.5); searchField.textColor = GeekTheme.inkPrimary
-        searchField.setGeekPlaceholder("筛选快捷键、功能或应用名（如 截图 / ⌥1 / ⌘␣ / 聚焦搜索）…")
+        searchField.setGeekPlaceholder(L("筛选快捷键、功能或应用名（如 截图 / ⌥1 / ⌘␣ / 聚焦搜索）…"))
         searchField.cell?.isScrollable = true; searchField.cell?.wraps = false
         GeekTheme.placeCentered(searchField, x: 28, width: searchContainer.bounds.width - 38, centerY: 16)
         searchField.delegate = self
@@ -166,11 +166,11 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         _ = onRescan?()
         rebuildList()
         rescanFlashWork?.cancel()
-        rescanBtn.title = "已更新"
+        rescanBtn.title = L("已更新")
         rescanBtn.symbolName = "checkmark"
         rescanBtn.style = .emeraldSoft
         let work = DispatchWorkItem { [weak self] in
-            self?.rescanBtn?.title = "重扫"
+            self?.rescanBtn?.title = L("重扫")
             self?.rescanBtn?.symbolName = "arrow.clockwise"
             self?.rescanBtn?.style = .subtle
         }
@@ -191,10 +191,10 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
     func rebuildList() {
         guard let cfg = configProvider?(), let snap = snapshotProvider?() else { return }
         tabSegment.items = [
-            "当前体检",
-            isProbing ? "监听中…" : "实测归属",
-            "系统 (\(snap.systemEntries.count))",
-            "应用 (\(snap.runningAppEntries.count))"
+            L("当前体检"),
+            isProbing ? L("监听中…") : L("实测归属"),
+            L("系统 (%@)", snap.systemEntries.count),
+            L("应用 (%@)", snap.runningAppEntries.count)
         ]
         tabSegment.selectedIndex = activeTab
 
@@ -210,13 +210,13 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         let timeStr = Self.formatTime(snap.scannedAt)
         let priorityActive = cfg.hotKeysEnabled && cfg.forcePriorityHotKeys && (isPriorityActiveProvider?() ?? false)
         if !cfg.hotKeysEnabled {
-            summaryLabel.setTextWithTooltip("全局热键总开关已关闭 · 扫描于 \(timeStr)", color: GeekTheme.inkSecondary)
+            summaryLabel.setTextWithTooltip(L("全局热键总开关已关闭 · 扫描于 %@", timeStr), color: GeekTheme.inkSecondary)
         } else if priorityActive && conflictCount > 0 {
-            summaryLabel.setTextWithTooltip("⚡ 已强制优先接管 \(conflictCount) 项外部冲突 · 扫描于 \(timeStr)", color: GeekTheme.accent)
+            summaryLabel.setTextWithTooltip(L("⚡ 已强制优先接管 %@ 项外部冲突 · 扫描于 %@", conflictCount, timeStr), color: GeekTheme.accent)
         } else if conflictCount > 0 {
-            summaryLabel.setTextWithTooltip("发现 \(conflictCount) 项冲突/预警 · 扫描于 \(timeStr)（共 \(snap.systemEntries.count) 系统 / \(snap.runningAppEntries.count) 应用）", color: GeekTheme.amber)
+            summaryLabel.setTextWithTooltip(L("发现 %@ 项冲突/预警 · 扫描于 %@（共 %@ 系统 / %@ 应用）", conflictCount, timeStr, snap.systemEntries.count, snap.runningAppEntries.count), color: GeekTheme.amber)
         } else {
-            summaryLabel.setTextWithTooltip("✓ 全部已设热键零冲突 · 扫描于 \(timeStr)（已核验 \(snap.systemEntries.count + snap.runningAppEntries.count) 项）", color: GeekTheme.emerald)
+            summaryLabel.setTextWithTooltip(L("✓ 全部已设热键零冲突 · 扫描于 %@（已核验 %@ 项）", timeStr, snap.systemEntries.count + snap.runningAppEntries.count), color: GeekTheme.emerald)
         }
 
         let showSearch = (activeTab == 2 || activeTab == 3)
@@ -243,9 +243,9 @@ final class HotKeyConflictPopover: NSObject, NSPopoverDelegate, NSTextFieldDeleg
         if activeTab == 0 {
             y = populateAuditRows(in: doc, width: W, cfg: cfg, own: own, snap: snap)
         } else if activeTab == 2 {
-            y = populateOccupiedRows(snap.systemEntries, own: own, in: doc, width: W, emptyText: "未匹配到符合条件的 macOS 系统热键", showProbeHint: false)
+            y = populateOccupiedRows(snap.systemEntries, own: own, in: doc, width: W, emptyText: L("未匹配到符合条件的 macOS 系统热键"), showProbeHint: false)
         } else {
-            y = populateOccupiedRows(snap.runningAppEntries, own: own, in: doc, width: W, emptyText: "当前后台未匹配到已知冲突应用，可切至「实测归属」直接按键抓取真实占用方。", showProbeHint: true)
+            y = populateOccupiedRows(snap.runningAppEntries, own: own, in: doc, width: W, emptyText: L("当前后台未匹配到已知冲突应用，可切至「实测归属」直接按键抓取真实占用方。"), showProbeHint: true)
         }
         doc.frame.size.height = max(scrollView.bounds.height, y + 12)
         scrollView.documentView = doc
@@ -289,11 +289,11 @@ extension HotKeyConflictPopover {
             bar.wantsLayer = true; bar.layer?.cornerRadius = 8.5
             bar.layer?.backgroundColor = GeekTheme.amber.withAlphaComponent(0.11).cgColor
             bar.layer?.borderWidth = 1.0; bar.layer?.borderColor = GeekTheme.amber.withAlphaComponent(0.32).cgColor
-            let tip = NSTextField(labelWithString: "已为 \(pendingFixes.count) 项冲突热键计算互不重复的零冲突替代键")
+            let tip = NSTextField(labelWithString: L("已为 %@ 项冲突热键计算互不重复的零冲突替代键", pendingFixes.count))
             tip.font = .systemFont(ofSize: 12.0, weight: .medium); tip.textColor = GeekTheme.amber
             GeekTheme.placeCentered(tip, x: 12, width: bar.bounds.width - 140, centerY: 19)
             bar.addSubview(tip)
-            let allBtn = GeekButton(title: "一键全部解决", symbol: "wand.and.stars", style: .accent)
+            let allBtn = GeekButton(title: L("一键全部解决"), symbol: "wand.and.stars", style: .accent)
             allBtn.frame = NSRect(x: bar.bounds.width - 122, y: 6, width: 114, height: 26)
             allBtn.onClick = { [weak self] in self?.onApplyBatchRecommended?(pendingFixes); self?.rebuildList() }
             bar.addSubview(allBtn)
@@ -312,8 +312,8 @@ extension HotKeyConflictPopover {
                 ? GeekTheme.inkMuted
                 : (isOverridden ? GeekTheme.accent : (top == nil ? GeekTheme.emerald : (top!.severity == .blocking ? GeekTheme.danger : GeekTheme.amber)))
             let subText: String = (!cfg.hotKeysEnabled || combo == nil)
-                ? (combo == nil ? "未启用全局绑定" : "全局热键总开关已关闭")
-                : (isOverridden ? "⚡ 已由 MSnip 优先接管（压过：\(top!.detailMessage)）" : (top?.detailMessage ?? "无冲突 · 可放心使用"))
+                ? (combo == nil ? L("未启用全局绑定") : L("全局热键总开关已关闭"))
+                : (isOverridden ? L("⚡ 已由 MSnip 优先接管（压过：%@）", top!.detailMessage) : (top?.detailMessage ?? L("无冲突 · 可放心使用")))
 
             row.addSubview(PopoverStatusDot(color: dotCol, frame: NSRect(x: 14, y: 0, width: 14, height: rowH)))
             let rightReserve: CGFloat = (top != nil) ? 164 : 80
@@ -323,15 +323,15 @@ extension HotKeyConflictPopover {
             sLbl.font = .systemFont(ofSize: 11.5, weight: .regular)
             sLbl.textColor = (top == nil) ? GeekTheme.inkMuted : dotCol
             sLbl.lineBreakMode = .byTruncatingTail; sLbl.toolTip = subText
-            row.toolTip = "\(act.title)（\(combo?.displayString ?? "未设置")）\n\(subText)"
+            row.toolTip = L("%@（%@）\n%@", act.title, combo?.displayString ?? L("未设置"), subText)
             GeekTheme.placeTwoLineStack(tLbl, sLbl, x: 34, width: W - 34 - rightReserve, centerY: rowH * 0.5, gap: 2)
             row.addSubview(tLbl); row.addSubview(sLbl)
 
             let capX = (top != nil) ? (W - 156) : (W - 74)
             row.addSubview(PopoverKeyCapView(text: combo?.displayString ?? "—", highlight: top != nil ? dotCol : nil, frame: NSRect(x: capX, y: 13, width: 60, height: 24)))
             if let suggested = perActionFix[act] {
-                let fixBtn = GeekButton(title: "换 \(suggested.displayString)", style: .accent, mono: true)
-                fixBtn.toolTip = "一键将「\(act.title)」更换为零冲突组合键 \(suggested.displayString)"
+                let fixBtn = GeekButton(title: L("换 %@", suggested.displayString), style: .accent, mono: true)
+                fixBtn.toolTip = L("一键将「%@」更换为零冲突组合键 %@", act.title, suggested.displayString)
                 fixBtn.frame = NSRect(x: W - 88, y: 13, width: 74, height: 24)
                 fixBtn.onClick = { [weak self] in self?.onApplyRecommended?(act, suggested); self?.rebuildList() }
                 row.addSubview(fixBtn)
@@ -372,11 +372,11 @@ extension HotKeyConflictPopover {
                 lbl.font = .systemFont(ofSize: 12.5, weight: hitOwn ? .semibold : .medium)
                 lbl.textColor = hitOwn ? (hiCol ?? GeekTheme.inkPrimary) : GeekTheme.inkPrimary
                 lbl.lineBreakMode = .byTruncatingTail; lbl.toolTip = mainText
-                row.toolTip = "\(entry.combo.displayString)  \(mainText)（\(entry.sourceKind.badgeTitle)）"
+                row.toolTip = L("%@  %@（%@）", entry.combo.displayString, mainText, entry.sourceKind.badgeTitle)
                 GeekTheme.placeCentered(lbl, x: 96, width: W - 186, centerY: rowH * 0.5)
                 row.addSubview(lbl)
 
-                let tag = NSTextField(labelWithString: hitOwn ? "冲突中" : entry.sourceKind.badgeTitle)
+                let tag = NSTextField(labelWithString: hitOwn ? L("冲突中") : entry.sourceKind.badgeTitle)
                 tag.font = .systemFont(ofSize: 11.0, weight: (hitOwn || entry.sourceKind == .appConfigLive) ? .semibold : .regular)
                 tag.textColor = hitOwn ? (hiCol ?? GeekTheme.amber) : (entry.sourceKind == .appConfigLive ? GeekTheme.accent : GeekTheme.inkMuted)
                 tag.alignment = .right
@@ -387,7 +387,7 @@ extension HotKeyConflictPopover {
             }
         }
         if showProbeHint {
-            let btn = GeekButton(title: "找不到自定义热键？去「实测归属」按下现场抓取", symbol: "scope", style: .ghost)
+            let btn = GeekButton(title: L("找不到自定义热键？去「实测归属」按下现场抓取"), symbol: "scope", style: .ghost)
             btn.frame = NSRect(x: 14, y: y + 8, width: W - 28, height: 30)
             btn.onClick = { [weak self] in self?.switchToProbeTab() }
             doc.addSubview(btn)
@@ -447,8 +447,8 @@ enum HotKeyConflictProbeStage {
         hero.addSubview(iconBox)
 
         let titleStr = isListening
-            ? "正在实时监听… 剩余 \(max(1, remainingSeconds)) 秒（按 Esc 停止）"
-            : "按下任意快捷键，现场检测占用它的具体应用"
+            ? L("正在实时监听… 剩余 %@ 秒（按 Esc 停止）", max(1, remainingSeconds))
+            : L("按下任意快捷键，现场检测占用它的具体应用")
         let titleLbl = NSTextField(labelWithString: titleStr)
         titleLbl.font = .systemFont(ofSize: 13.5, weight: .semibold)
         titleLbl.textColor = isListening ? GeekTheme.accent : GeekTheme.inkPrimary
@@ -457,8 +457,8 @@ enum HotKeyConflictProbeStage {
         hero.addSubview(titleLbl)
 
         let descStr = isListening
-            ? "请直接按下你想检测的组合键（如 ⌥1、⌃⌘A、⌘␣）。若触发了其他软件的窗口或悬浮面板，MSnip 将立即捕获其名称。"
-            : "无论对方是常规前台应用窗口，还是无焦点悬浮面板与全屏覆盖层，按下即可实时定位占用该快捷键的具体应用。"
+            ? L("请直接按下你想检测的组合键（如 ⌥1、⌃⌘A、⌘␣）。若触发了其他软件的窗口或悬浮面板，MSnip 将立即捕获其名称。")
+            : L("无论对方是常规前台应用窗口，还是无焦点悬浮面板与全屏覆盖层，按下即可实时定位占用该快捷键的具体应用。")
         let descLbl = NSTextField(wrappingLabelWithString: descStr)
         descLbl.font = .systemFont(ofSize: 11.5, weight: .regular)
         descLbl.textColor = GeekTheme.inkSecondary
@@ -468,7 +468,7 @@ enum HotKeyConflictProbeStage {
 
         let btnW: CGFloat = isListening ? 136 : 126
         let actBtn = GeekButton(
-            title: isListening ? "停止监听" : "开始按键实测",
+            title: isListening ? L("停止监听") : L("开始按键实测"),
             symbol: isListening ? "stop.circle" : "play.fill",
             style: isListening ? .amberSoft : .accent
         )
@@ -516,13 +516,13 @@ enum HotKeyConflictProbeStage {
 
         // 3) 最近实测记录
         if history.count > 1 {
-            let hdr = NSTextField(labelWithString: "最近实测记录")
+            let hdr = NSTextField(labelWithString: L("最近实测记录"))
             hdr.font = .systemFont(ofSize: 11.5, weight: .semibold)
             hdr.textColor = GeekTheme.inkMuted
             GeekTheme.placeCentered(hdr, x: 16, width: 120, centerY: y + 10)
             container.addSubview(hdr)
 
-            let clr = GeekButton(title: "清空", style: .ghost)
+            let clr = GeekButton(title: L("清空"), style: .ghost)
             clr.frame = NSRect(x: W - 64, y: y - 1, width: 50, height: 22)
             clr.onClick = onClearHistory
             container.addSubview(clr)

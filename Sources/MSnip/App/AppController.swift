@@ -73,7 +73,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if config.hotKeysEnabled && !hotKeyManager.failedActions.isEmpty {
             let names = hotKeyManager.failedActions.map(\.rawValue).sorted().joined(separator: ", ")
             MSnipLog.warning(.hotkey, "\(hotKeyManager.failedActions.count) global hotkey(s) failed to register: \(names)")
-            ToastHUD.show(message: "⚠ \(hotKeyManager.failedActions.count) 项全局快捷键注册冲突", actionTitle: "查看冲突 ›") { [weak self] in
+            ToastHUD.show(message: L("⚠ %@ 项全局快捷键注册冲突", hotKeyManager.failedActions.count), actionTitle: L("查看冲突 ›")) { [weak self] in
                 self?.openShortcutsSettings()
             }
         }
@@ -97,8 +97,8 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let button = statusItem.button {
             button.image = MSnipUITheme.menuBarIcon(recording: false)
             button.imagePosition = .imageOnly
-            button.toolTip = "MSnip（麦截）· 点击展开菜单 · ⌥+左键切换暂存架"
-            button.setAccessibilityLabel("MSnip（麦截）")
+            button.toolTip = L("MSnip（麦截）· 点击展开菜单 · ⌥+左键切换暂存架")
+            button.setAccessibilityLabel(L("MSnip（麦截）"))
         }
         installStatusBarMenuPreHook()
         rebuildMenu()
@@ -142,9 +142,9 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if hasDelayedCapture { delayedCapture.cancel() }
         if let rec = activeRecording {
             if rec.focusTrimWindowIfNeeded() {
-                ToastHUD.show(message: "请先完成或关闭当前 MP4 裁剪窗口")
+                ToastHUD.show(message: L("请先完成或关闭当前 MP4 裁剪窗口"))
             } else {
-                ToastHUD.show(message: "正在录屏中 · 可在菜单栏结束或按 Esc 取消")
+                ToastHUD.show(message: L("正在录屏中 · 可在菜单栏结束或按 Esc 取消"))
             }
             return
         }
@@ -240,7 +240,7 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale, forceIncludePath: true)
             ClipboardAndSave.playFeedbackSound(enabled: config.soundFeedbackEnabled)
             let entry = recordHistoryAndRefresh(img: img, scale: scale)
-            presentScreenshotFeedback(entry: entry, img: img, scale: scale, statusPrefix: "已复制(含路径)", fallbackMessage: "已复制截图与临时 PNG 路径")
+            presentScreenshotFeedback(entry: entry, img: img, scale: scale, statusPrefix: L("已复制(含路径)"), fallbackMessage: L("已复制截图与临时 PNG 路径"))
         case .saved(let img, let scale):
             let entry = recordHistoryAndRefresh(img: img, scale: scale)
             performInteractiveSave(img: img, scale: scale, historyEntry: entry)
@@ -261,11 +261,11 @@ final class AppController: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case .copiedColor(let value, let swatch, let pt):
             ClipboardAndSave.copyText(value)
             let pLabel = config.activeCombo(for: .pin)?.displayString
-            let msg = pLabel.map { "\(value) 已复制  ·  \($0) 贴色卡" } ?? "\(value) 已复制"
+            let msg = pLabel.map { L("%@ 已复制  ·  %@ 贴色卡", value, $0) } ?? L("%@ 已复制", value)
             ToastHUD.show(message: msg, swatch: swatch, near: pt)
         case .copiedCoordinate(let value, let pt):
             ClipboardAndSave.copyText(value)
-            ToastHUD.show(message: "坐标 \(value) 已复制", near: pt)
+            ToastHUD.show(message: L("坐标 %@ 已复制", value), near: pt)
         case .extractText(let img, let scale, let scr):
             ocrController.present(cgImage: img, scaleFactor: scale, screen: scr, autoTranslate: false)
         case .silentExtractText(let img, let scale, let scr):
@@ -316,9 +316,9 @@ extension AppController {
         if hasDelayedCapture { delayedCapture.cancel() }
         if let rec = activeRecording {
             if rec.focusTrimWindowIfNeeded() {
-                ToastHUD.show(message: "请先完成或关闭当前 MP4 裁剪窗口")
+                ToastHUD.show(message: L("请先完成或关闭当前 MP4 裁剪窗口"))
             } else {
-                ToastHUD.show(message: "正在录屏中 · 可在菜单栏结束或按 Esc 取消")
+                ToastHUD.show(message: L("正在录屏中 · 可在菜单栏结束或按 Esc 取消"))
             }
             return
         }
@@ -356,9 +356,9 @@ extension AppController {
                 ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
                 ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
                 self.presentScreenshotFeedback(
-                    entry: entry, img: img, scale: scale, statusPrefix: "已截全屏",
-                    fallbackMessage: "✓ 已截取当前全屏并复制", fallbackSubtitle: "\(img.width) × \(img.height) px",
-                    fallbackActionTitle: "保存到默认目录 ›",
+                    entry: entry, img: img, scale: scale, statusPrefix: L("已截全屏"),
+                    fallbackMessage: L("✓ 已截取当前全屏并复制"), fallbackSubtitle: "\(img.width) × \(img.height) px",
+                    fallbackActionTitle: L("保存到默认目录 ›"),
                     fallbackOnAction: { [weak self] in self?.performQuickSave(img: img, scale: scale) }
                 )
             case .save:
@@ -375,12 +375,12 @@ extension AppController {
                 if let url = savedURL {
                     let shortPath = url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
                     self.presentScreenshotFeedback(
-                        entry: entry, img: img, scale: scale, savedURL: url, statusPrefix: "全屏已保存",
-                        fallbackMessage: "✓ 已截取当前全屏（已复制并保存）", fallbackSubtitle: shortPath,
-                        fallbackActionTitle: "在访达中显示", fallbackOnAction: { ClipboardAndSave.revealInFinder(url) }
+                        entry: entry, img: img, scale: scale, savedURL: url, statusPrefix: L("全屏已保存"),
+                        fallbackMessage: L("✓ 已截取当前全屏（已复制并保存）"), fallbackSubtitle: shortPath,
+                        fallbackActionTitle: L("在访达中显示"), fallbackOnAction: { ClipboardAndSave.revealInFinder(url) }
                     )
                 } else {
-                    ToastHUD.show(message: "✓ 已复制当前全屏（保存文件失败）", preview: img)
+                    ToastHUD.show(message: L("✓ 已复制当前全屏（保存文件失败）"), preview: img)
                 }
             }
         }

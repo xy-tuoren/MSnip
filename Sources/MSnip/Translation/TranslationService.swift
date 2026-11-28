@@ -121,7 +121,7 @@ final class TranslationService {
             if let fb = resolveReadyFallback(excluding: primary.id) {
                 do {
                     let res = try await runBatch(lines: lines, target: target, profile: fb, hostWindow: hostWindow)
-                    return (res, "\(fb.name) (自动回退)")
+                    return (res, L("%@ (自动回退)", fb.name))
                 } catch let fbError {
                     if Task.isCancelled || fbError is CancellationError || (fbError as? URLError)?.code == .cancelled {
                         throw fbError
@@ -157,9 +157,9 @@ final class TranslationService {
                 onStreamChunk: nil
             )
             let ms = Int(((ProcessInfo.processInfo.systemUptime - t0) * 1000).rounded())
-            return (true, "✓ 连通正常 (\(ms) ms) · 示例译文：\(out)")
+            return (true, L("✓ 连通正常 (%@ ms) · 示例译文：%@", ms, out))
         } catch {
-            return (false, "✗ 测试失败：\(error.localizedDescription)")
+            return (false, L("✗ 测试失败：%@", error.localizedDescription))
         }
     }
 

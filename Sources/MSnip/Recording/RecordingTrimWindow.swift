@@ -2,6 +2,7 @@ import AppKit
 import AVFoundation
 import CoreMedia
 import Foundation
+import MSnipCore
 
 /// MP4 录后轻量首尾裁剪浮窗（原生 AVPlayer 实时追帧预览 + 胶片缩略图时间轴 + 起止双滑块 + AVAssetExportPresetPassthrough 毫秒级无损裁切）
 @MainActor
@@ -50,7 +51,7 @@ final class RecordingTrimWindowController: NSObject, NSWindowDelegate {
         let vf = (screen ?? NSScreen.main ?? NSScreen.screens.first)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let frame = NSRect(x: round(vf.midX - W * 0.5), y: round(vf.midY - H * 0.5), width: W, height: H)
         let win = TrimPanel(contentRect: frame, styleMask: [.titled, .closable, .fullSizeContentView], backing: .buffered, defer: false)
-        win.title = "裁剪录屏 MP4"
+        win.title = L("裁剪录屏 MP4")
         win.titlebarAppearsTransparent = true
         win.isMovableByWindowBackground = true
         win.hidesOnDeactivate = false
@@ -86,28 +87,32 @@ final class RecordingTrimWindowController: NSObject, NSWindowDelegate {
         }
         root.addSubview(bar)
 
-        let play = NSButton(title: "播放 / 暂停", target: self, action: #selector(togglePlay))
+        let play = NSButton(title: L("播放 / 暂停"), target: self, action: #selector(togglePlay))
         play.bezelStyle = .rounded
         play.keyEquivalent = " "
-        play.frame = NSRect(x: 16, y: 18, width: 96, height: 30)
+        // 按钮宽度取设计宽度与标题所需宽度的较大者（英文标题更长）
+        let fit = { (b: NSButton, w: CGFloat) -> CGFloat in max(w, ceil(b.fittingSize.width)) }
+        let playW = fit(play, 96)
+        play.frame = NSRect(x: 16, y: 18, width: playW, height: 30)
         root.addSubview(play)
 
         let lbl = NSTextField(labelWithString: "")
         lbl.font = .monospacedDigitSystemFont(ofSize: 12, weight: .medium)
         lbl.textColor = .secondaryLabelColor
-        lbl.frame = NSRect(x: 120, y: 23, width: 220, height: 20)
+        lbl.frame = NSRect(x: 24 + playW, y: 23, width: 220, height: 20)
         root.addSubview(lbl)
 
-        let saveBtn = NSButton(title: "保存", target: self, action: #selector(exportSave))
+        let saveBtn = NSButton(title: L("保存"), target: self, action: #selector(exportSave))
         saveBtn.bezelStyle = .rounded
-        saveBtn.toolTip = "保存裁剪版到默认目录（按住 ⌥ 另存为）"
-        saveBtn.frame = NSRect(x: W - 184, y: 18, width: 74, height: 30)
+        saveBtn.toolTip = L("保存裁剪版到默认目录（按住 ⌥ 另存为）")
         root.addSubview(saveBtn)
 
-        let copyBtn = NSButton(title: "复制裁剪版", target: self, action: #selector(exportCopy))
+        let copyBtn = NSButton(title: L("复制裁剪版"), target: self, action: #selector(exportCopy))
         copyBtn.bezelStyle = .rounded
         copyBtn.keyEquivalent = "\r"
-        copyBtn.frame = NSRect(x: W - 104, y: 18, width: 88, height: 30)
+        let copyW = fit(copyBtn, 88), saveW = fit(saveBtn, 74)
+        copyBtn.frame = NSRect(x: W - 16 - copyW, y: 18, width: copyW, height: 30)
+        saveBtn.frame = NSRect(x: copyBtn.frame.minX - 6 - saveW, y: 18, width: saveW, height: 30)
         root.addSubview(copyBtn)
 
         self.window = win; self.player = avPlayer; self.playerLayer = layer
@@ -235,7 +240,8 @@ final class RecordingTrimWindowController: NSObject, NSWindowDelegate {
 
     private func updateTimeLabel(start: Double, end: Double) {
         let dur = max(0.1, end - start)
-        timeLabel?.stringValue = String(format: "%.1fs → %.1fs（共 %.1fs）", start, end, dur)
+        let sec = { (v: Double) in String(format: "%.1fs", v) }
+        timeLabel?.stringValue = L("%@ → %@（共 %@）", sec(start), sec(end), sec(dur))
     }
 
     @objc private func togglePlay() {
@@ -284,7 +290,7 @@ final class RecordingTrimWindowController: NSObject, NSWindowDelegate {
         saveBtn?.isEnabled = false
         copyBtn?.isEnabled = false
         player?.pause()
-        timeLabel?.stringValue = "正在无损裁切…"
+        timeLabel?.stringValue = L("正在无损裁切…")
         let startSec = sFrac * totalSeconds, endSec = max(startSec + 0.15, eFrac * totalSeconds)
         let outURL = sourceURL.deletingLastPathComponent().appendingPathComponent("MSnip-trim-\(Int(Date().timeIntervalSince1970 * 1000)).mp4")
         try? FileManager.default.removeItem(at: outURL)

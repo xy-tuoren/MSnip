@@ -19,35 +19,35 @@ public enum GlobalHotKeyAction: String, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .capture:           return "区域截图"
-        case .pin:               return "桌面贴图"
-        case .ocr:               return "快捷识字 (OCR)"
-        case .translate:         return "截图翻译"
-        case .longShot:          return "滚动长截图"
-        case .record:            return "区域录屏 (GIF/MP4)"
-        case .delayedCapture:    return "延时截图"
-        case .fullScreenCapture: return "截取当前全屏"
-        case .latex:             return "公式识别 (LaTeX)"
-        case .togglePins:        return "显隐全部贴图"
-        case .repeatCapture:     return "重截上次选区"
-        case .toggleShelf:       return "呼出顶部暂存架"
+        case .capture:           return L("区域截图")
+        case .pin:               return L("桌面贴图")
+        case .ocr:               return L("快捷识字 (OCR)")
+        case .translate:         return L("截图翻译")
+        case .longShot:          return L("滚动长截图")
+        case .record:            return L("区域录屏 (GIF/MP4)")
+        case .delayedCapture:    return L("延时截图")
+        case .fullScreenCapture: return L("截取当前全屏")
+        case .latex:             return L("公式识别 (LaTeX)")
+        case .togglePins:        return L("显隐全部贴图")
+        case .repeatCapture:     return L("重截上次选区")
+        case .toggleShelf:       return L("呼出顶部暂存架")
         }
     }
 
     public var subtitle: String {
         switch self {
-        case .capture:           return "冻结屏幕框选、圈记标注、取色与独立窗口抓拍"
-        case .pin:               return "将剪贴板图片/色值钉在桌面，或在截图中直接贴出"
-        case .ocr:               return "框选屏幕任意区域后立即识字（支持原位/双栏/静默直拷）"
-        case .translate:         return "框选屏幕任意区域后立即原位替换译文"
-        case .longShot:          return "框选可滚动区域后直接开始长图自动拼接"
-        case .record:            return "直接进入 GIF / MP4 选区录屏准备状态"
-        case .delayedCapture:    return "按设定的默认秒数启动悬浮倒计时，适合捕获菜单与悬停态"
-        case .fullScreenCapture: return "一键截取鼠标所在显示器整屏，按设定复制或保存到默认目录"
-        case .latex:             return "框选数学公式直接识别并弹出 KaTeX 预览"
-        case .togglePins:        return "一键暂藏或恢复桌面上所有置顶贴图窗口"
-        case .repeatCapture:     return "按上一次截图的选区位置静默重截并复制到剪贴板"
-        case .toggleShelf:       return "展开或收起屏幕顶部暂存架，集中拖拽最近截图、文件与文本"
+        case .capture:           return L("冻结屏幕框选、圈记标注、取色与独立窗口抓拍")
+        case .pin:               return L("将剪贴板图片/色值钉在桌面，或在截图中直接贴出")
+        case .ocr:               return L("框选屏幕任意区域后立即识字（支持原位/双栏/静默直拷）")
+        case .translate:         return L("框选屏幕任意区域后立即原位替换译文")
+        case .longShot:          return L("框选可滚动区域后直接开始长图自动拼接")
+        case .record:            return L("直接进入 GIF / MP4 选区录屏准备状态")
+        case .delayedCapture:    return L("按设定的默认秒数启动悬浮倒计时，适合捕获菜单与悬停态")
+        case .fullScreenCapture: return L("一键截取鼠标所在显示器整屏，按设定复制或保存到默认目录")
+        case .latex:             return L("框选数学公式直接识别并弹出 KaTeX 预览")
+        case .togglePins:        return L("一键暂藏或恢复桌面上所有置顶贴图窗口")
+        case .repeatCapture:     return L("按上一次截图的选区位置静默重截并复制到剪贴板")
+        case .toggleShelf:       return L("展开或收起屏幕顶部暂存架，集中拖拽最近截图、文件与文本")
         }
     }
 
@@ -95,10 +95,10 @@ public enum HotKeyPreset: String, CaseIterable, Codable, Sendable {
 
     public var segmentTitle: String {
         switch self {
-        case .optASD:  return "⌥A / ⌥S 左手双键"
-        case .ctrl123: return "⌃1 / ⌃2 数字双键"
-        case .fnKeys:  return "F1 / F2 单键"
-        case .ctrlCmd: return "⌃⌘A 经典三键"
+        case .optASD:  return L("⌥A / ⌥S 左手双键")
+        case .ctrl123: return L("⌃1 / ⌃2 数字双键")
+        case .fnKeys:  return L("F1 / F2 单键")
+        case .ctrlCmd: return L("⌃⌘A 经典三键")
         }
     }
 
@@ -160,9 +160,9 @@ public enum CanvasActionGroup: Int, CaseIterable, Sendable {
 
     public var title: String {
         switch self {
-        case .outputAndModes:          return "输出与多模态动作"
-        case .annotationTools:         return "圈记标注工具"
-        case .inspectionAndAppearance: return "美化、窗口对齐与取色测量"
+        case .outputAndModes:          return L("输出与多模态动作")
+        case .annotationTools:         return L("圈记标注工具")
+        case .inspectionAndAppearance: return L("美化、窗口对齐与取色测量")
         }
     }
 }
@@ -197,30 +197,30 @@ public enum CanvasAction: String, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .copy: return "复制截图 / 复制色值"
-        case .quickSave: return "一键快存（配 ⇧ 另存为）"
-        case .pin: return "贴到桌面"
-        case .ocr: return "原位识字（配 ⇧ 公式 / ⌥ 对照窗）"
-        case .translate: return "原位翻译（配 ⌥ 双栏流式窗）"
-        case .longShot: return "滚动长截图"
-        case .record: return "切换录屏模式"
-        case .cancel: return "退出截图（Esc 始终可用）"
-        case .rect: return "矩形 / 椭圆 (+⇧)"
-        case .arrow: return "箭头标注"
-        case .pen: return "画笔 / 荧光笔 (+⇧)"
-        case .text: return "文字标注"
-        case .step: return "步骤序号 ①②③"
-        case .mosaic: return "马赛克 / 高斯模糊 (+⇧)"
-        case .eraser: return "橡皮擦 / 恢复上次选区"
-        case .textCapsule: return "切换文字胶囊底色"
-        case .cornerRadius: return "圆角裁切滑块（配 ⌥ 重置）"
-        case .backdropOrCoord: return "发光边强度滑块 / 切换相对坐标"
-        case .snapWindow: return "对齐底层窗口（配 ⌥ 抓独立窗口）"
-        case .caliper: return "像素卡尺四向测距"
-        case .eyedropper: return "画笔吸管取色"
-        case .copyCoord: return "复制光标坐标"
-        case .toggleMagnifier: return "显示 / 隐藏取色放大镜"
-        case .toggleTips: return "显示 / 隐藏快捷键提示面板"
+        case .copy: return L("复制截图 / 复制色值")
+        case .quickSave: return L("一键快存（配 ⇧ 另存为）")
+        case .pin: return L("贴到桌面")
+        case .ocr: return L("原位识字（配 ⇧ 公式 / ⌥ 对照窗）")
+        case .translate: return L("原位翻译（配 ⌥ 双栏流式窗）")
+        case .longShot: return L("滚动长截图")
+        case .record: return L("切换录屏模式")
+        case .cancel: return L("退出截图（Esc 始终可用）")
+        case .rect: return L("矩形 / 椭圆 (+⇧)")
+        case .arrow: return L("箭头标注")
+        case .pen: return L("画笔 / 荧光笔 (+⇧)")
+        case .text: return L("文字标注")
+        case .step: return L("步骤序号 ①②③")
+        case .mosaic: return L("马赛克 / 高斯模糊 (+⇧)")
+        case .eraser: return L("橡皮擦 / 恢复上次选区")
+        case .textCapsule: return L("切换文字胶囊底色")
+        case .cornerRadius: return L("圆角裁切滑块（配 ⌥ 重置）")
+        case .backdropOrCoord: return L("发光边强度滑块 / 切换相对坐标")
+        case .snapWindow: return L("对齐底层窗口（配 ⌥ 抓独立窗口）")
+        case .caliper: return L("像素卡尺四向测距")
+        case .eyedropper: return L("画笔吸管取色")
+        case .copyCoord: return L("复制光标坐标")
+        case .toggleMagnifier: return L("显示 / 隐藏取色放大镜")
+        case .toggleTips: return L("显示 / 隐藏快捷键提示面板")
         }
     }
 

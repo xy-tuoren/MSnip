@@ -115,7 +115,7 @@ final class PinWindow: NSPanel {
             case .annotate:  self.beginAnnotationEditing()
             case .ocr:       self.openOCRPanel()
             case .translate: self.openTranslatePanel()
-            case .copy:      self.copyImage(); ToastHUD.show(message: "已复制贴图图像")
+            case .copy:      self.copyImage(); ToastHUD.show(message: L("已复制贴图图像"))
             case .save:      if NSEvent.modifierFlags.contains(.shift) { self.saveImage() } else { self.quickSaveImage() }
             case .close:     self.closePin()
             }
@@ -228,8 +228,8 @@ final class PinWindow: NSPanel {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
         if (flags == .command || flags == .control) && chars == "c" {
-            if pinContentView.liveTextView.copySelectionIfActive() { ToastHUD.show(message: "已复制贴图划选文字"); return true }
-            copyImage(); ToastHUD.show(message: "已复制贴图图像"); return true
+            if pinContentView.liveTextView.copySelectionIfActive() { ToastHUD.show(message: L("已复制贴图划选文字")); return true }
+            copyImage(); ToastHUD.show(message: L("已复制贴图图像")); return true
         }
         if flags == .command && chars == "o" { openOCRPanel(); return true }
         return super.performKeyEquivalent(with: event)
@@ -335,7 +335,7 @@ extension PinWindow {
         if enabled {
             preGhostAlpha = alphaValue
             if alphaValue > 0.82 { alphaValue = 0.68 }
-            ToastHUD.show(message: "已开启贴图鼠标穿透对照 · 可在顶部菜单栏一键恢复")
+            ToastHUD.show(message: L("已开启贴图鼠标穿透对照 · 可在顶部菜单栏一键恢复"))
         } else {
             alphaValue = preGhostAlpha
         }
@@ -399,10 +399,10 @@ extension PinWindow {
             case .clearAnnotations: canvas.doc.clearAll(); canvas.selectedIndex = nil; canvas.needsDisplay = true; canvas.onDocStateChanged?()
             case .autoRedact:
                 let useBlur = (canvas.activeTool == .gaussianBlur), st = canvas.style, img = self.baseCGImage, bSz = self.baseSize
-                ToastHUD.show(message: "正在离线扫描隐私敏感信息…")
+                ToastHUD.show(message: L("正在离线扫描隐私敏感信息…"))
                 Task { @MainActor [weak canvas] in
                     let boxes = await VisionTextExtractor.detectSensitiveBoxesOffMain(cgImage: img)
-                    guard let canvas, !boxes.isEmpty else { ToastHUD.show(message: "未检测到隐私敏感信息"); return }
+                    guard let canvas, !boxes.isEmpty else { ToastHUD.show(message: L("未检测到隐私敏感信息")); return }
                     canvas.doc.beginTransaction()
                     var objs = canvas.doc.objects
                     for nb in boxes {
@@ -411,7 +411,7 @@ extension PinWindow {
                     }
                     canvas.doc.replaceObjectsWithoutHistory(objs); canvas.doc.commitTransaction(changed: true)
                     canvas.needsDisplay = true; canvas.onDocStateChanged?()
-                    ToastHUD.show(message: "✓ 已一键遮盖 \(boxes.count) 处隐私敏感信息")
+                    ToastHUD.show(message: L("✓ 已一键遮盖 %@ 处隐私敏感信息", boxes.count))
                 }
             case .cancel: self.endAnnotationEditing(commit: false)
             case .confirmCopy: self.annotationDoc = canvas.doc; self.endAnnotationEditing(commit: true)
@@ -439,7 +439,7 @@ extension PinWindow {
             imageScale: imageScale, annotations: annotationDoc.objects
         ) {
             currentCGImage = baked
-            ToastHUD.show(message: "已更新贴图标注")
+            ToastHUD.show(message: L("已更新贴图标注"))
         }
         editorCanvas?.removeFromSuperview(); editorCanvas = nil
         toolbarPanel?.barView.clearHover()
@@ -459,7 +459,7 @@ extension PinWindow {
     @objc func copyImage() { ClipboardAndSave.copyToClipboard(cgImage: currentCGImage, scaleFactor: imageScale) }
     @objc func copyImageWithPath() {
         ClipboardAndSave.copyToClipboard(cgImage: currentCGImage, scaleFactor: imageScale, forceIncludePath: true)
-        ToastHUD.show(message: "已复制贴图与临时文件路径 · 可直接粘贴到任意终端")
+        ToastHUD.show(message: L("已复制贴图与临时文件路径 · 可直接粘贴到任意终端"))
     }
     @objc func openOCRPanel() { if let scr = screen ?? NSScreen.main ?? NSScreen.screens.first { onExtractOCR?(currentCGImage, imageScale, scr) } }
     @objc func openTranslatePanel() { if let scr = screen ?? NSScreen.main ?? NSScreen.screens.first { onTranslateImage?(currentCGImage, imageScale, scr) } }
@@ -470,7 +470,7 @@ extension PinWindow {
             if let first = codes.first {
                 OverlayView.presentBarcodeToast(first)
             } else {
-                ToastHUD.show(message: "贴图中未检测到二维码或条形码")
+                ToastHUD.show(message: L("贴图中未检测到二维码或条形码"))
             }
         }
     }
@@ -482,8 +482,8 @@ extension PinWindow {
     @objc func quickSaveImage() { onQuickSavePNG?(currentCGImage, imageScale) }
     @objc func resetZoom() { applyZoom(newZoom: 1.0); alphaValue = 1.0 }
     @objc func toggleHalfOpacity() { alphaValue = alphaValue < 0.95 ? 1.0 : 0.55 }
-    @objc func rotateClockwise90() { applyImageTransform(ImageTransform.rotateClockwise90, toast: "已顺时针旋转 90°") }
-    @objc func flipHorizontal() { applyImageTransform(ImageTransform.flipHorizontal, toast: "已水平镜像翻转") }
+    @objc func rotateClockwise90() { applyImageTransform(ImageTransform.rotateClockwise90, toast: L("已顺时针旋转 90°")) }
+    @objc func flipHorizontal() { applyImageTransform(ImageTransform.flipHorizontal, toast: L("已水平镜像翻转")) }
 
     private func applyImageTransform(_ transform: (CGImage) -> CGImage?, toast: String) {
         guard editorCanvas == nil, !isClickThrough else { return }
@@ -547,33 +547,33 @@ extension PinWindow {
 
     func buildContextMenu() -> NSMenu {
         let menu = NSMenu()
-        menu.addItem(withTitle: "编辑 / 二次标注贴图 (E)…", action: #selector(beginAnnotationEditing), keyEquivalent: "")
-        menu.addItem(withTitle: "二次裁剪贴图 (C)…", action: #selector(beginCropEditing), keyEquivalent: "")
-        menu.addItem(withTitle: "开启鼠标穿透对照 (P)", action: #selector(enableClickThrough), keyEquivalent: "")
+        menu.addItem(withTitle: L("编辑 / 二次标注贴图 (E)…"), action: #selector(beginAnnotationEditing), keyEquivalent: "")
+        menu.addItem(withTitle: L("二次裁剪贴图 (C)…"), action: #selector(beginCropEditing), keyEquivalent: "")
+        menu.addItem(withTitle: L("开启鼠标穿透对照 (P)"), action: #selector(enableClickThrough), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "提取图中文字 (T)…", action: #selector(openOCRPanel), keyEquivalent: "o")
-        menu.addItem(withTitle: "翻译图中文字 (Y)…", action: #selector(openTranslatePanel), keyEquivalent: "")
-        menu.addItem(withTitle: "扫描二维码 / 条形码", action: #selector(scanBarcodeInPin), keyEquivalent: "")
-        let hlItem = NSMenuItem(title: "高亮图中可划选文字块", action: #selector(toggleTextHighlights), keyEquivalent: "")
+        menu.addItem(withTitle: L("提取图中文字 (T)…"), action: #selector(openOCRPanel), keyEquivalent: "o")
+        menu.addItem(withTitle: L("翻译图中文字 (Y)…"), action: #selector(openTranslatePanel), keyEquivalent: "")
+        menu.addItem(withTitle: L("扫描二维码 / 条形码"), action: #selector(scanBarcodeInPin), keyEquivalent: "")
+        let hlItem = NSMenuItem(title: L("高亮图中可划选文字块"), action: #selector(toggleTextHighlights), keyEquivalent: "")
         self.highlightMenuItem = hlItem
         menu.addItem(hlItem)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "复制贴图图像 (按住 ⌘ 可拖拽成文件)", action: #selector(copyImage), keyEquivalent: "c")
-        menu.addItem(withTitle: "复制临时文件路径 (供 IDE / 终端粘贴)", action: #selector(copyImageWithPath), keyEquivalent: "")
-        let quickItem = NSMenuItem(title: "一键保存到默认目录", action: #selector(quickSaveImage), keyEquivalent: "s")
+        menu.addItem(withTitle: L("复制贴图图像 (按住 ⌘ 可拖拽成文件)"), action: #selector(copyImage), keyEquivalent: "c")
+        menu.addItem(withTitle: L("复制临时文件路径 (供 IDE / 终端粘贴)"), action: #selector(copyImageWithPath), keyEquivalent: "")
+        let quickItem = NSMenuItem(title: L("一键保存到默认目录"), action: #selector(quickSaveImage), keyEquivalent: "s")
         menu.addItem(quickItem)
-        let saveAsItem = NSMenuItem(title: "另存为…", action: #selector(saveImage), keyEquivalent: "s")
+        let saveAsItem = NSMenuItem(title: L("另存为…"), action: #selector(saveImage), keyEquivalent: "s")
         saveAsItem.keyEquivalentModifierMask = [.command, .shift]
         menu.addItem(saveAsItem)
         menu.addItem(.separator())
-        menu.addItem(withTitle: "顺时针旋转 90° (R)", action: #selector(rotateClockwise90), keyEquivalent: "")
-        menu.addItem(withTitle: "水平镜像翻转 (H)", action: #selector(flipHorizontal), keyEquivalent: "")
-        menu.addItem(withTitle: "自适应屏幕大小", action: #selector(fitToScreen), keyEquivalent: "")
-        menu.addItem(withTitle: "重置 100% 大小与不透明", action: #selector(resetZoom), keyEquivalent: "0")
-        menu.addItem(withTitle: "切换半透明对照 (55%)", action: #selector(toggleHalfOpacity), keyEquivalent: "")
+        menu.addItem(withTitle: L("顺时针旋转 90° (R)"), action: #selector(rotateClockwise90), keyEquivalent: "")
+        menu.addItem(withTitle: L("水平镜像翻转 (H)"), action: #selector(flipHorizontal), keyEquivalent: "")
+        menu.addItem(withTitle: L("自适应屏幕大小"), action: #selector(fitToScreen), keyEquivalent: "")
+        menu.addItem(withTitle: L("重置 100% 大小与不透明"), action: #selector(resetZoom), keyEquivalent: "0")
+        menu.addItem(withTitle: L("切换半透明对照 (55%)"), action: #selector(toggleHalfOpacity), keyEquivalent: "")
         menu.addItem(.separator())
-        menu.addItem(withTitle: "关闭此贴图 (Esc / 双击空白处)", action: #selector(closePin), keyEquivalent: "")
-        menu.addItem(withTitle: "关闭全部贴图", action: #selector(closeAllPins), keyEquivalent: "")
+        menu.addItem(withTitle: L("关闭此贴图 (Esc / 双击空白处)"), action: #selector(closePin), keyEquivalent: "")
+        menu.addItem(withTitle: L("关闭全部贴图"), action: #selector(closeAllPins), keyEquivalent: "")
         for item in menu.items { item.target = self }
         return menu
     }

@@ -9,9 +9,9 @@ public enum OCRDefaultPresentation: String, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .inPlace:    return "原位划词"
-        case .dualPane:   return "双栏面板"
-        case .silentCopy: return "静默直拷"
+        case .inPlace:    return L("原位划词")
+        case .dualPane:   return L("双栏面板")
+        case .silentCopy: return L("静默直拷")
         }
     }
 
@@ -161,9 +161,9 @@ public enum TopShelfTriggerMode: String, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .topEdgeHover: return "悬停展开"
-        case .manualOnly:   return "快捷键切换"
-        case .alwaysShown:  return "常驻显示"
+        case .topEdgeHover: return L("悬停展开")
+        case .manualOnly:   return L("快捷键切换")
+        case .alwaysShown:  return L("常驻显示")
         }
     }
 

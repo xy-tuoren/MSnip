@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MSnipCore
 
 /// OCR 与 LaTeX 双栏窗口自适应深浅色调色板（浅色 Daylight Porcelain / 深色 Carbon Dark）
 enum ResultTheme {
@@ -114,14 +115,14 @@ enum ResultWindowChrome {
         button.isToggledOn = alwaysOnTop
         button.symbolName = alwaysOnTop ? "pin.fill" : "pin"
         button.toolTip = alwaysOnTop
-            ? "当前已置顶浮于其他窗口上方（点击取消置顶）"
-            : "置顶此窗口（默认常规层级，允许切换其他应用自然覆盖）"
+            ? L("当前已置顶浮于其他窗口上方（点击取消置顶）")
+            : L("置顶此窗口（默认常规层级，允许切换其他应用自然覆盖）")
     }
 
     @MainActor
     static func syncThemeButton(_ button: OCRPillButton, dark: Bool) {
         button.symbolName = dark ? "sun.max" : "moon"
-        button.toolTip = dark ? "当前深色外观（点击切换为浅色瓷白外观）" : "当前浅色外观（点击切换为深色极客外观）"
+        button.toolTip = dark ? L("当前深色外观（点击切换为浅色瓷白外观）") : L("当前浅色外观（点击切换为深色极客外观）")
         button.needsDisplay = true
     }
 

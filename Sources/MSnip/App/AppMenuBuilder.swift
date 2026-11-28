@@ -29,14 +29,14 @@ extension AppController {
         // 若存在进行中的录屏或 MP4 裁剪窗口，在顶部提供直达操作，绝不卡死在红点态
         if let rec = activeRecording {
             if rec.isShowingTrimWindow {
-                let focusTrim = NSMenuItem(title: "回到 MP4 裁剪窗口", action: #selector(finishActiveRecordingFromMenu), keyEquivalent: "")
+                let focusTrim = NSMenuItem(title: L("回到 MP4 裁剪窗口"), action: #selector(finishActiveRecordingFromMenu), keyEquivalent: "")
                 focusTrim.setVisibleImage(MSnipUITheme.menuSymbol("scissors")); focusTrim.target = self
                 menu.addItem(focusTrim)
             } else {
-                let stopRec = NSMenuItem(title: "完成并复制当前录屏", action: #selector(finishActiveRecordingFromMenu), keyEquivalent: "")
+                let stopRec = NSMenuItem(title: L("完成并复制当前录屏"), action: #selector(finishActiveRecordingFromMenu), keyEquivalent: "")
                 stopRec.setVisibleImage(MSnipUITheme.menuSymbol("stop.circle")); stopRec.target = self
                 menu.addItem(stopRec)
-                let cancelRec = NSMenuItem(title: "放弃当前录屏", action: #selector(cancelActiveRecordingFromMenu), keyEquivalent: "")
+                let cancelRec = NSMenuItem(title: L("放弃当前录屏"), action: #selector(cancelActiveRecordingFromMenu), keyEquivalent: "")
                 cancelRec.setVisibleImage(MSnipUITheme.menuSymbol("xmark.circle")); cancelRec.target = self
                 menu.addItem(cancelRec)
             }
@@ -45,7 +45,7 @@ extension AppController {
 
         // 仅在缺失屏幕录制权限时于最顶部显示单行提醒，授权后自动隐藏
         let screenOK = ScreenCapturer.runtimeVerifiedAccess || CGPreflightScreenCaptureAccess()
-        let warnItem = NSMenuItem(title: "开启屏幕录制权限…", action: #selector(openPermissionGuide), keyEquivalent: "")
+        let warnItem = NSMenuItem(title: L("开启屏幕录制权限…"), action: #selector(openPermissionGuide), keyEquivalent: "")
         warnItem.setVisibleImage(MSnipUITheme.menuSymbol("exclamationmark.triangle"))
         warnItem.target = self; warnItem.isHidden = screenOK
         menu.addItem(warnItem); axMenuItem = warnItem
@@ -53,42 +53,42 @@ extension AppController {
         let warnSep = NSMenuItem.separator(); warnSep.isHidden = screenOK
         menu.addItem(warnSep); permWarnSepItem = warnSep
 
-        menu.addItem(makeHotKeyItem(title: "区域截图", symbol: "viewfinder", action: #selector(startCapture), slot: .capture))
-        menu.addItem(makeHotKeyItem(title: "重截上次选区", symbol: "arrow.counterclockwise", action: #selector(repeatLastCapture(_:)), slot: .repeatCapture))
+        menu.addItem(makeHotKeyItem(title: L("区域截图"), symbol: "viewfinder", action: #selector(startCapture), slot: .capture))
+        menu.addItem(makeHotKeyItem(title: L("重截上次选区"), symbol: "arrow.counterclockwise", action: #selector(repeatLastCapture(_:)), slot: .repeatCapture))
         let defaultSecs = DelayedCaptureSettings.clampedSeconds(config.delayedCaptureSeconds)
-        let delayRoot = NSMenuItem(title: "延时截图（\(defaultSecs) 秒）", action: nil, keyEquivalent: "")
+        let delayRoot = NSMenuItem(title: L("延时截图（%@ 秒）", defaultSecs), action: nil, keyEquivalent: "")
         delayRoot.setVisibleImage(MSnipUITheme.menuSymbol("timer"))
         let delaySub = NSMenu()
         delaySub.autoenablesItems = false
-        delaySub.addItem(makeHotKeyItem(title: "按默认延时截图（\(defaultSecs) 秒）", symbol: "timer", action: #selector(startDefaultDelayedCapture), slot: .delayedCapture))
+        delaySub.addItem(makeHotKeyItem(title: L("按默认延时截图（%@ 秒）", defaultSecs), symbol: "timer", action: #selector(startDefaultDelayedCapture), slot: .delayedCapture))
         delaySub.addItem(.separator())
         for secs in DelayedCaptureSettings.quickPresets {
-            let di = NSMenuItem(title: "\(secs) 秒后截图", action: #selector(startDelayedCapture(_:)), keyEquivalent: "")
+            let di = NSMenuItem(title: L("%@ 秒后截图", secs), action: #selector(startDelayedCapture(_:)), keyEquivalent: "")
             di.tag = secs; di.target = self; delaySub.addItem(di)
         }
         delaySub.addItem(.separator())
-        let customDelay = NSMenuItem(title: "自定义秒数与快捷键…", action: #selector(openGeneralPreferences), keyEquivalent: "")
+        let customDelay = NSMenuItem(title: L("自定义秒数与快捷键…"), action: #selector(openGeneralPreferences), keyEquivalent: "")
         customDelay.setVisibleImage(MSnipUITheme.menuSymbol("slider.horizontal.3")); customDelay.target = self
         delaySub.addItem(customDelay); delayRoot.submenu = delaySub; menu.addItem(delayRoot)
-        let fullItem = makeHotKeyItem(title: "截取当前全屏", symbol: "rectangle.dashed", action: #selector(captureCurrentFullScreen), slot: .fullScreenCapture)
-        fullItem.toolTip = "截取鼠标所在屏幕（当前默认：\(config.fullScreenCaptureAction.title)；按住 ⌥ 点击直接保存到默认目录）"
+        let fullItem = makeHotKeyItem(title: L("截取当前全屏"), symbol: "rectangle.dashed", action: #selector(captureCurrentFullScreen), slot: .fullScreenCapture)
+        fullItem.toolTip = L("截取鼠标所在屏幕（当前默认：%@；按住 ⌥ 点击直接保存到默认目录）", config.fullScreenCaptureAction.title)
         menu.addItem(fullItem)
-        menu.addItem(makeHotKeyItem(title: "桌面贴图", symbol: "pin", action: #selector(handlePinHotKey), slot: .pin))
-        menu.addItem(makeHotKeyItem(title: "快捷识字", symbol: "text.viewfinder", action: #selector(startQuickOCR), slot: .ocr))
-        menu.addItem(makeHotKeyItem(title: "公式识别 (LaTeX)", symbol: "function", action: #selector(startQuickLatex(_:)), slot: .latex))
-        menu.addItem(makeHotKeyItem(title: "截图翻译", symbol: "character.bubble", action: #selector(startQuickTranslate), slot: .translate))
-        menu.addItem(makeHotKeyItem(title: "滚动长截图", symbol: "scissors", action: #selector(startQuickLongShot), slot: .longShot))
-        menu.addItem(makeHotKeyItem(title: "区域录屏", symbol: "video", action: #selector(startQuickRecord), slot: .record))
+        menu.addItem(makeHotKeyItem(title: L("桌面贴图"), symbol: "pin", action: #selector(handlePinHotKey), slot: .pin))
+        menu.addItem(makeHotKeyItem(title: L("快捷识字"), symbol: "text.viewfinder", action: #selector(startQuickOCR), slot: .ocr))
+        menu.addItem(makeHotKeyItem(title: L("公式识别 (LaTeX)"), symbol: "function", action: #selector(startQuickLatex(_:)), slot: .latex))
+        menu.addItem(makeHotKeyItem(title: L("截图翻译"), symbol: "character.bubble", action: #selector(startQuickTranslate), slot: .translate))
+        menu.addItem(makeHotKeyItem(title: L("滚动长截图"), symbol: "scissors", action: #selector(startQuickLongShot), slot: .longShot))
+        menu.addItem(makeHotKeyItem(title: L("区域录屏"), symbol: "video", action: #selector(startQuickRecord), slot: .record))
 
         menu.addItem(.separator())
 
-        menu.addItem(makeHotKeyItem(title: "顶部暂存架", symbol: "tray.and.arrow.down", action: #selector(toggleTopShelf), slot: .toggleShelf))
-        let studioItem = NSMenuItem(title: "拼图与合并 PDF…", action: #selector(openCollageStudioWindow), keyEquivalent: "")
+        menu.addItem(makeHotKeyItem(title: L("顶部暂存架"), symbol: "tray.and.arrow.down", action: #selector(toggleTopShelf), slot: .toggleShelf))
+        let studioItem = NSMenuItem(title: L("拼图与合并 PDF…"), action: #selector(openCollageStudioWindow), keyEquivalent: "")
         studioItem.setVisibleImage(MSnipUITheme.menuSymbol("rectangle.split.2x2")); studioItem.target = self
         menu.addItem(studioItem)
 
         // 最近截图（按需懒加载缩略图子菜单，避免每次配置变更/开关贴图都重复解码全部历史缩略图）
-        let histTitle = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
+        let histTitle = historyRing.entries.isEmpty ? L("最近截图") : L("最近截图 (%@)", historyRing.entries.count)
         let histRoot = NSMenuItem(title: histTitle, action: nil, keyEquivalent: "")
         histRoot.setVisibleImage(MSnipUITheme.menuSymbol("clock"))
         let lazyHistoryMenu = NSMenu()
@@ -102,16 +102,16 @@ extension AppController {
 
         // 动态贴图管理项（仅在桌面存在贴图时出现）
         if pinManager.count > 0 {
-            let visTitle = pinManager.arePinsHidden ? "恢复显示贴图 (\(pinManager.count))" : "暂藏全部贴图 (\(pinManager.count))"
+            let visTitle = pinManager.arePinsHidden ? L("恢复显示贴图 (%@)", pinManager.count) : L("暂藏全部贴图 (%@)", pinManager.count)
             menu.addItem(makeHotKeyItem(title: visTitle, symbol: pinManager.arePinsHidden ? "eye" : "eye.slash", action: #selector(togglePinsVisibility), slot: .togglePins))
         }
         if pinManager.clickThroughCount > 0 {
-            let unghostItem = NSMenuItem(title: "恢复穿透贴图 (\(pinManager.clickThroughCount))", action: #selector(restoreClickThroughPins), keyEquivalent: "")
+            let unghostItem = NSMenuItem(title: L("恢复穿透贴图 (%@)", pinManager.clickThroughCount), action: #selector(restoreClickThroughPins), keyEquivalent: "")
             unghostItem.setVisibleImage(MSnipUITheme.menuSymbol("hand.point.up.left")); unghostItem.target = self
             menu.addItem(unghostItem)
         }
         if pinManager.count > 0 {
-            let clearItem = NSMenuItem(title: "关闭全部贴图 (\(pinManager.count))", action: #selector(closeAllPins), keyEquivalent: "")
+            let clearItem = NSMenuItem(title: L("关闭全部贴图 (%@)", pinManager.count), action: #selector(closeAllPins), keyEquivalent: "")
             clearItem.setVisibleImage(MSnipUITheme.menuSymbol("xmark.circle")); clearItem.target = self
             menu.addItem(clearItem)
         }
@@ -119,21 +119,21 @@ extension AppController {
         menu.addItem(.separator())
 
         // 4) 极简设置窗（常规 / 翻译 API）
-        let settingsItem = NSMenuItem(title: "设置…", action: #selector(openGeneralPreferences), keyEquivalent: ",")
+        let settingsItem = NSMenuItem(title: L("设置…"), action: #selector(openGeneralPreferences), keyEquivalent: ",")
         settingsItem.keyEquivalentModifierMask = [.command]
         settingsItem.setVisibleImage(MSnipUITheme.menuSymbol("slider.horizontal.3"))
         settingsItem.target = self
         menu.addItem(settingsItem)
 
         // 5) 开机自启
-        let loginItem = NSMenuItem(title: "开机自启", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
+        let loginItem = NSMenuItem(title: L("开机自启"), action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
         loginItem.setVisibleImage(MSnipUITheme.menuSymbol("bolt"))
         loginItem.state = LaunchAtLoginManager.isEnabled ? .on : .off
         loginItem.target = self
         menu.addItem(loginItem); loginMenuItem = loginItem
 
         // 6) 退出
-        let quitItem = NSMenuItem(title: "退出 MSnip", action: #selector(quitApp), keyEquivalent: "q")
+        let quitItem = NSMenuItem(title: L("退出 MSnip"), action: #selector(quitApp), keyEquivalent: "q")
         quitItem.setVisibleImage(MSnipUITheme.menuSymbol("power"))
         quitItem.target = self
         menu.addItem(quitItem)
@@ -150,23 +150,23 @@ extension AppController {
         renderedHistoryMenuIDs = currentIDs
         sub.removeAllItems()
         if currentEntries.isEmpty {
-            let empty = NSMenuItem(title: "暂无截图记录", action: nil, keyEquivalent: "")
+            let empty = NSMenuItem(title: L("暂无截图记录"), action: nil, keyEquivalent: "")
             empty.isEnabled = false
             sub.addItem(empty)
             sub.addItem(.separator())
-            let openDir = NSMenuItem(title: "打开最近截图目录…", action: #selector(openHistoryDirectory), keyEquivalent: "")
+            let openDir = NSMenuItem(title: L("打开最近截图目录…"), action: #selector(openHistoryDirectory), keyEquivalent: "")
             openDir.setVisibleImage(MSnipUITheme.menuSymbol("folder")); openDir.target = self
             sub.addItem(openDir)
             return
         }
 
-        let tip = NSMenuItem(title: "点击复制 · ⌘贴图 · ⇧识字 · ⌥打开", action: nil, keyEquivalent: "")
+        let tip = NSMenuItem(title: L("点击复制 · ⌘贴图 · ⇧识字 · ⌥打开"), action: nil, keyEquivalent: "")
         tip.isEnabled = false
         sub.addItem(tip)
         sub.addItem(.separator())
 
         for (idx, entry) in currentEntries.enumerated() {
-            let tag = entry.isCollage ? "拼图 · " : ""
+            let tag = entry.isCollage ? L("拼图 · ") : ""
             let title = "\(Self.historyTimeFormatter.string(from: entry.createdAt))  ·  \(tag)\(entry.pixelWidth) × \(entry.pixelHeight)"
             let item = NSMenuItem(title: title, action: #selector(restoreHistoryItem(_:)), keyEquivalent: "")
             item.tag = idx; item.target = self
@@ -175,14 +175,14 @@ extension AppController {
         }
 
         sub.addItem(.separator())
-        let openStudio = NSMenuItem(title: "多图拼接 / 合并 PDF…", action: #selector(openCollageStudioWindow), keyEquivalent: "")
+        let openStudio = NSMenuItem(title: L("多图拼接 / 合并 PDF…"), action: #selector(openCollageStudioWindow), keyEquivalent: "")
         openStudio.setVisibleImage(MSnipUITheme.menuSymbol("rectangle.split.2x2")); openStudio.target = self
         sub.addItem(openStudio)
-        let openDir = NSMenuItem(title: "打开最近截图目录…", action: #selector(openHistoryDirectory), keyEquivalent: "")
+        let openDir = NSMenuItem(title: L("打开最近截图目录…"), action: #selector(openHistoryDirectory), keyEquivalent: "")
         openDir.setVisibleImage(MSnipUITheme.menuSymbol("folder")); openDir.target = self
         sub.addItem(openDir)
 
-        let clear = NSMenuItem(title: "清空记录", action: #selector(clearCaptureHistory), keyEquivalent: "")
+        let clear = NSMenuItem(title: L("清空记录"), action: #selector(clearCaptureHistory), keyEquivalent: "")
         clear.setVisibleImage(MSnipUITheme.menuSymbol("trash")); clear.target = self
         sub.addItem(clear)
     }
@@ -205,7 +205,7 @@ extension AppController {
         axMenuItem?.isHidden = screenOK
         permWarnSepItem?.isHidden = screenOK
         loginMenuItem?.state = LaunchAtLoginManager.isEnabled ? .on : .off
-        historyRootItem?.title = historyRing.entries.isEmpty ? "最近截图" : "最近截图 (\(historyRing.entries.count))"
+        historyRootItem?.title = historyRing.entries.isEmpty ? L("最近截图") : L("最近截图 (%@)", historyRing.entries.count)
     }
 
     func menuNeedsUpdate(_ menu: NSMenu) {
@@ -289,19 +289,19 @@ extension AppController {
         }
         if mods.contains(.command), let scr = NSScreen.main ?? NSScreen.screens.first {
             pinManager.pin(cgImage: cg, scaleFactor: entry.scaleFactor, topLeftOnScreen: nil, screen: scr)
-            ToastHUD.show(message: "已将历史截图贴到屏幕")
+            ToastHUD.show(message: L("已将历史截图贴到屏幕"))
         } else if mods.contains(.shift), let scr = NSScreen.main ?? NSScreen.screens.first {
             ocrController.present(cgImage: cg, scaleFactor: entry.scaleFactor, screen: scr, autoTranslate: false)
         } else {
             ClipboardAndSave.copyToClipboard(cgImage: cg, scaleFactor: entry.scaleFactor)
-            ToastHUD.show(message: "已恢复历史截图到剪贴板 · \(entry.pixelWidth) × \(entry.pixelHeight)")
+            ToastHUD.show(message: L("已恢复历史截图到剪贴板 · %@ × %@", entry.pixelWidth, entry.pixelHeight))
         }
     }
 
     @objc func clearCaptureHistory() {
         historyRing.clearAll()
         rebuildMenu()
-        ToastHUD.show(message: "已清空最近截图记录")
+        ToastHUD.show(message: L("已清空最近截图记录"))
     }
 
     @objc func startDelayedCapture(_ sender: NSMenuItem) {

@@ -229,7 +229,7 @@ final class GeekHotKeyPill: NSView {
         recording: Bool,
         modified: Bool = false,
         conflict: HotKeyConflictSeverity? = nil,
-        prompt: String = "按下双键…"
+        prompt: String = L("按下双键…")
     ) {
         if recording {
             self.text = prompt
@@ -238,7 +238,7 @@ final class GeekHotKeyPill: NSView {
             self.text = label
             self.isUnset = false
         } else {
-            self.text = "未设置"
+            self.text = L("未设置")
             self.isUnset = true
         }
         self.isRecording = recording

@@ -69,8 +69,8 @@ public struct TranslationTargetLang: RawRepresentable, Codable, Equatable, Hasha
     }
 
     public var displayName: String {
-        if rawValue == "auto_zh_en" { return "自动互译（外→中 / 中→英）" }
-        if let custom = customText { return "自定义：\(custom)" }
+        if rawValue == "auto_zh_en" { return L("自动互译（外→中 / 中→英）") }
+        if let custom = customText { return L("自定义：%@", custom) }
         if let entry = TranslationLanguageCatalog.entry(for: rawValue) { return entry.displayTitle }
         return rawValue
     }
@@ -148,23 +148,23 @@ public enum TranslationProviderKind: String, CaseIterable, Codable, Sendable {
         case .openAICompatible:    return "OpenAI Chat Completions (/v1/chat/completions)"
         case .openAIResponses:     return "OpenAI Responses (/v1/responses)"
         case .anthropicCompatible: return "Anthropic Messages (/v1/messages)"
-        case .geminiNative:        return "Google Gemini 原生 (/v1beta/models)"
+        case .geminiNative:        return L("Google Gemini 原生 (/v1beta/models)")
         default:                   return displayName
         }
     }
 
     public var displayName: String {
         switch self {
-        case .appleNative:         return "macOS 原生离线翻译（免费 · 无需 Key）"
-        case .openAICompatible:    return "通用大模型 · OpenAI Chat Completions (/v1/chat/completions)"
-        case .openAIResponses:     return "通用大模型 · OpenAI Responses (/v1/responses)"
-        case .anthropicCompatible: return "通用大模型 · Anthropic Messages (/v1/messages)"
-        case .geminiNative:        return "通用大模型 · Google Gemini 原生协议"
-        case .tencent:             return "国内云接口 · 腾讯云机器翻译 TMT"
-        case .baidu:               return "国内云接口 · 百度翻译开放平台"
-        case .youdao:              return "国内云接口 · 有道智云文本翻译"
-        case .deepl:               return "国际翻译 · DeepL 官方 / DeepLX 免 Key"
-        case .customWebhook:       return "自定义通用 HTTP JSON 模版接口"
+        case .appleNative:         return L("macOS 原生离线翻译（免费 · 无需 Key）")
+        case .openAICompatible:    return L("通用大模型 · OpenAI Chat Completions (/v1/chat/completions)")
+        case .openAIResponses:     return L("通用大模型 · OpenAI Responses (/v1/responses)")
+        case .anthropicCompatible: return L("通用大模型 · Anthropic Messages (/v1/messages)")
+        case .geminiNative:        return L("通用大模型 · Google Gemini 原生协议")
+        case .tencent:             return L("国内云接口 · 腾讯云机器翻译 TMT")
+        case .baidu:               return L("国内云接口 · 百度翻译开放平台")
+        case .youdao:              return L("国内云接口 · 有道智云文本翻译")
+        case .deepl:               return L("国际翻译 · DeepL 官方 / DeepLX 免 Key")
+        case .customWebhook:       return L("自定义通用 HTTP JSON 模版接口")
         }
     }
 
@@ -197,25 +197,25 @@ public extension TranslationProviderProfile {
 
     var quickGuideText: String {
         switch kind {
-        case .appleNative: return "系统内置免费离线模型 · 无需配置，开箱即用"
+        case .appleNative: return L("系统内置免费离线模型 · 无需配置，开箱即用")
         case .openAICompatible:
-            if isLocalNoKeyEndpoint { return "本机/局域网兼容服务 · 可免 Key，点「拉取」自动选模型" }
+            if isLocalNoKeyEndpoint { return L("本机/局域网兼容服务 · 可免 Key，点「拉取」自动选模型") }
             if endpoint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                return "填入任意 OpenAI 兼容 Base URL、Key 与模型名即可直连"
+                return L("填入任意 OpenAI 兼容 Base URL、Key 与模型名即可直连")
             }
-            if endpoint.lowercased().contains("bigmodel") { return "智谱含免费 glm-4-flash · 填 Key 后测通即用" }
-            if endpoint.lowercased().contains("siliconflow") { return "硅基流动含免费额度 · 填 Key 后可拉取模型列表" }
-            return "兼容 OpenAI Chat 协议 · 填好地址、密钥与模型即可直连"
+            if endpoint.lowercased().contains("bigmodel") { return L("智谱含免费 glm-4-flash · 填 Key 后测通即用") }
+            if endpoint.lowercased().contains("siliconflow") { return L("硅基流动含免费额度 · 填 Key 后可拉取模型列表") }
+            return L("兼容 OpenAI Chat 协议 · 填好地址、密钥与模型即可直连")
         case .openAIResponses:
-            return isLocalNoKeyEndpoint ? "局域网 OpenAI Responses 服务 · 填地址与模型即用" : "兼容 /v1/responses 协议（Codex / GPT-5 等）· 填入地址、Key 与模型即用"
+            return isLocalNoKeyEndpoint ? L("局域网 OpenAI Responses 服务 · 填地址与模型即用") : L("兼容 /v1/responses 协议（Codex / GPT-5 等）· 填入地址、Key 与模型即用")
         case .anthropicCompatible:
-            return isLocalNoKeyEndpoint ? "局域网 Anthropic 兼容服务 · 填地址与模型即用" : "兼容 /v1/messages 协议 · 填入地址、Key 与模型即用"
-        case .geminiNative:        return "Google AI Studio 含免费额度 · 粘贴 Key 即用"
-        case .tencent:             return "每月 500 万字符免费额度 · 填入双密钥即用"
-        case .baidu:               return "每月含免费翻译额度 · 填入 AppID 与密钥即用"
-        case .youdao:              return "填入有道智云应用 ID 与密钥 · 测通即启用"
-        case .deepl:               return isLocalNoKeyEndpoint ? "自建 DeepLX 免密钥 · 确认地址即可使用" : "粘贴 DeepL Auth Key · 测通即可启用"
-        case .customWebhook:       return "开发者自定义 HTTP 接口 · 填写 URL 与模板"
+            return isLocalNoKeyEndpoint ? L("局域网 Anthropic 兼容服务 · 填地址与模型即用") : L("兼容 /v1/messages 协议 · 填入地址、Key 与模型即用")
+        case .geminiNative:        return L("Google AI Studio 含免费额度 · 粘贴 Key 即用")
+        case .tencent:             return L("每月 500 万字符免费额度 · 填入双密钥即用")
+        case .baidu:               return L("每月含免费翻译额度 · 填入 AppID 与密钥即用")
+        case .youdao:              return L("填入有道智云应用 ID 与密钥 · 测通即启用")
+        case .deepl:               return isLocalNoKeyEndpoint ? L("自建 DeepLX 免密钥 · 确认地址即可使用") : L("粘贴 DeepL Auth Key · 测通即可启用")
+        case .customWebhook:       return L("开发者自定义 HTTP 接口 · 填写 URL 与模板")
         }
     }
 }
@@ -232,11 +232,15 @@ public struct TranslationLanguageEntry: Identifiable, Equatable, Sendable {
 
     public var id: String { code }
 
+    /// 当前界面语言下的语种名（英文界面用英文名，否则用中文名）
+    public var localizedName: String { MSnipL10n.usesEnglish ? enName : zhName }
+
     public var displayTitle: String {
-        if code.hasPrefix("zh") || code == "yue" || code == "wyw" || nativeName.isEmpty || nativeName == zhName {
-            return zhName
+        let name = localizedName
+        if code.hasPrefix("zh") || code == "yue" || code == "wyw" || nativeName.isEmpty || nativeName == name {
+            return name
         }
-        return "\(zhName) (\(nativeName))"
+        return "\(name) (\(nativeName))"
     }
 
     public func matches(_ rawQuery: String) -> Bool {
@@ -304,7 +308,7 @@ public enum TranslationLanguageCatalog {
         for c in extendedCodes {
             if let e = buildEntry(c, common: false) { rest.append(e) }
         }
-        rest.sort { $0.zhName.localizedStandardCompare($1.zhName) == .orderedAscending }
+        rest.sort { $0.localizedName.localizedStandardCompare($1.localizedName) == .orderedAscending }
         built.append(contentsOf: rest)
         return built
     }()

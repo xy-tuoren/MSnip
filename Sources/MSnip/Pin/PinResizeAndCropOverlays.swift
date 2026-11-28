@@ -400,7 +400,7 @@ final class PinCropOverlayView: NSView {
             }
             ctx.strokePath()
 
-            let tip = "拖选裁剪区域 · ↩ 确认 · Esc 取消" as NSString
+            let tip = L("拖选裁剪区域 · ↩ 确认 · Esc 取消") as NSString
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
                 .foregroundColor: NSColor.white
@@ -473,6 +473,6 @@ extension PinWindow {
         setImageScreenFrame(NSRect(x: newX, y: newY, width: newW, height: newH))
         pinContentView.liveTextView.configure(cgImage: cropped, logicalSize: nextBase)
         if hoverBarPanel.isVisible { hoverBarPanel.reposition(anchoringTo: imageScreenFrame, on: screen) }
-        ToastHUD.show(message: "已裁剪贴图 · \(cropped.width) × \(cropped.height) px")
+        ToastHUD.show(message: L("已裁剪贴图 · %@ × %@ px", cropped.width, cropped.height))
     }
 }

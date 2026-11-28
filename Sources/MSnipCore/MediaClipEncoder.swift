@@ -523,9 +523,9 @@ public enum MP4ResolutionPreset: String, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .standard: return "标准"
-        case .high:     return "高清"
-        case .native:   return "原画"
+        case .standard: return L("标准")
+        case .high:     return L("高清")
+        case .native:   return L("原画")
         }
     }
 
@@ -553,7 +553,7 @@ public enum MP4FrameRateMode: String, CaseIterable, Codable, Sendable {
         switch self {
         case .fps30:         return "30 fps"
         case .fps60:         return "60 fps"
-        case .displayNative: return "原刷"
+        case .displayNative: return L("原刷")
         }
     }
 

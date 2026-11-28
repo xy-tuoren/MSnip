@@ -447,19 +447,19 @@ final class PinHoverBarView: NSView {
 
     private let slots: [ActionSlot] = [
         ActionSlot(rect: CGRect(x: 4, y: 2, width: 28, height: 24), symbol: "arrow.up.and.down.and.arrow.left.and.right",
-                   tip: "按住拖动整张贴图（满屏文字无空白处时可直接拖这里）", tint: MSnipUITheme.accent, action: nil),
+                   tip: L("按住拖动整张贴图（满屏文字无空白处时可直接拖这里）"), tint: MSnipUITheme.accent, action: nil),
         ActionSlot(rect: CGRect(x: 38, y: 2, width: 25, height: 24), symbol: "pencil.tip",
-                   tip: "二次圈记标注贴图 (E)", tint: MSnipUITheme.inkPrimary, action: .annotate),
+                   tip: L("二次圈记标注贴图 (E)"), tint: MSnipUITheme.inkPrimary, action: .annotate),
         ActionSlot(rect: CGRect(x: 64, y: 2, width: 25, height: 24), symbol: "text.viewfinder",
-                   tip: "提取图中文字 (T)", tint: MSnipUITheme.inkPrimary, action: .ocr),
+                   tip: L("提取图中文字 (T)"), tint: MSnipUITheme.inkPrimary, action: .ocr),
         ActionSlot(rect: CGRect(x: 90, y: 2, width: 25, height: 24), symbol: "character.bubble",
-                   tip: "翻译图中文字 (Y)", tint: MSnipUITheme.inkPrimary, action: .translate),
+                   tip: L("翻译图中文字 (Y)"), tint: MSnipUITheme.inkPrimary, action: .translate),
         ActionSlot(rect: CGRect(x: 116, y: 2, width: 25, height: 24), symbol: "doc.on.doc",
-                   tip: "复制贴图图像 (⌘C)", tint: MSnipUITheme.inkPrimary, action: .copy),
+                   tip: L("复制贴图图像 (⌘C)"), tint: MSnipUITheme.inkPrimary, action: .copy),
         ActionSlot(rect: CGRect(x: 142, y: 2, width: 25, height: 24), symbol: "square.and.arrow.down",
-                   tip: "保存到默认目录 (⌘S · 按住 ⇧ 点击另存为)", tint: MSnipUITheme.inkPrimary, action: .save),
+                   tip: L("保存到默认目录 (⌘S · 按住 ⇧ 点击另存为)"), tint: MSnipUITheme.inkPrimary, action: .save),
         ActionSlot(rect: CGRect(x: 168, y: 2, width: 24, height: 24), symbol: "xmark",
-                   tip: "关闭贴图 (Esc / 双击空白处)", tint: MSnipUITheme.danger, action: .close)
+                   tip: L("关闭贴图 (Esc / 双击空白处)"), tint: MSnipUITheme.danger, action: .close)
     ]
 
     private var hoveredIdx: Int? { didSet { if oldValue != hoveredIdx { needsDisplay = true } } }

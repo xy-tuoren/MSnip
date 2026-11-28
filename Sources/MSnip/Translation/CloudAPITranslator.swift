@@ -10,8 +10,8 @@ enum CloudAPITranslator {
 
         var errorDescription: String? {
             switch self {
-            case .badConfig(let m): return "翻译接口配置有误：\(m)"
-            case .apiError(let m):  return "翻译接口返回错误：\(m)"
+            case .badConfig(let m): return L("翻译接口配置有误：%@", m)
+            case .apiError(let m):  return L("翻译接口返回错误：%@", m)
             }
         }
     }
@@ -50,7 +50,7 @@ enum CloudAPITranslator {
     ) async throws -> [String] {
         let secretId = profile.appIdOrSecretId.trimmingCharacters(in: .whitespacesAndNewlines)
         let secretKey = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !secretId.isEmpty, !secretKey.isEmpty else { throw CloudError.badConfig("请填写腾讯云 SecretId 与 SecretKey") }
+        guard !secretId.isEmpty, !secretKey.isEmpty else { throw CloudError.badConfig(L("请填写腾讯云 SecretId 与 SecretKey")) }
 
         let customHost = URL(string: profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines))?.host
             ?? profile.endpoint.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -100,13 +100,13 @@ enum CloudAPITranslator {
         }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let resp = root["Response"] as? [String: Any] else {
-            throw CloudError.apiError("响应解析失败")
+            throw CloudError.apiError(L("响应解析失败"))
         }
         if let err = resp["Error"] as? [String: Any], let msg = err["Message"] as? String {
             throw CloudError.apiError(msg)
         }
         if let list = resp["TargetTextList"] as? [String], !list.isEmpty { return list }
-        throw CloudError.apiError("未返回译文列表")
+        throw CloudError.apiError(L("未返回译文列表"))
     }
 
     // MARK: - 百度翻译开放平台 (MD5 签名，原生支持 `\n` 多行对应返回)
@@ -118,7 +118,7 @@ enum CloudAPITranslator {
     ) async throws -> [String] {
         let appid = profile.appIdOrSecretId.trimmingCharacters(in: .whitespacesAndNewlines)
         let secret = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !appid.isEmpty, !secret.isEmpty else { throw CloudError.badConfig("请填写百度翻译 AppID 与密钥") }
+        guard !appid.isEmpty, !secret.isEmpty else { throw CloudError.badConfig(L("请填写百度翻译 AppID 与密钥")) }
 
         let q = lines.joined(separator: "\n")
         let salt = "\(Int.random(in: 100_000...999_999))"
@@ -142,7 +142,7 @@ enum CloudAPITranslator {
             throw CloudError.apiError("HTTP \(http.statusCode)")
         }
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw CloudError.apiError("百度响应格式异常")
+            throw CloudError.apiError(L("百度响应格式异常"))
         }
         if let errCode = obj["error_code"] as? String {
             throw CloudError.apiError("\(errCode): \((obj["error_msg"] as? String) ?? errCode)")
@@ -152,7 +152,7 @@ enum CloudAPITranslator {
             if dsts.count == lines.count { return dsts }
             if !dsts.isEmpty { return splitPreservingCount(dsts.joined(separator: "\n"), expected: lines) }
         }
-        throw CloudError.apiError("未获取到百度翻译结果")
+        throw CloudError.apiError(L("未获取到百度翻译结果"))
     }
 
     // MARK: - 有道智云文本翻译 V3 (SHA256 截断签名)
@@ -164,7 +164,7 @@ enum CloudAPITranslator {
     ) async throws -> String {
         let appKey = profile.appIdOrSecretId.trimmingCharacters(in: .whitespacesAndNewlines)
         let appSecret = profile.apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !appKey.isEmpty, !appSecret.isEmpty else { throw CloudError.badConfig("请填写有道智云应用 ID 与应用密钥") }
+        guard !appKey.isEmpty, !appSecret.isEmpty else { throw CloudError.badConfig(L("请填写有道智云应用 ID 与应用密钥")) }
 
         let salt = UUID().uuidString
         let curtime = "\(Int(Date().timeIntervalSince1970))"
@@ -195,13 +195,13 @@ enum CloudAPITranslator {
             throw CloudError.apiError("HTTP \(http.statusCode)")
         }
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw CloudError.apiError("有道响应解析失败")
+            throw CloudError.apiError(L("有道响应解析失败"))
         }
         if let code = obj["errorCode"] as? String, code != "0" {
             throw CloudError.apiError("errorCode \(code)")
         }
         if let trans = obj["translation"] as? [String], !trans.isEmpty { return trans.joined(separator: "\n") }
-        throw CloudError.apiError("有道未返回译文")
+        throw CloudError.apiError(L("有道未返回译文"))
     }
 
     static func splitPreservingCount(_ text: String, expected: [String]) -> [String] {
@@ -268,7 +268,7 @@ private enum WebhookAndDeepLTranslator {
                let arr = obj["translations"] as? [[String: Any]] {
                 return arr.compactMap { $0["text"] as? String }
             }
-            throw CloudAPITranslator.CloudError.apiError("DeepL 响应无 translations 字段")
+            throw CloudAPITranslator.CloudError.apiError(L("DeepL 响应无 translations 字段"))
         } else {
             if !key.isEmpty { req.setValue("Bearer \(key)", forHTTPHeaderField: "Authorization") }
             let joined = lines.joined(separator: "\n")
@@ -284,7 +284,7 @@ private enum WebhookAndDeepLTranslator {
                let txt = obj["data"] as? String, !txt.isEmpty {
                 return CloudAPITranslator.splitPreservingCount(txt, expected: lines)
             }
-            throw CloudAPITranslator.CloudError.apiError("DeepLX 响应未包含 data 译文")
+            throw CloudAPITranslator.CloudError.apiError(L("DeepLX 响应未包含 data 译文"))
         }
     }
 
@@ -323,12 +323,12 @@ private enum WebhookAndDeepLTranslator {
             if let extracted = TranslationSettingsConfig.extractJSONPath(json, path: path), !extracted.isEmpty {
                 return extracted
             }
-            throw CloudAPITranslator.CloudError.apiError("未能按路径「\(path)」提取译文")
+            throw CloudAPITranslator.CloudError.apiError(L("未能按路径「%@」提取译文", path))
         }
         if path.isEmpty, let rawStr = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !rawStr.isEmpty {
             return rawStr
         }
-        throw CloudAPITranslator.CloudError.apiError("响应非有效 JSON 或未能按路径「\(path)」提取译文")
+        throw CloudAPITranslator.CloudError.apiError(L("响应非有效 JSON 或未能按路径「%@」提取译文", path))
     }
 
     private static func jsonEscape(_ s: String) -> String {

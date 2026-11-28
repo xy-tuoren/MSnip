@@ -11,9 +11,9 @@ enum LLMTranslator {
 
         var errorDescription: String? {
             switch self {
-            case .invalidEndpoint(let ep): return "无效的大模型接口地址：\(ep)"
-            case .httpError(let code, let msg): return "大模型请求失败 (HTTP \(code))：\(msg)"
-            case .emptyResponse: return "大模型未返回有效译文"
+            case .invalidEndpoint(let ep): return L("无效的大模型接口地址：%@", ep)
+            case .httpError(let code, let msg): return L("大模型请求失败 (HTTP %@)：%@", code, msg)
+            case .emptyResponse: return L("大模型未返回有效译文")
             }
         }
     }
@@ -393,9 +393,9 @@ enum LLMModelFetcher {
 
         var errorDescription: String? {
             switch self {
-            case .invalidEndpoint: return "请先填写有效的接口地址（Base URL）"
-            case .httpError(let code, let msg): return "拉取模型失败 (HTTP \(code))：\(msg)"
-            case .emptyList: return "服务端未返回可用模型列表，可手动填写模型名"
+            case .invalidEndpoint: return L("请先填写有效的接口地址（Base URL）")
+            case .httpError(let code, let msg): return L("拉取模型失败 (HTTP %@)：%@", code, msg)
+            case .emptyList: return L("服务端未返回可用模型列表，可手动填写模型名")
             }
         }
     }

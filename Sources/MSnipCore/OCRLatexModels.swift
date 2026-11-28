@@ -16,23 +16,23 @@ public enum OCREngineKind: String, CaseIterable, Codable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .appleVision: return "Apple 原生离线 Vision（极速 · 免费）"
-        case .visionLLM:   return "视觉大模型（复用「模型与服务」）"
-        case .baiduOCR:    return "百度智能云 OCR（高精度 · 含免费额度）"
-        case .tencentOCR:  return "腾讯云 OCR（通用高精度 · TC3 签名）"
-        case .youdaoOCR:   return "有道智云 OCR（通用图文识别）"
-        case .customHTTP:  return "自定义 HTTP OCR（通用适配接口）"
+        case .appleVision: return L("Apple 原生离线 Vision（极速 · 免费）")
+        case .visionLLM:   return L("视觉大模型（复用「模型与服务」）")
+        case .baiduOCR:    return L("百度智能云 OCR（高精度 · 含免费额度）")
+        case .tencentOCR:  return L("腾讯云 OCR（通用高精度 · TC3 签名）")
+        case .youdaoOCR:   return L("有道智云 OCR（通用图文识别）")
+        case .customHTTP:  return L("自定义 HTTP OCR（通用适配接口）")
         }
     }
 
     public var shortName: String {
         switch self {
-        case .appleVision: return "Apple 离线"
-        case .visionLLM:   return "AI 视觉"
-        case .baiduOCR:    return "百度 OCR"
-        case .tencentOCR:  return "腾讯 OCR"
-        case .youdaoOCR:   return "有道 OCR"
-        case .customHTTP:  return "自定义 OCR"
+        case .appleVision: return L("Apple 离线")
+        case .visionLLM:   return L("AI 视觉")
+        case .baiduOCR:    return L("百度 OCR")
+        case .tencentOCR:  return L("腾讯 OCR")
+        case .youdaoOCR:   return L("有道 OCR")
+        case .customHTTP:  return L("自定义 OCR")
         }
     }
 }
@@ -192,10 +192,10 @@ public enum LatexWrapFormat: String, CaseIterable, Codable, Sendable {
 
     public var shortTitle: String {
         switch self {
-        case .raw:             return "纯 LaTeX"
-        case .inlineDollar:    return "$ 行内 $"
-        case .blockDollar:     return "$$ 行间 $$"
-        case .displayBrackets: return "\\[ 块级 \\]"
+        case .raw:             return L("纯 LaTeX")
+        case .inlineDollar:    return L("$ 行内 $")
+        case .blockDollar:     return L("$$ 行间 $$")
+        case .displayBrackets: return L("\\[ 块级 \\]")
         }
     }
 
@@ -224,19 +224,19 @@ public enum LatexEngineKind: String, CaseIterable, Codable, Sendable {
 
     public var displayName: String {
         switch self {
-        case .autoVisionLLM: return "视觉大模型（复用已配 AI 接口）"
-        case .simpleTex:     return "SimpleTex 专用公式识别"
-        case .mathpix:       return "Mathpix 学术公式识别"
-        case .offlineBasic:  return "离线基础转换（Apple Vision）"
+        case .autoVisionLLM: return L("视觉大模型（复用已配 AI 接口）")
+        case .simpleTex:     return L("SimpleTex 专用公式识别")
+        case .mathpix:       return L("Mathpix 学术公式识别")
+        case .offlineBasic:  return L("离线基础转换（Apple Vision）")
         }
     }
 
     public var shortName: String {
         switch self {
-        case .autoVisionLLM: return "视觉大模型"
+        case .autoVisionLLM: return L("视觉大模型")
         case .simpleTex:     return "SimpleTex"
         case .mathpix:       return "Mathpix"
-        case .offlineBasic:  return "离线基础"
+        case .offlineBasic:  return L("离线基础")
         }
     }
 }

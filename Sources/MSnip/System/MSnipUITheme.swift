@@ -268,7 +268,7 @@ final class LightDropdownPill: NSView {
             leftX += 18
         }
 
-        let currentTitle = customDisplayTitle ?? (items.indices.contains(selectedIndex) ? items[selectedIndex] : "未选择")
+        let currentTitle = customDisplayTitle ?? (items.indices.contains(selectedIndex) ? items[selectedIndex] : L("未选择"))
         let para = NSMutableParagraphStyle()
         para.lineBreakMode = .byTruncatingTail
         let attrs: [NSAttributedString.Key: Any] = [

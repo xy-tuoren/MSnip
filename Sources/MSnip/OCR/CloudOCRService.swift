@@ -18,8 +18,8 @@ enum CloudOCRService {
         var errorDescription: String? {
             switch self {
             case .badConfig(let m): return m
-            case .apiError(let m):  return "OCR 接口返回错误：\(m)"
-            case .emptyResult:      return "未识别到有效文字"
+            case .apiError(let m):  return L("OCR 接口返回错误：%@", m)
+            case .emptyResult:      return L("未识别到有效文字")
             }
         }
     }
@@ -79,20 +79,20 @@ enum CloudOCRService {
             )
         case .baiduOCR:
             let text = try await callBaiduOCR(image: image, apiKey: config.baiduAPIKey, secretKey: config.baiduSecretKey)
-            return makeOutcome(text: text, provider: "百度 OCR", t0: t0)
+            return makeOutcome(text: text, provider: L("百度 OCR"), t0: t0)
         case .tencentOCR:
             let text = try await callTencentOCR(
                 image: image, secretID: config.tencentSecretID, secretKey: config.tencentSecretKey, region: config.tencentRegion
             )
-            return makeOutcome(text: text, provider: "腾讯 OCR", t0: t0)
+            return makeOutcome(text: text, provider: L("腾讯 OCR"), t0: t0)
         case .youdaoOCR:
             let text = try await callYoudaoOCR(image: image, appKey: config.youdaoAppKey, appSecret: config.youdaoAppSecret)
-            return makeOutcome(text: text, provider: "有道 OCR", t0: t0)
+            return makeOutcome(text: text, provider: L("有道 OCR"), t0: t0)
         case .customHTTP:
             let text = try await callCustomHTTPOCR(image: image, config: config)
-            return makeOutcome(text: text, provider: "自定义 OCR", t0: t0)
+            return makeOutcome(text: text, provider: L("自定义 OCR"), t0: t0)
         case .appleVision:
-            throw OCRError.badConfig("Apple 离线 Vision 请走本地管线")
+            throw OCRError.badConfig(L("Apple 离线 Vision 请走本地管线"))
         }
     }
 
@@ -106,12 +106,12 @@ enum CloudOCRService {
     private static func callBaiduOCR(image: CGImage, apiKey: String, secretKey: String) async throws -> String {
         let ak = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let sk = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !ak.isEmpty, !sk.isEmpty else { throw OCRError.badConfig("请先在「设置 → 识字与翻译」填写百度 OCR API Key 与 Secret Key") }
-        guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 2048, maxBytes: 2_600_000) else { throw OCRError.apiError("图片编码失败") }
+        guard !ak.isEmpty, !sk.isEmpty else { throw OCRError.badConfig(L("请先在「设置 → 识字与翻译」填写百度 OCR API Key 与 Secret Key")) }
+        guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 2048, maxBytes: 2_600_000) else { throw OCRError.apiError(L("图片编码失败")) }
 
         let token = try await fetchBaiduAccessToken(apiKey: ak, secretKey: sk)
         guard let url = URL(string: "https://aip.baidubce.com/rest/2.0/ocr/v1/accurate_basic?access_token=\(formEncode(token))") else {
-            throw OCRError.badConfig("百度 OCR 地址无效")
+            throw OCRError.badConfig(L("百度 OCR 地址无效"))
         }
         var req = URLRequest(url: url, timeoutInterval: 25)
         req.httpMethod = "POST"
@@ -121,7 +121,7 @@ enum CloudOCRService {
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) { throw OCRError.apiError("HTTP \(http.statusCode)") }
         guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw OCRError.apiError("百度 OCR 响应解析失败")
+            throw OCRError.apiError(L("百度 OCR 响应解析失败"))
         }
         if let code = obj["error_code"] as? Int, code == 110 || code == 111 { baiduTokens.invalidate(for: "\(ak):\(sk)") }
         if let errMsg = obj["error_msg"] as? String { throw OCRError.apiError(errMsg) }
@@ -136,16 +136,16 @@ enum CloudOCRService {
         if let cached = baiduTokens.get(for: cacheKey) { return cached }
 
         let q = "grant_type=client_credentials&client_id=\(formEncode(apiKey))&client_secret=\(formEncode(secretKey))"
-        guard let url = URL(string: "https://aip.baidubce.com/oauth/2.0/token?\(q)") else { throw OCRError.badConfig("百度鉴权地址无效") }
+        guard let url = URL(string: "https://aip.baidubce.com/oauth/2.0/token?\(q)") else { throw OCRError.badConfig(L("百度鉴权地址无效")) }
         var req = URLRequest(url: url, timeoutInterval: 15); req.httpMethod = "POST"
         let (data, _) = try await URLSession.shared.data(for: req)
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw OCRError.apiError("百度鉴权响应异常") }
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw OCRError.apiError(L("百度鉴权响应异常")) }
         if let tok = obj["access_token"] as? String, !tok.isEmpty {
             let ttl = (obj["expires_in"] as? TimeInterval) ?? 86400
             baiduTokens.set(tok, ttl: ttl, for: cacheKey)
             return tok
         }
-        throw OCRError.apiError((obj["error_description"] as? String) ?? "百度鉴权失败，请检查 API Key / Secret Key")
+        throw OCRError.apiError((obj["error_description"] as? String) ?? L("百度鉴权失败，请检查 API Key / Secret Key"))
     }
 
     // MARK: - 腾讯云 OCR (GeneralAccurateOCR · TC3-HMAC-SHA256)
@@ -153,8 +153,8 @@ enum CloudOCRService {
     private static func callTencentOCR(image: CGImage, secretID: String, secretKey: String, region: String) async throws -> String {
         let sid = secretID.trimmingCharacters(in: .whitespacesAndNewlines)
         let skey = secretKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !sid.isEmpty, !skey.isEmpty else { throw OCRError.badConfig("请先在「设置 → 识字与翻译」填写腾讯云 SecretId 与 SecretKey") }
-        guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 2048, maxBytes: 3_500_000) else { throw OCRError.apiError("图片编码失败") }
+        guard !sid.isEmpty, !skey.isEmpty else { throw OCRError.badConfig(L("请先在「设置 → 识字与翻译」填写腾讯云 SecretId 与 SecretKey")) }
+        guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 2048, maxBytes: 3_500_000) else { throw OCRError.apiError(L("图片编码失败")) }
 
         let host = "ocr.tencentcloudapi.com", service = "ocr"
         let reg = region.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "ap-guangzhou" : region.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -189,7 +189,7 @@ enum CloudOCRService {
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) { throw OCRError.apiError("HTTP \(http.statusCode)") }
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let resp = root["Response"] as? [String: Any] else { throw OCRError.apiError("腾讯 OCR 响应异常") }
+              let resp = root["Response"] as? [String: Any] else { throw OCRError.apiError(L("腾讯 OCR 响应异常")) }
         if let err = resp["Error"] as? [String: Any], let msg = err["Message"] as? String { throw OCRError.apiError(msg) }
         let dets = (resp["TextDetections"] as? [[String: Any]]) ?? []
         let lines = dets.compactMap { $0["DetectedText"] as? String }.filter { !$0.isEmpty }
@@ -202,8 +202,8 @@ enum CloudOCRService {
     private static func callYoudaoOCR(image: CGImage, appKey: String, appSecret: String) async throws -> String {
         let ak = appKey.trimmingCharacters(in: .whitespacesAndNewlines)
         let sec = appSecret.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !ak.isEmpty, !sec.isEmpty else { throw OCRError.badConfig("请先在「设置 → 识字与翻译」填写有道智云应用 ID 与密钥") }
-        guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 2048, maxBytes: 2_600_000) else { throw OCRError.apiError("图片编码失败") }
+        guard !ak.isEmpty, !sec.isEmpty else { throw OCRError.badConfig(L("请先在「设置 → 识字与翻译」填写有道智云应用 ID 与密钥")) }
+        guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 2048, maxBytes: 2_600_000) else { throw OCRError.apiError(L("图片编码失败")) }
 
         let b64 = imgPayload.data.base64EncodedString()
         let salt = UUID().uuidString, curtime = "\(Int(Date().timeIntervalSince1970))"
@@ -221,7 +221,7 @@ enum CloudOCRService {
 
         let (data, resp) = try await URLSession.shared.data(for: req)
         if let http = resp as? HTTPURLResponse, !(200...299).contains(http.statusCode) { throw OCRError.apiError("HTTP \(http.statusCode)") }
-        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw OCRError.apiError("有道 OCR 响应异常") }
+        guard let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { throw OCRError.apiError(L("有道 OCR 响应异常")) }
         if let code = obj["errorCode"] as? String, code != "0" { throw OCRError.apiError("errorCode \(code)") }
         let regions = ((obj["Result"] as? [String: Any])?["regions"] as? [[String: Any]]) ?? []
         let lines = regions.flatMap { ($0["lines"] as? [[String: Any]]) ?? [] }.compactMap { $0["text"] as? String }.filter { !$0.isEmpty }
@@ -233,8 +233,8 @@ enum CloudOCRService {
 
     private static func callCustomHTTPOCR(image: CGImage, config: OCRRecognitionConfig) async throws -> String {
         let ep = config.customEndpoint.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !ep.isEmpty, let url = URL(string: ep) else { throw OCRError.badConfig("请先填写有效的自定义 OCR 接口 URL") }
-        guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 2048, maxBytes: 2_800_000) else { throw OCRError.apiError("图片编码失败") }
+        guard !ep.isEmpty, let url = URL(string: ep) else { throw OCRError.badConfig(L("请先填写有效的自定义 OCR 接口 URL")) }
+        guard let imgPayload = VisionLLMOCRService.encodeForUpload(image: image, maxLongSide: 2048, maxBytes: 2_800_000) else { throw OCRError.apiError(L("图片编码失败")) }
 
         let b64 = imgPayload.data.base64EncodedString()
         let tpl = config.customBodyTemplate.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -257,7 +257,7 @@ enum CloudOCRService {
             throw OCRError.apiError("HTTP \(http.statusCode): \(msg)")
         }
         guard let text = OCRRecognitionConfig.extractCustomOCRText(from: data, path: config.customResponsePath) else {
-            throw OCRError.apiError("未能按路径「\(config.customResponsePath)」提取到文字")
+            throw OCRError.apiError(L("未能按路径「%@」提取到文字", config.customResponsePath))
         }
         return text
     }
@@ -300,11 +300,11 @@ enum VisionLLMOCRService {
 
         var errorDescription: String? {
             switch self {
-            case .imageEncodeFailed:       return "截图编码失败"
-            case .missingProfile:          return "尚未配置可用的 AI 大模型接口，请前往「设置 → 模型与服务」添加"
-            case .invalidEndpoint(let ep): return "无效的视觉大模型接口地址：\(ep)"
-            case .httpError(let c, let m): return "视觉模型请求失败 (HTTP \(c))：\(m)"
-            case .emptyResult:             return "视觉大模型未返回可识别文本"
+            case .imageEncodeFailed:       return L("截图编码失败")
+            case .missingProfile:          return L("尚未配置可用的 AI 大模型接口，请前往「设置 → 模型与服务」添加")
+            case .invalidEndpoint(let ep): return L("无效的视觉大模型接口地址：%@", ep)
+            case .httpError(let c, let m): return L("视觉模型请求失败 (HTTP %@)：%@", c, m)
+            case .emptyResult:             return L("视觉大模型未返回可识别文本")
             }
         }
     }
@@ -570,22 +570,22 @@ enum OCRLatexTestService {
         activeProfileID: UUID?,
         profiles: [TranslationProviderProfile]
     ) async -> (ok: Bool, message: String) {
-        guard let sample = renderSampleImage(text: "MSnip OCR 123") else { return (false, "样本图生成失败") }
+        guard let sample = renderSampleImage(text: "MSnip OCR 123") else { return (false, L("样本图生成失败")) }
         let t0 = CFAbsoluteTimeGetCurrent()
         if config.engineKind == .appleVision {
             let out = await VisionTextExtractor.recognizeTextOnlyOffMain(cgImage: sample)
             let ms = max(1, Int(((CFAbsoluteTimeGetCurrent() - t0) * 1000).rounded()))
             let preview = out.preservedText.replacingOccurrences(of: "\n", with: " ")
             return preview.isEmpty
-                ? (false, "✗ Apple Vision 未识别到样本文字")
-                : (true, "✓ 离线就绪 (\(ms)ms) · 识别：\(preview)")
+                ? (false, L("✗ Apple Vision 未识别到样本文字"))
+                : (true, L("✓ 离线就绪 (%@ms) · 识别：%@", ms, preview))
         }
         do {
             let out = try await CloudOCRService.recognizeText(
                 image: sample, engine: config.engineKind, config: config, activeProfileID: activeProfileID, profiles: profiles
             )
             let preview = String(out.text.replacingOccurrences(of: "\n", with: " ").prefix(28))
-            return (true, "✓ 连通正常 (\(out.elapsedMs)ms) · 识别：\(preview)")
+            return (true, L("✓ 连通正常 (%@ms) · 识别：%@", out.elapsedMs, preview))
         } catch {
             return (false, "✗ \(error.localizedDescription)")
         }
@@ -596,16 +596,16 @@ enum OCRLatexTestService {
         activeProfileID: UUID?,
         profiles: [TranslationProviderProfile]
     ) async -> (ok: Bool, message: String) {
-        guard let sample = renderSampleImage(text: "x^2 + y^2 = 1") else { return (false, "样本图生成失败") }
+        guard let sample = renderSampleImage(text: "x^2 + y^2 = 1") else { return (false, L("样本图生成失败")) }
         do {
             let out = try await LatexRecognitionService.recognize(
                 image: sample, config: config, activeProfileID: activeProfileID, visionProfiles: profiles
             )
             if out.usedOfflineFallback && config.engineKind != .offlineBasic {
-                return (false, "✗ 凭据未就绪：\(out.notice ?? "已回退离线")")
+                return (false, L("✗ 凭据未就绪：%@", out.notice ?? L("已回退离线")))
             }
             let preview = String(out.rawLatex.replacingOccurrences(of: "\n", with: " ").prefix(28))
-            return (true, "✓ 连通正常 (\(out.elapsedMs)ms) · \(preview)")
+            return (true, L("✓ 连通正常 (%@ms) · %@", out.elapsedMs, preview))
         } catch {
             return (false, "✗ \(error.localizedDescription)")
         }

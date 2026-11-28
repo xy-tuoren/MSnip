@@ -139,13 +139,13 @@ enum ClipboardAndSave {
         }
 
         let defURL = resolveQuickSaveDirectory(preferred: preferred)
-        appendIfValid(title: "默认 · \(defURL.lastPathComponent)", url: defURL, symbol: "star.fill", isDefault: true)
+        appendIfValid(title: L("默认 · %@", defURL.lastPathComponent), url: defURL, symbol: "star.fill", isDefault: true)
 
         let stdSpecs: [(FileManager.SearchPathDirectory, String, String)] = [
-            (.desktopDirectory, "桌面", "menubar.dock.rectangle"),
-            (.downloadsDirectory, "下载", "arrow.down.circle"),
-            (.picturesDirectory, "图片", "photo"),
-            (.documentDirectory, "文稿", "doc")
+            (.desktopDirectory, L("桌面"), "menubar.dock.rectangle"),
+            (.downloadsDirectory, L("下载"), "arrow.down.circle"),
+            (.picturesDirectory, L("图片"), "photo"),
+            (.documentDirectory, L("文稿"), "doc")
         ]
         for (dir, label, sym) in stdSpecs {
             if let u = fm.urls(for: dir, in: .userDomainMask).first {
@@ -241,7 +241,7 @@ enum ClipboardAndSave {
         )
 
         let panel = NSSavePanel()
-        panel.title = "保存截图"
+        panel.title = L("保存截图")
         panel.nameFieldStringValue = defaultName
         let supported = CaptureExportFormat.supportedFormats
         panel.allowedContentTypes = [effectiveDefault.utType] + supported.filter { $0 != effectiveDefault }.map(\.utType)
@@ -269,7 +269,7 @@ enum ClipboardAndSave {
         } catch {
             MSnipLog.error(.export, "Save panel write (\(result.actualFormat.fileExtension)) failed", error: error)
             let alert = NSAlert()
-            alert.messageText = "保存图片失败"
+            alert.messageText = L("保存图片失败")
             alert.informativeText = error.localizedDescription
             alert.alertStyle = .warning
             alert.runModal()

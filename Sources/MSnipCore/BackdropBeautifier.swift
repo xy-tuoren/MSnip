@@ -14,12 +14,12 @@ public enum BackdropStyle: Int, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .none:        return "无衬底"
-        case .oceanAurora: return "极光蓝紫"
-        case .warmSunset:  return "落日暖橙"
-        case .emeraldMist: return "森系青翠"
-        case .cleanStudio: return "极简银灰"
-        case .noirCarbon:  return "暗夜深空"
+        case .none:        return L("无衬底")
+        case .oceanAurora: return L("极光蓝紫")
+        case .warmSunset:  return L("落日暖橙")
+        case .emeraldMist: return L("森系青翠")
+        case .cleanStudio: return L("极简银灰")
+        case .noirCarbon:  return L("暗夜深空")
         }
     }
 
@@ -53,7 +53,7 @@ public enum BackdropAspectRatio: String, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .auto:      return "自动"
+        case .auto:      return L("自动")
         case .ratio16x9: return "16:9"
         case .ratio4x3:  return "4:3"
         case .ratio1x1:  return "1:1"

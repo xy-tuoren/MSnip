@@ -179,9 +179,9 @@ private final class CollageLightboxContentView: NSView {
     private func actionButtons() -> [(tag: Int, rect: CGRect, title: String)] {
         let y: CGFloat = 14, h: CGFloat = 26
         var list: [(Int, CGRect, String)] = [
-            (1, CGRect(x: bounds.width - 216, y: y, width: 52, height: h), "适应"),
+            (1, CGRect(x: bounds.width - 216, y: y, width: 52, height: h), L("适应")),
             (2, CGRect(x: bounds.width - 158, y: y, width: 42, height: h), "1:1"),
-            (3, CGRect(x: bounds.width - 110, y: y, width: 52, height: h), "复制"),
+            (3, CGRect(x: bounds.width - 110, y: y, width: 52, height: h), L("复制")),
             (4, CGRect(x: bounds.width - 52,  y: y, width: 34, height: h), "✕")
         ]
         if canStepPrev { list.append((5, CGRect(x: 16, y: round(bounds.midY - 22), width: 34, height: 44), "‹")) }
@@ -281,7 +281,7 @@ private final class CollageLightboxContentView: NSView {
 
         // 顶部标题与缩放比例
         let pct = Int(((isFitMode ? fitScale() : zoom) * max(1.0, window?.backingScaleFactor ?? 2.0) * 100.0).rounded())
-        let header = "\(titleText)  ·  \(pct)%（滚轮缩放 · 拖拽平移 · 双击 1:1 · Esc 关闭）"
+        let header = L("%@  ·  %@%（滚轮缩放 · 拖拽平移 · 双击 1:1 · Esc 关闭）", titleText, pct)
         GeekTheme.drawText(header, in: CGRect(x: 18, y: 14, width: max(120, bounds.width - 246), height: 26),
                            font: .monospacedDigitSystemFont(ofSize: 12.0, weight: .medium), color: fgColor)
 

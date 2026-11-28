@@ -33,7 +33,7 @@ final class LongShotBorderView: NSView {
     static let sidePad: CGFloat = 6
     static let topBadgeSpace: CGFloat = 32
 
-    var statusText: String = "长截图 · 请在框内向下滚动滚轮" { didSet { needsDisplay = true } }
+    var statusText: String = L("长截图 · 请在框内向下滚动滚轮") { didSet { needsDisplay = true } }
     var statusStyle: StatusStyle = .ready { didSet { needsDisplay = true } }
     var countdownNumber: Int? { didSet { needsDisplay = true } }
     var countdownProgress: CGFloat = 1.0 { didSet { needsDisplay = true } }
@@ -204,7 +204,7 @@ final class LongShotPreviewView: NSView {
         MSnipUITheme.drawPorcelainBar(ctx: ctx, bounds: bounds, radius: 10)
         ctx.saveGState()
 
-        ("长图预览" as NSString).draw(at: CGPoint(x: 10, y: 7), withAttributes: [
+        (L("长图预览") as NSString).draw(at: CGPoint(x: 10, y: 7), withAttributes: [
             .font: NSFont.systemFont(ofSize: 11.5, weight: .semibold),
             .foregroundColor: MSnipUITheme.inkPrimary
         ])
@@ -266,7 +266,7 @@ final class LongShotPreviewView: NSView {
             ctx.stroke(dst)
         }
 
-        let dimStr = (pixelWidth > 0 ? "\(pixelWidth) × \(pixelHeight)" : "等待画面…") as NSString
+        let dimStr = (pixelWidth > 0 ? "\(pixelWidth) × \(pixelHeight)" : L("等待画面…")) as NSString
         let dAttrs: [NSAttributedString.Key: Any] = [
             .font: NSFont.monospacedDigitSystemFont(ofSize: 10.5, weight: .semibold),
             .foregroundColor: MSnipUITheme.inkSecondary
@@ -394,7 +394,7 @@ final class LongShotControlBarView: NSView {
         let running = isAutoScrolling
         list.append(ButtonSlot(
             rect: autoRect,
-            tip: running ? "停止自动滚动" : "平滑自动向下滚动（需辅助功能权限）",
+            tip: running ? L("停止自动滚动") : L("平滑自动向下滚动（需辅助功能权限）"),
             action: .toggleAutoScroll,
             render: { ctx, r, hov in
                 ToolbarView.drawButtonBg(ctx: ctx, rect: r, active: running, hovered: hov)
@@ -402,7 +402,7 @@ final class LongShotControlBarView: NSView {
                 let fg = running ? MSnipUITheme.accent : MSnipUITheme.inkPrimary
                 let iconR = CGRect(x: r.minX + 8, y: r.minY, width: 14, height: r.height)
                 ToolbarView.drawSymbol(sym, in: iconR, alpha: 0.95, tint: fg)
-                let label = (running ? "停止滚动" : "自动滚动") as NSString
+                let label = (running ? L("停止滚动") : L("自动滚动")) as NSString
                 let attrs: [NSAttributedString.Key: Any] = [
                     .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
                     .foregroundColor: fg
@@ -417,17 +417,17 @@ final class LongShotControlBarView: NSView {
         x += autoW + 8
 
         let axisSym = (axis == .vertical) ? "arrow.up.and.down" : "arrow.left.and.right"
-        let axisTip = (axis == .vertical) ? "当前纵向长截图 · 点击切换为横向向右长截图" : "当前横向长截图 · 点击切换为纵向向下长截图"
+        let axisTip = (axis == .vertical) ? L("当前纵向长截图 · 点击切换为横向向右长截图") : L("当前横向长截图 · 点击切换为纵向向下长截图")
         let undoTint = canUndoLast ? MSnipUITheme.inkPrimary : MSnipUITheme.inkSecondary.withAlphaComponent(0.35)
         let iconDefs: [(String, String, NSColor, Bool, Action)] = [
             (axisSym, axisTip, axis == .horizontal ? MSnipUITheme.accent : MSnipUITheme.inkPrimary, axis == .horizontal, .toggleAxis),
-            ("arrow.uturn.backward", "撤回上一段拼接 (⌘Z)", undoTint, false, .undoLast),
-            ("pencil.tip", "完成并直接进入标注编辑", MSnipUITheme.inkPrimary, false, .annotate),
-            ("text.viewfinder", "长图识字 (OCR)", MSnipUITheme.inkPrimary, false, .extractText),
-            ("character.bubble", "长图翻译", MSnipUITheme.inkPrimary, false, .translateText),
-            ("pin", "长图贴到屏幕 (\(pinHint))", MSnipUITheme.inkPrimary, false, .pin),
-            ("square.and.arrow.down", "保存长图到默认目录（按住 ⌥ 另存为）", MSnipUITheme.inkPrimary, false, .save),
-            ("xmark", "取消长截图 (Esc)", MSnipUITheme.danger, false, .cancel)
+            ("arrow.uturn.backward", L("撤回上一段拼接 (⌘Z)"), undoTint, false, .undoLast),
+            ("pencil.tip", L("完成并直接进入标注编辑"), MSnipUITheme.inkPrimary, false, .annotate),
+            ("text.viewfinder", L("长图识字 (OCR)"), MSnipUITheme.inkPrimary, false, .extractText),
+            ("character.bubble", L("长图翻译"), MSnipUITheme.inkPrimary, false, .translateText),
+            ("pin", L("长图贴到屏幕 (%@)", pinHint), MSnipUITheme.inkPrimary, false, .pin),
+            ("square.and.arrow.down", L("保存长图到默认目录（按住 ⌥ 另存为）"), MSnipUITheme.inkPrimary, false, .save),
+            ("xmark", L("取消长截图 (Esc)"), MSnipUITheme.danger, false, .cancel)
         ]
         for (sym, tip, tint, active, act) in iconDefs {
             let r = CGRect(x: x, y: y, width: 28, height: h)
@@ -439,11 +439,11 @@ final class LongShotControlBarView: NSView {
         }
 
         let okRect = CGRect(x: x + 2, y: y, width: 76, height: h)
-        list.append(ButtonSlot(rect: okRect, tip: "完成并复制长图到剪贴板 (⌘↩ / ↩)", action: .finishCopy) { ctx, r, hov in
+        list.append(ButtonSlot(rect: okRect, tip: L("完成并复制长图到剪贴板 (⌘↩ / ↩)"), action: .finishCopy) { ctx, r, hov in
             MSnipUITheme.drawPrimaryCTA(ctx: ctx, rect: r, radius: 6.5, hovered: hov)
             let iconR = CGRect(x: r.minX + 10, y: r.minY, width: 14, height: r.height)
             ToolbarView.drawSymbol("checkmark", in: iconR, alpha: 1.0, tint: .white)
-            let txt = "完成" as NSString
+            let txt = L("完成") as NSString
             let attrs: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 12, weight: .semibold),
                 .foregroundColor: NSColor.white

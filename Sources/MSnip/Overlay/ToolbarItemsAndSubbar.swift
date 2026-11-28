@@ -27,7 +27,7 @@ extension ToolbarView {
             symbol: curShape.sfSymbolName,
             hasChevron: true,
             active: shapeActive,
-            tip: "形状：矩形 (\(keyUpper(.rect))) / 椭圆 (⇧\(keyUpper(.rect))) / 聚光灯高亮",
+            tip: L("形状：矩形 (%@) / 椭圆 (⇧%@) / 聚光灯高亮", keyUpper(.rect), keyUpper(.rect)),
             targetTool: shapeActive ? nil : curShape
         ))
 
@@ -39,7 +39,7 @@ extension ToolbarView {
             symbol: brushSym,
             hasChevron: true,
             active: brushActive,
-            tip: "画笔 (\(keyUpper(.pen))) / 荧光笔 (⇧\(keyUpper(.pen))) / 直线 (4)",
+            tip: L("画笔 (%@) / 荧光笔 (⇧%@) / 直线 (4)", keyUpper(.pen), keyUpper(.pen)),
             targetTool: brushActive ? nil : curBrush
         ))
 
@@ -49,7 +49,7 @@ extension ToolbarView {
             symbol: ToolKind.arrow.sfSymbolName,
             hasChevron: true,
             active: arrowActive,
-            tip: "箭头指示 (\(keyUpper(.arrow)))",
+            tip: L("箭头指示 (%@)", keyUpper(.arrow)),
             targetTool: arrowActive ? nil : .arrow
         ))
 
@@ -59,7 +59,7 @@ extension ToolbarView {
             symbol: "character",
             hasChevron: true,
             active: textActive,
-            tip: "文字标注 (\(keyUpper(.text)) · 按 \(keyUpper(.textCapsule)) 切胶囊底色)",
+            tip: L("文字标注 (%@ · 按 %@ 切胶囊底色)", keyUpper(.text), keyUpper(.textCapsule)),
             targetTool: textActive ? nil : .text
         ))
 
@@ -73,7 +73,7 @@ extension ToolbarView {
             symbol: stepSym,
             hasChevron: false,
             active: stepActive,
-            tip: "步骤序号 ①②③ (\(keyUpper(.step)) · 拖拽可拉出箭头)",
+            tip: L("步骤序号 ①②③ (%@ · 拖拽可拉出箭头)", keyUpper(.step)),
             targetTool: stepActive ? nil : .step
         ))
 
@@ -84,7 +84,7 @@ extension ToolbarView {
             symbol: curRedact.sfSymbolName,
             hasChevron: true,
             active: redactActive,
-            tip: "马赛克 (\(keyUpper(.mosaic))) / 高斯毛玻璃 (⇧\(keyUpper(.mosaic)))",
+            tip: L("马赛克 (%@) / 高斯毛玻璃 (⇧%@)", keyUpper(.mosaic), keyUpper(.mosaic)),
             targetTool: redactActive ? nil : curRedact
         ))
 
@@ -94,30 +94,30 @@ extension ToolbarView {
             symbol: "eraser",
             hasChevron: false,
             active: eraserActive,
-            tip: "橡皮擦：点击或涂抹擦除标注 (\(keyUpper(.eraser)))",
+            tip: L("橡皮擦：点击或涂抹擦除标注 (%@)", keyUpper(.eraser)),
             targetTool: eraserActive ? nil : .eraser
         ))
 
         x = appendDivider(at: x, into: &list)
 
         // 2) 撤销 / 重做
-        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.backward", tip: "撤销 (⌘Z)", enabled: canUndo, action: .undo))
-        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.forward", tip: "重做 (⌘⇧Z)", enabled: canRedo, action: .redo))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.backward", tip: L("撤销 (⌘Z)"), enabled: canUndo, action: .undo))
+        list.append(iconAction(x: &x, y: y, h: h, symbol: "arrow.uturn.forward", tip: L("重做 (⌘⇧Z)"), enabled: canRedo, action: .redo))
 
         x = appendDivider(at: x, into: &list)
 
         if isPinEditorMode {
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "放弃修改 (Esc)", enabled: true, tint: MSnipUITheme.danger, action: .cancel))
-            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "完成", tip: "更新贴图 (↩)"))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: L("放弃修改 (Esc)"), enabled: true, tint: MSnipUITheme.danger, action: .cancel))
+            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: L("完成"), tip: L("更新贴图 (↩)")))
         } else {
             // 3) 页面内交互与多模态功能键（长截图 / 录视频 / 页内实况识字 / 页内翻译）
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "scissors", tip: "滚动长截图 (\(keyUpper(.longShot)))", enabled: true, action: .startLongShot))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "video", tip: "选区录制 GIF / MP4 视频 (\(keyUpper(.record)))", enabled: true, action: .startRecording))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "scissors", tip: L("滚动长截图 (%@)", keyUpper(.longShot)), enabled: true, action: .startLongShot))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "video", tip: L("选区录制 GIF / MP4 视频 (%@)", keyUpper(.record)), enabled: true, action: .startRecording))
             let ocrTip: String = switch (inPlaceOCRActive, ocrPresentation) {
-            case (true, _):           "正在页内实况识字：可直接划词复制（再次点击返回标注 · ⌥+点击打开双栏面板）"
-            case (false, .inPlace):   "提取文字：在当前选区内直接划选文字 (\(keyUpper(.ocr)) · ⌥+点击打开双栏面板)"
-            case (false, .dualPane):  "提取文字：直接打开双栏对照面板 (\(keyUpper(.ocr)) · ⌥+点击页内划词)"
-            case (false, .silentCopy): "提取文字：直接关闭截图并静默识别复制 (\(keyUpper(.ocr)) · ⌥+点击打开双栏面板)"
+            case (true, _):           L("正在页内实况识字：可直接划词复制（再次点击返回标注 · ⌥+点击打开双栏面板）")
+            case (false, .inPlace):   L("提取文字：在当前选区内直接划选文字 (%@ · ⌥+点击打开双栏面板)", keyUpper(.ocr))
+            case (false, .dualPane):  L("提取文字：直接打开双栏对照面板 (%@ · ⌥+点击页内划词)", keyUpper(.ocr))
+            case (false, .silentCopy): L("提取文字：直接关闭截图并静默识别复制 (%@ · ⌥+点击打开双栏面板)", keyUpper(.ocr))
             }
             list.append(iconAction(
                 x: &x, y: y, h: h,
@@ -131,16 +131,16 @@ extension ToolbarView {
             list.append(iconAction(
                 x: &x, y: y, h: h,
                 symbol: "function",
-                tip: "识别 LaTeX 数学公式与实时预览 (⇧\(keyUpper(.ocr)))",
+                tip: L("识别 LaTeX 数学公式与实时预览 (⇧%@)", keyUpper(.ocr)),
                 enabled: true,
                 tint: Self.inkDark,
                 action: .recognizeLatex
             ))
             let trTip: String = inPlaceTranslateActive
-                ? "正在页内原位翻译：按住画面对比原图，按 ↩ 复制翻译图（再次点击还原 · ⌥+点击打开双栏面板）"
+                ? L("正在页内原位翻译：按住画面对比原图，按 ↩ 复制翻译图（再次点击还原 · ⌥+点击打开双栏面板）")
                 : (translateAutoOpenDualPane
-                    ? "截图翻译：直接打开双栏流式翻译面板 (\(keyUpper(.translate)) · ⌥+点击原位译文)"
-                    : "截图翻译：原位替换译文 (\(keyUpper(.translate)) · ⌥+点击打开双栏流式面板)")
+                    ? L("截图翻译：直接打开双栏流式翻译面板 (%@ · ⌥+点击原位译文)", keyUpper(.translate))
+                    : L("截图翻译：原位替换译文 (%@ · ⌥+点击打开双栏流式面板)", keyUpper(.translate)))
             list.append(iconAction(
                 x: &x, y: y, h: h,
                 symbol: "character.bubble",
@@ -154,13 +154,13 @@ extension ToolbarView {
             x = appendDivider(at: x, into: &list)
 
             // 4) 终态输出组：贴图 / 保存 / 关闭 / 醒目蓝色复制主胶囊
-            let pinTip = pinHint.isEmpty ? "贴到桌面 (\(keyUpper(.pin)))" : "贴到桌面 (\(keyUpper(.pin)) / \(pinHint))"
+            let pinTip = pinHint.isEmpty ? L("贴到桌面 (%@)", keyUpper(.pin)) : L("贴到桌面 (%@ / %@)", keyUpper(.pin), pinHint)
             list.append(iconAction(x: &x, y: y, h: h, symbol: "pin", tip: pinTip, enabled: true, action: .pin))
             let saveIconRect = CGRect(x: x, y: y, width: 26, height: h)
             x += 26
             list.append(HitItem(
                 rect: saveIconRect,
-                tooltip: "一键保存到默认目录 (\(keyUpper(.quickSave)) · ⌘S 另存为)",
+                tooltip: L("一键保存到默认目录 (%@ · ⌘S 另存为)", keyUpper(.quickSave)),
                 enabled: true,
                 draw: { ctx, r, hov in
                     Self.drawButtonBg(ctx: ctx, rect: r, active: false, hovered: hov)
@@ -172,7 +172,7 @@ extension ToolbarView {
             x += 16
             list.append(HitItem(
                 rect: saveMenuRect,
-                tooltip: "选择其他保存目录 / 另存为 (⌘S)",
+                tooltip: L("选择其他保存目录 / 另存为 (⌘S)"),
                 enabled: true,
                 draw: { ctx, r, hov in
                     Self.drawButtonBg(ctx: ctx, rect: r, active: false, hovered: hov)
@@ -180,8 +180,8 @@ extension ToolbarView {
                 },
                 action: .save
             ))
-            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: "退出截图 (\(keyUpper(.cancel)) / Esc / 右键)", enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
-            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: "复制", tip: "复制到剪贴板 (\(keyUpper(.copy)) / ↩ / 双击选区)"))
+            list.append(iconAction(x: &x, y: y, h: h, symbol: "xmark", tip: L("退出截图 (%@ / Esc / 右键)", keyUpper(.cancel)), enabled: true, tint: MSnipUITheme.inkSecondary, action: .cancel))
+            list.append(primaryConfirmItem(x: &x, y: y, h: h, label: L("复制"), tip: L("复制到剪贴板 (%@ / ↩ / 双击选区)", keyUpper(.copy))))
         }
 
         items = list
@@ -388,7 +388,7 @@ final class ToolbarSubbarView: NSView {
             needsDisplay = true
         }
         if onSlider {
-            FloatingTooltipHUD.show("拖动进度条调节大小（方向键 ↑↓←→ 或滚轮也可快速调大缩小）", anchorRectInView: sliderHitRect, of: self)
+            FloatingTooltipHUD.show(L("拖动进度条调节大小（方向键 ↑↓←→ 或滚轮也可快速调大缩小）"), anchorRectInView: sliderHitRect, of: self)
         } else if let i = idx, slots.indices.contains(i) {
             FloatingTooltipHUD.show(slots[i].tip, anchorRectInView: slots[i].rect, of: self)
         } else {
@@ -466,11 +466,11 @@ final class ToolbarSubbarView: NSView {
             let variants: [(ToolKind, String, String)] = {
                 switch tool {
                 case .rect, .ellipse, .spotlight:
-                    return [(.rect, "rectangle", "矩形框 (R)"), (.ellipse, "circle", "椭圆圈记 (⇧R)"), (.spotlight, "light.max", "聚光灯高亮（框内清晰、框外柔和压暗）")]
+                    return [(.rect, "rectangle", L("矩形框 (R)")), (.ellipse, "circle", L("椭圆圈记 (⇧R)")), (.spotlight, "light.max", L("聚光灯高亮（框内清晰、框外柔和压暗）"))]
                 case .pen, .highlighter, .line:
-                    return [(.pen, "pencil", "自由画笔 (D)"), (.highlighter, "highlighter", "荧光马克笔 (⇧D)"), (.line, "line.diagonal", "直线 (4)")]
+                    return [(.pen, "pencil", L("自由画笔 (D)")), (.highlighter, "highlighter", L("荧光马克笔 (⇧D)")), (.line, "line.diagonal", L("直线 (4)"))]
                 case .mosaic, .gaussianBlur:
-                    return [(.mosaic, "checkerboard.rectangle", "像素马赛克 (M)"), (.gaussianBlur, "drop.circle", "高斯毛玻璃 (⇧M)")]
+                    return [(.mosaic, "checkerboard.rectangle", L("像素马赛克 (M)")), (.gaussianBlur, "drop.circle", L("高斯毛玻璃 (⇧M)"))]
                 default:
                     return []
                 }
@@ -490,9 +490,9 @@ final class ToolbarSubbarView: NSView {
                 let capOn = textCapsule
                 let r = CGRect(x: x, y: y, width: 62, height: h)
                 x += 64
-                list.append(Slot(rect: r, tip: "切换圆角胶囊底色标签 (K / ⌘B)", action: .toggleTextCapsule) { ctx, rect, hov in
+                list.append(Slot(rect: r, tip: L("切换圆角胶囊底色标签 (K / ⌘B)"), action: .toggleTextCapsule) { ctx, rect, hov in
                     ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: capOn, hovered: hov)
-                    let str = "胶囊底" as NSString
+                    let str = L("胶囊底") as NSString
                     let attrs: [NSAttributedString.Key: Any] = [
                         .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
                         .foregroundColor: capOn ? ToolbarView.accentBlue : ToolbarView.inkDark
@@ -508,7 +508,7 @@ final class ToolbarSubbarView: NSView {
         }
 
         // 2) 小 / 中 / 大 3 档快选圆点 + 紧邻连续大小进度条（点击/拖拽/方向键/滚轮全联动）
-        let quickSizes: [(CGFloat, CGFloat, String)] = [(2.0, 2.3, "小号 (2)"), (5.0, 3.8, "中号 (5)"), (10.0, 5.4, "大号 (10)")]
+        let quickSizes: [(CGFloat, CGFloat, String)] = [(2.0, 2.3, L("小号 (2)")), (5.0, 3.8, L("中号 (5)")), (10.0, 5.4, L("大号 (10)"))]
         for (presetW, dotR, tip) in quickSizes {
             let r = CGRect(x: x, y: y, width: 20, height: h)
             x += 20
@@ -534,10 +534,10 @@ final class ToolbarSubbarView: NSView {
         if activeTool == .mosaic || activeTool == .gaussianBlur {
             x = addSeparator(at: x)
             let redRect = CGRect(x: x, y: y, width: 78, height: h); x += 80
-            list.append(Slot(rect: redRect, tip: "一键智能隐私打码：自动识别并遮盖 API Key、邮箱、手机号、身份证与 IP", action: .autoRedact) { ctx, rect, hov in
+            list.append(Slot(rect: redRect, tip: L("一键智能隐私打码：自动识别并遮盖 API Key、邮箱、手机号、身份证与 IP"), action: .autoRedact) { ctx, rect, hov in
                 ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: false, hovered: hov)
                 ToolbarView.drawSymbol("eye.slash", in: CGRect(x: rect.minX + 4, y: rect.minY, width: 16, height: rect.height), alpha: 0.92, tint: ToolbarView.accentBlue)
-                let s = "一键隐码" as NSString
+                let s = L("一键隐码") as NSString
                 let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11, weight: .semibold), .foregroundColor: ToolbarView.accentBlue]
                 let sz = s.size(withAttributes: a)
                 s.draw(at: CGPoint(x: round(rect.minX + 23), y: round(rect.midY - sz.height * 0.5 - 0.5)), withAttributes: a)
@@ -546,10 +546,10 @@ final class ToolbarSubbarView: NSView {
             x = addSeparator(at: x)
             let clrRect = CGRect(x: x, y: y, width: 66, height: h)
             x += 68
-            list.append(Slot(rect: clrRect, tip: "清空当前全部标注（可用 ⌘Z 撤销）", action: .clearAnnotations) { ctx, rect, hov in
+            list.append(Slot(rect: clrRect, tip: L("清空当前全部标注（可用 ⌘Z 撤销）"), action: .clearAnnotations) { ctx, rect, hov in
                 ToolbarView.drawButtonBg(ctx: ctx, rect: rect, active: false, hovered: hov)
                 ToolbarView.drawSymbol("trash", in: CGRect(x: rect.minX + 4, y: rect.minY, width: 16, height: rect.height), alpha: 0.9, tint: MSnipUITheme.danger)
-                let s = "清空" as NSString
+                let s = L("清空") as NSString
                 let a: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: 11.5, weight: .semibold), .foregroundColor: MSnipUITheme.danger]
                 let sz = s.size(withAttributes: a)
                 s.draw(at: CGPoint(x: round(rect.minX + 24), y: round(rect.midY - sz.height * 0.5 - 0.5)), withAttributes: a)
@@ -559,7 +559,7 @@ final class ToolbarSubbarView: NSView {
             for (idx, color) in RGBAColor.presets.enumerated() {
                 let sel = (customColor == nil && colorIndex == idx)
                 let r = CGRect(x: x, y: y, width: 20, height: h); x += 20
-                list.append(Slot(rect: r, tip: "切换标注颜色", action: .selectColor(idx)) { ctx, rect, hov in
+                list.append(Slot(rect: r, tip: L("切换标注颜色"), action: .selectColor(idx)) { ctx, rect, hov in
                     let side: CGFloat = sel ? 14 : (hov ? 13 : 11.5)
                     let sw = CGRect(x: rect.midX - side * 0.5, y: rect.midY - side * 0.5, width: side, height: side)
                     ctx.setFillColor(color.cgColor); ctx.fillEllipse(in: sw)
@@ -570,7 +570,7 @@ final class ToolbarSubbarView: NSView {
             if !isPinEditorMode {
                 let pr = CGRect(x: x + 2, y: y, width: 26, height: h); x += 29
                 let pickerOn = eyedropperActive; let picked = customColor
-                list.append(Slot(rect: pr, tip: "屏幕取色吸管 (I / ⌥+点击)", action: .toggleEyedropper) { ctx, rect, hov in
+                list.append(Slot(rect: pr, tip: L("屏幕取色吸管 (I / ⌥+点击)"), action: .toggleEyedropper) { ctx, rect, hov in
                     ToolbarView.drawEyedropperItem(ctx: ctx, rect: rect, active: pickerOn, customColor: picked, hovered: hov)
                 })
             }

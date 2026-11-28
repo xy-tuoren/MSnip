@@ -75,7 +75,7 @@ final class RegionRecordingSession {
         controlBar.interactionHUDEnabled = interactionHUD
         overlayCompositor.isEnabled = interactionHUD
         borderView.statusStyle = .ready
-        borderView.statusText = "选区录屏就绪 · 选择 GIF/MP4 后点击开始录制"
+        borderView.statusText = L("选区录屏就绪 · 选择 GIF/MP4 后点击开始录制")
 
         let screenRect = Self.toAppKitScreenRect(localTopLeft: selectionLocalTopLeft, on: screen)
         borderView.pinPillInsideTop = (screenRect.maxY + LongShotBorderView.topBadgeSpace > screen.visibleFrame.maxY)
@@ -150,7 +150,7 @@ final class RegionRecordingSession {
         controlBar.isRecording = true; controlBar.isPaused = false; controlBar.elapsedSeconds = 0
         borderView.statusStyle = .recording
         let fpsTag = fmt == .mp4 ? " \(resolvedMP4FPS)fps" : " \(recordingOptions.clampedGifFPS)fps"
-        borderView.statusText = "正在录制 \(fmt.badgeTitle)\(fpsTag) · 框内可直接点击操作"
+        borderView.statusText = L("正在录制 %@%@ · 框内可直接点击操作", fmt.badgeTitle, fpsTag)
         repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: screen), on: screen)
 
         let pausedBox = RecordingFlagBox()
@@ -228,7 +228,7 @@ final class RegionRecordingSession {
             timeOffsetBox?.value = accumulatedActiveTime
             controlBar.isPaused = true
             borderView.statusStyle = .warning
-            borderView.statusText = "录制已暂停 · 点击继续或完成导出"
+            borderView.statusText = L("录制已暂停 · 点击继续或完成导出")
         } else {
             let now = CACurrentMediaTime()
             segmentStartMediaTime = now
@@ -237,7 +237,7 @@ final class RegionRecordingSession {
             pauseFlagBox?.value = false
             controlBar.isPaused = false
             borderView.statusStyle = .recording
-            borderView.statusText = "正在录制 \(controlBar.format.badgeTitle) · 框内可直接点击操作"
+            borderView.statusText = L("正在录制 %@ · 框内可直接点击操作", controlBar.format.badgeTitle)
         }
     }
 
@@ -258,7 +258,7 @@ final class RegionRecordingSession {
         streamSampler.stop()
         controlBar.isEncoding = true
         borderView.statusStyle = .stitching
-        borderView.statusText = "正在封装 \(controlBar.format.badgeTitle)…"
+        borderView.statusText = L("正在封装 %@…", controlBar.format.badgeTitle)
 
         if enc.capturedFrameCount == 0, let fallback = initialFrame {
             enc.appendFrame(fallback, at: 0.0)
@@ -271,7 +271,7 @@ final class RegionRecordingSession {
             guard let self, !self.closed else { return }
             guard let url else {
                 MSnipLog.error(.recording, "Recording produced no output file (\(fmt.rawValue), frames=\(frames))")
-                ToastHUD.show(message: "录制时间过短或未采集到有效画面")
+                ToastHUD.show(message: L("录制时间过短或未采集到有效画面"))
                 self.finishSession(.cancelled)
                 return
             }
@@ -364,7 +364,7 @@ extension RegionRecordingSession {
     private func applyCountdownDisplay(_ n: Int, on screen: NSScreen) {
         borderView.countdownNumber = n
         borderView.statusStyle = .warning
-        borderView.statusText = "即将录制 \(controlBar.format.badgeTitle) · \(n) 秒后开始（↩ 立即开始 · Esc 取消）"
+        borderView.statusText = L("即将录制 %@ · %@ 秒后开始（↩ 立即开始 · Esc 取消）", controlBar.format.badgeTitle, n)
         controlBar.countdownNumber = n
         repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: screen), on: screen)
     }
@@ -408,8 +408,8 @@ extension RegionRecordingSession {
         controlBar.isDrawingActive = next
         drawWindow?.ignoresMouseEvents = !next
         borderView.statusText = next
-            ? "画笔标记模式 · 拖动绘制激光红线（按住 ⇧ 常驻，右键清屏）"
-            : "正在录制 \(controlBar.format.badgeTitle) · 框内可直接点击操作"
+            ? L("画笔标记模式 · 拖动绘制激光红线（按住 ⇧ 常驻，右键清屏）")
+            : L("正在录制 %@ · 框内可直接点击操作", controlBar.format.badgeTitle)
         if let scr = targetScreen {
             repositionControlWindow(around: Self.toAppKitScreenRect(localTopLeft: localCaptureRect, on: scr), on: scr)
         }

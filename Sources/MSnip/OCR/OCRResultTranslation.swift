@@ -8,7 +8,7 @@ import MSnipCore
 extension OCRResultController {
     func buildOCREngineControls(in root: NSView) {
         let engPill = LightDropdownPill(symbol: "text.viewfinder", items: OCREngineKind.allCases.map(\.shortName))
-        engPill.toolTip = "快速切换文字识别引擎（Apple 离线 / AI 视觉 / 百度 / 腾讯 / 有道 / 自定义 HTTP）"
+        engPill.toolTip = L("快速切换文字识别引擎（Apple 离线 / AI 视觉 / 百度 / 腾讯 / 有道 / 自定义 HTTP）")
         engPill.onSelect = { [weak self] idx in
             guard let self, OCREngineKind.allCases.indices.contains(idx), let img = self.currentCGImage else { return }
             self.selectedOCREngine = OCREngineKind.allCases[idx]
@@ -20,7 +20,7 @@ extension OCRResultController {
         self.ocrEnginePill = engPill
 
         let cfgBtn = OCRPillButton(title: "", symbol: "slider.horizontal.3")
-        cfgBtn.toolTip = "前往「设置 → 识字与翻译」统一配置 OCR、公式与翻译引擎"
+        cfgBtn.toolTip = L("前往「设置 → 识字与翻译」统一配置 OCR、公式与翻译引擎")
         cfgBtn.onClick = { [weak self] in self?.onOpenOCRSettings?() }
         root.addSubview(cfgBtn)
         self.ocrSettingsBtn = cfgBtn
@@ -52,7 +52,7 @@ extension OCRResultController {
             self.liveImageView?.applyPrecomputedAnalysis(live, highlightBlocks: self.highlightButton.isToggledOn)
             self.nonAppleQRPayloads = qrList
             if let firstQR = qrList.first {
-                self.qrBannerBox.isHidden = false; self.qrValueLabel.stringValue = "二维码：\(firstQR)"
+                self.qrBannerBox.isHidden = false; self.qrValueLabel.stringValue = L("二维码：%@", firstQR)
                 let low = firstQR.lowercased(); self.qrOpenBtn.isHidden = !(low.hasPrefix("http://") || low.hasPrefix("https://"))
                 self.relayoutContent()
             }
@@ -66,7 +66,7 @@ extension OCRResultController {
         if !isTranslationActive {
             if autoCopy && (ocrAutoCopyProvider?() ?? true) {
                 ClipboardAndSave.copyText(shown)
-                statusBadgeLabel.stringValue = "✓ \(out.providerName) · \(out.elapsedMs)ms · 已复制"
+                statusBadgeLabel.stringValue = L("✓ %@ · %@ms · 已复制", out.providerName, out.elapsedMs)
             } else {
                 statusBadgeLabel.stringValue = "✓ \(out.providerName) · \(out.elapsedMs)ms"
             }
@@ -83,7 +83,7 @@ extension OCRResultController {
             let ocrCfg = OCRRecognitionConfig.load()
             let activeID = TranslationService.shared.settings.activeProfileID
             let profiles = VisionLLMOCRService.availableVisionLLMProfiles()
-            statusBadgeLabel.stringValue = "正在用「\(engine.shortName)」识别…"
+            statusBadgeLabel.stringValue = L("正在用「%@」识别…", engine.shortName)
             statusBadgeLabel.textColor = MSnipUITheme.accent
             tableCopyButton?.isHidden = true; relayoutContent()
             // 仅挂载左图 Live Text + 轻量二维码扫描，绝不冗余跑整套离线 OCR
@@ -98,7 +98,7 @@ extension OCRResultController {
                     self.applyNonAppleOutcome(out, autoCopy: true)
                 } catch {
                     guard !Task.isCancelled, self.requestToken == token else { return }
-                    let warn = "⚠ \(error.localizedDescription)（已回退离线）"
+                    let warn = L("⚠ %@（已回退离线）", error.localizedDescription)
                     let output = await VisionTextExtractor.recognizeTextOnlyOffMain(cgImage: image, exactCodeMode: self.exactCodeMode)
                     guard !Task.isCancelled, self.requestToken == token else { return }
                     self.applyRecognitionOutput(output, fallbackWarning: warn)
@@ -106,7 +106,7 @@ extension OCRResultController {
             }
             return
         }
-        statusBadgeLabel.stringValue = "正在离线识别…"
+        statusBadgeLabel.stringValue = L("正在离线识别…")
         statusBadgeLabel.textColor = MSnipUITheme.inkSecondary
         relayoutContent()
         VisionTextExtractor.recognizeAsync(from: image, exactCodeMode: exactCodeMode) { [weak self] output in
@@ -117,16 +117,16 @@ extension OCRResultController {
     }
 
     func buildTableCopyButton(in root: NSView) {
-        let btn = OCRPillButton(title: "复制表格", symbol: "tablecells")
-        btn.toolTip = "复制为 Markdown 表格（按住 ⌥ 点击复制 TSV，可直接粘贴进 Excel / Numbers 分列）"
+        let btn = OCRPillButton(title: L("复制表格"), symbol: "tablecells")
+        btn.toolTip = L("复制为 Markdown 表格（按住 ⌥ 点击复制 TSV，可直接粘贴进 Excel / Numbers 分列）")
         btn.isHidden = true
         btn.onClick = { [weak self] in
             guard let self, let tbl = self.currentOutput?.tableResult else { return }
             let useTSV = NSEvent.modifierFlags.contains(.option)
             ClipboardAndSave.copyText(useTSV ? tbl.tsv : tbl.markdown)
             self.statusBadgeLabel.stringValue = useTSV
-                ? "✓ 已复制 TSV 表格（\(tbl.rows.count)×\(tbl.columnCount)）"
-                : "✓ 已复制 Markdown 表格（\(tbl.rows.count)×\(tbl.columnCount)）"
+                ? L("✓ 已复制 TSV 表格（%@×%@）", tbl.rows.count, tbl.columnCount)
+                : L("✓ 已复制 Markdown 表格（%@×%@）", tbl.rows.count, tbl.columnCount)
             self.statusBadgeLabel.textColor = MSnipUITheme.success
             self.relayoutContent()
         }
@@ -158,7 +158,7 @@ extension OCRResultController {
         strip.layer?.borderWidth = 1.0
         strip.layer?.borderColor = MSnipUITheme.borderHairline.cgColor
 
-        let badge = NSTextField(labelWithString: "实时译文")
+        let badge = NSTextField(labelWithString: L("实时译文"))
         badge.font = .systemFont(ofSize: 11.5, weight: .semibold)
         badge.textColor = ResultTheme.accent
         strip.addSubview(badge)
@@ -193,12 +193,12 @@ extension OCRResultController {
         strip.addSubview(langPill)
         self.targetLangPill = langPill
 
-        let rtBtn = OCRPillButton(title: "重译", symbol: "arrow.clockwise")
-        rtBtn.toolTip = "按当前原文与所选翻译引擎重新翻译"
+        let rtBtn = OCRPillButton(title: L("重译"), symbol: "arrow.clockwise")
+        rtBtn.toolTip = L("按当前原文与所选翻译引擎重新翻译")
         rtBtn.onClick = { [weak self] in self?.triggerStreamingTranslation() }
         strip.addSubview(rtBtn); self.retranslateBtn = rtBtn
 
-        let cfgBtn = OCRPillButton(title: "接口设置", symbol: "slider.horizontal.3")
+        let cfgBtn = OCRPillButton(title: L("接口设置"), symbol: "slider.horizontal.3")
         cfgBtn.onClick = { [weak self] in self?.onOpenSettings?() }
         strip.addSubview(cfgBtn); self.transConfigBtn = cfgBtn
 
@@ -241,8 +241,8 @@ extension OCRResultController {
     func toggleTranslationPane() {
         isTranslationActive.toggle()
         translateButton.isToggledOn = isTranslationActive
-        titleLabel.stringValue = isTranslationActive ? "截图识字与翻译" : "截图提取文字"
-        copyButton.title = isTranslationActive ? "复制译文 (⌘↩)" : "复制文本 (⌘↩)"
+        titleLabel.stringValue = isTranslationActive ? L("截图识字与翻译") : L("截图提取文字")
+        copyButton.title = isTranslationActive ? L("复制译文 (⌘↩)") : L("复制文本 (⌘↩)")
         relayoutContent()
         if isTranslationActive {
             refreshTranslationPopups()
@@ -254,15 +254,15 @@ extension OCRResultController {
         guard isTranslationActive else { return }
         let source = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !source.isEmpty else {
-            transTextView.string = "等待识别原文…"
+            transTextView.string = L("等待识别原文…")
             return
         }
 
         translationTask?.cancel(); translationToken &+= 1
         let tToken = translationToken
         lastTranslationFailed = false
-        transTextView.string = "正在翻译…"
-        statusBadgeLabel.stringValue = "正在请求翻译…"; statusBadgeLabel.textColor = MSnipUITheme.accent
+        transTextView.string = L("正在翻译…")
+        statusBadgeLabel.stringValue = L("正在请求翻译…"); statusBadgeLabel.textColor = MSnipUITheme.accent
         relayoutContent()
 
         let hostWin = self.window; let engID = self.selectedEngineID; let lang = self.selectedTargetLang
@@ -280,7 +280,7 @@ extension OCRResultController {
                 guard !Task.isCancelled, self.translationToken == tToken else { return }
                 self.lastTranslationFailed = false
                 self.transTextView.string = res.translatedText
-                let fbNote = res.usedFallback ? " (备选)" : ""
+                let fbNote = res.usedFallback ? L(" (备选)") : ""
                 self.statusBadgeLabel.stringValue = "✓ \(res.providerName)\(fbNote) · \(res.elapsedMs)ms"
                 self.statusBadgeLabel.textColor = MSnipUITheme.success; self.relayoutContent()
                 if TranslationService.shared.settings.autoCopyTranslation, !res.translatedText.isEmpty {
@@ -289,8 +289,8 @@ extension OCRResultController {
             } catch {
                 guard !Task.isCancelled, self.translationToken == tToken else { return }
                 self.lastTranslationFailed = true
-                self.transTextView.string = "翻译未完成：\(error.localizedDescription)\n\n点击上方「接口设置」可切换免费的 macOS 原生离线翻译或检查 API Key。"
-                self.statusBadgeLabel.stringValue = "翻译未完成"; self.statusBadgeLabel.textColor = MSnipUITheme.warning
+                self.transTextView.string = L("翻译未完成：%@\n\n点击上方「接口设置」可切换免费的 macOS 原生离线翻译或检查 API Key。", error.localizedDescription)
+                self.statusBadgeLabel.stringValue = L("翻译未完成"); self.statusBadgeLabel.textColor = MSnipUITheme.warning
                 self.relayoutContent()
             }
         }
@@ -447,8 +447,8 @@ final class OCRModeSegmentView: NSView {
         ctx.strokePath()
 
         let labels: [(String, CGRect, Bool)] = [
-            ("保持换行", CGRect(x: 2, y: 0, width: halfW, height: bounds.height), mode == .preserveLines),
-            ("合并段落", CGRect(x: 2 + halfW, y: 0, width: halfW, height: bounds.height), mode == .mergeParagraphs)
+            (L("保持换行"), CGRect(x: 2, y: 0, width: halfW, height: bounds.height), mode == .preserveLines),
+            (L("合并段落"), CGRect(x: 2 + halfW, y: 0, width: halfW, height: bounds.height), mode == .mergeParagraphs)
         ]
         for (txt, rect, active) in labels {
             let attrs: [NSAttributedString.Key: Any] = [

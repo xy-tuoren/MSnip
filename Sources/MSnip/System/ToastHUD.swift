@@ -203,9 +203,9 @@ private final class ToastCardView: NSView {
         onHoverChanged: ((Bool) -> Void)?
     ) {
         var trimmed = rawMessage.trimmingCharacters(in: .whitespacesAndNewlines)
-        let warnPrefixes = ["⚠", "未识别", "未检测", "未能", "未找到", "暂无", "请先"]
-        let isWarn = warnPrefixes.contains(where: { trimmed.hasPrefix($0) }) || trimmed.contains("失败") || trimmed.contains("冲突")
-        let isOK = trimmed.hasPrefix("✓") || trimmed.contains("已")
+        let tone = MessageTone.classify(trimmed)
+        let isWarn = tone == .warning
+        let isOK = tone == .success
         if trimmed.hasPrefix("✓") || trimmed.hasPrefix("⚠") {
             trimmed = String(trimmed.dropFirst()).trimmingCharacters(in: .whitespaces)
         }

@@ -71,7 +71,7 @@ final class LanguagePickerPopover: NSObject, NSTableViewDataSource, NSTableViewD
         sf.font = sfFont
         sf.textColor = dark ? GeekTheme.inkPrimary : MSnipUITheme.inkPrimary
         sf.placeholderAttributedString = NSAttributedString(
-            string: "搜索全语种，或输入自定义语言回车…",
+            string: L("搜索全语种，或输入自定义语言回车…"),
             attributes: [.font: sfFont, .foregroundColor: dark ? GeekTheme.inkMuted : MSnipUITheme.inkMuted]
         )
         sf.cell?.isScrollable = true
@@ -81,7 +81,7 @@ final class LanguagePickerPopover: NSObject, NSTableViewDataSource, NSTableViewD
         searchBox.addSubview(sf)
         self.searchField = sf
 
-        let tipLbl = NSTextField(labelWithString: "支持中英文与代码搜索 · 可直接输入粤语口语、文言文等")
+        let tipLbl = NSTextField(labelWithString: L("支持中英文与代码搜索 · 可直接输入粤语口语、文言文等"))
         tipLbl.font = .systemFont(ofSize: 11.0, weight: .regular)
         tipLbl.textColor = dark ? GeekTheme.inkMuted : MSnipUITheme.inkMuted
         tipLbl.lineBreakMode = .byTruncatingTail
@@ -119,25 +119,25 @@ final class LanguagePickerPopover: NSObject, NSTableViewDataSource, NSTableViewD
         var built: [RowItem] = []
 
         if q.isEmpty {
-            built.append(.target(.autoZhEn, title: "自动互译（外→中 / 中→英）", subtitle: "智能识别原文语种", isCustomAction: false))
+            built.append(.target(.autoZhEn, title: L("自动互译（外→中 / 中→英）"), subtitle: L("智能识别原文语种"), isCustomAction: false))
             if let custom = currentLang.customText {
-                built.append(.target(currentLang, title: "自定义：\(custom)", subtitle: "当前自定义目标", isCustomAction: false))
+                built.append(.target(currentLang, title: L("自定义：%@", custom), subtitle: L("当前自定义目标"), isCustomAction: false))
             }
-            built.append(.header("常用语种"))
+            built.append(.header(L("常用语种")))
             for e in TranslationLanguageCatalog.allEntries where e.isCommon {
-                built.append(.target(.language(e.code), title: e.zhName, subtitle: e.nativeName == e.zhName ? e.code : e.nativeName, isCustomAction: false))
+                built.append(.target(.language(e.code), title: e.localizedName, subtitle: e.nativeName == e.localizedName ? e.code : e.nativeName, isCustomAction: false))
             }
-            built.append(.header("全部世界语种 (\(TranslationLanguageCatalog.allEntries.count))"))
+            built.append(.header(L("全部世界语种 (%@)", TranslationLanguageCatalog.allEntries.count)))
             for e in TranslationLanguageCatalog.allEntries where !e.isCommon {
-                built.append(.target(.language(e.code), title: e.zhName, subtitle: e.nativeName.isEmpty ? e.enName : e.nativeName, isCustomAction: false))
+                built.append(.target(.language(e.code), title: e.localizedName, subtitle: e.nativeName.isEmpty || e.nativeName == e.localizedName ? e.code : e.nativeName, isCustomAction: false))
             }
         } else {
             let matched = TranslationLanguageCatalog.allEntries.filter { $0.matches(q) }
             for e in matched {
-                built.append(.target(.language(e.code), title: e.zhName, subtitle: "\(e.enName) · \(e.code)", isCustomAction: false))
+                built.append(.target(.language(e.code), title: e.localizedName, subtitle: "\(MSnipL10n.usesEnglish ? e.zhName : e.enName) · \(e.code)", isCustomAction: false))
             }
             let customTarget = TranslationTargetLang(rawValue: "custom:\(q)")
-            built.append(.target(customTarget, title: "使用自定义目标：「\(q)」", subtitle: "按 ↩ 回车或点击直接生效", isCustomAction: true))
+            built.append(.target(customTarget, title: L("使用自定义目标：「%@」", q), subtitle: L("按 ↩ 回车或点击直接生效"), isCustomAction: true))
         }
         rows = built
         tableView?.reloadData()

@@ -104,7 +104,7 @@ final class PinManager {
             restored += 1
         }
         if restored > 0 {
-            ToastHUD.show(message: "已解除 \(restored) 张贴图的鼠标穿透状态")
+            ToastHUD.show(message: L("已解除 %@ 张贴图的鼠标穿透状态", restored))
             onCountChanged?(windows.count)
         }
     }
@@ -137,10 +137,10 @@ final class PinManager {
                   let card = TextPinCardRenderer.render(text: text, scale: screen.backingScaleFactor) {
             cgImage = card
             scale = max(1.0, screen.backingScaleFactor)
-            toastNote = "已将剪贴板文本贴为桌面便签"
+            toastNote = L("已将剪贴板文本贴为桌面便签")
         } else {
             NSSound.beep()
-            ToastHUD.show(message: "剪贴板暂无图片、色值或文本 · 复制后再按快捷键贴图")
+            ToastHUD.show(message: L("剪贴板暂无图片、色值或文本 · 复制后再按快捷键贴图"))
             return false
         }
 
@@ -153,20 +153,20 @@ final class PinManager {
     /// 一键暂藏或恢复显示桌面上的全部贴图窗口
     func toggleAllVisibility() {
         guard !windows.isEmpty else {
-            ToastHUD.show(message: "当前桌面暂无贴图")
+            ToastHUD.show(message: L("当前桌面暂无贴图"))
             return
         }
         if !arePinsHidden && windows.contains(where: \.isVisible) {
             arePinsHidden = true
             windows.forEach { $0.hideForToggle() }
             hoverCoordinator.syncMonitors()
-            ToastHUD.show(message: "已暂藏 \(windows.count) 张桌面贴图 · 再按快捷键恢复")
+            ToastHUD.show(message: L("已暂藏 %@ 张桌面贴图 · 再按快捷键恢复", windows.count))
         } else {
             arePinsHidden = false
             windows.forEach { $0.orderFrontRegardless() }
             hoverCoordinator.syncMonitors()
             hoverCoordinator.reconcileSoon(delay: 0.05)
-            ToastHUD.show(message: "已恢复显示 \(windows.count) 张桌面贴图")
+            ToastHUD.show(message: L("已恢复显示 %@ 张桌面贴图", windows.count))
         }
         onCountChanged?(windows.count)
     }

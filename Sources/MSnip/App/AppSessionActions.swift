@@ -78,7 +78,7 @@ extension AppController {
             ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
             ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
             self.recordHistoryAndRefresh(img: img, scale: scale, isCollage: true)
-            ToastHUD.show(message: "✓ 已复制高清拼图到剪贴板 · \(img.width) × \(img.height) px", preview: img)
+            ToastHUD.show(message: L("✓ 已复制高清拼图到剪贴板 · %@ × %@ px", img.width, img.height), preview: img)
         }
         c.onPinCollage = { [weak self] img, scale in
             guard let self else { return }
@@ -105,7 +105,7 @@ extension AppController {
             guard let self, let cg = self.historyRing.loadCGImage(for: entry) else { NSSound.beep(); return }
             ClipboardAndSave.copyToClipboard(cgImage: cg, scaleFactor: entry.scaleFactor)
             ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
-            ToastHUD.show(message: "已复制暂存截图 · \(entry.pixelWidth) × \(entry.pixelHeight)")
+            ToastHUD.show(message: L("已复制暂存截图 · %@ × %@", entry.pixelWidth, entry.pixelHeight))
         }
         s.onEditHistory = { [weak self] entry in
             guard let self, let cg = self.historyRing.loadCGImage(for: entry),
@@ -210,16 +210,16 @@ extension AppController {
     func setupMainMenu() {
         let mainMenu = NSMenu()
         let appItem = NSMenuItem(); appItem.submenu = NSMenu(title: "MSnip"); mainMenu.addItem(appItem)
-        let editItem = NSMenuItem(title: "编辑", action: nil, keyEquivalent: "")
-        let editMenu = NSMenu(title: "编辑")
-        editMenu.addItem(withTitle: "撤销", action: Selector(("undo:")), keyEquivalent: "z")
-        let redoItem = NSMenuItem(title: "重做", action: Selector(("redo:")), keyEquivalent: "z")
+        let editItem = NSMenuItem(title: L("编辑"), action: nil, keyEquivalent: "")
+        let editMenu = NSMenu(title: L("编辑"))
+        editMenu.addItem(withTitle: L("撤销"), action: Selector(("undo:")), keyEquivalent: "z")
+        let redoItem = NSMenuItem(title: L("重做"), action: Selector(("redo:")), keyEquivalent: "z")
         redoItem.keyEquivalentModifierMask = [.command, .shift]; editMenu.addItem(redoItem)
         editMenu.addItem(.separator())
-        editMenu.addItem(withTitle: "剪切", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
-        editMenu.addItem(withTitle: "复制", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
-        editMenu.addItem(withTitle: "粘贴", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
-        editMenu.addItem(withTitle: "全选", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editMenu.addItem(withTitle: L("剪切"), action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        editMenu.addItem(withTitle: L("复制"), action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        editMenu.addItem(withTitle: L("粘贴"), action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        editMenu.addItem(withTitle: L("全选"), action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
         editItem.submenu = editMenu; mainMenu.addItem(editItem); NSApp.mainMenu = mainMenu
     }
 
@@ -241,7 +241,7 @@ extension AppController {
             let engine = ocrCfg.engineKind
             let activeID = TranslationService.shared.settings.activeProfileID
             let profiles = VisionLLMOCRService.availableVisionLLMProfiles()
-            ToastHUD.show(message: "正在用「\(engine.shortName)」识字…")
+            ToastHUD.show(message: L("正在用「%@」识字…", engine.shortName))
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 do {
@@ -249,11 +249,11 @@ extension AppController {
                         image: img, engine: engine, config: ocrCfg, activeProfileID: activeID, profiles: profiles
                     )
                     ClipboardAndSave.copyText(out.text); ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
-                    ToastHUD.show(message: "✓ 已用「\(out.providerName)」识别 \(out.text.count) 字并复制", actionTitle: "双栏查看 ›") { [weak self] in
+                    ToastHUD.show(message: L("✓ 已用「%@」识别 %@ 字并复制", out.providerName, out.text.count), actionTitle: L("双栏查看 ›")) { [weak self] in
                         self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: screen, autoTranslate: false, preRecognized: out)
                     }
                 } catch {
-                    self.performAppleVisionSilentOCR(img: img, scale: scale, screen: screen, fallbackNote: "⚠ \(engine.shortName)失败，已回退离线：\(error.localizedDescription)")
+                    self.performAppleVisionSilentOCR(img: img, scale: scale, screen: screen, fallbackNote: L("⚠ %@失败，已回退离线：%@", engine.shortName, error.localizedDescription))
                 }
             }
             return
@@ -262,20 +262,20 @@ extension AppController {
     }
 
     private func performAppleVisionSilentOCR(img: CGImage, scale: CGFloat, screen: NSScreen, fallbackNote: String?) {
-        if fallbackNote == nil { ToastHUD.show(message: "正在离线识字…") }
+        if fallbackNote == nil { ToastHUD.show(message: L("正在离线识字…")) }
         Task { @MainActor [weak self] in
             let output = await VisionTextExtractor.recognizeTextOnlyOffMain(cgImage: img)
             guard let self else { return }
             if let qr = output.qrPayloads.first, output.preservedText.isEmpty {
                 ClipboardAndSave.copyText(qr); ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
                 let lower = qr.lowercased(), isURL = (lower.hasPrefix("http://") || lower.hasPrefix("https://")), parsed = URL(string: qr)
-                ToastHUD.show(message: "✓ 已静默识别二维码并复制", subtitle: fallbackNote ?? qr, actionTitle: isURL && parsed != nil ? "打开链接 ›" : nil, onAction: (isURL && parsed != nil) ? { NSWorkspace.shared.open(parsed!) } : nil)
+                ToastHUD.show(message: L("✓ 已静默识别二维码并复制"), subtitle: fallbackNote ?? qr, actionTitle: isURL && parsed != nil ? L("打开链接 ›") : nil, onAction: (isURL && parsed != nil) ? { NSWorkspace.shared.open(parsed!) } : nil)
                 return
             }
             let text = output.initialClipboardText
-            guard !text.isEmpty else { ToastHUD.show(message: "选区内未检测到可识别文字或二维码", subtitle: fallbackNote); return }
+            guard !text.isEmpty else { ToastHUD.show(message: L("选区内未检测到可识别文字或二维码"), subtitle: fallbackNote); return }
             ClipboardAndSave.copyText(text); ClipboardAndSave.playFeedbackSound(enabled: self.config.soundFeedbackEnabled)
-            ToastHUD.show(message: "✓ 已静默识别 \(text.count) 字并复制", subtitle: fallbackNote, actionTitle: "双栏查看 ›") { [weak self] in
+            ToastHUD.show(message: L("✓ 已静默识别 %@ 字并复制", text.count), subtitle: fallbackNote, actionTitle: L("双栏查看 ›")) { [weak self] in
                 self?.ocrController.present(cgImage: img, scaleFactor: scale, screen: screen, autoTranslate: false)
             }
         }
@@ -330,9 +330,9 @@ extension AppController {
         }
         if let rec = activeRecording {
             if rec.focusTrimWindowIfNeeded() {
-                ToastHUD.show(message: "请先完成或关闭当前 MP4 裁剪窗口")
+                ToastHUD.show(message: L("请先完成或关闭当前 MP4 裁剪窗口"))
             } else {
-                ToastHUD.show(message: "正在录屏中 · 可在菜单栏结束或按 Esc 取消")
+                ToastHUD.show(message: L("正在录屏中 · 可在菜单栏结束或按 Esc 取消"))
             }
             return
         }
@@ -363,8 +363,8 @@ extension AppController {
             ClipboardAndSave.copyToClipboard(cgImage: cropped, scaleFactor: s)
             let entry = self.recordHistoryAndRefresh(img: cropped, scale: s)
             self.presentScreenshotFeedback(
-                entry: entry, img: cropped, scale: s, statusPrefix: "重截已复制",
-                fallbackMessage: "✓ 已重截上次区域并复制", fallbackSubtitle: "\(cropped.width) × \(cropped.height) px"
+                entry: entry, img: cropped, scale: s, statusPrefix: L("重截已复制"),
+                fallbackMessage: L("✓ 已重截上次区域并复制"), fallbackSubtitle: "\(cropped.width) × \(cropped.height) px"
             )
         }
     }
@@ -384,15 +384,15 @@ extension AppController {
             cgImage: img, scaleFactor: scale, intoDirectory: dirURL,
             format: config.exportImageFormat, exportAt1x: config.exportAt1xScale,
             filenameTemplate: config.filenameTemplate
-        ) else { ToastHUD.show(message: "保存图片失败"); return }
+        ) else { ToastHUD.show(message: L("保存图片失败")); return }
         ClipboardAndSave.playFeedbackSound(enabled: config.soundFeedbackEnabled)
         if rememberDirectory { config.recordSaveDirectory(directoryPath); config.save(); rebuildMenu() }
         let shortDir = dirURL.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
         presentScreenshotFeedback(
-            entry: historyEntry, img: img, scale: scale, savedURL: url, statusPrefix: "已保存",
-            fallbackMessage: "✓ 已保存截图至「\(dirURL.lastPathComponent)」",
+            entry: historyEntry, img: img, scale: scale, savedURL: url, statusPrefix: L("已保存"),
+            fallbackMessage: L("✓ 已保存截图至「%@」", dirURL.lastPathComponent),
             fallbackSubtitle: "\(shortDir)/\(url.lastPathComponent)",
-            fallbackActionTitle: "在访达中显示",
+            fallbackActionTitle: L("在访达中显示"),
             fallbackOnAction: { [weak self] in self?.activeSession?.cancel(); ClipboardAndSave.revealInFinder(url) }
         )
     }
@@ -409,10 +409,10 @@ extension AppController {
         let folderName = URL(fileURLWithPath: res.dir).lastPathComponent
         let shortPath = res.url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~")
         presentScreenshotFeedback(
-            entry: historyEntry, img: img, scale: scale, savedURL: res.url, statusPrefix: "已保存",
-            fallbackMessage: "✓ 已保存截图至「\(folderName)」",
+            entry: historyEntry, img: img, scale: scale, savedURL: res.url, statusPrefix: L("已保存"),
+            fallbackMessage: L("✓ 已保存截图至「%@」", folderName),
             fallbackSubtitle: shortPath,
-            fallbackActionTitle: "在访达中显示",
+            fallbackActionTitle: L("在访达中显示"),
             fallbackOnAction: { [weak self] in self?.activeSession?.cancel(); ClipboardAndSave.revealInFinder(res.url) }
         )
     }
@@ -432,16 +432,16 @@ extension AppController {
                 scaleFactor: scale,
                 backdropStyle: backdrop
             ) else {
-                ToastHUD.show(message: "抓取独立窗口失败，请确认屏幕录制权限已开启")
+                ToastHUD.show(message: L("抓取独立窗口失败，请确认屏幕录制权限已开启"))
                 return
             }
             self.recordHistoryAndRefresh(img: winImg, scale: scale)
             if pin {
                 self.pinManager.pin(cgImage: winImg, scaleFactor: scale, topLeftOnScreen: origin, screen: screen)
-                ToastHUD.show(message: "已将纯净独立窗口贴到桌面")
+                ToastHUD.show(message: L("已将纯净独立窗口贴到桌面"))
             } else {
                 ClipboardAndSave.copyToClipboard(cgImage: winImg, scaleFactor: scale)
-                ToastHUD.show(message: "纯净独立窗口（含悬浮阴影）已复制到剪贴板")
+                ToastHUD.show(message: L("纯净独立窗口（含悬浮阴影）已复制到剪贴板"))
             }
         }
     }
@@ -475,21 +475,21 @@ extension AppController {
             case .copiedFile(let url, let fmt):
                 self.shelfController.recordMediaFile(url)
                 if self.config.showQuickAccessOverlay {
-                    self.quickAccessOverlay.presentMediaFile(url: url, format: fmt, statusPrefix: "已复制")
+                    self.quickAccessOverlay.presentMediaFile(url: url, format: fmt, statusPrefix: L("已复制"))
                 } else {
                     let kb = ((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) / 1024
-                    ToastHUD.show(message: "\(fmt.badgeTitle) 已复制到剪贴板 (\(max(1, kb)) KB) · 可直接粘贴发送")
+                    ToastHUD.show(message: L("%@ 已复制到剪贴板 (%@ KB) · 可直接粘贴发送", fmt.badgeTitle, max(1, kb)))
                 }
             case .savedFile(let url, let fmt, let dir):
                 self.config.recordSaveDirectory(dir); self.config.save()
                 self.shelfController.recordMediaFile(url)
                 if self.config.showQuickAccessOverlay {
-                    self.quickAccessOverlay.presentMediaFile(url: url, format: fmt, statusPrefix: "已保存")
+                    self.quickAccessOverlay.presentMediaFile(url: url, format: fmt, statusPrefix: L("已保存"))
                 } else {
                     ToastHUD.show(
-                        message: "✓ 已保存 \(fmt.badgeTitle) 录屏文件",
+                        message: L("✓ 已保存 %@ 录屏文件", fmt.badgeTitle),
                         subtitle: url.path.replacingOccurrences(of: NSHomeDirectory(), with: "~"),
-                        actionTitle: "在访达中显示 ›",
+                        actionTitle: L("在访达中显示 ›"),
                         onAction: { ClipboardAndSave.revealInFinder(url) }
                     )
                 }
@@ -519,7 +519,7 @@ extension AppController {
             case .copied(let img, let scale):
                 ClipboardAndSave.copyToClipboard(cgImage: img, scaleFactor: scale)
                 let entry = self.recordHistoryAndRefresh(img: img, scale: scale)
-                self.presentScreenshotFeedback(entry: entry, img: img, scale: scale, statusPrefix: "长图已复制", fallbackMessage: "长截图已复制 · \(img.width) × \(img.height) px")
+                self.presentScreenshotFeedback(entry: entry, img: img, scale: scale, statusPrefix: L("长图已复制"), fallbackMessage: L("长截图已复制 · %@ × %@ px", img.width, img.height))
             case .quickSaved(let img, let scale):
                 let entry = self.recordHistoryAndRefresh(img: img, scale: scale)
                 self.performQuickSave(img: img, scale: scale, historyEntry: entry)

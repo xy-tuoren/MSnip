@@ -11,9 +11,9 @@ public enum AppAppearanceMode: String, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .system: return "跟随系统"
-        case .light:  return "明亮"
-        case .dark:   return "暗黑"
+        case .system: return L("跟随系统")
+        case .light:  return L("明亮")
+        case .dark:   return L("暗黑")
         }
     }
 }
@@ -26,9 +26,9 @@ public enum FullScreenCaptureAction: String, CaseIterable, Codable, Sendable {
 
     public var title: String {
         switch self {
-        case .copy:        return "仅复制"
-        case .save:        return "仅保存"
-        case .copyAndSave: return "复制并保存"
+        case .copy:        return L("仅复制")
+        case .save:        return L("仅保存")
+        case .copyAndSave: return L("复制并保存")
         }
     }
 }
@@ -110,12 +110,12 @@ public enum CaptureExportFormat: String, CaseIterable, Codable, Sendable {
 
     public var menuTitle: String {
         switch self {
-        case .png:  return "PNG · 无损原图"
-        case .jpeg: return "JPG · 通用高压缩"
-        case .heic: return "HEIC · 苹果高压缩"
-        case .avif: return "AVIF · 极致高压缩"
-        case .bmp:  return "BMP · 原始位图"
-        case .tiff: return "TIFF · 印刷无损"
+        case .png:  return L("PNG · 无损原图")
+        case .jpeg: return L("JPG · 通用高压缩")
+        case .heic: return L("HEIC · 苹果高压缩")
+        case .avif: return L("AVIF · 极致高压缩")
+        case .bmp:  return L("BMP · 原始位图")
+        case .tiff: return L("TIFF · 印刷无损")
         }
     }
 
